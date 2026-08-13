@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-surface-light text-gray-900 dark:bg-surface-dark dark:text-gray-100;
+    overflow-x: hidden;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  * {
+    @apply border-gray-200 dark:border-brand-800;
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-btnblue-500 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-btnblue-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-[0.98] dark:border-brand-700 dark:bg-brand-900 dark:text-gray-200 dark:hover:bg-brand-800;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-800;
+  }
+  .input-field {
+    @apply w-full rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-btnblue-500 focus:ring-2 focus:ring-btnblue-500/20 focus:outline-none dark:border-brand-700 dark:bg-brand-900 dark:text-gray-100 dark:placeholder-gray-500;
+  }
+  .card {
+    @apply rounded-xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-900;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-brand-700 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-brand-600;
+}
+
+/* Smooth transitions for theme */
+* {
+  transition-property: background-color, border-color;
+  transition-duration: 200ms;
+}
