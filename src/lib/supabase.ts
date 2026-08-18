@@ -23,6 +23,7 @@ export interface Profile {
   last_name: string;
   middle_name: string;
   role: UserRole;
+  kyc_completed: boolean;
   verification_status: VerificationStatus;
   landlord_application_status: 'not_requested' | 'pending' | 'approved' | 'rejected';
   mover_application_status: 'not_requested' | 'pending' | 'approved' | 'rejected';
@@ -43,28 +44,57 @@ export interface Profile {
 }
 
 export interface Listing {
-  id: string;
-  user_id: string;
-  title: string;
-  description: string;
-  city: string;
-  county: string;
-  price_kes: number;
-  listing_type: 'rent' | 'sale';
-  deposit_required: boolean;
-  deposit_structure: 'fixed' | 'installments';
-  deposit_amount: number;
-  size: string;
-  beds: number;
-  baths: number;
-  contact_phone: string;
-  contact_email: string;
-  social_links: string[];
-  is_paid: boolean;
-  is_published: boolean;
-  created_at: string;
-  updated_at: string;
-}
+    id: string;
+    user_id: string;
+
+    title: string;
+    description: string;
+
+    city: string;
+    county: string;
+
+    price_kes: number | null;
+
+    listing_type: 'rent' | 'sale';
+
+    deposit_required: boolean | null;
+    deposit_structure: 'fixed' | 'installments' | null;
+    deposit_amount: number | null;
+
+    size: string | null;
+    beds: number | null;
+    baths: number | null;
+
+    contact_phone: string;
+    contact_email: string;
+
+    status: 'pending' | 'approved' | 'rejected';
+
+    social_links: {
+      platform: string;
+      url: string;
+    }[];
+
+    // Property management
+    is_property_management: boolean;
+    property_name: string | null;
+    property_type: string | null;
+
+    // Location
+    location_search: string | null;
+    latitude: number | null;
+    longitude: number | null;
+
+    // Tenant actions
+    booking_enabled: boolean;
+    payment_enabled: boolean;
+
+    ai_caption: string;
+    ai_caption_generated_at: string | null;
+
+    created_at: string;
+    updated_at: string;
+  }
 
 export interface ListingMedia {
   id: string;
@@ -193,4 +223,23 @@ export interface BookingEvent {
   created_at: string;
   confirmed_at: string | null;
   paid_at: string | null;
+}
+
+// subscription type interface
+export type SubscriptionStatus = 'active' | 'inactive' | 'expired' | 'cancelled';
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  plan: string;
+  status: SubscriptionStatus;
+  starts_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// export user with subscription details
+export interface UserWithSubscription extends Profile {
+  subscription: Subscription | null;
 }

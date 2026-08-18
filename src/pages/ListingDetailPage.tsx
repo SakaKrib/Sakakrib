@@ -74,6 +74,15 @@ export default function ListingDetailPage() {
     );
   }
 
+  const handleShowContact = () => {
+  if (!profile) {
+    navigate('home');
+    return;
+  }
+
+  setShowContact(true);
+};
+
   const photos = media.filter((m) => m.media_type === 'photo');
   const video = media.find((m) => m.media_type === 'video');
   const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
@@ -279,7 +288,8 @@ export default function ListingDetailPage() {
 
             {!showContact ? (
               <button
-                onClick={() => profile ? setShowContact(true) : navigate('home')}
+                type="button"
+                onClick={handleShowContact}
                 className="btn-primary mt-4 w-full"
               >
                 {profile ? 'Show Contact Details' : 'Sign in to Contact'}

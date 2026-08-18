@@ -9,6 +9,8 @@ import { useNav } from '@/context/NavContext';
 import { supabase } from '@/lib/supabase';
 import { formatKES, cn, COMMISSION_RATE, FREE_LISTING_LIMIT } from '@/lib/utils';
 import type { UserRole, Listing, Mover, Booking, Review } from '@/lib/supabase';
+import AdminDashboard from '@/pages/AdminDashboard';
+import LandlordDashboard from '@/pages/LanndlordDashboard';
 
 type SimRole = UserRole | 'role-selection';
 
@@ -19,6 +21,8 @@ export default function DashboardPage() {
   const [moverProfile, setMoverProfile] = useState<Mover | null>(null);
   const [bookings, setBookings] = useState<(Booking & { mover?: Mover })[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
+
 
   useEffect(() => {
     if (!profile) return;
@@ -62,10 +66,156 @@ export default function DashboardPage() {
     );
   }
 
-  const activeRole = simulatorRole || profile.role;
+  /*
+  * ------------------------------------------------------
+  * KYC CHECK
+  * ------------------------------------------------------
+  *
+  * KYC completion is separate from admin approval.
+  *
+  * kyc_completed === false
+  *   → user must complete KYC.
+  *
+  * kyc_completed === true
+  *   → KYC is already submitted, so do NOT redirect
+  *     them back to the KYC page.
+  *
+  * verification_status is handled separately because
+  * it represents the review/approval status.
+  */
+
+  if (!profile.kyc_completed && !isAdmin) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20">
+        <div className="card p-8 text-center">
+
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-50 dark:bg-warning-900/30">
+            <ShieldCheck className="h-7 w-7 text-warning-600 dark:text-warning-400" />
+          </div>
+
+          <h2 className="mt-5 text-xl font-bold text-gray-900 dark:text-white">
+            Complete your KYC verification
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+            Please complete your identity verification before
+            continuing with your account registration.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => navigate('kyc-verify')}
+            className="btn-primary mt-6"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Complete KYC
+          </button>
+
+        </div>
+      </div>
+    );
+  }
+
+  /*
+ * ------------------------------------------------------
+ * LANDLORD APPLICATION PENDING
+ * ------------------------------------------------------
+ *
+ * A pending landlord application always takes priority
+ * over normal dashboard access.
+ *
+ * The user's role may still be null or renter while
+ * the application is being reviewed.
+ */
+
+  if (
+    profile.landlord_application_status === 'pending'
+  ) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20">
+        <div className="card p-8 text-center">
+
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-50 dark:bg-warning-900/30">
+            <Clock className="h-7 w-7 text-warning-600 dark:text-warning-400" />
+          </div>
+
+          <h2 className="mt-5 text-xl font-bold text-gray-900 dark:text-white">
+            Landlord application under review
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
+            Your landlord application has been submitted and
+            is currently being reviewed by our administration
+            team.
+          </p>
+
+          <div className="mt-5 rounded-xl border border-warning-200 bg-warning-50 p-4 text-left dark:border-warning-800 dark:bg-warning-900/20">
+            <div className="flex gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-warning-600 dark:text-warning-400" />
+
+              <div>
+                <p className="font-semibold text-warning-900 dark:text-warning-200">
+                  Verification pending
+                </p>
+
+                <p className="mt-1 text-sm leading-6 text-warning-800 dark:text-warning-300">
+                  You will receive an update once your identity
+                  and landlord application have been reviewed.
+                  Landlord dashboard features will become
+                  available after approval.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('profile')}
+            className="btn-secondary mt-6"
+          >
+            View Profile
+          </button>
+
+        </div>
+      </div>
+    );
+  }
+
+
+  if (!profile) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <p className="text-gray-500 dark:text-gray-400">
+          Please sign in to access your dashboard.
+        </p>
+      </div>
+    );
+  }
+
+  // const isAdmin = profile.is_admin === true || profile.role === 'admin';
+
+  // if (isAdmin) {
+  //   return <AdminDashboard />;
+  // }
+
+  // const activeRole = simulatorRole || profile.role;
+
+
+  // Admins can use the simulator.
+  // Non-admin users always use their actual role.
+  const activeRole = isAdmin
+    ? (simulatorRole || profile.role)
+    : profile.role;
+
+    if (isAdmin) {
+    return <AdminDashboard />;
+  }
+
+  // for landlords
+  
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
           <LayoutDashboard className="h-6 w-6 text-brand-600" /> Dashboard
@@ -75,7 +225,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {profile.is_admin === true || profile.role === 'admin' ? <div className="card mb-6 overflow-hidden">
+      {/* {profile.is_admin === true || profile.role === 'admin' ? <div className="card mb-6 overflow-hidden">
         <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-2.5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
             <Eye className="h-4 w-4" /> Simulator Dashboard — Preview Different Roles
@@ -116,10 +266,10 @@ export default function DashboardPage() {
             </button>
           )}
         </div>
-      </div> : null}
+      </div> : null} */}
 
       {/* Profile Summary */}
-      <div className="card mb-6 p-6">
+      {/* <div className="card mb-6 p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-100 text-xl font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">
@@ -159,10 +309,10 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Stats Grid */}
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {/* <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard icon={Home} label="My Listings" value={listings.length} onClick={() => navigate('my-listings')} />
         <StatCard icon={Calendar} label="My Bookings" value={bookings.length} onClick={() => navigate('my-bookings')} />
         <StatCard icon={Star} label="Reviews Given" value={reviews.length} />
@@ -171,10 +321,10 @@ export default function DashboardPage() {
           label="Free Listings Left"
           value={Math.max(0, FREE_LISTING_LIMIT - (profile.free_listings_used || 0))}
         />
-      </div>
+      </div>  */}
 
       {/* Role-specific content */}
-      {(activeRole === 'landlord' || activeRole === 'real_estate') && (
+      {/* {(activeRole === 'landlord' || activeRole === 'real_estate') && (
         <div className="card mb-6 p-6">
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
@@ -195,7 +345,7 @@ export default function DashboardPage() {
                     <p className="text-xs text-gray-500 dark:text-gray-400">{listing.city}, {listing.county}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-brand-600 dark:text-brand-400">{formatKES(listing.price_kes)}</span>
+                    <span className="text-sm font-semibold text-brand-600 dark:text-brand-400">{formatKES(Number(listing.price_kes ?? 0))}</span>
                     <button onClick={() => navigate('listing-detail', listing.id)} className="btn-ghost text-xs">View</button>
                   </div>
                 </div>
@@ -203,6 +353,10 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+      )} */}
+
+      {(activeRole === 'landlord' || activeRole === 'real_estate') && (
+        <LandlordDashboard/>
       )}
 
       {activeRole === 'mover' && (

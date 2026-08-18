@@ -1,17 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  MapPin, DollarSign, Phone, Mail, Image, Video, FileText,
-  ChevronLeft, ChevronRight, Plus, X, Upload, CheckCircle2, Loader2, Home, Link2
+  FileText,
+  CheckCircle2,
+  Loader2,
 } from 'lucide-react';
+
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import TermsGate from '@/components/TermsGate';
+import PropertyListingForm from './PropertyListingForm';
+
 import { supabase } from '@/lib/supabase';
+
 import {
-  KENYAN_CITIES, KENYAN_COUNTIES, HOUSE_SIZES,
-  formatKES, validatePhone, validateEmail, cn,
-  FREE_LISTING_LIMIT, LISTING_FEE_KES, COMMISSION_RATE
+  KENYAN_CITIES,
+  KENYAN_COUNTIES,
+  HOUSE_SIZES,
+  formatKES,
+  validatePhone,
+  validateEmail,
+  FREE_LISTING_LIMIT,
+ 
 } from '@/lib/utils';
+
+
+// ============================================================
+// TYPES
+// ============================================================
+
+type UnitAvailability =
+  | 'available'
+  | 'occupied'
+  | 'reserved';
+
+type SubscriptionStatus =
+  | 'trial'
+  | 'active'
+  | 'expired'
+  | 'none';
+
+type ListingPaymentRequirement =
+  | 'not_required'
+  | 'required';
 
 interface MediaItem {
   file?: File;
@@ -20,620 +49,3589 @@ interface MediaItem {
   type: 'photo' | 'video';
 }
 
-const STEPS = ['Location', 'Financial', 'Contact', 'Media', 'Details'];
-const SOCIAL_PLATFORMS = ['WhatsApp', 'Instagram', 'Facebook', 'Website', 'TikTok'];
+interface PropertyUnit {
+  id: string;
+  unitNumber: string;
+  unitType: string;
+  rent: string;
+  depositAmount: string;
+  size: string;
+  beds: string;
+  baths: string;
+  availability: UnitAvailability;
+  description: string;
+  photos: MediaItem[];
+}
+
+interface LocationSuggestion {
+  display_name: string;
+  lat: string;
+  lon: string;
+  place_id?: string | number;
+  type?: string;
+  address?: {
+    city?: string;
+    town?: string;
+    village?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+  };
+}
+
+interface SocialLink {
+  platform: string;
+  url: string;
+}
+
+interface ListingEntitlement {
+  can_create: boolean;
+
+  free_limit: number;
+  landlord_id: string;
+
+  subscription_id: string | null;
+  subscription_plan: string | null;
+  subscription_status: string | null;
+  subscription_limit: number | null;
+
+  free_listings_used: number;
+  free_listings_remaining: number;
+
+  individual_paid_listings: number;
+
+  subscription_listings_used: number;
+  subscription_listings_remaining: number | null;
+
+  requires_subscription: boolean;
+  requires_individual_payment: boolean;
+
+  individual_listing_price_kes: number;
+}
+
+
+
+
+// ============================================================
+// DATABASE RPC RESULT
+// ============================================================
+
+interface CreatedListingResult {
+  id?: string;
+  listing_id?: string;
+
+  [key: string]: unknown;
+}
+
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 export default function PostListingPage() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile } = useAuth();
   const { navigate } = useNav();
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [step, setStep] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [needsPayment, setNeedsPayment] = useState(false);
+
+  // ==========================================================
+  // AI CAPTION
+  // ==========================================================
+
   const [aiCaption, setAiCaption] = useState('');
 
-  // Form data
-  const [city, setCity] = useState('');
-  const [customCity, setCustomCity] = useState('');
-  const [county, setCounty] = useState('');
-  const [price, setPrice] = useState('');
-  const [listingType, setListingType] = useState<'rent' | 'sale'>('rent');
-  const [depositRequired, setDepositRequired] = useState(false);
-  const [depositStructure, setDepositStructure] = useState<'fixed' | 'installments'>('fixed');
-  const [depositAmount, setDepositAmount] = useState('');
-  const [phone, setPhone] = useState(profile?.phone || '');
-  const [email, setEmail] = useState(profile?.email || '');
-  const [socialLinks, setSocialLinks] = useState<{ platform: string; url: string }[]>([]);
-  const [photos, setPhotos] = useState<MediaItem[]>([]);
-  const [video, setVideo] = useState<MediaItem | null>(null);
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [size, setSize] = useState('');
-  const [customSize, setCustomSize] = useState('');
-  const [beds, setBeds] = useState('1');
-  const [baths, setBaths] = useState('1');
+  
+
+
+  // ==========================================================
+  // UI STATE
+  // ==========================================================
+
+  const [termsAccepted, setTermsAccepted] =
+    useState(false);
+
+  const [step, setStep] =
+    useState(0);
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [success, setSuccess] =
+    useState(false);
+
+
+  // ==========================================================
+  // LISTING ENTITLEMENT
+  //
+  // IMPORTANT:
+  //
+  // This information is used ONLY to render the UI.
+  //
+  // It does NOT authorize listing creation.
+  //
+  // PostgreSQL remains authoritative.
+  // ==========================================================
+
+  const [
+  listingEntitlement,
+  setListingEntitlement,
+] = useState<ListingEntitlement | null>(null);
+
+// ==========================================================
+// DATABASE-DERIVED LISTING VALUES
+// ==========================================================
+
+  const  LISTING_FEE_KES =
+    listingEntitlement?.individual_listing_price_kes ?? 0;
+
+  const remainingFreeListings =
+    listingEntitlement?.free_listings_remaining ?? 0;
+
+  const hasFreeListing =
+    remainingFreeListings > 0;
+
+
+
+  const [
+    entitlementLoading,
+    setEntitlementLoading,
+  ] = useState(true);
+
+  const [
+    subscriptionStatus,
+    setSubscriptionStatus,
+  ] = useState<SubscriptionStatus>('none');
+
+  const [
+    listingPaymentRequirement,
+    setListingPaymentRequirement,
+  ] = useState<ListingPaymentRequirement>(
+    'not_required'
+  );
+
+  const [
+    paymentLoading,
+    setPaymentLoading,
+  ] = useState(false);
+
+
+  // ==========================================================
+  // PAYMENT METHOD
+  // ==========================================================
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+  useState<'MPESA' | 'PESAPAL' | null>(null);
+
+
+  // ==========================================================
+  // PROPERTY MANAGEMENT
+  // ==========================================================
+
+  const [propertyName, setPropertyName] =
+    useState('');
+
+  const [propertyType, setPropertyType] =
+    useState('');
+
+  const [units, setUnits] =
+    useState<PropertyUnit[]>([]);
+
+  const [bookingEnabled, setBookingEnabled] =
+    useState(false);
+
+  const [paymentEnabled, setPaymentEnabled] =
+    useState(false);
+
+
+  // ==========================================================
+  // REVIEW
+  // ==========================================================
+
+  const [reviewConfirmed, setReviewConfirmed] =
+    useState(false);
+
+
+  // ==========================================================
+  // LOCATION
+  // ==========================================================
+
+  const [city, setCity] =
+    useState('');
+
+  const [customCity, setCustomCity] =
+    useState('');
+
+  const [county, setCounty] =
+    useState('');
+
+  const [latitude, setLatitude] =
+    useState<number | null>(null);
+
+  const [longitude, setLongitude] =
+    useState<number | null>(null);
+
+  const [locationSearch, setLocationSearch] =
+    useState('');
+
+  const [locationSuggestions, setLocationSuggestions] =
+    useState<LocationSuggestion[]>([]);
+
+  const [usingGPS, setUsingGPS] =
+    useState(false);
+
+
+  // ==========================================================
+  // FINANCIAL
+  // ==========================================================
+
+  const [price, setPrice] =
+    useState('');
+
+  const [listingType, setListingType] =
+    useState<'rent' | 'sale'>('rent');
+
+  const [depositRequired, setDepositRequired] =
+    useState(false);
+
+  const [depositStructure, setDepositStructure] =
+    useState<'fixed' | 'installments'>('fixed');
+
+  const [depositAmount, setDepositAmount] =
+    useState('');
+
+
+  // ==========================================================
+  // CONTACT
+  // ==========================================================
+
+  const [phone, setPhone] =
+    useState(profile?.phone ?? '');
+
+  const [email, setEmail] =
+    useState(profile?.email ?? '');
+
+  const [socialLinks, setSocialLinks] =
+    useState<SocialLink[]>([]);
+
+
+  // ==========================================================
+  // MEDIA
+  // ==========================================================
+
+  const [photos, setPhotos] =
+    useState<MediaItem[]>([]);
+
+  const [video, setVideo] =
+    useState<MediaItem | null>(null);
+
+
+  // ==========================================================
+  // DETAILS
+  // ==========================================================
+
+  const [title, setTitle] =
+    useState('');
+
+  const [description, setDescription] =
+    useState('');
+
+  const [size, setSize] =
+    useState('');
+
+  const [customSize, setCustomSize] =
+    useState('');
+
+  const [beds, setBeds] =
+    useState('1');
+
+  const [baths, setBaths] =
+    useState('1');
+
+
+  // ==========================================================
+  // SOCIAL PLATFORMS
+  // ==========================================================
+
+  const SOCIAL_PLATFORMS = [
+    'WhatsApp',
+    'Instagram',
+    'Facebook',
+    'Website',
+    'TikTok',
+  ];
+
+
+  // ==========================================================
+  // DERIVED FORM VALUES
+  // ==========================================================
+
+  const finalCity =
+    city === 'custom'
+      ? customCity.trim()
+      : city.trim();
+
+  const finalSize =
+    size === 'Custom Size'
+      ? customSize.trim()
+      : size.trim();
+
+
+  // ==========================================================
+  // LOAD ENTITLEMENT
+  //
+  // IMPORTANT:
+  //
+  // This is UI information only.
+  //
+  // It MUST NOT be treated as authorization.
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadListingEntitlement = async () => {
+      console.log('==================================================');
+      console.log('🔎 STARTING LISTING ENTITLEMENT DEBUG');
+      console.log('==================================================');
+
+      console.log('Profile:', profile);
+      console.log('Profile ID:', profile?.id);
+      console.log('Profile role:', profile?.role);
+
+      // ======================================================
+      // 1. VALIDATE PROFILE
+      // ======================================================
+
+      if (!profile?.id || profile.role !== 'landlord') {
+        console.warn('⚠️ Entitlement check skipped:', {
+          hasProfile: Boolean(profile),
+          profileId: profile?.id,
+          role: profile?.role,
+        });
+
+        if (!cancelled) {
+          setListingEntitlement(null);
+          setSubscriptionStatus('none');
+          setListingPaymentRequirement('not_required');
+          setEntitlementLoading(false);
+        }
+
+        return;
+      }
+
+      setEntitlementLoading(true);
+
+      try {
+        // ======================================================
+        // 2. CHECK SUPABASE AUTH
+        // ======================================================
+
+        console.log('==================================================');
+        console.log('🔐 SUPABASE AUTH DEBUG');
+        console.log('==================================================');
+
+        const {
+          data: authData,
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        const authenticatedUser = authData?.user;
+
+        console.log(
+          'Supabase authenticated user:',
+          authenticatedUser
+        );
+
+        console.log(
+          'Supabase authenticated user ID:',
+          authenticatedUser?.id
+        );
+
+        console.log(
+          'Supabase auth error:',
+          authError
+        );
+
+        console.log(
+          'Profile ID:',
+          profile.id
+        );
+
+        console.log(
+          'IDs match:',
+          authenticatedUser?.id === profile.id
+        );
+
+        if (authError) {
+          throw authError;
+        }
+
+        if (!authenticatedUser) {
+          throw new Error(
+            'No authenticated Supabase user found.'
+          );
+        }
+
+        // ======================================================
+        // 3. VERIFY USER ID
+        // ======================================================
+
+        if (authenticatedUser.id !== profile.id) {
+          throw new Error(
+            'Authenticated Supabase user does not match the landlord profile.'
+          );
+        }
+
+        console.log(
+          '✅ Authenticated user matches landlord profile.'
+        );
+
+        // ======================================================
+        // 4. CALL DATABASE ENTITLEMENT RPC
+        // ======================================================
+
+        console.log('==================================================');
+        console.log(
+          '📡 CALLING get_landlord_listing_entitlement'
+        );
+        console.log('==================================================');
+
+        const rpcParameters = {
+          p_landlord_id: profile.id,
+        };
+
+        console.log(
+          'RPC function:',
+          'get_landlord_listing_entitlement'
+        );
+
+        console.log(
+          'RPC parameters:',
+          rpcParameters
+        );
+
+        const {
+          data: entitlementData,
+          error: entitlementError,
+        } = await supabase.rpc(
+          'get_landlord_listing_entitlement',
+          rpcParameters
+        );
+
+        // ======================================================
+        // 5. RAW RPC RESPONSE
+        // ======================================================
+
+        console.log('==================================================');
+        console.log('📥 RAW ENTITLEMENT RPC RESPONSE');
+        console.log('==================================================');
+
+        console.log(
+          'RPC data:',
+          entitlementData
+        );
+
+        console.log(
+          'RPC error:',
+          entitlementError
+        );
+
+        console.log(
+          'RPC data type:',
+          typeof entitlementData
+        );
+
+        console.log(
+          'Is array:',
+          Array.isArray(entitlementData)
+        );
+
+        if (entitlementError) {
+          console.error(
+            '❌ Entitlement RPC failed:',
+            entitlementError
+          );
+
+          console.error(
+            'RPC error code:',
+            entitlementError.code
+          );
+
+          console.error(
+            'RPC error message:',
+            entitlementError.message
+          );
+
+          console.error(
+            'RPC error details:',
+            entitlementError.details
+          );
+
+          console.error(
+            'RPC error hint:',
+            entitlementError.hint
+          );
+
+          throw entitlementError;
+        }
+
+        if (!entitlementData) {
+          throw new Error(
+            'Entitlement RPC returned no data.'
+          );
+        }
+
+        // ======================================================
+        // 6. NORMALIZE RPC RESULT
+        // ======================================================
+
+        const rawEntitlement = Array.isArray(
+          entitlementData
+        )
+          ? entitlementData[0]
+          : entitlementData;
+
+        if (!rawEntitlement) {
+          throw new Error(
+            'Unable to determine listing entitlement.'
+          );
+        }
+
+        console.log('==================================================');
+        console.log('🏛️ RAW ENTITLEMENT OBJECT');
+        console.log('==================================================');
+
+        console.log(
+          rawEntitlement
+        );
+
+        console.log(
+          'JSON:',
+          JSON.stringify(
+            rawEntitlement,
+            null,
+            2
+          )
+        );
+
+        // ======================================================
+        // 7. NORMALIZE DATABASE VALUES
+        //
+        // PostgreSQL jsonb values can arrive as numbers,
+        // strings, null, etc.
+        //
+        // We normalize numeric fields here so React receives
+        // predictable values.
+        // ======================================================
+
+        const normalizedEntitlement: ListingEntitlement = {
+          can_create:
+            Boolean(
+              rawEntitlement.can_create
+            ),
+
+          free_limit:
+            Number(
+              rawEntitlement.free_limit ?? 0
+            ),
+
+          landlord_id:
+            String(
+              rawEntitlement.landlord_id
+            ),
+
+          subscription_id:
+            rawEntitlement.subscription_id ?? null,
+
+          subscription_plan:
+            rawEntitlement.subscription_plan ?? null,
+
+          subscription_status:
+            rawEntitlement.subscription_status ?? null,
+
+          subscription_limit:
+            rawEntitlement.subscription_limit === null ||
+            rawEntitlement.subscription_limit === undefined
+              ? null
+              : Number(
+                  rawEntitlement.subscription_limit
+                ),
+
+          free_listings_used:
+            Number(
+              rawEntitlement.free_listings_used ?? 0
+            ),
+
+          free_listings_remaining:
+            Number(
+              rawEntitlement.free_listings_remaining ?? 0
+            ),
+
+          individual_paid_listings:
+            Number(
+              rawEntitlement.individual_paid_listings ?? 0
+            ),
+
+          subscription_listings_used:
+            Number(
+              rawEntitlement.subscription_listings_used ?? 0
+            ),
+
+          subscription_listings_remaining:
+            rawEntitlement.subscription_listings_remaining ===
+              null ||
+            rawEntitlement.subscription_listings_remaining ===
+              undefined
+              ? null
+              : Number(
+                  rawEntitlement.subscription_listings_remaining
+                ),
+
+          requires_subscription:
+            Boolean(
+              rawEntitlement.requires_subscription
+            ),
+
+          requires_individual_payment:
+            Boolean(
+              rawEntitlement.requires_individual_payment
+            ),
+
+          individual_listing_price_kes:
+            Number(
+              rawEntitlement.individual_listing_price_kes ?? 0
+            ),
+        };
+
+        // ======================================================
+        // 8. VALIDATE NORMALIZED ENTITLEMENT
+        // ======================================================
+
+        console.log('==================================================');
+        console.log('🏛️ NORMALIZED ENTITLEMENT');
+        console.log('==================================================');
+
+        console.log(
+          normalizedEntitlement
+        );
+
+        console.log(
+          'JSON:',
+          JSON.stringify(
+            normalizedEntitlement,
+            null,
+            2
+          )
+        );
+
+        // ======================================================
+        // 9. FIELD DEBUG
+        // ======================================================
+
+        console.log('==================================================');
+        console.log('📊 ENTITLEMENT FIELD DEBUG');
+        console.log('==================================================');
+
+        console.log(
+          'can_create:',
+          normalizedEntitlement.can_create,
+          '| type:',
+          typeof normalizedEntitlement.can_create
+        );
+
+        console.log(
+          'free_limit:',
+          normalizedEntitlement.free_limit,
+          '| type:',
+          typeof normalizedEntitlement.free_limit
+        );
+
+        console.log(
+          'free_listings_used:',
+          normalizedEntitlement.free_listings_used,
+          '| type:',
+          typeof normalizedEntitlement.free_listings_used
+        );
+
+        console.log(
+          'free_listings_remaining:',
+          normalizedEntitlement.free_listings_remaining,
+          '| type:',
+          typeof normalizedEntitlement.free_listings_remaining
+        );
+
+        console.log(
+          'subscription_id:',
+          normalizedEntitlement.subscription_id
+        );
+
+        console.log(
+          'subscription_plan:',
+          normalizedEntitlement.subscription_plan
+        );
+
+        console.log(
+          'subscription_status:',
+          normalizedEntitlement.subscription_status
+        );
+
+        console.log(
+          'subscription_limit:',
+          normalizedEntitlement.subscription_limit
+        );
+
+        console.log(
+          'subscription_listings_used:',
+          normalizedEntitlement.subscription_listings_used
+        );
+
+        console.log(
+          'subscription_listings_remaining:',
+          normalizedEntitlement.subscription_listings_remaining
+        );
+
+        console.log(
+          'individual_paid_listings:',
+          normalizedEntitlement.individual_paid_listings
+        );
+
+        console.log(
+          'requires_subscription:',
+          normalizedEntitlement.requires_subscription
+        );
+
+        console.log(
+          'requires_individual_payment:',
+          normalizedEntitlement.requires_individual_payment
+        );
+
+        console.log(
+          'individual_listing_price_kes:',
+          normalizedEntitlement.individual_listing_price_kes
+        );
+
+        // ======================================================
+        // 10. LISTING FEE DEBUG
+        //
+        // IMPORTANT:
+        // This comes directly from PostgreSQL.
+        //
+        // No LISTING_FEE_KES frontend constant is used.
+        // ======================================================
+
+        const listingFeeKES =
+          normalizedEntitlement.individual_listing_price_kes;
+
+        console.log('==================================================');
+        console.log('💰 DATABASE LISTING FEE');
+        console.log('==================================================');
+
+        console.log(
+          'Database listing fee:',
+          listingFeeKES
+        );
+
+        console.log(
+          'Database listing fee type:',
+          typeof listingFeeKES
+        );
+
+        console.log(
+          'Finite:',
+          Number.isFinite(
+            listingFeeKES
+          )
+        );
+
+        console.log('==================================================');
+
+        if (
+          !Number.isFinite(
+            listingFeeKES
+          )
+        ) {
+          throw new Error(
+            'Database returned an invalid listing fee.'
+          );
+        }
+
+        // ======================================================
+        // 11. SUBSCRIPTION STATUS
+        //
+        // Normalize DB values to the frontend union.
+        // ======================================================
+
+        const rawSubscriptionStatus =
+          normalizedEntitlement.subscription_status
+            ?.toLowerCase();
+
+        const normalizedSubscriptionStatus: SubscriptionStatus =
+          rawSubscriptionStatus === 'active'
+            ? 'active'
+            : rawSubscriptionStatus === 'trial'
+              ? 'trial'
+              : rawSubscriptionStatus === 'expired'
+                ? 'expired'
+                : 'none';
+
+        console.log(
+          'Normalized subscription status:',
+          normalizedSubscriptionStatus
+        );
+
+        // ======================================================
+        // 12. PAYMENT REQUIREMENT
+        //
+        // IMPORTANT:
+        //
+        // We DO NOT calculate this from the listing fee.
+        //
+        // PostgreSQL already decided this.
+        // ======================================================
+
+        const requiresIndividualPayment =
+          normalizedEntitlement.requires_individual_payment;
+
+        console.log(
+          'Database says payment required:',
+          requiresIndividualPayment
+        );
+
+        // ======================================================
+        // 13. CANCELLED CHECK
+        // ======================================================
+
+        if (cancelled) {
+          console.log(
+            '⚠️ Entitlement request cancelled before state update.'
+          );
+
+          return;
+        }
+
+        // ======================================================
+        // 14. SAVE ENTITLEMENT
+        // ======================================================
+
+        setListingEntitlement(
+          normalizedEntitlement
+        );
+
+        setSubscriptionStatus(
+          normalizedSubscriptionStatus
+        );
+
+        setListingPaymentRequirement(
+          requiresIndividualPayment
+            ? 'required'
+            : 'not_required'
+        );
+
+        // ======================================================
+        // 15. FINAL SUCCESS SUMMARY
+        // ======================================================
+
+        console.log('==================================================');
+        console.log('✅ ENTITLEMENT LOADED SUCCESSFULLY');
+        console.log('==================================================');
+
+        console.table({
+          landlordId:
+            normalizedEntitlement.landlord_id,
+
+          canCreate:
+            normalizedEntitlement.can_create,
+
+          freeLimit:
+            normalizedEntitlement.free_limit,
+
+          freeListingsUsed:
+            normalizedEntitlement.free_listings_used,
+
+          freeListingsRemaining:
+            normalizedEntitlement.free_listings_remaining,
+
+          subscriptionPlan:
+            normalizedEntitlement.subscription_plan,
+
+          subscriptionStatus:
+            normalizedSubscriptionStatus,
+
+          subscriptionLimit:
+            normalizedEntitlement.subscription_limit,
+
+          subscriptionListingsUsed:
+            normalizedEntitlement.subscription_listings_used,
+
+          subscriptionListingsRemaining:
+            normalizedEntitlement.subscription_listings_remaining,
+
+          individualPaidListings:
+            normalizedEntitlement.individual_paid_listings,
+
+          listingFeeKES:
+            listingFeeKES,
+
+          requiresSubscription:
+            normalizedEntitlement.requires_subscription,
+
+          requiresIndividualPayment:
+            requiresIndividualPayment,
+        });
+
+        console.log('==================================================');
+
+      } catch (err) {
+        console.error(
+          '❌ FAILED TO LOAD LISTING ENTITLEMENT:',
+          err
+        );
+
+        if (!cancelled) {
+          setListingEntitlement(null);
+
+          setSubscriptionStatus(
+            'none'
+          );
+
+          setListingPaymentRequirement(
+            'not_required'
+          );
+
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Unable to load listing information.'
+          );
+        }
+
+      } finally {
+        if (!cancelled) {
+          setEntitlementLoading(false);
+        }
+      }
+    };
+
+    loadListingEntitlement();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    profile?.id,
+    profile?.role,
+  ]);
+
+
+  // ==========================================================
+  // PROPERTY MANAGEMENT UI
+  //
+  // IMPORTANT:
+  //
+  // This controls presentation only.
+  //
+  // PostgreSQL must independently validate
+  // p_is_property_management.
+  // ==========================================================
+
+  const isPropertyManagementListing =
+    subscriptionStatus === 'active' ||
+    subscriptionStatus === 'trial';
+
+
+  // ==========================================================
+  // STEPS
+  // ==========================================================
+
+  const BASE_STEPS =
+    isPropertyManagementListing
+      ? [
+          'Property',
+          'Units',
+          'Financial',
+          'Contact',
+          'Media',
+          'Details',
+          'Review',
+        ]
+      : [
+          'Location',
+          'Financial',
+          'Contact',
+          'Media',
+          'Details',
+          'Review',
+        ];
+
+  const STEPS =
+    listingPaymentRequirement === 'required'
+      ? [
+          ...BASE_STEPS,
+          'Payment',
+        ]
+      : BASE_STEPS;
+
+
+
+
+  // ==========================================================
+  // PAYMENT UI STATE
+  // ==========================================================
+
+  const paymentRequired =
+    listingPaymentRequirement === 'required';
+
+  const paymentDescription =
+    paymentRequired
+      ? `This listing requires a ${formatKES(
+          LISTING_FEE_KES
+        )} listing fee before publication.`
+      : 'No listing payment is currently required.';
+
+  const [paymentCompleted, setPaymentCompleted] =
+    useState(false);
+
+  const paymentStepIndex =
+    paymentRequired
+      ? STEPS.length - 1
+      : -1;
+
+  // IMPORTANT:
+  // This is the number that the child uses to decide whether
+  // the user has a free listing available.
+  //
+  // Never use FREE_LISTING_LIMIT directly here.
+  // Use the authoritative entitlement returned by PostgreSQL.
+  const freeListingsRemaining = Math.max(
+    0,
+    Number(
+      listingEntitlement?.free_listings_remaining ?? 0
+    )
+  );
+  
+  
+
+  useEffect(() => {
+    // If payment is not required, there is nothing to pay.
+    if (!paymentRequired) {
+      setPaymentCompleted(true);
+      setSelectedPaymentMethod(null);
+      return;
+    }
+
+    // Payment is required, so a previous payment state must
+    // not accidentally carry over to a new listing.
+    setPaymentCompleted(false);
+    setSelectedPaymentMethod(null);
+  }, [paymentRequired]);
+
+
+  // ==========================================================
+  // GPS LOCATION
+  // ==========================================================
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setError(
+        'Location services are not supported by this browser.'
+      );
+      return;
+    }
+
+    setUsingGPS(true);
+    setError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat =
+          position.coords.latitude;
+
+        const lon =
+          position.coords.longitude;
+
+        try {
+          setLatitude(lat);
+          setLongitude(lon);
+
+          const response =
+            await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
+                lat
+              )}&lon=${encodeURIComponent(
+                lon
+              )}&addressdetails=1`,
+              {
+                headers: {
+                  Accept:
+                    'application/json',
+                },
+              }
+            );
+
+          if (!response.ok) {
+            throw new Error(
+              'Unable to determine the address from your GPS location.'
+            );
+          }
+
+          const data =
+            await response.json();
+
+          const address =
+            data?.address || {};
+
+          const detectedCity =
+            address.city ||
+            address.town ||
+            address.municipality ||
+            address.village ||
+            address.suburb ||
+            '';
+
+          const detectedCounty =
+            address.county ||
+            address.state_district ||
+            address.state ||
+            '';
+
+          const detectedLocation =
+            data?.display_name ||
+            `${detectedCity}${
+              detectedCounty
+                ? `, ${detectedCounty}`
+                : ''
+            }`;
+
+          setLocationSearch(
+            detectedLocation
+          );
+
+          if (detectedCity) {
+            const matchingCity =
+              KENYAN_CITIES.find(
+                (item) =>
+                  item.toLowerCase() ===
+                  detectedCity.toLowerCase()
+              );
+
+            if (matchingCity) {
+              setCity(matchingCity);
+            } else {
+              setCustomCity(
+                detectedCity
+              );
+
+              setCity('custom');
+            }
+          }
+
+          if (detectedCounty) {
+            const normalizedCounty =
+              detectedCounty
+                .replace(
+                  / County$/i,
+                  ''
+                )
+                .trim();
+
+            const matchingCounty =
+              KENYAN_COUNTIES.find(
+                (item) =>
+                  item.toLowerCase() ===
+                  normalizedCounty.toLowerCase()
+              );
+
+            setCounty(
+              matchingCounty ||
+                normalizedCounty
+            );
+          }
+
+          setLocationSuggestions([
+            {
+              display_name:
+                detectedLocation,
+
+              lat:
+                String(lat),
+
+              lon:
+                String(lon),
+
+              place_id:
+                data?.place_id,
+
+              type:
+                data?.type,
+
+              address,
+            },
+          ]);
+
+        } catch (err) {
+          console.error(
+            'GPS reverse geocoding failed:',
+            err
+          );
+
+          setError(
+            'Your GPS coordinates were detected, but we could not determine the address. Please enter your location manually.'
+          );
+
+        } finally {
+          setUsingGPS(false);
+        }
+      },
+
+      (geoError) => {
+        console.error(
+          'Geolocation error:',
+          geoError
+        );
+
+        setUsingGPS(false);
+
+        switch (
+          geoError.code
+        ) {
+          case geoError.PERMISSION_DENIED:
+            setError(
+              'Location permission was denied. Please allow location access and try again.'
+            );
+            break;
+
+          case geoError.POSITION_UNAVAILABLE:
+            setError(
+              'Your current location could not be determined. Please try again or search manually.'
+            );
+            break;
+
+          case geoError.TIMEOUT:
+            setError(
+              'Getting your location took too long. Please try again.'
+            );
+            break;
+
+          default:
+            setError(
+              'Unable to get your current location.'
+            );
+        }
+      },
+
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+
+  // ==========================================================
+  // UNIT FUNCTIONS
+  // ==========================================================
+
+  const createUnit =
+    (): PropertyUnit => ({
+      id:
+        crypto.randomUUID(),
+
+      unitNumber: '',
+
+      unitType: '',
+
+      rent: '',
+
+      depositAmount: '',
+
+      size: '',
+
+      beds: '1',
+
+      baths: '1',
+
+      availability:
+        'available',
+
+      description: '',
+
+      photos: [],
+    });
+
+
+  const addUnit = () => {
+    setUnits(
+      (current) => [
+        ...current,
+        createUnit(),
+      ]
+    );
+  };
+
+
+  const updateUnit = (
+    id: string,
+    field: keyof PropertyUnit,
+    value: unknown
+  ) => {
+    setUnits(
+      (current) =>
+        current.map(
+          (unit) =>
+            unit.id === id
+              ? {
+                  ...unit,
+                  [field]:
+                    value,
+                }
+              : unit
+        )
+    );
+  };
+
+
+  // ==========================================================
+  // CONTACT VALIDATION
+  //
+  // UX VALIDATION ONLY.
+  //
+  // Backend remains authoritative.
+  // ==========================================================
+
+  const contactIsValid =
+    phone.trim() !== '' &&
+    validatePhone(phone) &&
+    email.trim() !== '' &&
+    validateEmail(email);
+
+
+  // ==========================================================
+  // FORM VALIDATION
+  //
+  // These checks only prevent obviously incomplete forms.
+  //
+  // They do NOT decide whether the user is authorized to list.
+  // ==========================================================
+
+  const canProceed = () => {
+    // ========================================================
+    // PROPERTY MANAGEMENT
+    // ========================================================
+
+    if (isPropertyManagementListing) {
+      switch (step) {
+        case 0:
+          return (
+            locationSearch.trim() !== '' &&
+            propertyName.trim() !== '' &&
+            propertyType.trim() !== '' &&
+            finalCity !== '' &&
+            county.trim() !== ''
+          );
+
+        case 1:
+          return (
+            units.length > 0 &&
+            units.every((unit) => {
+              const rent = Number(unit.rent);
+              const bedsValue = Number(unit.beds);
+              const bathsValue = Number(unit.baths);
+
+              return (
+                unit.unitNumber.trim() !== '' &&
+                unit.unitType.trim() !== '' &&
+                Number.isFinite(rent) &&
+                rent > 0 &&
+                Number.isInteger(bedsValue) &&
+                bedsValue >= 0 &&
+                Number.isInteger(bathsValue) &&
+                bathsValue >= 0 &&
+                unit.photos.length >= 3 &&
+                unit.photos.length <= 7
+              );
+            })
+          );
+
+        case 2:
+          return units.every((unit) => {
+            const rent = Number(unit.rent);
+
+            return (
+              Number.isFinite(rent) &&
+              rent > 0
+            );
+          });
+
+        case 3:
+          return contactIsValid;
+
+        case 4:
+          return (
+            photos.length >= 3 &&
+            photos.length <= 7
+          );
+
+        case 5:
+          return (
+            title.trim() !== '' &&
+            description.trim() !== ''
+          );
+
+        case 6:
+          return reviewConfirmed;
+
+        default:
+          // Payment step
+          if (step === paymentStepIndex) {
+            return paymentRequired
+              ? paymentCompleted
+              : true;
+          }
+
+          return false;
+      }
+    }
+
+    // ========================================================
+    // NORMAL LANDLORD LISTING
+    // ========================================================
+
+    switch (step) {
+      case 0:
+        return (
+          finalCity !== '' &&
+          county.trim() !== ''
+        );
+
+      case 1:
+        return (
+          price.trim() !== '' &&
+          Number.isFinite(Number(price)) &&
+          Number(price) > 0
+        );
+
+      case 2:
+        return contactIsValid;
+
+      case 3:
+        return (
+          photos.length >= 3 &&
+          photos.length <= 7
+        );
+
+      case 4:
+        return (
+          title.trim() !== '' &&
+          description.trim() !== '' &&
+          finalSize !== ''
+        );
+
+      case 5:
+        return reviewConfirmed;
+
+      default:
+        // Payment step
+        if (step === paymentStepIndex) {
+          return paymentRequired
+            ? paymentCompleted
+            : true;
+        }
+
+        return false;
+    }
+  };
+
+
+  // ==========================================================
+// WAIT FOR LISTING PAYMENT CONFIRMATION
+// ==========================================================
+
+const waitForListingPayment = async (
+  paymentId: string
+): Promise<boolean> => {
+  const maxAttempts = 30;
+  const interval = 3000;
+
+  for (
+    let attempt = 0;
+    attempt < maxAttempts;
+    attempt++
+  ) {
+    try {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('listing_payments')
+        .select('status')
+        .eq('id', paymentId)
+        .single();
+
+      if (error) {
+        console.error(
+          'Payment status check failed:',
+          error
+        );
+      }
+
+      if (
+        data?.status === 'paid' ||
+        data?.status === 'completed'
+      ) {
+        return true;
+      }
+
+      if (
+        data?.status === 'failed' ||
+        data?.status === 'cancelled' ||
+        data?.status === 'expired'
+      ) {
+        return false;
+      }
+
+    } catch (error) {
+      console.error(
+        'Error checking listing payment:',
+        error
+      );
+    }
+
+    await new Promise(
+      (resolve) =>
+        setTimeout(
+          resolve,
+          interval
+        )
+    );
+  }
+
+  return false;
+};
+
+
+  // ==========================================================
+// HANDLE LISTING PAYMENT
+// ==========================================================
+//
+// IMPORTANT:
+//
+// This function handles the payment required for an individual
+// listing.
+//
+// The frontend must NEVER mark payment as completed merely
+// because the user selected M-Pesa or Pesapal.
+//
+// paymentCompleted = true ONLY after the backend confirms
+// the payment.
+//
+// The backend/payment provider remains authoritative.
+// ==========================================================
+
+const handleListingPayment = async (): Promise<boolean> => {
+  if (!paymentRequired) {
+    setPaymentCompleted(true);
+    return true;
+  }
+
+  if (!selectedPaymentMethod) {
+    setError(
+      'Please select a payment method before continuing.'
+    );
+
+    return false;
+  }
+
+  setPaymentLoading(true);
+  setError(null);
+
+  try {
+    // ========================================================
+    // M-PESA
+    // ========================================================
+
+    if (selectedPaymentMethod === 'MPESA') {
+      /*
+       * IMPORTANT:
+       *
+       * Replace this RPC with your actual listing-payment
+       * M-Pesa RPC/Edge Function.
+       *
+       * The backend should:
+       *
+       * 1. Authenticate auth.uid()
+       * 2. Verify landlord role
+       * 3. Verify KYC
+       * 4. Verify listing fee
+       * 5. Create a payment transaction
+       * 6. Initiate STK Push
+       * 7. Return the payment/checkout identifier
+       *
+       * DO NOT trust the amount sent from the frontend.
+       */
+
+      const {
+        data,
+        error: mpesaError,
+      } = await supabase.functions.invoke(
+        'initiate-listing-payment',
+        {
+          body: {
+            payment_method: 'MPESA',
+          },
+        }
+      );
+
+      if (mpesaError) {
+        throw mpesaError;
+      }
+
+      if (!data) {
+        throw new Error(
+          'The payment service did not return a response.'
+        );
+      }
+
+      console.log(
+        '📲 Listing M-Pesa payment initiated:',
+        data
+      );
+
+      /*
+       * If your backend returns something like:
+       *
+       * {
+       *   payment_id: "...",
+       *   checkout_request_id: "..."
+       * }
+       *
+       * DO NOT immediately set paymentCompleted(true).
+       *
+       * The STK callback must confirm the payment first.
+       */
+
+      const paymentId =
+        data.payment_id ||
+        data.paymentId;
+
+      if (!paymentId) {
+        throw new Error(
+          'Payment was initiated but no payment ID was returned.'
+        );
+      }
+
+      // ------------------------------------------------------
+      // Wait for backend confirmation
+      // ------------------------------------------------------
+
+      const confirmed =
+        await waitForListingPayment(
+          paymentId
+        );
+
+      if (!confirmed) {
+        throw new Error(
+          'The listing payment was not confirmed.'
+        );
+      }
+
+      setPaymentCompleted(true);
+
+      return true;
+    }
+
+
+    // ========================================================
+    // PESAPAL
+    // ========================================================
+
+    if (selectedPaymentMethod === 'PESAPAL') {
+      /*
+       * The backend should create the Pesapal transaction
+       * using the authoritative listing fee.
+       */
+
+      const {
+        data,
+        error: pesapalError,
+      } = await supabase.functions.invoke(
+        'initiate-listing-payment',
+        {
+          body: {
+            payment_method: 'PESAPAL',
+          },
+        }
+      );
+
+      if (pesapalError) {
+        throw pesapalError;
+      }
+
+      if (!data) {
+        throw new Error(
+          'The payment service did not return a response.'
+        );
+      }
+
+      console.log(
+        '💳 Pesapal listing payment:',
+        data
+      );
+
+      /*
+       * Typical response:
+       *
+       * {
+       *   payment_id: "...",
+       *   redirect_url: "https://..."
+       * }
+       */
+
+      const redirectUrl =
+        data.redirect_url ||
+        data.redirectUrl;
+
+      if (!redirectUrl) {
+        throw new Error(
+          'Pesapal did not return a payment URL.'
+        );
+      }
+
+      /*
+       * Store the payment state if necessary before
+       * redirecting.
+       *
+       * After Pesapal confirms payment, your callback/webhook
+       * should mark the payment as paid.
+       */
+
+      window.location.href =
+        redirectUrl;
+
+      return false;
+    }
+
+
+    throw new Error(
+      'Unsupported listing payment method.'
+    );
+
+  } catch (err) {
+    console.error(
+      '❌ Listing payment failed:',
+      err
+    );
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : 'Unable to process the listing payment.'
+    );
+
+    setPaymentCompleted(false);
+
+    return false;
+
+  } finally {
+    setPaymentLoading(false);
+  }
+};
+
+
+// ==========================================================
+// UPLOAD LIMITS
+// ==========================================================
+
+// Maximum number of property photos
+const MAX_PHOTOS = 7;
+
+// Maximum individual photo size
+const MAX_PHOTO_SIZE = 10 * 1024 * 1024; // 10 MB
+
+// Maximum walkthrough video size
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
+
+
+// ==========================================================
+// PHOTO UPLOAD
+// ==========================================================
+
+const handlePhotoUpload = (files: FileList | null) => {
+  if (!files || files.length === 0) {
+    return;
+  }
+
+  const remaining = MAX_PHOTOS - photos.length;
+
+  if (remaining <= 0) {
+    setError(
+      `You can upload a maximum of ${MAX_PHOTOS} photos.`
+    );
+    return;
+  }
+
+  const selectedFiles = Array.from(files).slice(
+    0,
+    remaining
+  );
+
+  const validFiles: File[] = [];
+
+  for (const file of selectedFiles) {
+    // Validate image type
+    if (!file.type.startsWith('image/')) {
+      setError(
+        `${file.name} is not a valid image file.`
+      );
+      continue;
+    }
+
+    // Validate image size
+    if (file.size > MAX_PHOTO_SIZE) {
+      setError(
+        `${file.name} is too large. Each photo must be 10 MB or smaller.`
+      );
+      continue;
+    }
+
+    validFiles.push(file);
+  }
+
+  if (validFiles.length === 0) {
+    return;
+  }
+
+  const newPhotos = validFiles.map(
+    (file, index) => ({
+      file,
+
+      url: URL.createObjectURL(file),
+
+      label: `Photo ${
+        photos.length + index + 1
+      }`,
+
+      type: 'photo' as const,
+    })
+  );
+
+  setPhotos((current) => [
+    ...current,
+    ...newPhotos,
+  ]);
+
+  setError('');
+};
+
+
+// ==========================================================
+// VIDEO UPLOAD
+// ==========================================================
+
+const handleVideoUpload = (file: File | null) => {
+  if (!file) {
+    return;
+  }
+
+  // Validate video type
+  if (!file.type.startsWith('video/')) {
+    setError(
+      'Please select a valid video file.'
+    );
+    return;
+  }
+
+  // Validate video size
+  if (file.size > MAX_VIDEO_SIZE) {
+    setError(
+      'Video is too large. Maximum allowed size is 100 MB.'
+    );
+    return;
+  }
+
+  // Remove/revoke previous video preview
+  if (
+    video?.url &&
+    video.url.startsWith('blob:')
+  ) {
+    URL.revokeObjectURL(video.url);
+  }
+
+  const previewUrl =
+    URL.createObjectURL(file);
+
+  setVideo({
+    file,
+
+    url: previewUrl,
+
+    label: 'Walkthrough Video',
+
+    type: 'video',
+  });
+
+  setError('');
+};
+
+
+// ==========================================================
+// PHOTO LABEL
+// ==========================================================
+
+const updatePhotoLabel = (
+  index: number,
+  label: string
+) => {
+  setPhotos((current) =>
+    current.map((photo, i) =>
+      i === index
+        ? {
+            ...photo,
+            label,
+          }
+        : photo
+    )
+  );
+};
+
+
+// ==========================================================
+// REMOVE PHOTO
+// ==========================================================
+
+const removePhoto = (index: number) => {
+  setPhotos((current) => {
+    const photo = current[index];
+
+    // Revoke browser object URL
+    if (
+      photo?.url &&
+      photo.url.startsWith('blob:')
+    ) {
+      URL.revokeObjectURL(photo.url);
+    }
+
+    return current.filter(
+      (_, i) => i !== index
+    );
+  });
+};
+
+
+// ==========================================================
+// REMOVE VIDEO
+// ==========================================================
+
+const removeVideo = () => {
+  if (
+    video?.url &&
+    video.url.startsWith('blob:')
+  ) {
+    URL.revokeObjectURL(video.url);
+  }
+
+  setVideo(null);
+};
+
+
+// ==========================================================
+// CLEAN UP BLOB URLS WHEN COMPONENT UNMOUNTS
+// ==========================================================
+
+useEffect(() => {
+  return () => {
+    // ------------------------------------------------------
+    // Clean up photo previews
+    // ------------------------------------------------------
+
+    photos.forEach((photo) => {
+      if (
+        photo.url &&
+        photo.url.startsWith('blob:')
+      ) {
+        URL.revokeObjectURL(photo.url);
+      }
+    });
+
+    // ------------------------------------------------------
+    // Clean up video preview
+    // ------------------------------------------------------
+
+    if (
+      video?.url &&
+      video.url.startsWith('blob:')
+    ) {
+      URL.revokeObjectURL(video.url);
+    }
+  };
+}, []);
+
+  // ==========================================================
+  // SOCIAL LINKS
+  // ==========================================================
+
+  const addSocialLink = () => {
+    setSocialLinks(
+      (current) => [
+        ...current,
+        {
+          platform:
+            'WhatsApp',
+          url: '',
+        },
+      ]
+    );
+  };
+
+
+  const updateSocialLink = (
+    index: number,
+    field:
+      | 'platform'
+      | 'url',
+    value: string
+  ) => {
+    setSocialLinks(
+      (current) =>
+        current.map(
+          (link, i) =>
+            i === index
+              ? {
+                  ...link,
+                  [field]:
+                    value,
+                }
+              : link
+        )
+    );
+  };
+
+
+  const removeSocialLink = (
+    index: number
+  ) => {
+    setSocialLinks(
+      (current) =>
+        current.filter(
+          (_, i) =>
+            i !== index
+        )
+    );
+  };
+
+
+  // ==========================================================
+  // DATABASE LISTING CREATION
+  // ==========================================================
+  //
+  // EXACT BACKEND FUNCTION:
+  //
+  // create_landlord_listing(
+  //   p_title,
+  //   p_description,
+  //   p_city,
+  //   p_county,
+  //   p_location_search,
+  //   p_latitude,
+  //   p_longitude,
+  //   p_property_name,
+  //   p_property_type,
+  //   p_price_kes,
+  //   p_listing_type,
+  //   p_deposit_required,
+  //   p_deposit_structure,
+  //   p_deposit_amount,
+  //   p_size,
+  //   p_beds,
+  //   p_baths,
+  //   p_contact_phone,
+  //   p_contact_email,
+  //   p_social_links,
+  //   p_booking_enabled,
+  //   p_payment_enabled,
+  //   p_is_property_management
+  // )
+  //
+  // IMPORTANT:
+  //
+  // No user_id is supplied.
+  //
+  // PostgreSQL must determine the authenticated user
+  // using auth.uid().
+  // ==========================================================
+
+  const createLandlordListing = async (
+    payload: {
+      p_title: string;
+      p_description: string;
+      p_city: string;
+      p_county: string;
+
+      p_location_search?:
+        | string
+        | null;
+
+      p_latitude?:
+        | number
+        | null;
+
+      p_longitude?:
+        | number
+        | null;
+
+      p_property_name?:
+        | string
+        | null;
+
+      p_property_type?:
+        | string
+        | null;
+
+      p_price_kes?:
+        | number
+        | null;
+
+      p_listing_type?:
+        string;
+
+      p_deposit_required?:
+        boolean;
+
+      p_deposit_structure?:
+        | string
+        | null;
+
+      p_deposit_amount?:
+        number;
+
+      p_size?:
+        | string
+        | null;
+
+      p_beds?:
+        number;
+
+      p_baths?:
+        number;
+
+      p_contact_phone?:
+        | string
+        | null;
+
+      p_contact_email?:
+        | string
+        | null;
+
+      p_social_links?:
+        SocialLink[];
+
+      p_booking_enabled?:
+        boolean;
+
+      p_payment_enabled?:
+        boolean;
+
+      p_is_property_management?:
+        boolean;
+    }
+  ): Promise<CreatedListingResult> => {
+    const {
+      data,
+      error: rpcError,
+    } =
+      await supabase.rpc(
+        'create_landlord_listing',
+        payload
+      );
+
+    if (rpcError) {
+      console.error(
+        '❌ create_landlord_listing failed:',
+        rpcError
+      );
+
+      throw new Error(
+        rpcError.message ||
+          'The database rejected the listing.'
+      );
+    }
+
+    if (!data) {
+      throw new Error(
+        'The listing function completed but did not return listing information.'
+      );
+    }
+
+    console.log(
+      '✅ create_landlord_listing response:',
+      data
+    );
+
+    return (
+      Array.isArray(data)
+        ? data[0]
+        : data
+    ) as CreatedListingResult;
+  };
+
+
+  // ==========================================================
+  // AUTHENTICATION GATE
+  // ==========================================================
 
   if (!profile) {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <p className="text-gray-500 dark:text-gray-400">Please sign in to post a listing.</p>
+        <p className="text-gray-500 dark:text-gray-400">
+          Please sign in to post a listing.
+        </p>
       </div>
     );
   }
 
-  if (profile.verification_status !== 'verified' && (profile.role === 'landlord' || profile.role === 'real_estate')) {
+
+  // ==========================================================
+  // KYC UI GATE
+  //
+  // IMPORTANT:
+  //
+  // This is NOT the security boundary.
+  //
+  // The database must independently enforce verification.
+  // ==========================================================
+
+  if (
+    profile.verification_status !==
+      'verified' &&
+    (
+      profile.role ===
+        'landlord' ||
+      profile.role ===
+        'real_estate'
+    )
+  ) {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
         <div className="card p-8">
+
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-warning-100 dark:bg-warning-900/30">
             <FileText className="h-8 w-8 text-warning-600" />
           </div>
-          <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Verification Required</h2>
+
+          <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
+            Verification Required
+          </h2>
+
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             You must complete KYC verification before posting listings.
           </p>
-          <button onClick={() => navigate('kyc-verify')} className="btn-primary mt-6">
+
+          <button
+            type="button"
+            onClick={() =>
+              navigate('kyc-verify')
+            }
+            className="btn-primary mt-6"
+          >
             Verify Now
           </button>
+
         </div>
       </div>
     );
   }
 
-  const finalCity = city === 'custom' ? customCity : city;
-  const finalSize = size === 'Custom Size' ? customSize : size;
 
-  const canProceed = () => {
-    switch (step) {
-      case 0: return finalCity.trim() !== '' && county.trim() !== '';
-      case 1: return price !== '' && Number(price) > 0;
-      case 2: return true; // contact is optional but phone recommended
-      case 3: return photos.length >= 3;
-      case 4: return title.trim() !== '' && description.trim() !== '' && finalSize !== '';
-      default: return false;
-    }
-  };
+  // ==========================================================
+  // ENTITLEMENT LOADING
+  // ==========================================================
 
-  const handlePhotoUpload = (files: FileList) => {
-    const remaining = 7 - photos.length;
-    const toAdd = Array.from(files).slice(0, remaining);
-    const newPhotos = toAdd.map((file, i) => ({
-      file,
-      url: URL.createObjectURL(file),
-      label: `Photo ${photos.length + i + 1}`,
-      type: 'photo' as const,
-    }));
-    setPhotos([...photos, ...newPhotos]);
-  };
+  if (entitlementLoading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
 
-  const handleVideoUpload = (file: File) => {
-    setVideo({ file, url: URL.createObjectURL(file), label: 'Walkthrough Video', type: 'video' });
-  };
+        <div className="flex items-center gap-2 text-gray-500">
 
-  const updatePhotoLabel = (index: number, label: string) => {
-    const updated = [...photos];
-    updated[index].label = label;
-    setPhotos(updated);
-  };
+          <Loader2 className="h-5 w-5 animate-spin" />
 
-  const removePhoto = (index: number) => {
-    setPhotos(photos.filter((_, i) => i !== index));
-  };
+          Checking account status...
 
-  const addSocialLink = () => {
-    setSocialLinks([...socialLinks, { platform: 'WhatsApp', url: '' }]);
-  };
+        </div>
 
-  const updateSocialLink = (index: number, field: 'platform' | 'url', value: string) => {
-    const updated = [...socialLinks];
-    updated[index][field] = value;
-    setSocialLinks(updated);
-  };
+      </div>
+    );
+  }
 
-  const removeSocialLink = (index: number) => {
-    setSocialLinks(socialLinks.filter((_, i) => i !== index));
-  };
+
+  // ==========================================================
+  // SUBMIT LISTING
+  // ==========================================================
 
   const handleSubmit = async () => {
-    setError(null);
-    setSubmitting(true);
+  setError(null);
+  setSubmitting(true);
+  setAiCaption('');
+
+  let createdListingId: string | null = null;
+
+  try {
+    // ========================================================
+    // 0. VERIFY SUPABASE SESSION
+    // ========================================================
+    //
+    // Authentication only.
+    //
+    // We do NOT determine:
+    // - role
+    // - verification
+    // - subscription
+    // - free listing entitlement
+    // - payment requirement
+    // - approval
+    // - publication
+    //
+    // PostgreSQL/RPC owns those decisions.
+    // ========================================================
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error(
+        'Supabase authentication check failed:',
+        authError
+      );
+
+      throw new Error(
+        'Unable to verify your login session.'
+      );
+    }
+
+    if (!user) {
+      throw new Error(
+        'Your login session has expired. Please sign in again.'
+      );
+    }
+
+    console.log(
+      '🔐 Authenticated Supabase user:',
+      user.id
+    );
+
+     
+
+    // ========================================================
+    // 1. CLIENT-SIDE FORM VALIDATION ONLY
+    // ========================================================
+    //
+    // These checks exist only to prevent obviously malformed
+    // submissions and improve UX.
+    //
+    // They are NOT security or entitlement checks.
+    // ========================================================
+
+    if (!title?.trim() && !propertyName?.trim()) {
+      throw new Error(
+        'A listing title is required.'
+      );
+    }
+
+    if (!description?.trim()) {
+      throw new Error(
+        'A listing description is required.'
+      );
+    }
+
+    if (!finalCity?.trim()) {
+      throw new Error(
+        'A city is required.'
+      );
+    }
+
+    if (!county?.trim()) {
+      throw new Error(
+        'A county is required.'
+      );
+    }
+
+    if (!phone?.trim()) {
+      throw new Error(
+        'A contact phone number is required.'
+      );
+    }
+
+    if (!email?.trim()) {
+      throw new Error(
+        'A contact email is required.'
+      );
+    }
+
+    // ========================================================
+    // 2. NORMALIZE LISTING VALUES
+    // ========================================================
+
+    const normalizedTitle = (
+      isPropertyManagementListing
+        ? propertyName
+        : title
+    )?.trim() || '';
+
+    if (!normalizedTitle) {
+      throw new Error(
+        'A listing title is required.'
+      );
+    }
+
+    const normalizedDescription =
+      description.trim();
+
+    const normalizedCity =
+      finalCity.trim();
+
+    const normalizedCounty =
+      county.trim();
+
+    const normalizedLocationSearch =
+      locationSearch?.trim() || null;
+
+    const normalizedPropertyName =
+      propertyName?.trim() || null;
+
+    const normalizedPropertyType =
+      propertyType?.trim() || null;
+
+    const normalizedPhone =
+      phone.trim();
+
+    const normalizedEmail =
+      email.trim();
+
+    // ========================================================
+    // 3. NORMALIZE NUMERIC VALUES
+    // ========================================================
+
+    const normalizedLatitude =
+      latitude !== null &&
+      Number.isFinite(latitude)
+        ? latitude
+        : null;
+
+    const normalizedLongitude =
+      longitude !== null &&
+      Number.isFinite(longitude)
+        ? longitude
+        : null;
+
+    const normalizedPrice =
+      price !== null &&
+      price !== undefined &&
+      price !== ''
+        ? Number(price)
+        : null;
+
+    const normalizedDepositAmount =
+      depositAmount !== null &&
+      depositAmount !== undefined &&
+      depositAmount !== ''
+        ? Number(depositAmount)
+        : 0;
+
+    const normalizedBeds =
+      beds !== null &&
+      beds !== undefined &&
+      beds !== ''
+        ? Number(beds)
+        : 0;
+
+    const normalizedBaths =
+      baths !== null &&
+      baths !== undefined &&
+      baths !== ''
+        ? Number(baths)
+        : 0;
+
+    // ========================================================
+    // 4. BASIC CLIENT-SIDE NUMERIC VALIDATION
+    // ========================================================
+    //
+    // Again:
+    // These checks are UX validation only.
+    //
+    // The database remains authoritative.
+    // ========================================================
+
+    if (
+      normalizedLatitude !== null &&
+      !Number.isFinite(normalizedLatitude)
+    ) {
+      throw new Error(
+        'Please enter a valid latitude.'
+      );
+    }
+
+    if (
+      normalizedLongitude !== null &&
+      !Number.isFinite(normalizedLongitude)
+    ) {
+      throw new Error(
+        'Please enter a valid longitude.'
+      );
+    }
+
+    if (
+      normalizedPrice !== null &&
+      (
+        !Number.isFinite(normalizedPrice) ||
+        normalizedPrice < 0
+      )
+    ) {
+      throw new Error(
+        'Please enter a valid listing price.'
+      );
+    }
+
+    if (
+      !Number.isFinite(normalizedDepositAmount) ||
+      normalizedDepositAmount < 0
+    ) {
+      throw new Error(
+        'Please enter a valid deposit amount.'
+      );
+    }
+
+    if (
+      !Number.isInteger(normalizedBeds) ||
+      normalizedBeds < 0
+    ) {
+      throw new Error(
+        'Please enter a valid number of bedrooms.'
+      );
+    }
+
+    if (
+      !Number.isInteger(normalizedBaths) ||
+      normalizedBaths < 0
+    ) {
+      throw new Error(
+        'Please enter a valid number of bathrooms.'
+      );
+    }
+
+    // ========================================================
+    // 5. NORMALIZE SOCIAL LINKS
+    // ========================================================
+
+    const normalizedSocialLinks =
+      Array.isArray(socialLinks)
+        ? socialLinks
+            .filter(
+              (item) =>
+                item &&
+                typeof item.url === 'string' &&
+                item.url.trim()
+            )
+            .map(
+              (item) => ({
+                platform:
+                  typeof item.platform === 'string'
+                    ? item.platform.trim()
+                    : '',
+
+                url:
+                  item.url.trim(),
+              })
+            )
+        : [];
+
+    // ========================================================
+    // 6. PROPERTY MANAGEMENT UX VALIDATION
+    // ========================================================
+    //
+    // This validates the data the landlord entered.
+    //
+    // It does NOT grant permission to create units.
+    //
+    // Unit creation remains a separate backend operation after
+    // the listing has been successfully created.
+    // ========================================================
+
+    if (
+      isPropertyManagementListing
+    ) {
+      if (
+        !Array.isArray(units) ||
+        units.length === 0
+      ) {
+        throw new Error(
+          'At least one property unit is required.'
+        );
+      }
+
+      for (
+        let i = 0;
+        i < units.length;
+        i++
+      ) {
+        const unit = units[i];
+
+        if (
+          !unit?.unitNumber?.trim()
+        ) {
+          throw new Error(
+            `Unit ${i + 1} must have a unit number.`
+          );
+        }
+
+        if (
+          !unit?.unitType?.trim()
+        ) {
+          throw new Error(
+            `Unit ${i + 1} must have a unit type.`
+          );
+        }
+
+        const unitRent =
+          Number(unit.rent);
+
+        if (
+          !Number.isFinite(unitRent) ||
+          unitRent < 0
+        ) {
+          throw new Error(
+            `Unit ${i + 1} has an invalid rent amount.`
+          );
+        }
+
+        const unitDeposit =
+          unit.depositAmount !== null &&
+          unit.depositAmount !== undefined &&
+          unit.depositAmount !== ''
+            ? Number(unit.depositAmount)
+            : 0;
+
+        if (
+          !Number.isFinite(unitDeposit) ||
+          unitDeposit < 0
+        ) {
+          throw new Error(
+            `Unit ${i + 1} has an invalid deposit amount.`
+          );
+        }
+
+        const unitBeds =
+          Number(unit.beds);
+
+        const unitBaths =
+          Number(unit.baths);
+
+        if (
+          !Number.isInteger(unitBeds) ||
+          unitBeds < 0
+        ) {
+          throw new Error(
+            `Unit ${i + 1} has an invalid bedroom count.`
+          );
+        }
+
+        if (
+          !Number.isInteger(unitBaths) ||
+          unitBaths < 0
+        ) {
+          throw new Error(
+            `Unit ${i + 1} has an invalid bathroom count.`
+          );
+        }
+      }
+    }
+
+    // ========================================================
+    // 7. BUILD RPC PAYLOAD
+    // ========================================================
+    //
+    // ONLY parameters accepted by:
+    //
+    // create_landlord_listing(...)
+    //
+    // are sent.
+    //
+    // DO NOT add:
+    //
+    // user_id
+    // is_paid
+    // is_published
+    // approval_status
+    // is_approved
+    // payment_required
+    // subscription information
+    // ========================================================
+
+    const listingPayload = {
+      p_title:
+        normalizedTitle,
+
+      p_description:
+        normalizedDescription,
+
+      p_city:
+        normalizedCity,
+
+      p_county:
+        normalizedCounty,
+
+      p_location_search:
+        normalizedLocationSearch,
+
+      p_latitude:
+        normalizedLatitude,
+
+      p_longitude:
+        normalizedLongitude,
+
+      p_property_name:
+        normalizedPropertyName,
+
+      p_property_type:
+        normalizedPropertyType,
+
+      p_price_kes:
+        normalizedPrice,
+
+      p_listing_type:
+        listingType?.trim() || 'rent',
+
+      p_deposit_required:
+        Boolean(depositRequired),
+
+      p_deposit_structure:
+        depositStructure?.trim() || null,
+
+      p_deposit_amount:
+        normalizedDepositAmount,
+
+      p_size:
+        finalSize?.trim() || null,
+
+      p_beds:
+        normalizedBeds,
+
+      p_baths:
+        normalizedBaths,
+
+      p_contact_phone:
+        normalizedPhone,
+
+      p_contact_email:
+        normalizedEmail,
+
+      p_social_links:
+        normalizedSocialLinks,
+
+      p_booking_enabled:
+        Boolean(bookingEnabled),
+
+      p_payment_enabled:
+        Boolean(paymentEnabled),
+
+      p_is_property_management:
+        Boolean(isPropertyManagementListing),
+    };
+
+    console.log(
+      '📤 create_landlord_listing payload:',
+      listingPayload
+    );
+
+    // ========================================================
+    // 8. PROCESS LISTING PAYMENT IF REQUIRED
+    // ========================================================
+
+    if (paymentRequired) {
+      const paymentConfirmed =
+        await handleListingPayment();
+
+      if (!paymentConfirmed) {
+        return;
+      }
+
+      console.log(
+        '✅ Listing payment confirmed.'
+      );
+    }
+
+
+    // ========================================================
+    // 9. CREATE LISTING THROUGH AUTHORITATIVE RPC
+    // ========================================================
+
+    const listingResult =
+      await createLandlordListing(
+        listingPayload
+      );
+
+    console.log(
+      '📥 CREATE LISTING RESULT:',
+      JSON.stringify(
+        listingResult,
+        null,
+        2
+      )
+    );
+
+    // ========================================================
+    // 9. EXTRACT BACKEND-GENERATED LISTING ID
+    // ========================================================
+
+    const returnedListingId =
+      listingResult?.listing_id ||
+      listingResult?.id;
+
+    if (
+      typeof returnedListingId !== 'string' ||
+      !returnedListingId.trim()
+    ) {
+      console.error(
+        'Invalid RPC result:',
+        listingResult
+      );
+
+      throw new Error(
+        'The listing was created but the database did not return a valid listing ID.'
+      );
+    }
+
+    createdListingId =
+      returnedListingId;
+
+    console.log(
+      '✅ Backend created listing:',
+      createdListingId
+    );
+
+    // ========================================================
+    // 10. READ BACKEND WORKFLOW RESULT
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // We do NOT calculate these values ourselves.
+    //
+    // The RPC is authoritative.
+    // ========================================================
+
+    const backendResult = {
+      listingId:
+        listingResult.listing_id,
+
+      landlordId:
+        listingResult.landlord_id,
+
+      subscriptionId:
+        listingResult.subscription_id ?? null,
+
+      subscriptionPlan:
+        listingResult.subscription_plan ?? null,
+
+      subscriptionStatus:
+        listingResult.subscription_status ?? null,
+
+      subscriptionLimit:
+        listingResult.subscription_limit ?? null,
+
+      subscriptionListingsUsed:
+        listingResult.subscription_listings_used ?? null,
+
+      subscriptionListingsRemaining:
+        listingResult.subscription_listings_remaining ?? null,
+
+      freeLimit:
+        listingResult.free_limit ?? null,
+
+      freeListingsUsed:
+        listingResult.free_listings_used ?? null,
+
+      listingPaymentRequired:
+        listingResult.listing_payment_required ?? null,
+
+      approvalStatus:
+        listingResult.approval_status ?? null,
+
+      isApproved:
+        listingResult.is_approved ?? null,
+
+      isPublished:
+        listingResult.is_published ?? null,
+    };
+
+    console.log(
+      '🏛️ Backend listing state:',
+      backendResult
+    );
+
+    // ========================================================
+    // 11. DO NOT CREATE UNITS YET
+    // ========================================================
+    //
+    // property_units has its own schema and RLS.
+    //
+    // We need its authoritative creation RPC / operation before
+    // inserting units here.
+    //
+    // The important thing is that we now have:
+    //
+    // createdListingId
+    //
+    // which is the correct listing relationship.
+    // ========================================================
+
+    // ========================================================
+    // 12. AI CAPTION — BEST EFFORT ONLY
+    // ========================================================
+    //
+    // AI failure MUST NOT cause the listing creation to fail.
+    //
+    // AI also does NOT determine:
+    // - payment
+    // - approval
+    // - publication
+    // - ownership
+    // ========================================================
 
     try {
-      const isAgency = profile.role === 'real_estate' || profile.is_agency;
-      const listingCount = profile.free_listings_used || 0;
-      const needsPay = listingCount >= FREE_LISTING_LIMIT;
-      setNeedsPayment(needsPay);
-
-      // Insert listing
-      const { data: listingData, error: listingError } = await supabase
-        .from('listings')
-        .insert({
-          user_id: profile.id,
-          title,
-          description,
-          city: finalCity,
-          county,
-          price_kes: Number(price),
-          listing_type: listingType,
-          deposit_required: depositRequired,
-          deposit_structure: depositStructure,
-          deposit_amount: depositAmount ? Number(depositAmount) : 0,
-          size: finalSize,
-          beds: Number(beds),
-          baths: Number(baths),
-          contact_phone: phone,
-          contact_email: email,
-          social_links: socialLinks.filter((s) => s.url.trim() !== ''),
-          is_paid: needsPay,
-          is_published: false,
-          approval_status: 'pending_review',
-        })
-        .select()
-        .single();
-
-      if (listingError) throw listingError;
-
-      // Upload photos to storage
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i];
-        if (photo.file) {
-          const ext = photo.file.name.split('.').pop();
-          const fileName = `${profile.id}/${listingData.id}/photo-${i}.${ext}`;
-          const { error: uploadError } = await supabase.storage
-            .from('listing-media')
-            .upload(fileName, photo.file);
-          if (!uploadError) {
-            const { data: { publicUrl } } = supabase.storage
-              .from('listing-media')
-              .getPublicUrl(fileName);
-            await supabase.from('listing_media').insert({
-              listing_id: listingData.id,
-              user_id: profile.id,
-              url: publicUrl,
-              label: photo.label,
-              media_type: 'photo',
-              position: i,
-            });
-          }
-        }
-      }
-
-      // Upload video if present
-      if (video?.file) {
-        const ext = video.file.name.split('.').pop();
-        const fileName = `${profile.id}/${listingData.id}/video.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from('listing-media')
-          .upload(fileName, video.file);
-        if (!uploadError) {
-          const { data: { publicUrl } } = supabase.storage
-            .from('listing-media')
-            .getPublicUrl(fileName);
-          await supabase.from('listing_media').insert({
-            listing_id: listingData.id,
-            user_id: profile.id,
-            url: publicUrl,
-            label: 'Walkthrough Video',
-            media_type: 'video',
-            position: 99,
-          });
-        }
-      }
-
-      // Generate AI caption via edge function
-      let generatedCaption = '';
-      try {
-        const response = await fetch(
+      const response =
+        await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gemini-caption`,
           {
             method: 'POST',
+
             headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type':
+                'application/json',
+
+              Authorization:
+                `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
+
             body: JSON.stringify({
               listing: {
-                title, description, city: finalCity, county,
-                price_kes: Number(price), listing_type: listingType,
-                size: finalSize, beds: Number(beds), baths: Number(baths),
-                deposit_required: depositRequired,
+                id:
+                  createdListingId,
+
+                title:
+                  normalizedTitle,
+
+                description:
+                  normalizedDescription,
+
+                city:
+                  normalizedCity,
+
+                county:
+                  normalizedCounty,
+
+                price_kes:
+                  normalizedPrice,
+
+                listing_type:
+                  listingType?.trim() || 'rent',
+
+                size:
+                  finalSize?.trim() || null,
+
+                beds:
+                  normalizedBeds,
+
+                baths:
+                  normalizedBaths,
+
+                deposit_required:
+                  Boolean(depositRequired),
+
+                property_name:
+                  normalizedPropertyName,
+
+                property_type:
+                  normalizedPropertyType,
+
+                units:
+                  isPropertyManagementListing &&
+                  Array.isArray(units)
+                    ? units.map(
+                        (unit) => ({
+                          unit_number:
+                            unit.unitNumber.trim(),
+
+                          unit_type:
+                            unit.unitType.trim(),
+
+                          rent:
+                            Number(unit.rent),
+
+                          deposit_amount:
+                            unit.depositAmount !==
+                              null &&
+                            unit.depositAmount !==
+                              undefined &&
+                            unit.depositAmount !== ''
+                              ? Number(
+                                  unit.depositAmount
+                                )
+                              : 0,
+
+                          size:
+                            unit.size?.trim() ||
+                            null,
+
+                          beds:
+                            Number(unit.beds),
+
+                          baths:
+                            Number(unit.baths),
+
+                          availability:
+                            unit.availability ||
+                            'available',
+
+                          description:
+                            unit.description?.trim() ||
+                            null,
+                        })
+                      )
+                    : [],
               },
             }),
           }
         );
-        if (response.ok) {
-          const data = await response.json();
-          generatedCaption = data.caption || '';
-          setAiCaption(generatedCaption);
+
+      if (!response.ok) {
+        console.warn(
+          'Gemini caption generation failed:',
+          response.status,
+          response.statusText
+        );
+      } else {
+        const captionData =
+          await response.json();
+
+        const generatedCaption =
+          typeof captionData?.caption === 'string'
+            ? captionData.caption.trim()
+            : '';
+
+        if (generatedCaption) {
+          setAiCaption(
+            generatedCaption
+          );
+
+          // ----------------------------------------------------
+          // SAVE ONLY AI FIELDS
+          // ----------------------------------------------------
+          //
+          // We do not touch:
+          // ownership
+          // payment
+          // approval
+          // publication
+          // ----------------------------------------------------
+
+          const {
+            error: captionError,
+          } = await supabase
+            .from('listings')
+            .update({
+              ai_caption:
+                generatedCaption,
+
+              ai_caption_generated_at:
+                new Date().toISOString(),
+            })
+            .eq(
+              'id',
+              createdListingId
+            );
+
+          if (captionError) {
+            console.warn(
+              'AI caption generated but could not be saved:',
+              captionError
+            );
+          }
         }
-      } catch {
-        // Caption generation is best-effort
       }
 
-      // Auto-create community feed post
-      await supabase.from('community_posts').insert({
-        user_id: profile.id,
-        listing_id: listingData.id,
-        content: `${title} — ${formatKES(Number(price))}${listingType === 'rent' ? '/mo' : ''} in ${finalCity}, ${county}`,
-        ai_caption: generatedCaption,
-        post_type: 'listing',
-      });
-
-      // Increment free listing count
-      await supabase
-        .from('profiles')
-        .update({ free_listings_used: listingCount + 1 })
-        .eq('id', profile.id);
-
-      await refreshProfile();
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to post listing. Please try again.');
-    } finally {
-      setSubmitting(false);
+    } catch (aiError) {
+      console.warn(
+        'AI caption generation failed. Listing remains created:',
+        aiError
+      );
     }
-  };
+
+    // ========================================================
+    // 13. SUCCESS
+    // ========================================================
+    //
+    // The listing was accepted by the authoritative backend.
+    //
+    // Do NOT say:
+    //
+    // "Your listing is live"
+    //
+    // because the RPC explicitly creates it as:
+    //
+    // approval_status = pending_review
+    // is_approved     = false
+    // is_published    = false
+    // is_paid         = false
+    //
+    // ========================================================
+
+    setSuccess(true);
+
+  } catch (err) {
+    console.error(
+      '❌ Failed to submit listing:',
+      err
+    );
+
+    const message =
+      err instanceof Error
+        ? err.message
+        : 'Failed to post listing. Please try again.';
+
+    setError(message);
+
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+
+  // ==========================================================
+  // SUCCESS SCREEN
+  // ==========================================================
 
   if (success) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-12">
+
         <div className="card p-8 text-center animate-scale-in">
+
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30">
+
             <CheckCircle2 className="h-10 w-10 text-success-600 dark:text-success-400" />
+
           </div>
-          <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Listing Published!</h2>
+
+          <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">
+            Listing Submitted for Review
+          </h2>
+
           <p className="mt-2 text-gray-500 dark:text-gray-400">
-            Your property has been posted and shared to the Community Feed with an AI-generated caption.
+            Your property has been successfully submitted and is now awaiting
+            approval. Once approved, it will be published and made visible
+            to renters and buyers.
           </p>
-          {needsPayment && (
-            <div className="mt-4 rounded-lg bg-warning-50 px-4 py-3 dark:bg-warning-900/20">
-              <p className="text-sm font-medium text-warning-700 dark:text-warning-400">
-                A fee of {formatKES(LISTING_FEE_KES)} applies for this listing (beyond your {FREE_LISTING_LIMIT} free listings).
-                Please complete payment to publish.
-              </p>
-            </div>
-          )}
+
+          <div className="mt-4 rounded-lg bg-success-50 px-4 py-3 dark:bg-success-900/20">
+
+            <p className="text-sm font-medium text-success-700 dark:text-success-400">
+              Your listing has been submitted successfully.
+            </p>
+
+          </div>
+
+          <div className="mt-3 rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
+
+            <p className="text-sm font-medium text-brand-700 dark:text-brand-300">
+              Approval Status: Pending Review
+            </p>
+
+            <p className="mt-1 text-xs text-brand-600 dark:text-brand-400">
+              Our team will review your listing before it becomes publicly available.
+            </p>
+
+          </div>
+
           {aiCaption && (
             <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left dark:border-brand-800 dark:bg-brand-800/30">
-              <p className="mb-1 text-xs font-semibold text-brand-600 dark:text-brand-400">AI-Generated Community Post:</p>
-              <p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{aiCaption}</p>
+
+              <div className="mb-2 flex items-center justify-between gap-3">
+
+                <p className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                  AI-Generated Community Caption
+                </p>
+
+                <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-[11px] font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  Pending Approval
+                </span>
+
+              </div>
+
+              <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                This caption has been saved to your listing. It will be used
+                for your community post once the listing is approved.
+              </p>
+
+              <p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">
+                {aiCaption}
+              </p>
+
             </div>
           )}
+
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <button onClick={() => navigate('listings')} className="btn-primary">View Listings</button>
-            <button onClick={() => navigate('community')} className="btn-secondary">See Community Post</button>
+
+            <button
+              onClick={() =>
+                navigate('listings')
+              }
+              className="btn-primary"
+            >
+              View My Listings
+            </button>
+
+            <button
+              onClick={() =>
+                navigate('community')
+              }
+              className="btn-secondary"
+            >
+              See Community
+            </button>
+
           </div>
+
         </div>
+
       </div>
     );
   }
 
+
+  // ==========================================================
+  // FORM
+  // ==========================================================
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-100 dark:bg-brand-800/50">
-            <Home className="h-6 w-6 text-brand-600 dark:text-brand-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Post a House Listing</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {profile.role === 'real_estate' || profile.is_agency
-                ? 'Agency plan: 15% commission applies after 3 free listings.'
-                : `${FREE_LISTING_LIMIT - (profile.free_listings_used || 0)} free listings remaining.`}
-            </p>
-          </div>
-        </div>
-      </div>
+    <PropertyListingForm
+      step={step}
+      STEPS={STEPS}
+      error={error}
+      submitting={submitting}
+      setStep={setStep}
+      canProceed={canProceed}
+      handleSubmit={handleSubmit}
 
-      <TermsGate context="listing" onAccept={() => setTermsAccepted(true)}>
-        <>
-          {/* Step indicator */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              {STEPS.map((label, i) => (
-                <div key={i} className="flex flex-1 flex-col items-center">
-                  <div className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors',
-                    i < step ? 'bg-success-500 text-white' :
-                    i === step ? 'bg-brand-600 text-white' :
-                    'bg-gray-200 text-gray-400 dark:bg-brand-800 dark:text-gray-500'
-                  )}>
-                    {i < step ? <CheckCircle2 className="h-5 w-5" /> : i + 1}
-                  </div>
-                  <span className={cn(
-                    'mt-1 hidden text-xs font-medium sm:block',
-                    i === step ? 'text-brand-600 dark:text-brand-400' : 'text-gray-400'
-                  )}>{label}</span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2 h-1 rounded-full bg-gray-200 dark:bg-brand-800">
-              <div className="h-full rounded-full bg-brand-600 transition-all duration-300" style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
-            </div>
-          </div>
+      reviewConfirmed={
+        reviewConfirmed
+      }
 
-          {/* Step content */}
-          <div className="card p-6">
-            {step === 0 && (
-              <div className="space-y-4 animate-fade-in">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
-                  <MapPin className="h-5 w-5 text-brand-600" /> Location Details
-                </h3>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">City</label>
-                  <select value={city} onChange={(e) => setCity(e.target.value)} className="input-field">
-                    <option value="">Select a city...</option>
-                    {KENYAN_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    <option value="custom">Other (custom)...</option>
-                  </select>
-                </div>
-                {city === 'custom' && (
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Custom City</label>
-                    <input type="text" value={customCity} onChange={(e) => setCustomCity(e.target.value)} placeholder="Enter city name" className="input-field" />
-                  </div>
-                )}
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">County</label>
-                  <select value={county} onChange={(e) => setCounty(e.target.value)} className="input-field">
-                    <option value="">Select a county...</option>
-                    {KENYAN_COUNTIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
+      selectedPaymentMethod={
+        selectedPaymentMethod
+      }
 
-            {step === 1 && (
-              <div className="space-y-4 animate-fade-in">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
-                  <DollarSign className="h-5 w-5 text-brand-600" /> Financial Details
-                </h3>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Listing Type</label>
-                  <div className="flex gap-3">
-                    {(['rent', 'sale'] as const).map((t) => (
-                      <button key={t} type="button" onClick={() => setListingType(t)}
-                        className={cn('flex-1 rounded-lg border-2 py-3 text-sm font-semibold capitalize transition-colors',
-                          listingType === t ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>
-                        {t === 'rent' ? 'For Rent' : 'For Sale'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Price (KES) {listingType === 'rent' && '/ month'}
-                  </label>
-                  <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 25000" className="input-field" min={0} />
-                  {price && Number(price) > 0 && (
-                    <p className="mt-1 text-xs text-gray-400">≈ {formatKES(Number(price))}{listingType === 'rent' ? '/month' : ''}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Deposit</label>
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => setDepositRequired(false)}
-                      className={cn('flex-1 rounded-lg border-2 py-2.5 text-sm font-semibold transition-colors',
-                        !depositRequired ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>
-                      Optional
-                    </button>
-                    <button type="button" onClick={() => setDepositRequired(true)}
-                      className={cn('flex-1 rounded-lg border-2 py-2.5 text-sm font-semibold transition-colors',
-                        depositRequired ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>
-                      Required
-                    </button>
-                  </div>
-                </div>
-                {depositRequired && (
-                  <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-brand-800/30">
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Deposit Payment Structure</label>
-                      <div className="flex gap-3">
-                        <button type="button" onClick={() => setDepositStructure('fixed')}
-                          className={cn('flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors',
-                            depositStructure === 'fixed' ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>
-                          Fixed
-                        </button>
-                        <button type="button" onClick={() => setDepositStructure('installments')}
-                          className={cn('flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors',
-                            depositStructure === 'installments' ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>
-                          Installments Accepted
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Deposit Amount (KES)</label>
-                      <input type="number" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} placeholder="e.g. 50000" className="input-field" min={0} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+      setSelectedPaymentMethod={
+        setSelectedPaymentMethod
+      }
 
-            {step === 2 && (
-              <div className="space-y-4 animate-fade-in">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
-                  <Phone className="h-5 w-5 text-brand-600" /> Contact Details
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Multiple contact options allowed. Renters will see these on your listing.</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0712345678" className="input-field pl-10" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className="input-field pl-10" />
-                    </div>
-                  </div>
-                </div>
-                {/* Social links */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Social / Direct Links</label>
-                    <button type="button" onClick={addSocialLink} className="btn-ghost text-xs">
-                      <Plus className="h-4 w-4" /> Add Link
-                    </button>
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {socialLinks.map((link, i) => (
-                      <div key={i} className="flex gap-2">
-                        <select value={link.platform} onChange={(e) => updateSocialLink(i, 'platform', e.target.value)} className="input-field w-36">
-                          {SOCIAL_PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                        <input type="url" value={link.url} onChange={(e) => updateSocialLink(i, 'url', e.target.value)} placeholder="https://..." className="input-field flex-1" />
-                        <button type="button" onClick={() => removeSocialLink(i)} className="rounded-lg p-2 text-gray-400 hover:bg-error-50 hover:text-error-600 dark:hover:bg-error-900/20">
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+      setReviewConfirmed={
+        setReviewConfirmed
+      }
 
-            {step === 3 && (
-              <div className="space-y-4 animate-fade-in">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
-                  <Image className="h-5 w-5 text-brand-600" /> Media Uploads
-                </h3>
-                <div>
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Photos <span className="text-error-500">*</span> ({photos.length}/7)
-                    </label>
-                    <p className="text-xs text-gray-400">Min 3, Max 7</p>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {photos.map((photo, i) => (
-                      <div key={i} className="relative group">
-                        <img src={photo.url} alt={photo.label} className="h-28 w-full rounded-lg object-cover" />
-                        <button type="button" onClick={() => removePhoto(i)} className="absolute right-1 top-1 rounded-full bg-error-600 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100">
-                          <X className="h-3 w-3" />
-                        </button>
-                        <input type="text" value={photo.label} onChange={(e) => updatePhotoLabel(i, e.target.value)} placeholder="e.g. Kitchen" className="input-field mt-1 text-xs" />
-                      </div>
-                    ))}
-                    {photos.length < 7 && (
-                      <label className="flex h-28 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 transition-colors hover:border-brand-400 dark:border-brand-700 dark:hover:border-brand-500">
-                        <Upload className="h-6 w-6 text-gray-400" />
-                        <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">Add Photo</span>
-                        <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && handlePhotoUpload(e.target.files)} />
-                      </label>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Walkthrough Video <span className="text-gray-400">(optional, up to 30 min)</span>
-                  </label>
-                  {video ? (
-                    <div className="relative">
-                      <video src={video.url} className="h-40 w-full rounded-lg object-cover" controls />
-                      <button type="button" onClick={() => setVideo(null)} className="absolute right-2 top-2 rounded-full bg-error-600 p-1.5 text-white">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex h-32 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 transition-colors hover:border-brand-400 dark:border-brand-700 dark:hover:border-brand-500">
-                      <Video className="h-6 w-6 text-gray-400" />
-                      <span className="mt-1 text-sm text-gray-500 dark:text-gray-400">Upload Video</span>
-                      <input type="file" accept="video/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleVideoUpload(e.target.files[0])} />
-                    </label>
-                  )}
-                </div>
-              </div>
-            )}
+      termsAccepted={
+        termsAccepted
+      }
 
-            {step === 4 && (
-              <div className="space-y-4 animate-fade-in">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
-                  <FileText className="h-5 w-5 text-brand-600" /> House Details & Description
-                </h3>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Listing Title</label>
-                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Spacious 2BR Apartment in Westlands" className="input-field" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">House Size</label>
-                  <select value={size} onChange={(e) => setSize(e.target.value)} className="input-field">
-                    <option value="">Select size...</option>
-                    {HOUSE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  {size === 'Custom Size' && (
-                    <input type="text" value={customSize} onChange={(e) => setCustomSize(e.target.value)} placeholder="e.g. Maisonette" className="input-field mt-2" />
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bedrooms</label>
-                    <select value={beds} onChange={(e) => setBeds(e.target.value)} className="input-field">
-                      {[0,1,2,3,4,5,6].map((n) => <option key={n} value={n}>{n === 0 ? 'Studio' : n === 6 ? '6+' : n}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bathrooms</label>
-                    <select value={baths} onChange={(e) => setBaths(e.target.value)} className="input-field">
-                      {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n === 5 ? '5+' : n}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
-                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} placeholder="Describe the property, amenities, neighborhood, nearby landmarks..." className="input-field resize-none p-4" />
-                </div>
-              </div>
-            )}
+      setTermsAccepted={
+        setTermsAccepted
+      }
 
-            {error && (
-              <div className="mt-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
-                {error}
-              </div>
-            )}
+      subscriptionStatus={
+        subscriptionStatus
+      }
 
-            {/* Navigation */}
-            <div className="mt-6 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setStep(Math.max(0, step - 1))}
-                disabled={step === 0}
-                className="btn-secondary"
-              >
-                <ChevronLeft className="h-4 w-4" /> Back
-              </button>
-              {step < STEPS.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={() => setStep(step + 1)}
-                  disabled={!canProceed()}
-                  className="btn-primary"
-                >
-                  Next <ChevronRight className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={!canProceed() || submitting}
-                  className="btn-primary"
-                >
-                  {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Publishing...</> : <>Publish Listing</>}
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      </TermsGate>
+      freeListingsRemaining={
+        freeListingsRemaining
+      }
 
-      <p className="mt-8 text-center text-xs text-gray-400">© Copyright Saka Krib. All Rights Reserved.</p>
-    </div>
+      isPropertyManagementListing={
+        isPropertyManagementListing
+      }
+
+      listingPaymentRequirement={
+        listingPaymentRequirement
+      }
+
+      paymentLoading={
+        paymentLoading
+      }
+
+      paymentRequired={
+        paymentRequired
+      }
+
+      handleListingPayment={
+        handleListingPayment
+      }
+
+      paymentDescription={
+        paymentDescription
+      }
+
+      LISTING_FEE_KES={
+        LISTING_FEE_KES
+      }
+
+      FREE_LISTING_LIMIT={
+        FREE_LISTING_LIMIT
+      }
+
+      paymentCompleted={
+        paymentCompleted
+      }
+
+      setPaymentCompleted={
+        setPaymentCompleted
+      }
+
+
+      formatKES={
+        formatKES
+      }
+
+      city={city}
+      setCity={setCity}
+
+      customCity={
+        customCity
+      }
+
+      setCustomCity={
+        setCustomCity
+      }
+
+      county={county}
+      setCounty={setCounty}
+
+      locationSearch={
+        locationSearch
+      }
+
+      setLocationSearch={
+        setLocationSearch
+      }
+
+      locationSuggestions={
+        locationSuggestions
+      }
+
+      setLocationSuggestions={
+        setLocationSuggestions
+      }
+
+      latitude={latitude}
+      setLatitude={
+        setLatitude
+      }
+
+      longitude={longitude}
+      setLongitude={
+        setLongitude
+      }
+
+      usingGPS={
+        usingGPS
+      }
+
+      setUsingGPS={
+        setUsingGPS
+      }
+
+      handleUseCurrentLocation={
+        handleUseCurrentLocation
+      }
+
+      KENYAN_CITIES={
+        KENYAN_CITIES
+      }
+
+      KENYAN_COUNTIES={
+        KENYAN_COUNTIES
+      }
+
+      propertyName={
+        propertyName
+      }
+
+      setPropertyName={
+        setPropertyName
+      }
+
+      propertyType={
+        propertyType
+      }
+
+      setPropertyType={
+        setPropertyType
+      }
+
+      bookingEnabled={
+        bookingEnabled
+      }
+
+      setBookingEnabled={
+        setBookingEnabled
+      }
+
+      paymentEnabled={
+        paymentEnabled
+      }
+
+      setPaymentEnabled={
+        setPaymentEnabled
+      }
+
+      listingType={
+        listingType
+      }
+
+      setListingType={
+        setListingType
+      }
+
+      price={price}
+      setPrice={setPrice}
+
+      depositRequired={
+        depositRequired
+      }
+
+      setDepositRequired={
+        setDepositRequired
+      }
+
+      depositStructure={
+        depositStructure
+      }
+
+      setDepositStructure={
+        setDepositStructure
+      }
+
+      depositAmount={
+        depositAmount
+      }
+
+      setDepositAmount={
+        setDepositAmount
+      }
+
+      units={units}
+      setUnits={setUnits}
+
+      addUnit={addUnit}
+
+      updateUnit={
+        updateUnit
+      }
+
+      phone={phone}
+      setPhone={setPhone}
+
+      email={email}
+      setEmail={setEmail}
+
+      socialLinks={
+        socialLinks
+      }
+
+      setSocialLinks={
+        setSocialLinks
+      }
+
+      addSocialLink={
+        addSocialLink
+      }
+
+      updateSocialLink={
+        updateSocialLink
+      }
+
+      removeSocialLink={
+        removeSocialLink
+      }
+
+      SOCIAL_PLATFORMS={
+        SOCIAL_PLATFORMS
+      }
+
+      photos={photos}
+      setPhotos={
+        setPhotos
+      }
+
+      removePhoto={
+        removePhoto
+      }
+
+      updatePhotoLabel={
+        updatePhotoLabel
+      }
+
+      handlePhotoUpload={
+        handlePhotoUpload
+      }
+
+      video={video}
+      removeVideo={
+        removeVideo
+      }
+
+      handleVideoUpload={
+        handleVideoUpload
+      }
+
+      title={title}
+      setTitle={
+        setTitle
+      }
+
+      description={
+        description
+      }
+
+      setDescription={
+        setDescription
+      }
+
+      size={size}
+      setSize={
+        setSize
+      }
+
+      customSize={
+        customSize
+      }
+
+
+      setCustomSize={
+        setCustomSize
+      }
+
+      beds={beds}
+      setBeds={
+        setBeds
+      }
+
+      baths={baths}
+      setBaths={
+        setBaths
+      }
+
+      HOUSE_SIZES={
+        HOUSE_SIZES
+      }
+    />
   );
 }

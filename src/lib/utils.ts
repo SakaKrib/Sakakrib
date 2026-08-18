@@ -5,7 +5,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatKES(amount: number): string {
+export function formatKES(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) {
+    return 'KES 0';
+  }
+
   return new Intl.NumberFormat('en-KE', {
     style: 'currency',
     currency: 'KES',
@@ -65,13 +69,53 @@ export const KENYAN_CITIES = [
 ];
 
 export const KENYAN_COUNTIES = [
-  'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Uasin Gishu', 'Kiambu', 'Kilifi',
-  'Machakos', 'Kakamega', 'Bungoma', 'Kisii', 'Meru', 'Nyeri', 'Kericho',
-  'Embu', 'Kwale', 'Taita-Taveta', 'Garissa', 'Wajir', 'Marsabit',
-  'Turkana', 'West Pokot', 'Samburu', 'Laikipia', 'Narok', 'Bomet',
-  'Kajiado', 'Tana River', 'Lamu', 'Tana', 'Isiolo', 'Tharaka-Nithi',
-  'Nandi', 'Trans Nzoia', 'Elgeyo-Marakwet', 'Uasin', 'Baringo', 'Laikipia',
-  'Nyamira', 'Homa Bay', 'Siaya', 'Migori', 'Kisii', 'Vihiga', 'Busia',
+  'Baringo',
+  'Bomet',
+  'Bungoma',
+  'Busia',
+  'Elgeyo-Marakwet',
+  'Embu',
+  'Garissa',
+  'Homa Bay',
+  'Isiolo',
+  'Kajiado',
+  'Kakamega',
+  'Kericho',
+  'Kiambu',
+  'Kilifi',
+  'Kirinyaga',
+  'Kisii',
+  'Kisumu',
+  'Kitui',
+  'Kwale',
+  'Laikipia',
+  'Lamu',
+  'Machakos',
+  'Makueni',
+  'Mandera',
+  'Marsabit',
+  'Meru',
+  'Migori',
+  'Mombasa',
+  'Murang’a',
+  'Nairobi',
+  'Nakuru',
+  'Nandi',
+  'Narok',
+  'Nyamira',
+  'Nyandarua',
+  'Nyeri',
+  'Samburu',
+  'Siaya',
+  'Taita-Taveta',
+  'Tana River',
+  'Tharaka-Nithi',
+  'Trans Nzoia',
+  'Turkana',
+  'Uasin Gishu',
+  'Vihiga',
+  'Wajir',
+  'West Pokot',
 ];
 
 export const VEHICLE_TYPES = [
