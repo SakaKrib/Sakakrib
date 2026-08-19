@@ -220,7 +220,7 @@ export default function PostListingPage() {
   // PAYMENT METHOD
   // ==========================================================
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
-  useState<'MPESA' | 'PESAPAL' | null>(null);
+  useState<'MPESA' | 'PAYPAL' | null>(null);
 
 
   // ==========================================================
@@ -1742,71 +1742,76 @@ const handleListingPayment = async (): Promise<boolean> => {
 
 
     // ========================================================
-    // PESAPAL
+    // PAYPAL
+    // ========================================================
+    //
+    // The Edge Function remains authoritative for:
+    // - amount
+    // - currency
+    // - order creation
+    // - PayPal configuration
+    // - payment verification
+    //
+    // The frontend must never calculate or trust the payment
+    // amount.
+    //
+    // Expected response:
+    //
+    // {
+    //   payment_id: "...",
+    //   approval_url: "https://www.paypal.com/..."
+    // }
+    //
+    // The user is redirected to PayPal to approve the payment.
+    // The PayPal webhook/callback must mark the payment as paid.
     // ========================================================
 
-    if (selectedPaymentMethod === 'PESAPAL') {
-      /*
-       * The backend should create the Pesapal transaction
-       * using the authoritative listing fee.
-       */
-
+    if (selectedPaymentMethod === 'PAYPAL') {
       const {
         data,
-        error: pesapalError,
+        error: paypalError,
       } = await supabase.functions.invoke(
         'initiate-listing-payment',
         {
           body: {
-            payment_method: 'PESAPAL',
+            payment_method: 'PAYPAL',
           },
         }
       );
 
-      if (pesapalError) {
-        throw pesapalError;
+      if (paypalError) {
+        throw paypalError;
       }
 
       if (!data) {
         throw new Error(
-          'The payment service did not return a response.'
+          'The PayPal payment service did not return a response.'
         );
       }
 
       console.log(
-        '💳 Pesapal listing payment:',
+        '💳 PayPal listing payment initiated:',
         data
       );
 
-      /*
-       * Typical response:
-       *
-       * {
-       *   payment_id: "...",
-       *   redirect_url: "https://..."
-       * }
-       */
-
-      const redirectUrl =
+      const approvalUrl =
+        data.approval_url ||
+        data.approvalUrl ||
         data.redirect_url ||
         data.redirectUrl;
 
-      if (!redirectUrl) {
+      if (!approvalUrl) {
         throw new Error(
-          'Pesapal did not return a payment URL.'
+          'PayPal did not return an approval URL.'
         );
       }
 
-      /*
-       * Store the payment state if necessary before
-       * redirecting.
-       *
-       * After Pesapal confirms payment, your callback/webhook
-       * should mark the payment as paid.
-       */
+      // Do NOT mark payment as completed here.
+      //
+      // PayPal must confirm the payment through the backend
+      // before paymentCompleted can become true.
 
-      window.location.href =
-        redirectUrl;
+      window.location.assign(approvalUrl);
 
       return false;
     }

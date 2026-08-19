@@ -3430,43 +3430,38 @@ console.log('============================================');
                     </button>
 
 
-                    {/* Pesapal */}
+                    
+                    {/* PayPal */}
                     <button
-                        type="button"
-                        disabled={paymentLoading}
-                        onClick={() =>
-                        setSelectedPaymentMethod('PESAPAL')
-                        }
-                        className={cn(
+                      type="button"
+                      disabled={paymentLoading}
+                      onClick={() =>
+                        setSelectedPaymentMethod('PAYPAL')
+                      }
+                      className={cn(
                         'rounded-xl border-2 p-4 text-left transition',
-                        selectedPaymentMethod === 'PESAPAL'
-                            ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
-                            : 'border-gray-200 hover:border-brand-400 dark:border-brand-700',
+                        selectedPaymentMethod === 'PAYPAL'
+                          ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
+                          : 'border-gray-200 hover:border-brand-400 dark:border-brand-700',
                         paymentLoading &&
-                            'cursor-not-allowed opacity-60'
-                        )}
+                          'cursor-not-allowed opacity-60'
+                      )}
                     >
-
-                        <div className="flex items-center justify-between">
-
+                      <div className="flex items-center justify-between">
                         <div>
+                          <p className="font-semibold text-gray-900 dark:text-white">
+                            PayPal
+                          </p>
 
-                            <p className="font-semibold text-gray-900 dark:text-white">
-                            Pesapal
-                            </p>
-
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Pay securely through Pesapal.
-                            </p>
-
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Pay securely with PayPal.
+                          </p>
                         </div>
 
-                        {selectedPaymentMethod === 'PESAPAL' && (
-                            <CheckCircle2 className="h-5 w-5 text-brand-600" />
+                        {selectedPaymentMethod === 'PAYPAL' && (
+                          <CheckCircle2 className="h-5 w-5 text-brand-600" />
                         )}
-
-                        </div>
-
+                      </div>
                     </button>
 
                     </div>
