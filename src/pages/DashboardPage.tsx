@@ -1,16 +1,12 @@
 import { useState, useEffect } from 'react';
-import {
-  Home, Building2, Truck, Users, Eye, LayoutDashboard,
-  ShieldCheck, Clock, FileText, Calendar, DollarSign, TrendingUp,
-  CheckCircle2, X, Star
-} from 'lucide-react';
+import { Chrome as Home, Building2, Truck, Users, Eye, LayoutDashboard, ShieldCheck, Clock, FileText, Calendar, DollarSign, TrendingUp, CircleCheck as CheckCircle2, X, Star } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { supabase } from '@/lib/supabase';
 import { formatKES, cn, COMMISSION_RATE, FREE_LISTING_LIMIT } from '@/lib/utils';
 import type { UserRole, Listing, Mover, Booking, Review } from '@/lib/supabase';
 import AdminDashboard from '@/pages/AdminDashboard';
-import LandlordDashboard from '@/pages/LanndlordDashboard';
+import LandlordDashboard from '@/pages/LandlordDashboard';
 
 type SimRole = UserRole | 'role-selection';
 

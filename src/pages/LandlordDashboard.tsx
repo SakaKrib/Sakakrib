@@ -1,33 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  LayoutDashboard,
-  Home,
-  Building2,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  CreditCard,
-  User,
-  Pencil,
-  Eye,
-  ChevronRight,
-  ChevronLeft,
-  RefreshCw,
-  MapPin,
-  CalendarDays,
-  Activity,
-  ShieldCheck,
-  AlertCircle,
-  ArrowRight,
-  Settings,
-  Plus,
-  X,
-  Mail,
-  Phone,
-  BadgeCheck,
-  Crown,
-  BarChart3,
-} from 'lucide-react';
+import { LayoutDashboard, Chrome as Home, Building2, Clock, CircleCheck as CheckCircle2, Circle as XCircle, CreditCard, User, Pencil, Eye, ChevronRight, ChevronLeft, RefreshCw, MapPin, CalendarDays, Activity, ShieldCheck, CircleAlert as AlertCircle, ArrowRight, Settings, Plus, X, Mail, Phone, BadgeCheck, Crown, ChartBar as BarChart3 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';

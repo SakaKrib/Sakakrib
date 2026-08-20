@@ -1,55 +1,40 @@
-export type SubscriptionStatus =
-  | 'active'
-  | 'trial'
-  | 'cancelled'
-  | 'expired'
-  | 'pending';
+export type PMSSubscriptionStatus =
+  | 'ACTIVE'
+  | 'GRACE_PERIOD'
+  | 'EXPIRED'
+  | 'CANCELLED'
+  | 'PENDING_PAYMENT';
 
-export type SubscriptionPlan =
-  | 'free'
-  | 'basic'
-  | 'pro'
-  | 'enterprise';
+export type PMSPlanName = 'STARTER' | 'GROWTH' | 'PRO' | 'ENTERPRISE';
 
 export interface PMSSubscription {
   id: string;
-  user_id: string;
-  plan: SubscriptionPlan;
-  status: SubscriptionStatus;
-  starts_at?: string | null;
-  expires_at?: string | null;
+  plan_id: string;
+  plan_name: PMSPlanName;
+  status: PMSSubscriptionStatus;
+  billing_cycle: 'MONTHLY' | 'ANNUAL';
+  current_period_end: string;
+  grace_period_end: string | null;
+  auto_renew: boolean;
 }
 
 export function hasPMSAccess(
   subscription?: PMSSubscription | null
 ): boolean {
-  if (!subscription) {
-    return false;
+  if (!subscription) return false;
+
+  const now = new Date();
+
+  if (subscription.status === 'ACTIVE') {
+    return new Date(subscription.current_period_end) > now;
   }
 
-  // Only active/trial subscriptions can access PMS.
-  if (
-    subscription.status !== 'active' &&
-    subscription.status !== 'trial'
-  ) {
-    return false;
+  if (subscription.status === 'GRACE_PERIOD') {
+    if (!subscription.grace_period_end) return false;
+    return new Date(subscription.grace_period_end) > now;
   }
 
-  // Free plan does not include PMS management.
-  if (subscription.plan === 'free') {
-    return false;
-  }
-
-  // If an expiry date exists, make sure it has not passed.
-  if (subscription.expires_at) {
-    const expiresAt = new Date(subscription.expires_at);
-
-    if (expiresAt <= new Date()) {
-      return false;
-    }
-  }
-
-  return true;
+  return false;
 }
 
 export function getPMSAccessReason(
@@ -59,37 +44,31 @@ export function getPMSAccessReason(
     return 'A PMS subscription is required to access property management.';
   }
 
-  if (subscription.status === 'expired') {
+  if (subscription.status === 'PENDING_PAYMENT') {
+    return 'Your PMS subscription is waiting for payment. Complete payment to activate property management.';
+  }
+
+  if (subscription.status === 'ACTIVE') {
+    const now = new Date();
+    if (new Date(subscription.current_period_end) <= now) {
+      return 'Your PMS subscription has expired. Renew to continue managing your properties.';
+    }
+    return 'Your PMS subscription is active.';
+  }
+
+  if (subscription.status === 'GRACE_PERIOD') {
+    if (subscription.grace_period_end && new Date(subscription.grace_period_end) <= new Date()) {
+      return 'Your PMS grace period has ended. Renew your subscription to restore access.';
+    }
+    return 'Your PMS subscription is in the grace period. Renew before it ends to keep your properties active.';
+  }
+
+  if (subscription.status === 'EXPIRED') {
     return 'Your PMS subscription has expired. Renew your subscription to continue managing your properties.';
   }
 
-  if (subscription.status === 'cancelled') {
+  if (subscription.status === 'CANCELLED') {
     return 'Your PMS subscription has been cancelled. Subscribe again to continue using property management.';
-  }
-
-  if (subscription.status === 'pending') {
-    return 'Your PMS subscription is still being processed.';
-  }
-
-  if (subscription.status === 'trial') {
-    if (
-      subscription.expires_at &&
-      new Date(subscription.expires_at) <= new Date()
-    ) {
-      return 'Your PMS trial has expired. Subscribe to continue using property management.';
-    }
-
-    return 'Your PMS trial is active.';
-  }
-
-  if (subscription.plan === 'free') {
-    return 'Property management is available with a paid PMS subscription.';
-  }
-
-  if (subscription.expires_at) {
-    if (new Date(subscription.expires_at) <= new Date()) {
-      return 'Your PMS subscription has expired. Renew your subscription to continue.';
-    }
   }
 
   return 'A PMS subscription is required to access this feature.';
