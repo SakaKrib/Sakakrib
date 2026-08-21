@@ -67,7 +67,6 @@ export default function PropertyListingForm({
   subscriptionStatus,
   freeListingsRemaining,
   paymentRequired,
-  paymentVerified,
 
   formatKES,
   LISTING_FEE_KES,
@@ -164,9 +163,17 @@ export default function PropertyListingForm({
   removeVideo,
   paymentLoading,
 
+  // No longer used directly in this file — payment method selection
+  // and initiation now happen in ListingPaymentModal (see
+  // onOpenPaymentModal below). Kept as props for backward
+  // compatibility in case other code still reads them.
   selectedPaymentMethod,
   setSelectedPaymentMethod,
   paymentCompleted,
+
+  handleListingPayment,
+  paymentDescription,
+  onOpenPaymentModal,
 
   termsAccepted,
   setTermsAccepted,
@@ -529,30 +536,6 @@ export default function PropertyListingForm({
    * RENDER
    * =========================================================
    */
-
-
-  console.log('========== LISTING PAYMENT DEBUG ==========');
-console.log('isPropertyManagementListing:', isPropertyManagementListing);
-console.log('step:', step);
-console.log('subscriptionStatus:', subscriptionStatus);
-console.log('freeListingsRemaining:', freeListingsRemaining);
-console.log('LISTING_FEE_KES:', LISTING_FEE_KES);
-
-console.log('Active subscription condition:', 
-  subscriptionStatus === 'active'
-);
-
-console.log('Free listing condition:', 
-  subscriptionStatus !== 'active' &&
-  freeListingsRemaining > 0
-);
-
-console.log('Payment required condition:', 
-  subscriptionStatus !== 'active' &&
-  freeListingsRemaining <= 0
-);
-
-console.log('============================================');
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -3346,8 +3329,8 @@ console.log('============================================');
                         </h4>
 
                         <p className="mt-1 text-sm text-warning-700 dark:text-warning-400">
-                        Your current listing entitlement requires a
-                        listing fee before this listing can proceed.
+                        {paymentDescription ||
+                          'Your current listing entitlement requires a listing fee before this listing can proceed.'}
                         </p>
 
                     </div>
@@ -3378,93 +3361,46 @@ console.log('============================================');
                     <div className="mb-4">
 
                     <h4 className="font-semibold text-gray-900 dark:text-white">
-                        Choose a payment method
+                        Pay or subscribe
                     </h4>
 
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Select how you would like to pay the listing fee.
+                        {paymentCompleted
+                          ? 'Payment confirmed for this listing.'
+                          : (paymentDescription ||
+                             'Pay the one-time listing fee, or subscribe to cover multiple listings.')}
                     </p>
 
                     </div>
 
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-
-                    {/* M-Pesa */}
-                    <button
-                        type="button"
-                        disabled={paymentLoading}
-                        onClick={() =>
-                        setSelectedPaymentMethod('MPESA')
-                        }
-                        className={cn(
-                        'rounded-xl border-2 p-4 text-left transition',
-                        selectedPaymentMethod === 'MPESA'
-                            ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
-                            : 'border-gray-200 hover:border-brand-400 dark:border-brand-700',
-                        paymentLoading &&
-                            'cursor-not-allowed opacity-60'
-                        )}
-                    >
-
-                        <div className="flex items-center justify-between">
-
-                        <div>
-
-                            <p className="font-semibold text-gray-900 dark:text-white">
-                            M-Pesa
-                            </p>
-
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Pay directly using M-Pesa.
-                            </p>
-
-                        </div>
-
-                        {selectedPaymentMethod === 'MPESA' && (
-                            <CheckCircle2 className="h-5 w-5 text-brand-600" />
-                        )}
-
-                        </div>
-
-                    </button>
-
-
-                    
-                    {/* PayPal */}
-                    <button
-                      type="button"
-                      disabled={paymentLoading}
-                      onClick={() =>
-                        setSelectedPaymentMethod('PAYPAL')
-                      }
-                      className={cn(
-                        'rounded-xl border-2 p-4 text-left transition',
-                        selectedPaymentMethod === 'PAYPAL'
-                          ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
-                          : 'border-gray-200 hover:border-brand-400 dark:border-brand-700',
-                        paymentLoading &&
-                          'cursor-not-allowed opacity-60'
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-white">
-                            PayPal
-                          </p>
-
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Pay securely with PayPal.
-                          </p>
-                        </div>
-
-                        {selectedPaymentMethod === 'PAYPAL' && (
-                          <CheckCircle2 className="h-5 w-5 text-brand-600" />
-                        )}
+                    {paymentCompleted ? (
+                      <div className="flex items-center gap-2 rounded-lg bg-success-50 px-4 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Payment confirmed. You can now publish your listing.
                       </div>
-                    </button>
-
-                    </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onOpenPaymentModal}
+                        disabled={paymentLoading}
+                        className={cn(
+                          'btn-primary w-full',
+                          paymentLoading && 'cursor-not-allowed opacity-50'
+                        )}
+                      >
+                        {paymentLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Waiting for payment confirmation...
+                          </>
+                        ) : (
+                          <>
+                            <DollarSign className="h-4 w-4" />
+                            Open Payment Options
+                          </>
+                        )}
+                      </button>
+                    )}
 
                 </div>
 
@@ -3565,13 +3501,13 @@ console.log('============================================');
                         disabled={
                             !canProceed() ||
                             submitting ||
-                            (paymentRequired && !paymentVerified)
+                            (paymentRequired && !paymentCompleted)
                         }
                         className={cn(
                             "btn-primary w-full sm:w-auto",
                             (!canProceed() ||
                             submitting ||
-                            (paymentRequired && !paymentVerified)) &&
+                            (paymentRequired && !paymentCompleted)) &&
                             "cursor-not-allowed opacity-50"
                         )}
                         >
@@ -3580,7 +3516,7 @@ console.log('============================================');
                             <Loader2 className="h-4 w-4 animate-spin" />
                             Publishing...
                             </>
-                        ) : paymentRequired && !paymentVerified ? (
+                        ) : paymentRequired && !paymentCompleted ? (
                             <>
                             <DollarSign className="h-4 w-4" />
                             Payment Required
