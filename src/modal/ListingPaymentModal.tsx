@@ -10,7 +10,7 @@ import {
 
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import type { ListingRole } from '@/lib/ListingEntitlement';
+import type { ListingRole } from '@/lib/Listingentitlement';
 
 // ============================================================
 // TYPES
