@@ -1,19 +1,24 @@
 import { AlertTriangle, Home } from "lucide-react";
 
-interface PMSUnitCount {
-  unit_count: number;
-  max_units: number | null;
-  remaining_units: number | null;
+// Derived client-side capacity view (see computePMSCapacity in
+// pmsService.ts) — listings_used comes from get_my_pms_unit_count
+// (a plain integer), max_listings from subscription_plans via the
+// subscription. Renamed from unit_count/max_units/remaining_units,
+// which don't match any live column names.
+interface PMSCapacity {
+  listings_used: number;
+  max_listings: number | null;
+  listings_remaining: number | null;
 }
 
 interface PMSUsageBarProps {
-  unitCount: PMSUnitCount | null;
+  capacity: PMSCapacity | null;
 }
 
 export default function PMSUsageBar({
-  unitCount,
+  capacity,
 }: PMSUsageBarProps) {
-  if (!unitCount) {
+  if (!capacity) {
     return (
       <div className="rounded-xl border bg-white p-5">
         <div className="flex items-center gap-3">
@@ -34,27 +39,27 @@ export default function PMSUsageBar({
   }
 
   const {
-    unit_count,
-    max_units,
-    remaining_units,
-  } = unitCount;
+    listings_used,
+    max_listings,
+    listings_remaining,
+  } = capacity;
 
   const isUnlimited =
-    max_units === null;
+    max_listings === null;
 
   const percentage = isUnlimited
     ? 0
-    : max_units > 0
+    : max_listings > 0
       ? Math.min(
           100,
-          (unit_count / max_units) * 100
+          (listings_used / max_listings) * 100
         )
       : 0;
 
   const limitReached =
     !isUnlimited &&
-    remaining_units !== null &&
-    remaining_units <= 0;
+    listings_remaining !== null &&
+    listings_remaining <= 0;
 
   const nearLimit =
     !isUnlimited &&
@@ -82,12 +87,12 @@ export default function PMSUsageBar({
 
         <div className="text-right">
           <p className="text-xl font-bold">
-            {unit_count}
+            {listings_used}
             {!isUnlimited && (
               <>
                 {" "}
                 <span className="text-sm font-normal text-gray-400">
-                  / {max_units}
+                  / {max_listings}
                 </span>
               </>
             )}
@@ -96,7 +101,7 @@ export default function PMSUsageBar({
           <p className="text-xs text-gray-500">
             {isUnlimited
               ? "Unlimited"
-              : unit_count === 1
+              : listings_used === 1
                 ? "property"
                 : "properties"}
           </p>
@@ -119,8 +124,8 @@ export default function PMSUsageBar({
             className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={max_units ?? 0}
-            aria-valuenow={unit_count}
+            aria-valuemax={max_listings ?? 0}
+            aria-valuenow={listings_used}
             aria-label="PMS property usage"
           >
             <div
@@ -149,8 +154,8 @@ export default function PMSUsageBar({
             >
               {limitReached
                 ? "Plan limit reached"
-                : `${remaining_units ?? 0} ${
-                    remaining_units === 1
+                : `${listings_remaining ?? 0} ${
+                    listings_remaining === 1
                       ? "property"
                       : "properties"
                   } remaining`}

@@ -17,15 +17,19 @@ interface PMSListing {
   is_published: boolean;
 }
 
-interface PMSUnitCount {
-  unit_count: number;
-  max_units: number | null;
-  remaining_units?: number | null;
+// Derived client-side capacity view (see computePMSCapacity in
+// pmsService.ts) — not a raw RPC/table shape itself, but its two
+// inputs (listings_used, max_listings) both come straight from the
+// DB (get_my_pms_unit_count + subscription_plans.max_listings).
+interface PMSCapacity {
+  listings_used: number;
+  max_listings: number | null;
+  listings_remaining: number | null;
 }
 
 interface PMSUnitSelectorProps {
   listings: PMSListing[];
-  unitCount: PMSUnitCount | null;
+  capacity: PMSCapacity | null;
   onAdd: (listingId: string) => Promise<void>;
 }
 
@@ -39,7 +43,7 @@ function formatKES(value: number) {
 
 export default function PMSUnitSelector({
   listings,
-  unitCount,
+  capacity,
   onAdd,
 }: PMSUnitSelectorProps) {
   const [addingId, setAddingId] =
@@ -49,10 +53,10 @@ export default function PMSUnitSelector({
     useState<string | null>(null);
 
   // ==========================================================
-  // UNIT COUNT GUARD
+  // CAPACITY GUARD
   // ==========================================================
 
-  if (!unitCount) {
+  if (!capacity) {
     return (
       <div className="rounded-xl border bg-white p-5">
         <div className="flex items-center gap-3">
@@ -72,9 +76,9 @@ export default function PMSUnitSelector({
   // ==========================================================
 
   const isLimitReached =
-    unitCount.max_units !== null &&
-    unitCount.remaining_units != null &&
-    unitCount.remaining_units <= 0;
+    capacity.max_listings !== null &&
+    capacity.listings_remaining != null &&
+    capacity.listings_remaining <= 0;
 
   // ==========================================================
   // ADD PROPERTY
@@ -126,9 +130,9 @@ export default function PMSUnitSelector({
             </p>
 
             <p className="font-semibold">
-              {unitCount.max_units === null
+              {capacity.max_listings === null
                 ? "Unlimited"
-                : unitCount.remaining_units ?? 0}
+                : capacity.listings_remaining ?? 0}
             </p>
           </div>
         </div>

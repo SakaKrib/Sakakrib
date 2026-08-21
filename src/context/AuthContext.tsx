@@ -48,19 +48,14 @@ interface AuthContextValue {
    * True when the current user has valid PMS access.
    *
    * Valid:
-   * - active
-   * - trial
-   *
-   * And:
-   * - plan must not be free
-   * - subscription must not be expired
+   * - active (and not past current_period_end)
+   * - grace_period (and not past grace_period_end)
    *
    * Invalid:
    * - null
-   * - pending
+   * - pending_payment
    * - cancelled
    * - expired
-   * - free plan
    */
   hasActivePMS: boolean;
 
@@ -176,42 +171,56 @@ export function AuthProvider({
 
   // ==========================================================
   // FETCH PMS SUBSCRIPTION
+  //
+  // IMPORTANT:
+  //
+  // public.subscriptions does NOT exist in the live database.
+  // The authoritative source is the get_my_pms_subscription RPC,
+  // which reads from landlord_subscriptions (joined with
+  // subscription_plans for plan_name / max_listings) and is
+  // scoped to auth.uid() server-side.
+  //
+  // Only landlords have PMS subscriptions today — real estate
+  // PMS is out of scope (see subscription-stk Edge Function,
+  // which rejects non-landlord roles). Skip the fetch entirely
+  // for other roles rather than calling an RPC that will return
+  // nothing useful for them.
   // ==========================================================
 
   const fetchSubscription = async (
-    userId: string
+    userId: string,
+    role: UserRole | null | undefined
   ) => {
+    if (role !== 'landlord') {
+      setSubscription(null);
+      return;
+    }
+
     const {
       data,
       error,
-    } = await supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
+    } = await supabase.rpc(
+      'get_my_pms_subscription'
+    );
 
     if (error) {
-      console.error(
-        'Subscription fetch error:',
-        error
-      );
       console.error('Subscription fetch error:', {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
 
       setSubscription(null);
       return;
     }
 
+    // get_my_pms_subscription is defined RETURNS TABLE(...), so
+    // Supabase returns an array even for a single logical row.
+    const row = Array.isArray(data) ? data[0] : data;
+
     setSubscription(
-      data as PMSSubscription | null
+      (row as PMSSubscription | undefined) ?? null
     );
   };
 
@@ -225,19 +234,16 @@ export function AuthProvider({
    *
    * Do not simply check:
    *
-   * subscription.status === 'active'
+   * subscription.status === 'ACTIVE'
    *
    * because an active subscription may already have
-   * passed expires_at.
+   * passed current_period_end.
    *
    * hasPMSAccess() handles:
    *
-   * - active
-   * - trial
-   * - free plan
-   * - expired date
-   * - cancelled
-   * - pending
+   * - ACTIVE (checked against current_period_end)
+   * - GRACE_PERIOD (checked against grace_period_end)
+   * - EXPIRED / CANCELLED / PENDING_PAYMENT / null (all false)
    */
   const hasActivePMS =
     hasPMSAccess(subscription);
@@ -261,10 +267,24 @@ export function AuthProvider({
   const loadUserData = async (
     userId: string
   ) => {
-    await Promise.all([
-      fetchProfile(userId),
-      fetchSubscription(userId),
-    ]);
+    await fetchProfile(userId);
+
+    // fetchSubscription needs the just-fetched role, so read it
+    // back from state after fetchProfile resolves. We can't rely
+    // on the `profile` closure variable here since setProfile is
+    // async — fetch it directly instead.
+    const {
+      data: freshProfile,
+    } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+
+    await fetchSubscription(
+      userId,
+      freshProfile?.role as UserRole | null | undefined
+    );
   };
 
 
@@ -600,6 +620,11 @@ export function AuthProvider({
       session.user.id
     );
 
+    await fetchSubscription(
+      session.user.id,
+      role
+    );
+
     return {
       error: null,
     };
@@ -634,7 +659,8 @@ export function AuthProvider({
       }
 
       await fetchSubscription(
-        session.user.id
+        session.user.id,
+        profile?.role
       );
     };
 

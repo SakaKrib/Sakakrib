@@ -7,10 +7,14 @@ export type PMSSubscriptionStatus =
 
 export type PMSPlanName = 'STARTER' | 'GROWTH' | 'PRO' | 'ENTERPRISE';
 
+// Matches the row shape returned by get_my_pms_subscription() exactly.
+// The RPC returns `subscription_id`, not `id` — do not rename this back.
 export interface PMSSubscription {
-  id: string;
+  subscription_id: string;
   plan_id: string;
   plan_name: PMSPlanName;
+  // Maximum listings/units allowed by the subscription (subscription_plans.max_listings).
+  max_listings: number | null;
   status: PMSSubscriptionStatus;
   billing_cycle: 'MONTHLY' | 'ANNUAL';
   current_period_end: string;

@@ -1,79 +1,29 @@
-
-import { Check, Crown, Zap } from "lucide-react";
+import { Check, Crown } from "lucide-react";
 
 export type PMSPlanName =
   | "STARTER"
   | "GROWTH"
-  | "PRO";
+  | "PRO"
+  | "ENTERPRISE";
 
 export type PMSBillingCycle =
   | "MONTHLY"
   | "ANNUAL";
 
+// Matches subscription_plans columns exactly.
 export interface PMSPlan {
   id: string;
   name: PMSPlanName;
-  maxUnits: number | null;
-  monthlyPrice: number;
-  annualPrice: number;
-  description: string;
-  features: string[];
-  popular?: boolean;
+  max_listings: number | null;
+  monthly_price_kes: number;
+  annual_price_kes: number;
 }
 
-export const PMS_PLANS: PMSPlan[] = [
-  {
-    id: "e77ef15d-8c6e-4a2e-8a53-177217f21c60",
-    name: "STARTER",
-    maxUnits: 5,
-    monthlyPrice: 500,
-    annualPrice: 5000,
-    description:
-      "For landlords starting with a small property portfolio.",
-    features: [
-      "Up to 5 properties",
-      "Property management dashboard",
-      "Tenant management",
-      "Lease management",
-    ],
-  },
-  {
-    id: "f4f50355-9b37-466a-add3-c0f1d16b9e63",
-    name: "GROWTH",
-    maxUnits: 20,
-    monthlyPrice: 1500,
-    annualPrice: 15000,
-    description:
-      "For growing landlords managing multiple properties.",
-    features: [
-      "Up to 20 properties",
-      "Property management dashboard",
-      "Tenant management",
-      "Lease management",
-      "Growing portfolio support",
-    ],
-    popular: true,
-  },
-  {
-    id: "d3530c0b-ec22-47d5-b835-ef1a26cf7f5b",
-    name: "PRO",
-    maxUnits: null,
-    monthlyPrice: 3500,
-    annualPrice: 35000,
-    description:
-      "For professional landlords with larger portfolios.",
-    features: [
-      "Unlimited properties",
-      "Property management dashboard",
-      "Tenant management",
-      "Lease management",
-      "Professional portfolio support",
-    ],
-  },
-];
-
 interface PMSPlanSelectorProps {
-  selectedPlan: PMSPlanName;
+  // Live plans from subscription_plans (e.g. getPMSPlans() in
+  // pmsService.ts). No plan data is hardcoded in this component.
+  plans: PMSPlan[];
+  selectedPlan: PMSPlanName | null;
   billingCycle: PMSBillingCycle;
   currentPlan?: PMSPlanName | null;
   currentBillingCycle?: PMSBillingCycle | null;
@@ -95,6 +45,7 @@ function formatKES(value: number) {
 }
 
 export default function PMSPlanSelector({
+  plans,
   selectedPlan,
   billingCycle,
   currentPlan,
@@ -148,7 +99,7 @@ export default function PMSPlanSelector({
       {/* PLANS */}
 
       <div className="grid gap-5 lg:grid-cols-3">
-        {PMS_PLANS.map((plan) => {
+        {plans.map((plan) => {
           const selected =
             selectedPlan === plan.name;
 
@@ -159,8 +110,8 @@ export default function PMSPlanSelector({
 
           const price =
             billingCycle === "MONTHLY"
-              ? plan.monthlyPrice
-              : plan.annualPrice;
+              ? plan.monthly_price_kes
+              : plan.annual_price_kes;
 
           return (
             <button
@@ -176,15 +127,6 @@ export default function PMSPlanSelector({
                   : "border-gray-200 hover:border-gray-400"
               }`}
             >
-              {/* POPULAR */}
-
-              {plan.popular && (
-                <span className="absolute -top-3 left-5 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">
-                  <Zap className="h-3 w-3" />
-                  Most Popular
-                </span>
-              )}
-
               {/* CURRENT */}
 
               {current && (
@@ -235,37 +177,21 @@ export default function PMSPlanSelector({
 
               <div className="mt-4 rounded-lg bg-gray-50 p-3">
                 <p className="text-sm font-semibold">
-                  {plan.maxUnits === null
+                  {plan.max_listings === null
                     ? "Unlimited properties"
-                    : `Up to ${plan.maxUnits} properties`}
+                    : `Up to ${plan.max_listings} properties`}
                 </p>
-              </div>
-
-              <p className="mt-4 text-sm leading-6 text-gray-600">
-                {plan.description}
-              </p>
-
-              <div className="mt-5 space-y-2">
-                {plan.features.map(
-                  (feature) => (
-                    <div
-                      key={feature}
-                      className="flex items-start gap-2 text-sm text-gray-600"
-                    >
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-
-                      <span>
-                        {feature}
-                      </span>
-                    </div>
-                  )
-                )}
               </div>
             </button>
           );
         })}
+
+        {plans.length === 0 && (
+          <p className="col-span-full py-8 text-center text-sm text-gray-500">
+            No subscription plans are available right now.
+          </p>
+        )}
       </div>
     </div>
   );
 }
-

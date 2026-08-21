@@ -1,5 +1,4 @@
-
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   Crown,
@@ -9,10 +8,10 @@ import {
 } from "lucide-react";
 
 interface PMSSubscription {
-  id: string;
+  subscription_id: string;
   plan_id: string;
-  plan_name: "STARTER" | "GROWTH" | "PRO";
-  max_units: number | null;
+  plan_name: "STARTER" | "GROWTH" | "PRO" | "ENTERPRISE";
+  max_listings: number | null;
   billing_cycle: "MONTHLY" | "ANNUAL";
   status:
     | "PENDING_PAYMENT"
@@ -26,82 +25,39 @@ interface PMSSubscription {
   auto_renew: boolean;
 }
 
+type PlanName = "STARTER" | "GROWTH" | "PRO" | "ENTERPRISE";
+type BillingCycle = "MONTHLY" | "ANNUAL";
+
+// Matches subscription_plans columns exactly — no monthlyPrice/
+// annualPrice/maxUnits camelCase renaming and no local features/
+// popular flags that don't exist in the DB (those were previously
+// hardcoded here; if you want marketing copy per plan, source it
+// from a small static lookup keyed by plan id, not by duplicating
+// price/limit data).
+interface PMSPlan {
+  id: string;
+  name: PlanName;
+  max_listings: number | null;
+  monthly_price_kes: number;
+  annual_price_kes: number;
+}
+
 interface PMSUpgradeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subscription?: PMSSubscription | null;
+  // Live plans from subscription_plans (e.g. via getPMSPlans() in
+  // pmsService.ts). This dialog no longer fetches or hardcodes its
+  // own copy of plan data.
+  plans: PMSPlan[];
+  plansLoading?: boolean;
   onContinue?: (params: {
     planId: string;
-    planName: "STARTER" | "GROWTH" | "PRO";
-    billingCycle: "MONTHLY" | "ANNUAL";
+    planName: PlanName;
+    billingCycle: BillingCycle;
     amountKes: number;
   }) => Promise<void> | void;
 }
-
-type PlanName = "STARTER" | "GROWTH" | "PRO";
-type BillingCycle = "MONTHLY" | "ANNUAL";
-
-interface PMSPlan {
-  id: string;
-  name: PlanName;
-  maxUnits: number | null;
-  monthlyPrice: number;
-  annualPrice: number;
-  description: string;
-  features: string[];
-  popular?: boolean;
-}
-
-const PMS_PLANS: PMSPlan[] = [
-  {
-    id: "e77ef15d-8c6e-4a2e-8a53-177217f21c60",
-    name: "STARTER",
-    maxUnits: 5,
-    monthlyPrice: 500,
-    annualPrice: 5000,
-    description:
-      "For landlords starting with a small property portfolio.",
-    features: [
-      "Manage up to 5 properties",
-      "Property management dashboard",
-      "Tenant management",
-      "Lease management",
-    ],
-  },
-  {
-    id: "f4f50355-9b37-466a-add3-c0f1d16b9e63",
-    name: "GROWTH",
-    maxUnits: 20,
-    monthlyPrice: 1500,
-    annualPrice: 15000,
-    description:
-      "For growing landlords managing multiple properties.",
-    features: [
-      "Manage up to 20 properties",
-      "Property management dashboard",
-      "Tenant management",
-      "Lease management",
-      "Designed for growing portfolios",
-    ],
-    popular: true,
-  },
-  {
-    id: "d3530c0b-ec22-47d5-b835-ef1a26cf7f5b",
-    name: "PRO",
-    maxUnits: null,
-    monthlyPrice: 3500,
-    annualPrice: 35000,
-    description:
-      "For professional landlords with larger portfolios.",
-    features: [
-      "Unlimited properties",
-      "Property management dashboard",
-      "Tenant management",
-      "Lease management",
-      "Built for professional portfolios",
-    ],
-  },
-];
 
 function formatKES(value: number) {
   return new Intl.NumberFormat("en-KE", {
@@ -141,6 +97,8 @@ export default function PMSUpgradeDialog({
   open,
   onOpenChange,
   subscription,
+  plans,
+  plansLoading = false,
   onContinue,
 }: PMSUpgradeDialogProps) {
   const [billingCycle, setBillingCycle] =
@@ -149,8 +107,8 @@ export default function PMSUpgradeDialog({
     );
 
   const [selectedPlan, setSelectedPlan] =
-    useState<PlanName>(
-      subscription?.plan_name ?? "STARTER"
+    useState<PlanName | null>(
+      subscription?.plan_name ?? null
     );
 
   const [processing, setProcessing] =
@@ -159,18 +117,26 @@ export default function PMSUpgradeDialog({
   const [error, setError] =
     useState<string | null>(null);
 
+  // Default the selection once plans have loaded, if nothing is
+  // selected yet (e.g. a brand-new subscriber with no current plan).
+  useEffect(() => {
+    if (!selectedPlan && plans.length > 0) {
+      setSelectedPlan(plans[0].name);
+    }
+  }, [plans, selectedPlan]);
+
   const selectedPlanData = useMemo(() => {
-    return PMS_PLANS.find(
+    return plans.find(
       (plan) => plan.name === selectedPlan
     );
-  }, [selectedPlan]);
+  }, [plans, selectedPlan]);
 
   const amountKes =
     selectedPlanData === undefined
       ? 0
       : billingCycle === "MONTHLY"
-      ? selectedPlanData.monthlyPrice
-      : selectedPlanData.annualPrice;
+      ? selectedPlanData.monthly_price_kes
+      : selectedPlanData.annual_price_kes;
 
   const isCurrentPlan =
     Boolean(
@@ -310,116 +276,99 @@ export default function PMSUpgradeDialog({
 
           {/* PLANS */}
 
-          <div className="grid gap-5 lg:grid-cols-3">
-            {PMS_PLANS.map((plan) => {
-              const selected =
-                selectedPlan === plan.name;
+          {plansLoading ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-gray-500">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading plans...
+            </div>
+          ) : (
+            <div className="grid gap-5 lg:grid-cols-3">
+              {plans.map((plan) => {
+                const selected =
+                  selectedPlan === plan.name;
 
-              const current =
-                subscription?.plan_name ===
-                  plan.name &&
-                subscription?.billing_cycle ===
-                  billingCycle;
+                const current =
+                  subscription?.plan_name ===
+                    plan.name &&
+                  subscription?.billing_cycle ===
+                    billingCycle;
 
-              const price =
-                billingCycle === "MONTHLY"
-                  ? plan.monthlyPrice
-                  : plan.annualPrice;
+                const price =
+                  billingCycle === "MONTHLY"
+                    ? plan.monthly_price_kes
+                    : plan.annual_price_kes;
 
-              return (
-                <button
-                  key={plan.id}
-                  type="button"
-                  disabled={processing}
-                  onClick={() =>
-                    setSelectedPlan(plan.name)
-                  }
-                  className={`relative flex h-full flex-col rounded-2xl border p-5 text-left transition ${
-                    selected
-                      ? "border-gray-900 ring-2 ring-gray-900"
-                      : "border-gray-200 hover:border-gray-400"
-                  }`}
-                >
-                  {/* POPULAR */}
+                return (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    disabled={processing}
+                    onClick={() =>
+                      setSelectedPlan(plan.name)
+                    }
+                    className={`relative flex h-full flex-col rounded-2xl border p-5 text-left transition ${
+                      selected
+                        ? "border-gray-900 ring-2 ring-gray-900"
+                        : "border-gray-200 hover:border-gray-400"
+                    }`}
+                  >
+                    {/* CURRENT */}
 
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-5 inline-flex items-center gap-1 rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">
-                      <Zap className="h-3 w-3" />
-                      Most Popular
-                    </div>
-                  )}
-
-                  {/* CURRENT */}
-
-                  {current && (
-                    <div className="absolute right-4 top-4 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
-                      Current
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        PMS Plan
-                      </p>
-
-                      <h3 className="mt-1 text-xl font-bold text-gray-900">
-                        {plan.name}
-                      </h3>
-                    </div>
-
-                    {selected && (
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-white">
-                        <Check className="h-4 w-4" />
+                    {current && (
+                      <div className="absolute right-4 top-4 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                        Current
                       </div>
                     )}
-                  </div>
 
-                  <div className="mt-5">
-                    <p className="text-3xl font-bold text-gray-900">
-                      {formatKES(price)}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          PMS Plan
+                        </p>
 
-                    <p className="mt-1 text-sm text-gray-500">
-                      per{" "}
-                      {billingCycle === "MONTHLY"
-                        ? "month"
-                        : "year"}
-                    </p>
-                  </div>
+                        <h3 className="mt-1 text-xl font-bold text-gray-900">
+                          {plan.name}
+                        </h3>
+                      </div>
 
-                  <div className="mt-4 rounded-lg bg-gray-50 px-3 py-2">
-                    <p className="text-sm font-semibold text-gray-800">
-                      {plan.maxUnits === null
-                        ? "Unlimited properties"
-                        : `Up to ${plan.maxUnits} properties`}
-                    </p>
-                  </div>
-
-                  <p className="mt-4 text-sm leading-6 text-gray-600">
-                    {plan.description}
-                  </p>
-
-                  <div className="mt-5 space-y-2">
-                    {plan.features.map(
-                      (feature) => (
-                        <div
-                          key={feature}
-                          className="flex items-start gap-2 text-sm text-gray-600"
-                        >
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-
-                          <span>
-                            {feature}
-                          </span>
+                      {selected && (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-white">
+                          <Check className="h-4 w-4" />
                         </div>
-                      )
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                      )}
+                    </div>
+
+                    <div className="mt-5">
+                      <p className="text-3xl font-bold text-gray-900">
+                        {formatKES(price)}
+                      </p>
+
+                      <p className="mt-1 text-sm text-gray-500">
+                        per{" "}
+                        {billingCycle === "MONTHLY"
+                          ? "month"
+                          : "year"}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 rounded-lg bg-gray-50 px-3 py-2">
+                      <p className="text-sm font-semibold text-gray-800">
+                        {plan.max_listings === null
+                          ? "Unlimited properties"
+                          : `Up to ${plan.max_listings} properties`}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {plans.length === 0 && (
+                <p className="col-span-full py-8 text-center text-sm text-gray-500">
+                  No subscription plans are available right now.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ERROR */}
 
@@ -439,7 +388,7 @@ export default function PMSUpgradeDialog({
                 </p>
 
                 <p className="mt-1 font-bold text-gray-900">
-                  {selectedPlan}
+                  {selectedPlan ?? "—"}
                 </p>
 
                 <p className="text-sm text-gray-500">
@@ -500,4 +449,3 @@ export default function PMSUpgradeDialog({
     </div>
   );
 }
-

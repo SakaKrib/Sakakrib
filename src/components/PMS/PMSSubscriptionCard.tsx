@@ -6,10 +6,10 @@ import {
 } from "lucide-react";
 
 interface PMSSubscription {
-  id: string;
+  subscription_id: string;
   plan_id: string;
-  plan_name: "STARTER" | "GROWTH" | "PRO";
-  max_units: number | null;
+  plan_name: "STARTER" | "GROWTH" | "PRO" | "ENTERPRISE";
+  max_listings: number | null;
   billing_cycle: "MONTHLY" | "ANNUAL";
   status:
     | "PENDING_PAYMENT"
@@ -25,29 +25,13 @@ interface PMSSubscription {
 
 interface PMSSubscriptionCardProps {
   subscription: PMSSubscription;
+  // Live price for this subscription's plan + billing cycle — pass
+  // subscription_plans.monthly_price_kes or annual_price_kes
+  // (whichever matches subscription.billing_cycle) from the caller.
+  // Never hardcode this in the component.
+  priceKes: number;
   onUpgrade?: () => void;
 }
-
-const PLAN_PRICES: Record<
-  PMSSubscription["plan_name"],
-  {
-    MONTHLY: number;
-    ANNUAL: number;
-  }
-> = {
-  STARTER: {
-    MONTHLY: 500,
-    ANNUAL: 5000,
-  },
-  GROWTH: {
-    MONTHLY: 1500,
-    ANNUAL: 15000,
-  },
-  PRO: {
-    MONTHLY: 3500,
-    ANNUAL: 35000,
-  },
-};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-KE", {
@@ -113,19 +97,17 @@ function getStatusClass(
 
 export default function PMSSubscriptionCard({
   subscription,
+  priceKes,
   onUpgrade,
 }: PMSSubscriptionCardProps) {
   const {
     plan_name,
-    max_units,
+    max_listings,
     billing_cycle,
     status,
     current_period_end,
     auto_renew,
   } = subscription;
-
-  const price =
-    PLAN_PRICES[plan_name][billing_cycle];
 
   const isActive =
     status === "ACTIVE";
@@ -162,7 +144,7 @@ export default function PMSSubscriptionCard({
       {/* Price */}
       <div className="mt-6">
         <p className="text-3xl font-bold">
-          {formatKES(price)}
+          {formatKES(priceKes)}
         </p>
 
         <p className="mt-1 text-sm text-gray-500">
@@ -181,9 +163,9 @@ export default function PMSSubscriptionCard({
           </span>
 
           <span className="font-medium">
-            {max_units === null
+            {max_listings === null
               ? "Unlimited"
-              : `${max_units} properties`}
+              : `${max_listings} properties`}
           </span>
         </div>
 

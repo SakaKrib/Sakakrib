@@ -22,8 +22,11 @@ interface PMSListing {
 interface PMSUnitSelectorProps {
   listings: PMSListing[];
   availableListings: PMSListing[];
-  maxUnits: number | null;
-  usedUnits: number;
+  // Maximum listings/units allowed by the subscription
+  // (subscription_plans.max_listings). Renamed from maxUnits, which
+  // does not exist as a column anywhere in the live schema.
+  maxListings: number | null;
+  usedListings: number;
   onAdd: (listingId: string) => Promise<void>;
   onRemove: (listingId: string) => Promise<void>;
 }
@@ -31,8 +34,8 @@ interface PMSUnitSelectorProps {
 export default function PMSUnitSelector({
   listings,
   availableListings,
-  maxUnits,
-  usedUnits,
+  maxListings,
+  usedListings,
   onAdd,
   onRemove,
 }: PMSUnitSelectorProps) {
@@ -43,12 +46,12 @@ export default function PMSUnitSelector({
     useState<string | null>(null);
 
   const limitReached =
-    maxUnits !== null && usedUnits >= maxUnits;
+    maxListings !== null && usedListings >= maxListings;
 
   const usagePercentage =
-    maxUnits === null || maxUnits <= 0
+    maxListings === null || maxListings <= 0
       ? 0
-      : Math.min(100, (usedUnits / maxUnits) * 100);
+      : Math.min(100, (usedListings / maxListings) * 100);
 
   const handleAdd = async (listingId: string) => {
     if (limitReached) {
@@ -126,10 +129,10 @@ export default function PMSUnitSelector({
             </p>
 
             <p className="mt-1 text-xl font-bold">
-              {usedUnits}
-              {maxUnits === null
+              {usedListings}
+              {maxListings === null
                 ? " / Unlimited"
-                : ` / ${maxUnits}`}
+                : ` / ${maxListings}`}
             </p>
           </div>
 
@@ -138,7 +141,7 @@ export default function PMSUnitSelector({
           </div>
         </div>
 
-        {maxUnits !== null && (
+        {maxListings !== null && (
           <div className="mt-4">
             <div className="h-2 overflow-hidden rounded-full bg-gray-200">
               <div
@@ -156,8 +159,8 @@ export default function PMSUnitSelector({
             </div>
 
             <p className="mt-2 text-xs text-gray-500">
-              {Math.max(0, maxUnits - usedUnits)}{" "}
-              {Math.max(0, maxUnits - usedUnits) === 1
+              {Math.max(0, maxListings - usedListings)}{" "}
+              {Math.max(0, maxListings - usedListings) === 1
                 ? "property"
                 : "properties"}{" "}
               remaining

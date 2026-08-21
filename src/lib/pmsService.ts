@@ -1,7 +1,11 @@
-import { supabase } from "../../lib/supabase";
+import { supabase } from "./supabase";
 
 /* ============================================================
  * TYPES
+ *
+ * These match the live RPC/table shapes exactly — see the
+ * comments on each field for the source. Do not rename fields
+ * back to older names without re-checking the live schema.
  * ============================================================ */
 
 export type PMSBillingCycle = "MONTHLY" | "ANNUAL";
@@ -13,10 +17,14 @@ export type PMSSubscriptionStatus =
   | "EXPIRED"
   | "CANCELLED";
 
+// Matches get_my_pms_subscription()'s row shape exactly.
 export interface PMSSubscription {
-  id: string;
+  subscription_id: string;
   landlord_id: string;
   plan_id: string;
+  plan_name: "STARTER" | "GROWTH" | "PRO" | "ENTERPRISE";
+  // subscription_plans.max_listings for this subscription's plan.
+  max_listings: number | null;
   billing_cycle: PMSBillingCycle;
   status: PMSSubscriptionStatus;
   current_period_start: string;
@@ -27,18 +35,33 @@ export interface PMSSubscription {
   updated_at?: string;
 }
 
+// Matches subscription_plans columns exactly.
 export interface PMSPlan {
   id: string;
-  name: "STARTER" | "GROWTH" | "PRO";
-  max_units: number | null;
+  name: "STARTER" | "GROWTH" | "PRO" | "ENTERPRISE";
+  audience: "LANDLORD" | "REAL_ESTATE";
+  // Maximum listings/units allowed by the subscription.
+  max_listings: number | null;
+  // Maximum units allowed within a single listing/property (PMS).
+  max_units_per_listing: number | null;
   monthly_price_kes: number;
   annual_price_kes: number;
 }
 
-export interface PMSUnitCount {
-  unit_count: number;
-  max_units: number | null;
-  plan_name: string | null;
+// get_my_pms_unit_count() returns a plain integer — the number of
+// listings currently under PMS management. It does NOT return an
+// object with max_units/remaining_units; those must be derived
+// client-side from the subscription's max_listings (see
+// getPMSCapacity below).
+export type PMSUnitCount = number;
+
+// Derived, read-only client-side composition of the two live values
+// above — not a stored/authoritative shape of its own, just a
+// convenience for components that display usage vs. limit.
+export interface PMSCapacity {
+  listings_used: number;
+  max_listings: number | null;
+  listings_remaining: number | null;
 }
 
 export interface PMSListing {
@@ -90,19 +113,29 @@ async function rpc<T>(
 export async function getMyPMSSubscription(): Promise<
   PMSSubscription | null
 > {
-  return rpc<PMSSubscription | null>(
+  // get_my_pms_subscription is RETURNS TABLE(...), so Supabase
+  // returns an array even for a single logical row.
+  const rows = await rpc<PMSSubscription[] | PMSSubscription | null>(
     "get_my_pms_subscription"
   );
+
+  const row = Array.isArray(rows) ? rows[0] : rows;
+
+  return row ?? null;
 }
 
 /* ============================================================
  * UNIT COUNT
+ *
+ * get_my_pms_unit_count returns a plain integer — the count of
+ * listings currently under PMS management for the caller. It is
+ * NOT an object; do not cast it to PMSCapacity or similar.
  * ============================================================ */
 
 export async function getMyPMSUnitCount(
   subscriptionId?: string
-): Promise<PMSUnitCount> {
-  return rpc<PMSUnitCount>(
+): Promise<number> {
+  const result = await rpc<number>(
     "get_my_pms_unit_count",
     subscriptionId
       ? {
@@ -110,6 +143,28 @@ export async function getMyPMSUnitCount(
         }
       : undefined
   );
+
+  return Number(result ?? 0);
+}
+
+/**
+ * Combines the live unit count (integer) with the subscription's
+ * max_listings to produce the usage/limit view components need.
+ * This is a client-side derivation, not a separate source of truth
+ * — both inputs come straight from the DB.
+ */
+export function computePMSCapacity(
+  listingsUsed: number,
+  maxListings: number | null
+): PMSCapacity {
+  return {
+    listings_used: listingsUsed,
+    max_listings: maxListings,
+    listings_remaining:
+      maxListings === null
+        ? null
+        : Math.max(0, maxListings - listingsUsed),
+  };
 }
 
 /* ============================================================
@@ -201,6 +256,11 @@ export async function removeListingFromPMS(
 
 /* ============================================================
  * SUBSCRIPTION PLANS
+ *
+ * PMS is landlord-only today (subscription-stk Edge Function
+ * rejects any non-landlord role), so this filters to the
+ * LANDLORD audience. Never hardcode prices/limits — always read
+ * them from subscription_plans.
  * ============================================================ */
 
 export async function getPMSPlans(): Promise<
@@ -211,10 +271,13 @@ export async function getPMSPlans(): Promise<
     .select(`
       id,
       name,
-      max_units,
+      audience,
+      max_listings,
+      max_units_per_listing,
       monthly_price_kes,
       annual_price_kes
     `)
+    .eq("audience", "LANDLORD")
     .order("monthly_price_kes", {
       ascending: true,
     });
@@ -234,10 +297,17 @@ export async function getPMSPlans(): Promise<
   return (data ?? []).map((plan) => ({
     id: plan.id,
     name: plan.name,
-    max_units:
-      plan.max_units === null
+    audience: plan.audience,
+
+    max_listings:
+      plan.max_listings === null
         ? null
-        : Number(plan.max_units),
+        : Number(plan.max_listings),
+
+    max_units_per_listing:
+      plan.max_units_per_listing === null
+        ? null
+        : Number(plan.max_units_per_listing),
 
     monthly_price_kes:
       Number(plan.monthly_price_kes),
@@ -301,6 +371,9 @@ export async function initiatePMSPayment(
     );
   }
 
+  // Live Edge Function is "subscription-stk" — this is the only
+  // deployed function for PMS subscription payments (M-Pesa).
+  // There is no PesaPal Edge Function; do not reintroduce one.
   const response = await fetch(
     `${supabaseUrl}/functions/v1/subscription-stk`,
     {
@@ -357,13 +430,13 @@ export async function loadPMSDashboardData() {
     await getMyPMSSubscription();
 
   const [
-    unitCount,
+    listingsUsed,
     listings,
     availableListings,
     plans,
   ] = await Promise.all([
     getMyPMSUnitCount(
-      subscription?.id
+      subscription?.subscription_id
     ),
 
     getMyPMSListings(),
@@ -373,9 +446,14 @@ export async function loadPMSDashboardData() {
     getPMSPlans(),
   ]);
 
+  const capacity = computePMSCapacity(
+    listingsUsed,
+    subscription?.max_listings ?? null
+  );
+
   return {
     subscription,
-    unitCount,
+    capacity,
     listings,
     availableListings,
     plans,
