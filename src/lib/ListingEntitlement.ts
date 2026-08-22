@@ -1,164 +1,82 @@
 import { supabase } from '@/lib/supabase';
 
-// ============================================================
-// TYPES
-// ============================================================
-
 export type ListingRole = 'landlord' | 'real_estate';
-
 export type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'none';
 
 export interface ListingEntitlement {
   role: ListingRole;
-
   canStartListing: boolean;
   canCreate: boolean;
-
   requiresSubscription: boolean;
   requiresIndividualPayment: boolean;
-
   freeLimit: number;
   freeListingsUsed: number;
   freeListingsRemaining: number;
-
   subscriptionId: string | null;
   subscriptionPlan: string | null;
   subscriptionStatus: SubscriptionStatus;
   subscriptionLimit: number | null;
   subscriptionListingsUsed: number;
   subscriptionListingsRemaining: number | null;
-
   individualPaidListings: number;
   individualListingPriceKes: number;
-
-  // Only ever true for landlords with an active subscription. Real Estate
-  // accounts can never create PMS listings, matching the DB-side rule in
-  // create_role_aware_listing / create_listing_payment_intent.
   pmsAccess: boolean;
-
   upgradeAvailable: boolean;
   upgradeTarget: string | null;
 }
 
-// ============================================================
-// NORMALIZATION
-// ============================================================
-
 function normalizeSubscriptionStatus(raw: unknown): SubscriptionStatus {
   const value = typeof raw === 'string' ? raw.toLowerCase() : '';
-
   if (value === 'active') return 'active';
   if (value === 'trial') return 'trial';
   if (value === 'expired') return 'expired';
-
   return 'none';
 }
 
 function normalizeNullableNumber(raw: unknown): number | null {
-  if (raw === null || raw === undefined) {
-    return null;
-  }
-
+  if (raw === null || raw === undefined) return null;
   const value = Number(raw);
-
   return Number.isFinite(value) ? value : null;
 }
 
-// ============================================================
-// ENTITLEMENT
-//
-// IMPORTANT:
-//
-// This is UI information only. It MUST NOT be treated as
-// authorization. create_role_aware_listing / create_listing_payment_intent
-// remain the authoritative server-side checks.
-// ============================================================
-
-export async function fetchListingEntitlement(
-  role: ListingRole,
-  userId: string
-): Promise<ListingEntitlement> {
-  const rpcName =
-    role === 'landlord'
-      ? 'get_landlord_listing_entitlement'
-      : 'get_real_estate_listing_entitlement';
-
-  const rpcParams =
-    role === 'landlord'
-      ? { p_landlord_id: userId }
-      : { p_real_estate_id: userId };
-
+export async function fetchListingEntitlement(role: ListingRole, userId: string): Promise<ListingEntitlement> {
+  const rpcName = role === 'landlord' ? 'get_landlord_listing_entitlement' : 'get_real_estate_listing_entitlement';
+  const rpcParams = role === 'landlord' ? { p_landlord_id: userId } : { p_real_estate_id: userId };
   const { data, error } = await supabase.rpc(rpcName, rpcParams);
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    throw new Error('Entitlement check returned no data.');
-  }
-
+  if (error) throw error;
+  if (!data) throw new Error('Entitlement check returned no data.');
   const raw = Array.isArray(data) ? data[0] : data;
-
-  if (!raw) {
-    throw new Error('Unable to determine listing entitlement.');
-  }
+  if (!raw) throw new Error('Unable to determine listing entitlement.');
 
   if (role === 'landlord' && raw.authorized_landlord === false) {
-    throw new Error(
-      raw.reason === 'REAL_ESTATE_USES_SEPARATE_ENTITLEMENTS'
-        ? 'This account must use the real estate listing flow.'
-        : 'This account is not authorized for landlord listings.'
-    );
+    throw new Error(raw.reason === 'REAL_ESTATE_USES_SEPARATE_ENTITLEMENTS' ? 'This account must use the real estate listing flow.' : 'This account is not authorized for landlord listings.');
   }
-
   if (role === 'real_estate' && raw.authorized_real_estate === false) {
     throw new Error('This account is not authorized for real estate listings.');
   }
 
   return {
     role,
-
     canStartListing: Boolean(raw.can_start_listing),
     canCreate: Boolean(raw.can_create),
-
     requiresSubscription: Boolean(raw.requires_subscription),
     requiresIndividualPayment: Boolean(raw.requires_individual_payment),
-
     freeLimit: Number(raw.free_limit ?? 0),
     freeListingsUsed: Number(raw.free_listings_used ?? 0),
     freeListingsRemaining: Number(raw.free_listings_remaining ?? 0),
-
     subscriptionId: raw.subscription_id ?? null,
     subscriptionPlan: raw.subscription_plan ?? null,
     subscriptionStatus: normalizeSubscriptionStatus(raw.subscription_status),
     subscriptionLimit: normalizeNullableNumber(raw.subscription_limit),
     subscriptionListingsUsed: Number(raw.subscription_listings_used ?? 0),
-    subscriptionListingsRemaining: normalizeNullableNumber(
-      raw.subscription_listings_remaining
-    ),
-
+    subscriptionListingsRemaining: normalizeNullableNumber(raw.subscription_listings_remaining),
     individualPaidListings: Number(raw.individual_paid_listings ?? 0),
-    individualListingPriceKes: Number(raw.individual_listing_price_kes ?? 1000),
-
-    // get_real_estate_listing_entitlement never returns pms_access — Real
-    // Estate accounts cannot create PMS listings, so this is correctly
-    // false for that role.
+    individualListingPriceKes: Number(raw.individual_listing_price_kes),
     pmsAccess: Boolean(raw.pms_access),
-
     upgradeAvailable: Boolean(raw.upgrade_available),
     upgradeTarget: raw.upgrade_target ?? null,
   };
 }
-
-// ============================================================
-// LISTING PAYLOAD
-//
-// Shared between create_role_aware_listing (RPC params, p_-prefixed)
-// and create_listing_payment_intent (jsonb, unprefixed keys read by
-// process_listing_payment). Keep these two shapes in sync — see
-// toIntentListingData() below, which derives one from the other.
-// ============================================================
 
 export interface ListingFormPayload {
   title: string;
@@ -189,16 +107,12 @@ export interface ListingFormPayload {
 export interface RoleAwareListingResult {
   success: boolean;
   listing_created: boolean;
-
   listing_id?: string;
   listing_entitlement?: 'FREE' | 'SUBSCRIPTION';
   is_paid?: boolean;
   is_published?: boolean;
   approval_status?: string;
   subscription_id?: string | null;
-
-  // Returned instead, unauthorized, when payment is required. The listing
-  // is intentionally NOT created in this case.
   can_start_listing?: boolean;
   can_create?: boolean;
   requires_individual_payment?: boolean;
@@ -211,16 +125,7 @@ export interface RoleAwareListingResult {
   subscription_listings_remaining?: number | null;
 }
 
-/**
- * Authoritative listing creation for FREE / SUBSCRIPTION entitlement.
- *
- * If neither entitlement is available, this does NOT create a listing —
- * it returns { listing_created: false, requires_individual_payment: true, ... }
- * so the caller can fall through to createListingPaymentIntent().
- */
-export async function createRoleAwareListing(
-  payload: ListingFormPayload
-): Promise<RoleAwareListingResult> {
+export async function createRoleAwareListing(payload: ListingFormPayload): Promise<RoleAwareListingResult> {
   const rpcPayload = {
     p_title: payload.title,
     p_description: payload.description,
@@ -247,75 +152,25 @@ export async function createRoleAwareListing(
     p_is_property_management: payload.is_property_management ?? false,
   };
 
-  const { data, error } = await supabase.rpc(
-    'create_role_aware_listing',
-    rpcPayload
-  );
-
-  if (error) {
-    throw new Error(error.message || 'The database rejected the listing.');
-  }
-
-  if (!data) {
-    throw new Error(
-      'The listing function completed but did not return listing information.'
-    );
-  }
-
+  const { data, error } = await supabase.rpc('create_role_aware_listing', rpcPayload);
+  if (error) throw new Error(error.message || 'The database rejected the listing.');
+  if (!data) throw new Error('The listing function completed but did not return listing information.');
   return (Array.isArray(data) ? data[0] : data) as RoleAwareListingResult;
 }
 
-/**
- * Creates a server-controlled KES 1,000 payment intent for a listing.
- *
- * The listing itself is NOT created here. It is created by
- * process_listing_payment (service-role only, invoked from the
- * listing-payment-stk webhook / equivalent) once payment is verified,
- * using the listing_data payload stored on the intent.
- */
-export async function createListingPaymentIntent(
-  payload: ListingFormPayload
-): Promise<{ paymentIntentId: string; amountKes: number }> {
-  const { data, error } = await supabase.rpc('create_listing_payment_intent', {
-    p_listing_data: payload,
-  });
-
-  if (error) {
-    throw new Error(error.message || 'Unable to start the listing payment.');
-  }
-
+export async function createListingPaymentIntent(payload: ListingFormPayload): Promise<{ paymentIntentId: string; amountKes: number }> {
+  const { data, error } = await supabase.rpc('create_listing_payment_intent', { p_listing_data: payload });
+  if (error) throw new Error(error.message || 'Unable to start the listing payment.');
   const raw = Array.isArray(data) ? data[0] : data;
-
-  if (!raw?.payment_intent_id) {
-    throw new Error('The payment service did not return a payment intent.');
-  }
-
-  return {
-    paymentIntentId: String(raw.payment_intent_id),
-    amountKes: Number(raw.amount_kes ?? 1000),
-  };
+  if (!raw?.payment_intent_id) throw new Error('The payment service did not return a payment intent.');
+  const amountKes = Number(raw.amount_kes);
+  if (!Number.isFinite(amountKes) || amountKes <= 0) throw new Error('The payment service returned an invalid listing payment amount.');
+  return { paymentIntentId: String(raw.payment_intent_id), amountKes };
 }
 
-export type ListingPaymentIntentStatus =
-  | 'PENDING'
-  | 'PAID'
-  | 'FAILED'
-  | 'CANCELLED'
-  | 'EXPIRED';
+export type ListingPaymentIntentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
 
-/**
- * Polls the payment intent (not listing_payments — no listing_payments
- * row exists yet under this flow) until it resolves.
- *
- * Once PAID, the listing has already been created server-side by
- * process_listing_payment. This function does not return the listing_id
- * (listing_payment_intents has no such column) — the caller should look
- * up the user's most recently created listing after this resolves true.
- */
-export async function waitForListingPaymentIntent(
-  paymentIntentId: string,
-  { maxAttempts = 30, intervalMs = 3000 }: { maxAttempts?: number; intervalMs?: number } = {}
-): Promise<boolean> {
+export async function waitForListingPaymentIntent(paymentIntentId: string, { maxAttempts = 30, intervalMs = 3000 }: { maxAttempts?: number; intervalMs?: number } = {}): Promise<boolean> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const { data, error } = await supabase
@@ -323,48 +178,44 @@ export async function waitForListingPaymentIntent(
         .select('status')
         .eq('id', paymentIntentId)
         .single();
-
-      if (error) {
-        console.error('Payment intent status check failed:', error);
-      }
-
+      if (error) console.error('Payment intent status check failed:', error);
       const status = data?.status as ListingPaymentIntentStatus | undefined;
-
-      if (status === 'PAID') {
-        return true;
-      }
-
-      if (
-        status === 'FAILED' ||
-        status === 'CANCELLED' ||
-        status === 'EXPIRED'
-      ) {
-        return false;
-      }
+      if (status === 'PAID') return true;
+      if (status === 'FAILED' || status === 'CANCELLED' || status === 'EXPIRED') return false;
     } catch (err) {
       console.error('Error checking listing payment intent:', err);
     }
-
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-
   return false;
 }
 
 /**
- * Best-effort lookup of the listing created by a just-confirmed payment
- * intent. listing_payment_intents does not store the resulting listing_id,
- * so this correlates by ownership + recency instead.
- *
- * NOTE: this is not fully race-proof if a user has two listing payment
- * flows in flight at once (not currently possible — create_listing_payment_intent
- * cancels any prior PENDING intent for the user first). Consider adding a
- * listing_id column to listing_payment_intents, set by process_listing_payment,
- * as a small follow-up migration to make this exact instead of best-effort.
+ * Gets the exact listing created by the confirmed payment intent.
+ * The payment finalizer writes listing_id onto the intent atomically,
+ * so this no longer relies on "most recently created listing" heuristics.
  */
-export async function findRecentlyPaidListing(
-  userId: string
-): Promise<string | null> {
+export async function getListingIdFromPaymentIntent(paymentIntentId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('listing_payment_intents')
+    .select('status, listing_id')
+    .eq('id', paymentIntentId)
+    .single();
+
+  if (error) {
+    console.error('Unable to read listing payment intent:', error);
+    return null;
+  }
+
+  if (data?.status !== 'PAID') return null;
+  return data.listing_id ?? null;
+}
+
+/**
+ * Backwards-compatible helper for callers that only have a user ID.
+ * Prefer getListingIdFromPaymentIntent() for payment-confirmed listings.
+ */
+export async function findRecentlyPaidListing(userId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('listings')
     .select('id')
@@ -372,11 +223,9 @@ export async function findRecentlyPaidListing(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-
   if (error) {
     console.error('Unable to look up the created listing:', error);
     return null;
   }
-
   return data?.id ?? null;
 }
