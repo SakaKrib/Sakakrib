@@ -194,6 +194,14 @@ Deno.serve(async (req: Request) => {
         }).eq("id", intent.id).neq("status", "PAID");
       }
     } else if (eventType === "PAYMENT.CAPTURE.COMPLETED" || eventType === "CHECKOUT.ORDER.COMPLETED") {
+      if (!Number.isFinite(providerAmount) || providerAmount <= 0) {
+        throw new Error("PayPal rent webhook did not contain a valid captured amount");
+      }
+      if (!Number.isFinite(Number(intent.provider_amount)) ||
+          Math.abs(providerAmount - Number(intent.provider_amount)) > 0.01) {
+        throw new Error("PayPal captured amount does not match the stored payment intent");
+      }
+
       // process_rent_payment is the only path allowed to mark rent periods PAID.
       const { data: result, error: processError } = await admin.rpc("process_rent_payment", {
         p_payment_intent_id: intent.id,
