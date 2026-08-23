@@ -12,6 +12,7 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const PAYPAL_CLIENT_ID = Deno.env.get("PAYPAL_CLIENT_ID")!;
 const PAYPAL_CLIENT_SECRET = Deno.env.get("PAYPAL_CLIENT_SECRET")!;
 const PAYPAL_BASE_URL = Deno.env.get("PAYPAL_BASE_URL") ?? "https://api-m.sandbox.paypal.com";
+const PAYPAL_PARTNER_ATTRIBUTION_ID = Deno.env.get("PAYPAL_PARTNER_ATTRIBUTION_ID") ?? "";
 
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -37,6 +38,16 @@ async function paypalToken(): Promise<string> {
   return data.access_token;
 }
 
+function base64url(value: string): string {
+  return btoa(value).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function paypalAuthAssertion(merchantId: string): string {
+  const header = base64url(JSON.stringify({ alg: "none" }));
+  const payload = base64url(JSON.stringify({ iss: PAYPAL_CLIENT_ID, payer_id: merchantId }));
+  return `${header}.${payload}.`;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
@@ -56,20 +67,40 @@ Deno.serve(async (req: Request) => {
 
     const { data: intent, error: intentError } = await admin
       .from("rent_payment_intents")
-      .select("id,renter_user_id,amount_kes,paypal_order_id,provider_amount,provider_currency,status")
+      .select("id,renter_user_id,landlord_id,unit_id,amount_kes,paypal_order_id,provider_amount,provider_currency,status,payment_destination_snapshot")
       .eq("paypal_order_id", orderId)
       .maybeSingle();
-
     if (intentError) throw intentError;
     if (!intent) return json({ success: false, error: "Rent payment intent not found for PayPal order" }, 404);
     if (intent.renter_user_id !== user.id) return json({ success: false, error: "Order does not belong to caller" }, 403);
     if (intent.status === "PAID") return json({ success: true, idempotent: true, order_id: orderId, status: "PAID" });
     if (intent.status !== "PENDING") return json({ success: false, error: `Payment intent is ${intent.status}` }, 409);
 
+    const merchantId = String(intent.payment_destination_snapshot?.merchant_id ?? "");
+    if (!merchantId) return json({ success: false, error: "PayPal merchant connection is missing from the payment intent" }, 409);
+
+    const { data: connection, error: connectionError } = await admin
+      .from("landlord_paypal_connections")
+      .select("merchant_id,status,payments_receivable,primary_email_confirmed,permissions_granted")
+      .eq("landlord_user_id", intent.landlord_id)
+      .maybeSingle();
+    if (connectionError) throw connectionError;
+    if (!connection || connection.status !== "CONNECTED" || connection.merchant_id !== merchantId || !connection.payments_receivable || !connection.primary_email_confirmed || !connection.permissions_granted) {
+      return json({ success: false, error: "Landlord PayPal merchant is not currently eligible" }, 409);
+    }
+
     const token = await paypalToken();
+    const authAssertion = paypalAuthAssertion(merchantId);
     const captureResponse = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "PayPal-Auth-Assertion": authAssertion,
+        "PayPal-Request-Id": crypto.randomUUID(),
+        ...(PAYPAL_PARTNER_ATTRIBUTION_ID ? { "PayPal-Partner-Attribution-Id": PAYPAL_PARTNER_ATTRIBUTION_ID } : {}),
+      },
+      body: "{}",
     });
     const capture = await captureResponse.json();
 
@@ -84,8 +115,7 @@ Deno.serve(async (req: Request) => {
     const amountUsd = Number(captureRecord?.amount?.value ?? intent.provider_amount ?? 0);
     const currency = String(captureRecord?.amount?.currency_code ?? intent.provider_currency ?? "USD").toUpperCase();
 
-    // This endpoint only initiates/observes the PayPal capture. It never marks rent PAID.
-    // The signed PayPal webhook is the authoritative payment confirmation path.
+    // Never mark rent paid here. The signed PayPal webhook remains authoritative.
     return json({
       success: captureResponse.ok || captureStatus === "COMPLETED",
       order_id: orderId,
