@@ -39,7 +39,6 @@ async function paypalToken(): Promise<string> {
 
 async function verifySignature(headers: Headers, rawBody: string): Promise<boolean> {
   if (!PAYPAL_WEBHOOK_ID) return false;
-
   const transmissionId = headers.get("paypal-transmission-id");
   const transmissionTime = headers.get("paypal-transmission-time");
   const certUrl = headers.get("paypal-cert-url");
@@ -87,6 +86,14 @@ function extractPaymentIntentId(event: Record<string, any>): string | null {
   return customId.slice("RENT:".length);
 }
 
+function extractMerchantId(event: Record<string, any>): string | null {
+  const resource = event.resource ?? {};
+  return resource?.payee?.merchant_id ??
+    resource?.purchase_units?.[0]?.payee?.merchant_id ??
+    resource?.seller?.merchant_id ??
+    null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
@@ -97,13 +104,13 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: "Invalid webhook signature" }, 400);
   }
 
+  let eventId = "";
   try {
     const event = JSON.parse(rawBody) as Record<string, any>;
-    const eventId = String(event.id ?? "");
+    eventId = String(event.id ?? "");
     const eventType = String(event.event_type ?? "").toUpperCase();
     const resource = event.resource ?? {};
 
-    // PayPal may retry the same event. Record the event once and treat a duplicate as success.
     if (eventId) {
       const { data: existing } = await admin
         .from("payment_webhook_events")
@@ -136,12 +143,7 @@ Deno.serve(async (req: Request) => {
     ]);
 
     if (!relevantEvents.has(eventType)) {
-      if (eventId) {
-        await admin.from("payment_webhook_events").update({
-          status: "IGNORED",
-          processed_at: new Date().toISOString(),
-        }).eq("provider", "paypal").eq("event_id", eventId);
-      }
+      if (eventId) await admin.from("payment_webhook_events").update({ status: "IGNORED", processed_at: new Date().toISOString() }).eq("provider", "paypal").eq("event_id", eventId);
       return json({ success: true, ignored: true, event_type: eventType });
     }
 
@@ -150,24 +152,23 @@ Deno.serve(async (req: Request) => {
 
     let intentQuery = admin
       .from("rent_payment_intents")
-      .select("id,renter_assoc_id,unit_id,landlord_id,amount_kes,status,payment_periods,paypal_order_id,provider_amount,provider_currency,paypal_fx_rate")
+      .select("id,renter_assoc_id,unit_id,landlord_id,amount_kes,status,payment_periods,paypal_order_id,provider_amount,provider_currency,paypal_fx_rate,payment_destination_snapshot")
       .limit(1);
-
     if (paymentIntentId) intentQuery = intentQuery.eq("id", paymentIntentId);
     else if (orderId) intentQuery = intentQuery.eq("paypal_order_id", orderId);
     else intentQuery = intentQuery.eq("id", "00000000-0000-0000-0000-000000000000");
 
     const { data: intent, error: intentError } = await intentQuery.maybeSingle();
     if (intentError) throw intentError;
-
     if (!intent) {
-      if (eventId) await admin.from("payment_webhook_events").update({
-        status: "IGNORED",
-        error: "Rent payment intent not found",
-        processed_at: new Date().toISOString(),
-      }).eq("provider", "paypal").eq("event_id", eventId);
-      // Return 200 so PayPal does not endlessly retry an event that does not belong to this rent domain.
+      if (eventId) await admin.from("payment_webhook_events").update({ status: "IGNORED", error: "Rent payment intent not found", processed_at: new Date().toISOString() }).eq("provider", "paypal").eq("event_id", eventId);
       return json({ success: true, ignored: true, reason: "Rent payment intent not found" });
+    }
+
+    const expectedMerchantId = String(intent.payment_destination_snapshot?.merchant_id ?? "");
+    const eventMerchantId = extractMerchantId(event);
+    if (expectedMerchantId && eventMerchantId && expectedMerchantId !== eventMerchantId) {
+      throw new Error("PayPal webhook merchant does not match the rent payment destination");
     }
 
     const capture = resource?.payments?.captures?.[0] ?? resource;
@@ -193,16 +194,14 @@ Deno.serve(async (req: Request) => {
           updated_at: new Date().toISOString(),
         }).eq("id", intent.id).neq("status", "PAID");
       }
-    } else if (eventType === "PAYMENT.CAPTURE.COMPLETED" || eventType === "CHECKOUT.ORDER.COMPLETED") {
-      if (!Number.isFinite(providerAmount) || providerAmount <= 0) {
-        throw new Error("PayPal rent webhook did not contain a valid captured amount");
-      }
-      if (!Number.isFinite(Number(intent.provider_amount)) ||
-          Math.abs(providerAmount - Number(intent.provider_amount)) > 0.01) {
+    } else if (eventType === "PAYMENT.CAPTURE.COMPLETED") {
+      // Only a completed capture can finalize rent. CHECKOUT.ORDER.COMPLETED is not
+      // sufficient because it does not prove the capture was completed.
+      if (!Number.isFinite(providerAmount) || providerAmount <= 0) throw new Error("PayPal rent webhook did not contain a valid captured amount");
+      if (!Number.isFinite(Number(intent.provider_amount)) || Math.abs(providerAmount - Number(intent.provider_amount)) > 0.01) {
         throw new Error("PayPal captured amount does not match the stored payment intent");
       }
 
-      // process_rent_payment is the only path allowed to mark rent periods PAID.
       const { data: result, error: processError } = await admin.rpc("process_rent_payment", {
         p_payment_intent_id: intent.id,
         p_provider: "PAYPAL",
@@ -215,13 +214,7 @@ Deno.serve(async (req: Request) => {
         p_paypal_fx_rate: intent.paypal_fx_rate,
       });
       if (processError) throw processError;
-
-      console.info("Rent payment finalized via PayPal", {
-        payment_intent_id: intent.id,
-        order_id: orderId,
-        capture_id: captureId,
-        result,
-      });
+      console.info("Rent payment finalized via PayPal", { payment_intent_id: intent.id, order_id: orderId, capture_id: captureId, result });
     }
 
     if (eventId) {
@@ -231,19 +224,12 @@ Deno.serve(async (req: Request) => {
         invoice_id: intent.id,
       }).eq("provider", "paypal").eq("event_id", eventId);
     }
-
     return json({ success: true, event_id: eventId, event_type: eventType, payment_intent_id: intent.id });
   } catch (error) {
     console.error("rent-payment-paypal-webhook error", error);
-    const event = (() => { try { return JSON.parse(rawBody); } catch { return null; } })();
-    const eventId = event?.id;
     if (eventId) {
-      await admin.from("payment_webhook_events").update({
-        status: "FAILED",
-        error: error instanceof Error ? error.message : "Internal server error",
-      }).eq("provider", "paypal").eq("event_id", eventId);
+      await admin.from("payment_webhook_events").update({ status: "FAILED", error: error instanceof Error ? error.message : "Internal server error" }).eq("provider", "paypal").eq("event_id", eventId);
     }
-    // A non-2xx response tells PayPal to retry the event.
     return json({ success: false, error: error instanceof Error ? error.message : "Internal server error" }, 500);
   }
 });
