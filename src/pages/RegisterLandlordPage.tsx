@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import {
   validateEmail,
   validatePhone,
+  validateNationalID
 } from '@/lib/utils';
 
 type EmailType =
@@ -305,241 +306,377 @@ export default function RegisterLandlordPage() {
    */
 
   const handleSubmit = async (
-    event: React.FormEvent
-  ) => {
-    event.preventDefault();
+  event: React.FormEvent
+) => {
+  event.preventDefault();
 
-    setError(null);
+  if (!profile) {
+    setError(
+      'Please sign in before continuing.'
+    );
+    return;
+  }
 
+  setError(null);
+
+  /*
+   * --------------------------------------------------
+   * ACCOUNT / ROLE VALIDATION
+   * --------------------------------------------------
+   */
+
+  if (profile.role !== 'landlord') {
+    setError(
+      'Your account is not registered as a landlord.'
+    );
+    return;
+  }
+
+  /*
+   * KYC must already be completed
+   */
+
+  if (profile.kyc_completed !== true) {
+    setError(
+      'Please complete identity verification before submitting your landlord application.'
+    );
+    return;
+  }
+
+  /*
+   * --------------------------------------------------
+   * NORMALIZE INPUT
+   * --------------------------------------------------
+   */
+
+  const trimmedFirstName =
+    firstName.trim();
+
+  const trimmedMiddleName =
+    middleName.trim();
+
+  const trimmedLastName =
+    lastName.trim();
+
+  const trimmedEmail =
+    email.trim();
+
+  const trimmedPhone =
+    phone.trim();
+
+  const trimmedNationalId =
+    nationalId.trim();
+
+  const trimmedDocumentUrl =
+    documentUrl.trim();
+
+  /*
+   * --------------------------------------------------
+   * PERSONAL DETAILS
+   * --------------------------------------------------
+   */
+
+  if (
+    !trimmedFirstName ||
+    !trimmedLastName
+  ) {
+    setError(
+      'First name and last name are required.'
+    );
+    return;
+  }
+
+  /*
+   * --------------------------------------------------
+   * EMAIL
+   * --------------------------------------------------
+   */
+
+  if (!validateEmail(trimmedEmail)) {
+    setError(
+      'Please enter a valid email address.'
+    );
+    return;
+  }
+
+  /*
+   * --------------------------------------------------
+   * PHONE
+   * --------------------------------------------------
+   */
+
+  if (!validatePhone(trimmedPhone)) {
+    setError(
+      'Please enter a valid Kenyan phone number.'
+    );
+    return;
+  }
+
+  /*
+   * --------------------------------------------------
+   * NATIONAL ID / PASSPORT
+   * --------------------------------------------------
+   */
+
+  if (!trimmedNationalId) {
+    setError(
+      'Please enter your National ID or Passport number.'
+    );
+    return;
+  }
+
+  /*
+   * Validate Kenyan National ID only when
+   * document type is National ID.
+   */
+
+  if (
+    documentType === 'national_id' &&
+    !validateNationalID(trimmedNationalId)
+  ) {
+    setError(
+      'National ID must contain 7-8 digits.'
+    );
+    return;
+  }
+
+  /*
+   * --------------------------------------------------
+   * IDENTITY DOCUMENT
+   * --------------------------------------------------
+   *
+   * DocumentCapture must have successfully uploaded
+   * the image before this form can be submitted.
+   */
+
+  if (!trimmedDocumentUrl) {
+    setError(
+      'Please upload or capture your identity document before submitting.'
+    );
+    return;
+  }
+
+  /*
+   * --------------------------------------------------
+   * TERMS
+   * --------------------------------------------------
+   */
+
+  if (!termsAccepted) {
+    setError(
+      'Please accept the required terms before continuing.'
+    );
+    return;
+  }
+
+  setSubmitting(true);
+
+  try {
     /*
-     * Personal details
+     * --------------------------------------------------
+     * BUILD FULL NAME
+     * --------------------------------------------------
      */
 
-    if (
-      !firstName.trim() ||
-      !lastName.trim()
-    ) {
+    const fullName = [
+      trimmedFirstName,
+      trimmedMiddleName,
+      trimmedLastName,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    /*
+     * --------------------------------------------------
+     * SAVE IDENTITY DOCUMENT TO PROFILES FIRST
+     * --------------------------------------------------
+     *
+     * DocumentCapture uploads the actual image to
+     * Supabase Storage and gives us documentUrl.
+     *
+     * Here we persist that Storage path/reference
+     * against the authenticated user's profile.
+     */
+
+    const {
+      error: documentSaveError,
+    } = await supabase
+      .from('profiles')
+      .update({
+        id_document_url:
+          trimmedDocumentUrl,
+
+        id_document_type:
+          documentType,
+      })
+      .eq(
+        'id',
+        profile.id
+      );
+
+    if (documentSaveError) {
+      console.error(
+        'Identity document database save failed:',
+        documentSaveError
+      );
+
       setError(
-        'First name and last name are required.'
+        'We could not save your identity document. Please try again.'
       );
 
       return;
     }
 
     /*
-     * Email
+     * --------------------------------------------------
+     * BUILD APPLICATION
+     * --------------------------------------------------
      */
 
-    if (!validateEmail(email)) {
-      setError(
-        'Please enter a valid email address.'
-      );
+    const application = {
+      applicant_id:
+        profile.id,
 
-      return;
-    }
+      applicant_email:
+        trimmedEmail,
+
+      applicant_name:
+        fullName,
+
+      first_name:
+        trimmedFirstName,
+
+      middle_name:
+        trimmedMiddleName,
+
+      last_name:
+        trimmedLastName,
+
+      phone:
+        trimmedPhone,
+
+      national_id:
+        trimmedNationalId,
+
+      document_type:
+        documentType,
+
+      document_url:
+        trimmedDocumentUrl,
+
+      application_type:
+        'landlord',
+
+      submitted_at:
+        new Date().toISOString(),
+    };
 
     /*
-     * Phone
+     * --------------------------------------------------
+     * SAVE LANDLORD APPLICATION
+     * --------------------------------------------------
      */
 
-    if (!validatePhone(phone)) {
-      setError(
-        'Please enter a valid Kenyan phone number.'
-      );
+    const {
+      error: landlordError,
+    } = await supabase.rpc(
+      'submit_landlord_application',
+      {
+        p_first_name:
+          trimmedFirstName,
 
-      return;
-    }
+        p_middle_name:
+          trimmedMiddleName,
 
-    /*
-     * National ID / Passport
-     */
+        p_last_name:
+          trimmedLastName,
 
-    if (!nationalId.trim()) {
-      setError(
-        'Please enter your National ID or Passport number.'
-      );
+        p_email:
+          trimmedEmail,
 
-      return;
-    }
+        p_phone:
+          trimmedPhone,
 
-    /*
-     * Identity document
-     */
+        p_national_id:
+          trimmedNationalId,
 
-    if (!documentUrl) {
-      setError(
-        'Please upload or capture your identity document.'
-      );
-
-      return;
-    }
-
-    /*
-     * TermsGate
-     */
-
-    if (!termsAccepted) {
-      setError(
-        'Please accept the required terms before continuing.'
-      );
-
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      /*
-       * --------------------------------------------------
-       * BUILD APPLICATION
-       * --------------------------------------------------
-       */
-
-      const fullName = [
-        firstName.trim(),
-        middleName.trim(),
-        lastName.trim(),
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      const application = {
-        applicant_id: profile.id,
-
-        applicant_email:
-          email.trim(),
-
-        applicant_name:
-          fullName,
-
-        first_name:
-          firstName.trim(),
-
-        middle_name:
-          middleName.trim(),
-
-        last_name:
-          lastName.trim(),
-
-        phone:
-          phone.trim(),
-
-        national_id:
-          nationalId.trim(),
-
-        document_type:
+        p_document_type:
           documentType,
 
-        document_url:
-          documentUrl,
-
-        application_type:
-          'landlord',
-
-        submitted_at:
-          new Date().toISOString(),
-      };
-
-      /*
-       * --------------------------------------------------
-       * SAVE APPLICATION
-       * --------------------------------------------------
-       */
-
-      const {
-        error: landlordError,
-      } = await supabase.rpc(
-        'submit_landlord_application',
-        {
-          p_first_name:
-            firstName.trim(),
-
-          p_middle_name:
-            middleName.trim(),
-
-          p_last_name:
-            lastName.trim(),
-
-          p_email:
-            email.trim(),
-
-          p_phone:
-            phone.trim(),
-
-          p_national_id:
-            nationalId.trim(),
-
-          p_document_type:
-            documentType,
-
-          p_document_url:
-            documentUrl,
-        }
-      );
-
-      if (landlordError) {
-        console.error(
-          'landlord registration failed',
-          landlordError
-        );
-
-        setError(
-          'We could not save your landlord registration. Please try again.'
-        );
-
-        return;
+        p_document_url:
+          trimmedDocumentUrl,
       }
+    );
 
-      /*
-       * --------------------------------------------------
-       * REFRESH PROFILE
-       * --------------------------------------------------
-       */
-
-      await refreshProfile();
-
-      /*
-       * --------------------------------------------------
-       * EMAIL APPLICANT
-       * --------------------------------------------------
-       */
-
-      await sendRegistrationEmail(
-        'landlord_application_submitted',
-        application
-      );
-
-      /*
-       * --------------------------------------------------
-       * EMAIL ADMIN
-       * --------------------------------------------------
-       */
-
-      await sendRegistrationEmail(
-        'landlord_admin_notification',
-        application
-      );
-
-      /*
-       * --------------------------------------------------
-       * SUCCESS
-       * --------------------------------------------------
-       */
-
-      setSuccess(true);
-    } catch (submissionError) {
+    if (landlordError) {
       console.error(
-        'landlord submission failed',
-        submissionError
+        'Landlord registration failed:',
+        landlordError
       );
 
       setError(
-        'Something went wrong while submitting your landlord registration. Please try again.'
+        'We could not save your landlord registration. Please try again.'
       );
-    } finally {
-      setSubmitting(false);
+
+      return;
     }
-  };
+
+    /*
+     * --------------------------------------------------
+     * REFRESH PROFILE
+     * --------------------------------------------------
+     */
+
+    await refreshProfile();
+
+    /*
+     * --------------------------------------------------
+     * EMAIL APPLICANT
+     * --------------------------------------------------
+     *
+     * Email failure does not invalidate the saved
+     * application.
+     */
+
+    await sendRegistrationEmail(
+      'landlord_application_submitted',
+      application
+    );
+
+    /*
+     * --------------------------------------------------
+     * EMAIL ADMIN
+     * --------------------------------------------------
+     */
+
+    await sendRegistrationEmail(
+      'landlord_admin_notification',
+      application
+    );
+
+    /*
+     * --------------------------------------------------
+     * SUCCESS
+     * --------------------------------------------------
+     */
+
+    setSuccess(true);
+
+  } catch (submissionError) {
+    console.error(
+      'Landlord submission failed:',
+      submissionError
+    );
+
+    setError(
+      submissionError instanceof Error
+        ? submissionError.message
+        : 'Something went wrong while submitting your landlord registration. Please try again.'
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   /*
    * ------------------------------------------------------

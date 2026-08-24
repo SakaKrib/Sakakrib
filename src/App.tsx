@@ -17,8 +17,10 @@ import PostListingPage from '@/pages/PostListingPage';
 import RegisterMoverPage from '@/pages/RegisterMoverPage';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
-import DashboardPage from '@/pages/DashboardPage';
+import DashboardPage from '@/Dashboards/DashboardPage';
 import ProfilePage from '@/pages/ProfilePage';
+import ListingManagePage from './pages/ListingManagePage';
+import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
 
 function AppContent() {
   const { view } = useNav();
@@ -28,6 +30,7 @@ function AppContent() {
       case 'home': return <HomePage />;
       case 'listings': return <ListingsPage />;
       case 'listing-detail': return <ListingDetailPage />;
+      case 'listing-manage': return <ListingManagePage />;
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'community': return <CommunityPage />;
@@ -39,12 +42,13 @@ function AppContent() {
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
+      case 'subscription-plans': return <PMSSubscriptionPage />;
       default: return <HomePage />;
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950">
+    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-y-auto">
       <SecurityBanner />
       <Header />
       <main className="flex-1 pb-20 md:pb-0">

@@ -70,6 +70,14 @@ export interface Listing {
 
     status: 'pending' | 'approved' | 'rejected';
 
+    admin_review_note: string;
+
+    approval_status: string;
+
+    is_published: boolean;
+
+    is_approved: boolean
+
     social_links: {
       platform: string;
       url: string;
@@ -226,17 +234,48 @@ export interface BookingEvent {
 }
 
 // subscription type interface
-export type SubscriptionStatus = 'active' | 'inactive' | 'expired' | 'cancelled';
-
 export interface Subscription {
   id: string;
-  user_id: string;
-  plan: string;
-  status: SubscriptionStatus;
-  starts_at: string | null;
-  expires_at: string | null;
+  landlord_id: string;
+  plan_id: string;
+  billing_cycle: 'MONTHLY' | 'ANNUAL' | string;
+  status:
+    | 'PENDING_PAYMENT'
+    | 'ACTIVE'
+    | 'GRACE_PERIOD'
+    | 'EXPIRED'
+    | 'CANCELLED'
+    | string;
+  current_period_start: string;
+  current_period_end: string;
+  grace_period_end: string | null;
+  auto_renew: boolean;
   created_at: string;
   updated_at: string;
+
+  paypal_subscription_id: string | null;
+  paypal_plan_id: string | null;
+  paypal_status: string | null;
+  next_billing_at: string | null;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+
+  billing_amount_kes: number | null;
+  billing_amount_usd: number | null;
+  billing_exchange_rate: number | null;
+  billing_exchange_rate_timestamp: string | null;
+
+  plan?: SubscriptionPlan | null;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  audience: 'LANDLORD' | 'REAL_ESTATE' | string;
+  max_listings: number | null;
+  max_units_per_listing: number | null;
+  monthly_price_kes: number;
+  annual_price_kes: number;
 }
 
 // export user with subscription details

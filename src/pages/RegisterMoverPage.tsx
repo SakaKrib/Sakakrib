@@ -448,310 +448,434 @@ export default function RegisterMoverPage() {
    * ------------------------------------------------------
    */
 
-  const handleSubmit = async (
-    event: React.FormEvent
-  ) => {
-    event.preventDefault();
+    const handleSubmit = async (
+      event: React.FormEvent
+    ) => {
+      event.preventDefault();
 
-    setError(null);
+      setError(null);
 
-    /*
-     * Personal details
-     */
-
-    if (
-      !firstName.trim() ||
-      !lastName.trim()
-    ) {
-      setError(
-        'First name and last name are required.'
-      );
-
-      return;
-    }
-
-    /*
-     * National ID
-     */
-
-    if (!validateNationalID(nationalId)) {
-      setError(
-        'National ID must be 7-8 digits.'
-      );
-
-      return;
-    }
-
-    /*
-     * Driving license
-     */
-
-    if (
-      !validateDL(dlNumber) ||
-      !dlPhotoUrl
-    ) {
-      setError(
-        'Driving license number and photo are required.'
-      );
-
-      return;
-    }
-
-    /*
-     * Phone
-     */
-
-    if (!validatePhone(phone)) {
-      setError(
-        'Please enter a valid Kenyan phone number.'
-      );
-
-      return;
-    }
-
-    /*
-     * Vehicle information
-     */
-
-    if (
-      !numberPlate.trim() ||
-      !city ||
-      !county ||
-      !capacity.trim()
-    ) {
-      setError(
-        'Complete your vehicle and operating details.'
-      );
-
-      return;
-    }
-
-    /*
-     * Payout
-     */
-
-    if (!paymentAccount.trim()) {
-      setError(
-        'Add the mobile money account used for payouts.'
-      );
-
-      return;
-    }
-
-    /*
-     * Insurance
-     */
-
-    if (!insuranceDetails.trim()) {
-      setError(
-        'Insurance policy details are required.'
-      );
-
-      return;
-    }
-
-    /*
-     * Inspection
-     */
-
-    if (!inspectionExpiry) {
-      setError(
-        'Vehicle inspection expiration date is required.'
-      );
-
-      return;
-    }
-
-    /*
-     * Liability
-     */
-
-    if (!liabilityAccepted) {
-      setError(
-        'You must accept full liability for goods in transit.'
-      );
-
-      return;
-    }
-
-    /*
-     * Terms
-     */
-
-    if (!termsChecked) {
-      setError(
-        'You must accept the Terms and Conditions.'
-      );
-
-      return;
-    }
-
-    /*
-     * References
-     */
-
-    const validReferences =
-      validateReferences();
-
-    if (!validReferences) {
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const fullName = [
-        firstName.trim(),
-        middleName.trim(),
-        lastName.trim(),
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      const application = {
-        driver_full_name: fullName,
-
-        national_id: nationalId.trim(),
-
-        dl_number: dlNumber.trim(),
-
-        dl_photo_url: dlPhotoUrl,
-
-        vehicle_type: vehicleType,
-
-        number_plate:
-          numberPlate.trim().toUpperCase(),
-
-        operating_city: city,
-
-        operating_county: county,
-
-        phone: phone.trim(),
-
-        base_rate_kes: baseRate
-          ? Number(baseRate)
-          : 0,
-
-        rate_per_km_kes: ratePerKm
-          ? Number(ratePerKm)
-          : 0,
-
-        capacity_details:
-          capacity.trim(),
-
-        payment_channel:
-          paymentChannel,
-
-        payment_account:
-          paymentAccount.trim(),
-
-        liability_accepted:
-          liabilityAccepted,
-
-        insurance_policy_details:
-          insuranceDetails.trim(),
-
-        vehicle_inspection_expiry:
-          inspectionExpiry,
-
-        terms_accepted:
-          termsChecked,
-
-        reference_contacts:
-          validReferences,
-
-        applicant_id: profile.id,
-
-        applicant_email:
-          profile.email || '',
-
-        applicant_name: fullName,
-
-        application_type: 'mover',
-
-        submitted_at:
-          new Date().toISOString(),
-      };
+      if (!profile) {
+        setError('Please sign in to continue.');
+        return;
+      }
 
       /*
-       * --------------------------------------------------
-       * SAVE APPLICATION
-       * --------------------------------------------------
-       */
+      * ------------------------------------------------------
+      * PERSONAL DETAILS
+      * ------------------------------------------------------
+      */
 
-      const {
-        error: moverError,
-      } = await supabase.rpc(
-        'submit_mover_application',
-        {
-          p_application: application,
+      const trimmedFirstName = firstName.trim();
+      const trimmedMiddleName = middleName.trim();
+      const trimmedLastName = lastName.trim();
+      const trimmedNationalId = nationalId.trim();
+      const trimmedDlNumber = dlNumber.trim();
+      const trimmedPhone = phone.trim();
+
+      if (!trimmedFirstName || !trimmedLastName) {
+        setError(
+          'First name and last name are required.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * NATIONAL ID
+      * ------------------------------------------------------
+      */
+
+      if (!validateNationalID(trimmedNationalId)) {
+        setError(
+          'National ID must be 7-8 digits.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * DRIVING LICENSE
+      * ------------------------------------------------------
+      *
+      * DocumentCapture must have already uploaded the file
+      * into Supabase Storage and returned the persisted
+      * storage path/reference.
+      */
+
+      if (!validateDL(trimmedDlNumber)) {
+        setError(
+          'Please enter a valid driving license number.'
+        );
+        return;
+      }
+
+      const trimmedDlPhotoPath =
+        dlPhotoUrl?.trim() || '';
+
+      if (!trimmedDlPhotoPath) {
+        setError(
+          'Please upload your driving license photo.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * PHONE
+      * ------------------------------------------------------
+      */
+
+      if (!validatePhone(trimmedPhone)) {
+        setError(
+          'Please enter a valid Kenyan phone number.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * VEHICLE INFORMATION
+      * ------------------------------------------------------
+      */
+
+      const trimmedNumberPlate =
+        numberPlate.trim().toUpperCase();
+
+      const trimmedCapacity =
+        capacity.trim();
+
+      if (
+        !trimmedNumberPlate ||
+        !city ||
+        !county ||
+        !trimmedCapacity
+      ) {
+        setError(
+          'Complete your vehicle and operating details.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * PAYOUT
+      * ------------------------------------------------------
+      */
+
+      const trimmedPaymentAccount =
+        paymentAccount.trim();
+
+      if (!trimmedPaymentAccount) {
+        setError(
+          'Add the mobile money account used for payouts.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * INSURANCE
+      * ------------------------------------------------------
+      */
+
+      const trimmedInsuranceDetails =
+        insuranceDetails.trim();
+
+      if (!trimmedInsuranceDetails) {
+        setError(
+          'Insurance policy details are required.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * INSPECTION
+      * ------------------------------------------------------
+      */
+
+      if (!inspectionExpiry) {
+        setError(
+          'Vehicle inspection expiration date is required.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * LIABILITY
+      * ------------------------------------------------------
+      */
+
+      if (!liabilityAccepted) {
+        setError(
+          'You must accept full liability for goods in transit.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * TERMS
+      * ------------------------------------------------------
+      */
+
+      if (!termsChecked) {
+        setError(
+          'You must accept the Terms and Conditions.'
+        );
+        return;
+      }
+
+      /*
+      * ------------------------------------------------------
+      * REFERENCES
+      * ------------------------------------------------------
+      */
+
+      const validReferences =
+        validateReferences();
+
+      if (!validReferences) {
+        return;
+      }
+
+      setSubmitting(true);
+
+      try {
+        /*
+        * ----------------------------------------------------
+        * VERIFY AUTH SESSION
+        * ----------------------------------------------------
+        */
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError) {
+          throw new Error(
+            'Unable to verify your login session.'
+          );
         }
-      );
 
-      if (moverError) {
+        if (!user) {
+          throw new Error(
+            'Your login session has expired. Please sign in again.'
+          );
+        }
+
+        /*
+        * Make sure the profile being modified belongs to
+        * the authenticated account.
+        */
+
+        if (user.id !== profile.id) {
+          throw new Error(
+            'Your account session does not match your profile.'
+          );
+        }
+
+        /*
+        * ----------------------------------------------------
+        * BUILD FULL NAME
+        * ----------------------------------------------------
+        */
+
+        const fullName = [
+          trimmedFirstName,
+          trimmedMiddleName,
+          trimmedLastName,
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        /*
+        * ----------------------------------------------------
+        * BUILD APPLICATION
+        * ----------------------------------------------------
+        *
+        * IMPORTANT:
+        *
+        * dl_photo_url contains the persisted Storage
+        * reference returned by DocumentCapture.
+        *
+        * We intentionally store the Storage path/reference,
+        * not a temporary browser File object.
+        */
+
+        const application = {
+          driver_full_name: fullName,
+
+          national_id:
+            trimmedNationalId,
+
+          dl_number:
+            trimmedDlNumber,
+
+          dl_photo_url:
+            trimmedDlPhotoPath,
+
+          vehicle_type:
+            vehicleType,
+
+          number_plate:
+            trimmedNumberPlate,
+
+          operating_city:
+            city,
+
+          operating_county:
+            county,
+
+          phone:
+            trimmedPhone,
+
+          base_rate_kes:
+            baseRate
+              ? Number(baseRate)
+              : 0,
+
+          rate_per_km_kes:
+            ratePerKm
+              ? Number(ratePerKm)
+              : 0,
+
+          capacity_details:
+            trimmedCapacity,
+
+          payment_channel:
+            paymentChannel,
+
+          payment_account:
+            trimmedPaymentAccount,
+
+          liability_accepted:
+            liabilityAccepted,
+
+          insurance_policy_details:
+            trimmedInsuranceDetails,
+
+          vehicle_inspection_expiry:
+            inspectionExpiry,
+
+          terms_accepted:
+            termsChecked,
+
+          reference_contacts:
+            validReferences,
+
+          applicant_id:
+            user.id,
+
+          applicant_email:
+            profile.email || '',
+
+          applicant_name:
+            fullName,
+
+          application_type:
+            'mover',
+
+          submitted_at:
+            new Date().toISOString(),
+        };
+
+        /*
+        * ----------------------------------------------------
+        * SAVE APPLICATION
+        * ----------------------------------------------------
+        */
+
+        const {
+          data: submissionResult,
+          error: moverError,
+        } = await supabase.rpc(
+          'submit_mover_application',
+          {
+            p_application:
+              application,
+          }
+        );
+
+        if (moverError) {
+          console.error(
+            'Mover registration RPC failed:',
+            moverError
+          );
+
+          throw new Error(
+            'We could not save your mover registration. Please try again.'
+          );
+        }
+
+        /*
+        * The RPC should return a successful result.
+        * We don't depend on the exact shape here because
+        * existing versions of the RPC may return different
+        * values.
+        */
+
+        console.log(
+          'Mover application submitted:',
+          submissionResult
+        );
+
+        /*
+        * ----------------------------------------------------
+        * REFRESH PROFILE
+        * ----------------------------------------------------
+        */
+
+        await refreshProfile();
+
+        /*
+        * ----------------------------------------------------
+        * EMAIL APPLICANT
+        * ----------------------------------------------------
+        */
+
+        await sendRegistrationEmail(
+          'mover_application_submitted',
+          application
+        );
+
+        /*
+        * ----------------------------------------------------
+        * EMAIL ADMIN
+        * ----------------------------------------------------
+        */
+
+        await sendRegistrationEmail(
+          'mover_admin_notification',
+          application
+        );
+
+        /*
+        * ----------------------------------------------------
+        * SUCCESS
+        * ----------------------------------------------------
+        */
+
+        setSuccess(true);
+
+      } catch (submissionError) {
         console.error(
-          'mover registration failed',
-          moverError
+          'Mover submission failed:',
+          submissionError
         );
 
         setError(
-          'We could not save your mover registration. Please try again.'
+          submissionError instanceof Error
+            ? submissionError.message
+            : 'Something went wrong while submitting your mover registration. Please try again.'
         );
-
-        return;
+      } finally {
+        setSubmitting(false);
       }
-     
-
-      /*
-       * --------------------------------------------------
-       * REFRESH PROFILE
-       * --------------------------------------------------
-       */
-
-      await refreshProfile();
-
-      /*
-       * --------------------------------------------------
-       * EMAIL APPLICANT
-       * --------------------------------------------------
-       */
-
-      await sendRegistrationEmail(
-        'mover_application_submitted',
-        application
-      );
-
-      /*
-       * --------------------------------------------------
-       * EMAIL ADMIN
-       * --------------------------------------------------
-       */
-
-      await sendRegistrationEmail(
-        'mover_admin_notification',
-        application
-      );
-
-      /*
-       * --------------------------------------------------
-       * SUCCESS
-       * --------------------------------------------------
-       */
-
-      setSuccess(true);
-    } catch (submissionError) {
-      console.error(
-        'mover submission failed',
-        submissionError
-      );
-
-      setError(
-        'Something went wrong while submitting your mover registration. Please try again.'
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    };
 
   /*
    * ------------------------------------------------------

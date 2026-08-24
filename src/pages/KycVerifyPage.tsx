@@ -266,180 +266,261 @@ export default function KycVerifyPage() {
    * ------------------------------------------------------
    */
 
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
+    const handleSubmit = async (
+      e: React.FormEvent
+    ) => {
+      e.preventDefault();
 
-    if (!profile) {
-      return;
-    }
+      if (!profile) {
+        return;
+      }
 
-    setError(null);
+      setError(null);
 
-    const trimmedName =
-      fullName.trim();
+      const trimmedName = fullName.trim();
+      const trimmedNationalId = nationalId.trim();
 
-    const trimmedNationalId =
-      nationalId.trim();
-
-    /*
-     * Full name
-     */
-
-    if (!trimmedName) {
-      setError(
-        'Please enter your full name as it appears on your ID.'
-      );
-
-      return;
-    }
-
-    /*
-     * National ID
-     */
-
-    if (
-      !validateNationalID(
-        trimmedNationalId
-      )
-    ) {
-      setError(
-        'National ID must contain 7-8 digits.'
-      );
-
-      return;
-    }
-
-    /*
-     * ID photo
-     */
-
-    if (!idPhotoPath) {
-      setError(
-        'Please upload the front of your National ID.'
-      );
-
-      return;
-    }
-
-    /*
-     * Selfie
-     */
-
-    if (!selfiePath) {
-      setError(
-        'Please upload a clear selfie.'
-      );
-
-      return;
-    }
-
-    /*
-     * Terms
-     */
-
-    if (!termsAccepted) {
-      setError(
-        'Please accept the terms before submitting your verification.'
-      );
-
-      return;
-    }
-
-    /*
-     * Make sure the account has a supported role.
-     */
-
-    const registrationRoute =
-      getRegistrationRoute(
-        profile.role
-      );
-
-    if (!registrationRoute) {
-      setError(
-        'We could not determine the registration type for your account. Please return to your account and try again.'
-      );
-
-      return;
-    }
-
-    setStep('uploading');
-
-    try {
       /*
-       * --------------------------------------------------
-       * SAVE KYC INFORMATION
-       * --------------------------------------------------
-       */
+      * ------------------------------------------------------
+      * VALIDATION
+      * ------------------------------------------------------
+      */
 
-      const {
-        error: updateError,
-      } = await supabase
-        .from('profiles')
-        .update({
-          full_name:
-            trimmedName,
-
-          kyc_completed: true,  
-
-          national_id:
-            trimmedNationalId,
-
-          id_photo_url:
-            idPhotoPath,
-
-          selfie_url:
-            selfiePath,
-
-          verification_status:
-            'pending_verification',
-        })
-        .eq(
-          'id',
-          profile.id
+      if (!trimmedName) {
+        setError(
+          'Please enter your full name as it appears on your ID.'
         );
+        return;
+      }
 
-      if (updateError) {
-        throw updateError;
+      if (!validateNationalID(trimmedNationalId)) {
+        setError(
+          'National ID must contain 7-8 digits.'
+        );
+        return;
+      }
+
+      if (!idPhotoPath) {
+        setError(
+          'Please upload the front of your National ID.'
+        );
+        return;
+      }
+
+      if (!selfiePath) {
+        setError(
+          'Please upload a clear selfie.'
+        );
+        return;
+      }
+
+      if (!termsAccepted) {
+        setError(
+          'Please accept the terms before submitting your verification.'
+        );
+        return;
       }
 
       /*
-       * Refresh the local profile so the rest of the
-       * application immediately knows KYC was submitted.
-       */
+      * ------------------------------------------------------
+      * ROLE / REGISTRATION ROUTE
+      * ------------------------------------------------------
+      */
 
-      await refreshProfile();
+      const registrationRoute =
+        getRegistrationRoute(profile.role);
+
+      if (!registrationRoute) {
+        setError(
+          'We could not determine the registration type for your account. Please return to your account and try again.'
+        );
+        return;
+      }
+
+      setStep('uploading');
 
       /*
-       * --------------------------------------------------
-       * CONTINUE TO ROLE REGISTRATION
-       * --------------------------------------------------
-       *
-       * KYC is complete from the user's perspective.
-       *
-       * The registration form will handle the actual
-       * role-specific application and administrator approval.
-       */
+      * These paths were created by handleFileUpload().
+      *
+      * They are PRIVATE storage paths, NOT public URLs.
+      *
+      * Example:
+      *
+      *   user-id/id-123456789.jpg
+      *   user-id/selfie-123456789.jpg
+      */
 
-      navigate(
-        registrationRoute
-      );
-    } catch (err) {
-      console.error(
-        'KYC submission failed:',
-        err
-      );
+      const uploadedPaths = [
+        idPhotoPath,
+        selfiePath,
+      ];
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to submit your verification. Please try again.'
-      );
+      try {
+        /*
+        * ------------------------------------------------------
+        * VERIFY THE ACTUAL FILES EXIST IN STORAGE
+        * ------------------------------------------------------
+        *
+        * This prevents us from saving a path into profiles
+        * when the corresponding Storage object does not exist.
+        *
+        * We intentionally use download() here because the
+        * kyc-documents bucket is PRIVATE.
+        */
 
-      setStep('idle');
-    }
-  };
+        const verifyStorageObject = async (
+          path: string,
+          label: string
+        ) => {
+          const {
+            data,
+            error,
+          } = await supabase.storage
+            .from('kyc-documents')
+            .download(path);
+
+          if (error || !data) {
+            console.error(
+              `KYC ${label} Storage verification failed:`,
+              error
+            );
+
+            throw new Error(
+              `The uploaded ${label} could not be verified in secure storage. Please upload it again.`
+            );
+          }
+        };
+
+        await verifyStorageObject(
+          idPhotoPath,
+          'National ID'
+        );
+
+        await verifyStorageObject(
+          selfiePath,
+          'selfie'
+        );
+
+        /*
+        * ------------------------------------------------------
+        * SAVE KYC INFORMATION
+        * ------------------------------------------------------
+        *
+        * Store the PRIVATE STORAGE PATHS.
+        *
+        * Do NOT generate public URLs for KYC documents.
+        */
+
+        const {
+          error: updateError,
+        } = await supabase
+          .from('profiles')
+          .update({
+            full_name: trimmedName,
+
+            national_id: trimmedNationalId,
+
+            kyc_completed: true,
+
+            id_photo_url: idPhotoPath,
+
+            selfie_url: selfiePath,
+
+            verification_status:
+              'pending_verification',
+          })
+          .eq(
+            'id',
+            profile.id
+          );
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        /*
+        * ------------------------------------------------------
+        * REFRESH PROFILE
+        * ------------------------------------------------------
+        */
+
+        await refreshProfile();
+
+        /*
+        * ------------------------------------------------------
+        * SUCCESS
+        * ------------------------------------------------------
+        *
+        * At this point:
+        *
+        * 1. National ID exists in kyc-documents
+        * 2. Selfie exists in kyc-documents
+        * 3. profiles.id_photo_url contains the ID storage path
+        * 4. profiles.selfie_url contains the selfie storage path
+        * 5. KYC is marked complete
+        * 6. Verification is pending administrator verification
+        */
+
+        navigate(
+          registrationRoute
+        );
+
+      } catch (err) {
+        console.error(
+          'KYC submission failed:',
+          err
+        );
+
+        /*
+        * ------------------------------------------------------
+        * CLEANUP
+        * ------------------------------------------------------
+        *
+        * If the database update failed after the files had
+        * already been uploaded, remove those newly uploaded
+        * objects so we don't leave orphaned KYC documents.
+        *
+        * Cleanup errors are logged but do not replace the
+        * original submission error.
+        */
+
+        try {
+          const {
+            error: cleanupError,
+          } = await supabase.storage
+            .from('kyc-documents')
+            .remove(uploadedPaths);
+
+          if (cleanupError) {
+            console.warn(
+              'KYC Storage cleanup failed:',
+              cleanupError
+            );
+          }
+        } catch (cleanupErr) {
+          console.warn(
+            'KYC Storage cleanup threw an error:',
+            cleanupErr
+          );
+        }
+
+        /*
+        * Reset local paths because the uploaded files were
+        * removed during cleanup.
+        */
+
+        setIdPhotoPath('');
+        setSelfiePath('');
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to submit your verification. Please try again.'
+        );
+
+        setStep('idle');
+      }
+    };
 
   /*
    * ------------------------------------------------------

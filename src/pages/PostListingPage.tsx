@@ -19,8 +19,6 @@ import {
   formatKES,
   validatePhone,
   validateEmail,
-  FREE_LISTING_LIMIT,
-
 } from '@/lib/utils';
 
 import {
@@ -32,6 +30,7 @@ import {
   type ListingEntitlement,
   type ListingFormPayload,
   type ListingRole,
+  type SubscriptionPlan,
 } from '@/lib/ListingEntitlement';
 
 
@@ -93,6 +92,13 @@ interface SocialLink {
 export default function PostListingPage() {
   const { profile } = useAuth();
   const { navigate } = useNav();
+
+
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [subscriptionPlansLoading, setSubscriptionPlansLoading] = useState(false);
+  const [subscriptionPlansError, setSubscriptionPlansError] =
+    useState<string | null>(null);
+ 
 
   // ==========================================================
   // AI CAPTION
@@ -450,6 +456,10 @@ export default function PostListingPage() {
     profile?.id,
     listingRole,
   ]);
+
+  // free listing limit
+
+   const FREE_LISTING_LIMIT = listingEntitlement?.individualListingPriceKes 
 
 
   // ==========================================================
@@ -1573,250 +1583,843 @@ export default function PostListingPage() {
   //    load), fall through to the same payment flow instead of
   //    erroring out.
   // ==========================================================
+const handleSubmit = async () => {
+  setError(null);
+  setSubmitting(true);
+  setAiCaption('');
 
-  const handleSubmit = async () => {
-    setError(null);
-    setSubmitting(true);
-    setAiCaption('');
+  let listingId: string | null = null;
 
-    let listingId: string | null = null;
+  try {
+    // ========================================================
+    // AUTHENTICATION
+    // ========================================================
 
-    try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-      if (authError) {
+    if (authError) {
+      throw new Error(
+        'Unable to verify your login session.'
+      );
+    }
+
+    if (!user) {
+      throw new Error(
+        'Your login session has expired. Please sign in again.'
+      );
+    }
+
+    // ========================================================
+    // CLIENT-SIDE FORM VALIDATION
+    // ========================================================
+
+    if (!title?.trim() && !propertyName?.trim()) {
+      throw new Error('A listing title is required.');
+    }
+
+    if (!description?.trim()) {
+      throw new Error('A listing description is required.');
+    }
+
+    if (!finalCity?.trim()) {
+      throw new Error('A city is required.');
+    }
+
+    if (!county?.trim()) {
+      throw new Error('A county is required.');
+    }
+
+    if (!phone?.trim()) {
+      throw new Error('A contact phone number is required.');
+    }
+
+    if (!email?.trim()) {
+      throw new Error('A contact email is required.');
+    }
+
+    if (
+      isPropertyManagementListing &&
+      (!Array.isArray(units) || units.length === 0)
+    ) {
+      throw new Error(
+        'At least one property unit is required.'
+      );
+    }
+
+    // ========================================================
+    // PAYMENT-REQUIRED PATH
+    // ========================================================
+
+    if (paymentRequired) {
+      if (!paymentCompleted || !paymentIntentId) {
         throw new Error(
-          'Unable to verify your login session.'
+          'Please complete the listing payment before publishing.'
         );
       }
 
-      if (!user) {
+      const foundListingId =
+        await findRecentlyPaidListing(user.id);
+
+      if (!foundListingId) {
         throw new Error(
-          'Your login session has expired. Please sign in again.'
+          'Payment was confirmed, but the listing could not be located. Please contact support.'
         );
       }
 
-      // ========================================================
-      // CLIENT-SIDE FORM VALIDATION ONLY
-      // ========================================================
+      listingId = foundListingId;
 
-      if (!title?.trim() && !propertyName?.trim()) {
-        throw new Error('A listing title is required.');
-      }
+    } else {
+      // ======================================================
+      // FREE / SUBSCRIPTION PATH
+      // ======================================================
 
-      if (!description?.trim()) {
-        throw new Error('A listing description is required.');
-      }
-
-      if (!finalCity?.trim()) {
-        throw new Error('A city is required.');
-      }
-
-      if (!county?.trim()) {
-        throw new Error('A county is required.');
-      }
-
-      if (!phone?.trim()) {
-        throw new Error('A contact phone number is required.');
-      }
-
-      if (!email?.trim()) {
-        throw new Error('A contact email is required.');
-      }
-
-      if (
-        isPropertyManagementListing &&
-        (!Array.isArray(units) || units.length === 0)
-      ) {
-        throw new Error('At least one property unit is required.');
-      }
-
-      // ========================================================
-      // PAYMENT-REQUIRED PATH
-      //
-      // If we already know payment is required (from the loaded
-      // entitlement), or the payment step was reached, the payment
-      // must have already been confirmed via handleListingPayment
-      // before this button is reachable (see canProceed()).
-      // ========================================================
-
-      if (paymentRequired) {
-        if (!paymentCompleted || !paymentIntentId) {
-          throw new Error(
-            'Please complete the listing payment before publishing.'
-          );
-        }
-
-        const foundListingId = await findRecentlyPaidListing(user.id);
-
-        if (!foundListingId) {
-          throw new Error(
-            'Payment was confirmed, but the listing could not be located. Please contact support.'
-          );
-        }
-
-        listingId = foundListingId;
-
-      } else {
-        // ======================================================
-        // FREE / SUBSCRIPTION PATH
-        // ======================================================
-
-        const result = await createRoleAwareListing(
+      const result =
+        await createRoleAwareListing(
           buildListingPayload()
         );
 
-        if (result.listing_created && result.listing_id) {
-          listingId = result.listing_id;
+      if (
+        result.listing_created &&
+        result.listing_id
+      ) {
+        listingId = result.listing_id;
 
-        } else if (result.requires_individual_payment) {
-          // Entitlement changed since page load (e.g. free listings
-          // were used up in another tab). Re-run the payment flow
-          // instead of silently failing.
-          setListingPaymentRequirement('required');
+      } else if (
+        result.requires_individual_payment
+      ) {
+        setListingPaymentRequirement(
+          'required'
+        );
 
-          throw new Error(
-            'Your free/subscription listing entitlement is no longer available. Please complete the listing payment shown on the Payment step to continue.'
+        throw new Error(
+          'Your free/subscription listing entitlement is no longer available. Please complete the listing payment shown on the Payment step to continue.'
+        );
+
+      } else {
+        throw new Error(
+          'The listing could not be created. Please try again.'
+        );
+      }
+    }
+
+    // ========================================================
+    // ENSURE LISTING ID
+    // ========================================================
+
+    if (!listingId) {
+      throw new Error(
+        'The listing was processed but no listing ID was returned.'
+      );
+    }
+
+    // ========================================================
+    // SAVE LISTING MEDIA
+    //
+    // IMPORTANT:
+    //
+    // The selected File objects are currently only stored in
+    // React state and their blob URLs are only browser previews.
+    //
+    // Here we:
+    //
+    // 1. Upload the actual files to Storage.
+    // 2. Get the permanent public URL.
+    // 3. Insert that URL into listing_media.
+    //
+    // Storage structure:
+    //
+    // listing-media/
+    //   {user_id}/
+    //     {listing_id}/
+    //       photos/
+    //       video/
+    // ========================================================
+
+    const uploadedStoragePaths: string[] = [];
+
+    try {
+      // ------------------------------------------------------
+      // FETCH EXISTING MEDIA
+      //
+      // This prevents duplicate media if this submit operation
+      // is retried for a listing that already has media.
+      // ------------------------------------------------------
+
+      const {
+        data: existingMedia,
+        error: existingMediaError,
+      } = await supabase
+        .from('listing_media')
+        .select(
+          'id, url, label, media_type, position'
+        )
+        .eq(
+          'listing_id',
+          listingId
+        )
+        .eq(
+          'user_id',
+          user.id
+        );
+
+      if (existingMediaError) {
+        throw existingMediaError;
+      }
+
+      // ------------------------------------------------------
+      // PHOTO UPLOADS
+      // ------------------------------------------------------
+
+      const localPhotos =
+        photos.filter(
+          (photo) =>
+            photo.file instanceof File
+        );
+
+      for (
+        let index = 0;
+        index < localPhotos.length;
+        index++
+      ) {
+        const photo =
+          localPhotos[index];
+
+        if (!photo.file) {
+          continue;
+        }
+
+        const file =
+          photo.file;
+
+        // ----------------------------------------------------
+        // Don't upload an already-existing media item with the
+        // same label when this submit is retried.
+        // ----------------------------------------------------
+
+        const matchingExistingMedia =
+          (existingMedia ?? []).find(
+            (media) =>
+              media.media_type ===
+                'photo' &&
+              media.label ===
+                (photo.label?.trim() ||
+                  `Photo ${index + 1}`)
           );
 
-        } else {
+        if (matchingExistingMedia) {
+          continue;
+        }
+
+        // ----------------------------------------------------
+        // Make the filename safe.
+        // ----------------------------------------------------
+
+        const originalName =
+          file.name ||
+          `photo-${index + 1}`;
+
+        const extension =
+          originalName.includes('.')
+            ? originalName
+                .split('.')
+                .pop()
+                ?.toLowerCase() || 'jpg'
+            : 'jpg';
+
+        const baseName =
+          originalName
+            .replace(
+              /\.[^/.]+$/,
+              ''
+            )
+            .replace(
+              /[^a-zA-Z0-9_-]/g,
+              '-'
+            )
+            .replace(
+              /-+/g,
+              '-'
+            )
+            .slice(0, 80) ||
+          `photo-${index + 1}`;
+
+        const storagePath =
+          `${user.id}/${listingId}/photos/${index + 1}-${crypto.randomUUID()}-${baseName}.${extension}`;
+
+        // ----------------------------------------------------
+        // Upload actual binary file.
+        // ----------------------------------------------------
+
+        const {
+          error: uploadError,
+        } = await supabase.storage
+          .from('listing-media')
+          .upload(
+            storagePath,
+            file,
+            {
+              cacheControl: '3600',
+              contentType:
+                file.type ||
+                'image/jpeg',
+              upsert: false,
+            }
+          );
+
+        if (uploadError) {
           throw new Error(
-            'The listing could not be created. Please try again.'
+            `Failed to upload photo "${file.name}": ${uploadError.message}`
+          );
+        }
+
+        uploadedStoragePaths.push(
+          storagePath
+        );
+
+        // ----------------------------------------------------
+        // Generate permanent public URL.
+        // ----------------------------------------------------
+
+        const {
+          data: publicUrlData,
+        } =
+          supabase.storage
+            .from('listing-media')
+            .getPublicUrl(
+              storagePath
+            );
+
+        const publicUrl =
+          publicUrlData?.publicUrl;
+
+        if (!publicUrl) {
+          throw new Error(
+            `Photo "${file.name}" was uploaded but its public URL could not be generated.`
+          );
+        }
+
+        // ----------------------------------------------------
+        // Save URL in listing_media.
+        // ----------------------------------------------------
+
+        const {
+          error: mediaInsertError,
+        } = await supabase
+          .from('listing_media')
+          .insert({
+            listing_id:
+              listingId,
+
+            user_id:
+              user.id,
+
+            url:
+              publicUrl,
+
+            label:
+              photo.label?.trim() ||
+              `Photo ${index + 1}`,
+
+            media_type:
+              'photo',
+
+            position:
+              index,
+
+            unit_id:
+              null,
+          });
+
+        if (mediaInsertError) {
+          throw new Error(
+            `Photo "${file.name}" uploaded but could not be saved to listing_media: ${mediaInsertError.message}`
           );
         }
       }
 
-      if (!listingId) {
+      // ------------------------------------------------------
+      // VIDEO UPLOAD
+      // ------------------------------------------------------
+
+      if (
+        video?.file instanceof File
+      ) {
+        const file =
+          video.file;
+
+        const existingVideo =
+          (existingMedia ?? []).find(
+            (media) =>
+              media.media_type ===
+              'video'
+          );
+
+        if (!existingVideo) {
+          const originalName =
+            file.name ||
+            'walkthrough-video';
+
+          const extension =
+            originalName.includes('.')
+              ? originalName
+                  .split('.')
+                  .pop()
+                  ?.toLowerCase() ||
+                'mp4'
+              : 'mp4';
+
+          const baseName =
+            originalName
+              .replace(
+                /\.[^/.]+$/,
+                ''
+              )
+              .replace(
+                /[^a-zA-Z0-9_-]/g,
+                '-'
+              )
+              .replace(
+                /-+/g,
+                '-'
+              )
+              .slice(0, 80) ||
+            'walkthrough-video';
+
+          const storagePath =
+            `${user.id}/${listingId}/video/${crypto.randomUUID()}-${baseName}.${extension}`;
+
+          // --------------------------------------------------
+          // Upload video binary.
+          // --------------------------------------------------
+
+          const {
+            error: uploadError,
+          } =
+            await supabase.storage
+              .from('listing-media')
+              .upload(
+                storagePath,
+                file,
+                {
+                  cacheControl:
+                    '3600',
+
+                  contentType:
+                    file.type ||
+                    'video/mp4',
+
+                  upsert: false,
+                }
+              );
+
+          if (uploadError) {
+            throw new Error(
+              `Failed to upload walkthrough video: ${uploadError.message}`
+            );
+          }
+
+          uploadedStoragePaths.push(
+            storagePath
+          );
+
+          // --------------------------------------------------
+          // Generate permanent public URL.
+          // --------------------------------------------------
+
+          const {
+            data: publicUrlData,
+          } =
+            supabase.storage
+              .from('listing-media')
+              .getPublicUrl(
+                storagePath
+              );
+
+          const publicUrl =
+            publicUrlData?.publicUrl;
+
+          if (!publicUrl) {
+            throw new Error(
+              'Walkthrough video was uploaded but its public URL could not be generated.'
+            );
+          }
+
+          // --------------------------------------------------
+          // Save video URL in listing_media.
+          // --------------------------------------------------
+
+          const {
+            error:
+              mediaInsertError,
+          } =
+            await supabase
+              .from(
+                'listing_media'
+              )
+              .insert({
+                listing_id:
+                  listingId,
+
+                user_id:
+                  user.id,
+
+                url:
+                  publicUrl,
+
+                label:
+                  video.label?.trim() ||
+                  'Walkthrough Video',
+
+                media_type:
+                  'video',
+
+                position:
+                  0,
+
+                unit_id:
+                  null,
+              });
+
+          if (
+            mediaInsertError
+          ) {
+            throw new Error(
+              `Walkthrough video uploaded but could not be saved to listing_media: ${mediaInsertError.message}`
+            );
+          }
+        }
+      }
+
+      // ======================================================
+      // VERIFY MEDIA SAVE
+      //
+      // Do one final read so we don't report success while the
+      // database is missing the media rows.
+      // ======================================================
+
+      const {
+        data: savedMedia,
+        error:
+          verifyMediaError,
+      } =
+        await supabase
+          .from('listing_media')
+          .select(
+            'id, url, media_type, position'
+          )
+          .eq(
+            'listing_id',
+            listingId
+          )
+          .eq(
+            'user_id',
+            user.id
+          )
+          .order(
+            'position',
+            {
+              ascending: true,
+            }
+          );
+
+      if (verifyMediaError) {
+        throw verifyMediaError;
+      }
+
+      const savedPhotos =
+        (savedMedia ?? []).filter(
+          (media) =>
+            media.media_type ===
+            'photo'
+        );
+
+      const savedVideo =
+        (savedMedia ?? []).find(
+          (media) =>
+            media.media_type ===
+            'video'
+        );
+
+      // If the user selected photos, make sure all of them
+      // actually reached listing_media.
+      if (
+        photos.length > 0 &&
+        savedPhotos.length <
+          photos.length
+      ) {
         throw new Error(
-          'The listing was processed but no listing ID was returned.'
+          `Only ${savedPhotos.length} of ${photos.length} photos were saved. The listing was not marked as fully submitted.`
         );
       }
 
-      // ========================================================
-      // AI CAPTION — BEST EFFORT ONLY
-      //
-      // AI failure MUST NOT cause the listing creation to fail,
-      // and does NOT determine payment, approval, publication, or
-      // ownership.
-      // ========================================================
+      // If a video was selected, make sure it was saved.
+      if (
+        video?.file &&
+        !savedVideo
+      ) {
+        throw new Error(
+          'The walkthrough video was uploaded but was not recorded in listing_media.'
+        );
+      }
 
-      try {
-        const response = await fetch(
+    } catch (mediaError) {
+      console.error(
+        '❌ Listing media upload/save failed:',
+        mediaError
+      );
+
+      // ------------------------------------------------------
+      // Clean up Storage objects that were uploaded during
+      // this submit attempt.
+      //
+      // We intentionally do NOT delete the listing itself.
+      // The listing can be retried without creating a second
+      // listing.
+      // ------------------------------------------------------
+
+      if (
+        uploadedStoragePaths.length > 0
+      ) {
+        const {
+          error:
+            cleanupError,
+        } =
+          await supabase.storage
+            .from('listing-media')
+            .remove(
+              uploadedStoragePaths
+            );
+
+        if (cleanupError) {
+          console.warn(
+            'Some uploaded media could not be cleaned up:',
+            cleanupError
+          );
+        }
+      }
+
+      throw mediaError;
+    }
+
+    // ========================================================
+    // AI CAPTION — BEST EFFORT ONLY
+    //
+    // AI failure MUST NOT cause the listing creation or media
+    // upload to fail.
+    // ========================================================
+
+    try {
+      const response =
+        await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gemini-caption`,
           {
             method: 'POST',
+
             headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              'Content-Type':
+                'application/json',
+
+              Authorization:
+                `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             },
+
             body: JSON.stringify({
               listing: {
-                id: listingId,
-                title: (isPropertyManagementListing ? propertyName : title)?.trim(),
-                description: description.trim(),
-                city: finalCity,
+                id:
+                  listingId,
+
+                title:
+                  (
+                    isPropertyManagementListing
+                      ? propertyName
+                      : title
+                  )?.trim(),
+
+                description:
+                  description.trim(),
+
+                city:
+                  finalCity,
+
                 county,
-                price_kes: price ? Number(price) : null,
-                listing_type: listingType?.trim() || 'rent',
-                size: finalSize?.trim() || null,
-                beds: Number(beds) || 0,
-                baths: Number(baths) || 0,
-                deposit_required: Boolean(depositRequired),
-                property_name: propertyName?.trim() || null,
-                property_type: propertyType?.trim() || null,
+
+                price_kes:
+                  price
+                    ? Number(price)
+                    : null,
+
+                listing_type:
+                  listingType?.trim() ||
+                  'rent',
+
+                size:
+                  finalSize?.trim() ||
+                  null,
+
+                beds:
+                  Number(beds) ||
+                  0,
+
+                baths:
+                  Number(baths) ||
+                  0,
+
+                deposit_required:
+                  Boolean(
+                    depositRequired
+                  ),
+
+                property_name:
+                  propertyName?.trim() ||
+                  null,
+
+                property_type:
+                  propertyType?.trim() ||
+                  null,
+
                 units:
-                  isPropertyManagementListing && Array.isArray(units)
-                    ? units.map((unit) => ({
-                        unit_number: unit.unitNumber.trim(),
-                        unit_type: unit.unitType.trim(),
-                        rent: Number(unit.rent),
-                        deposit_amount: unit.depositAmount
-                          ? Number(unit.depositAmount)
-                          : 0,
-                        size: unit.size?.trim() || null,
-                        beds: Number(unit.beds),
-                        baths: Number(unit.baths),
-                        availability: unit.availability || 'available',
-                        description: unit.description?.trim() || null,
-                      }))
+                  isPropertyManagementListing &&
+                  Array.isArray(units)
+                    ? units.map(
+                        (unit) => ({
+                          unit_number:
+                            unit.unitNumber.trim(),
+
+                          unit_type:
+                            unit.unitType.trim(),
+
+                          rent:
+                            Number(
+                              unit.rent
+                            ),
+
+                          deposit_amount:
+                            unit.depositAmount
+                              ? Number(
+                                  unit.depositAmount
+                                )
+                              : 0,
+
+                          size:
+                            unit.size?.trim() ||
+                            null,
+
+                          beds:
+                            Number(
+                              unit.beds
+                            ),
+
+                          baths:
+                            Number(
+                              unit.baths
+                            ),
+
+                          availability:
+                            unit.availability ||
+                            'available',
+
+                          description:
+                            unit.description?.trim() ||
+                            null,
+                        })
+                      )
                     : [],
               },
             }),
           }
         );
 
-        if (response.ok) {
-          const captionData = await response.json();
+      if (response.ok) {
+        const captionData =
+          await response.json();
 
-          const generatedCaption =
-            typeof captionData?.caption === 'string'
-              ? captionData.caption.trim()
-              : '';
+        const generatedCaption =
+          typeof captionData?.caption ===
+          'string'
+            ? captionData.caption.trim()
+            : '';
 
-          if (generatedCaption) {
-            setAiCaption(generatedCaption);
+        if (generatedCaption) {
+          setAiCaption(
+            generatedCaption
+          );
 
-            const { error: captionError } = await supabase
+          const {
+            error:
+              captionError,
+          } =
+            await supabase
               .from('listings')
               .update({
-                ai_caption: generatedCaption,
-                ai_caption_generated_at: new Date().toISOString(),
+                ai_caption:
+                  generatedCaption,
+
+                ai_caption_generated_at:
+                  new Date().toISOString(),
               })
-              .eq('id', listingId);
-
-            if (captionError) {
-              console.warn(
-                'AI caption generated but could not be saved:',
-                captionError
+              .eq(
+                'id',
+                listingId
               );
-            }
-          }
-        } else {
-          console.warn(
-            'Gemini caption generation failed:',
-            response.status,
-            response.statusText
-          );
-        }
 
-      } catch (aiError) {
+          if (captionError) {
+            console.warn(
+              'AI caption generated but could not be saved:',
+              captionError
+            );
+          }
+        }
+      } else {
         console.warn(
-          'AI caption generation failed. Listing remains created:',
-          aiError
+          'Gemini caption generation failed:',
+          response.status,
+          response.statusText
         );
       }
 
-      // ========================================================
-      // SUCCESS
-      //
-      // Do NOT say "Your listing is live" — the listing is created
-      // as approval_status = pending_review, is_approved = false,
-      // is_published = false.
-      // ========================================================
-
-      setCreatedListingId(listingId);
-      setSuccess(true);
-
-    } catch (err) {
-      console.error(
-        '❌ Failed to submit listing:',
-        err
+    } catch (aiError) {
+      console.warn(
+        'AI caption generation failed. Listing and media remain created:',
+        aiError
       );
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to post listing. Please try again.'
-      );
-
-    } finally {
-      setSubmitting(false);
     }
-  };
 
+    // ========================================================
+    // SUCCESS
+    //
+    // Listing remains pending review.
+    // ========================================================
+
+    setCreatedListingId(
+      listingId
+    );
+
+    setSuccess(true);
+
+  } catch (err) {
+    console.error(
+      '❌ Failed to submit listing:',
+      err
+    );
+
+    setError(
+      err instanceof Error
+        ? err.message
+        : 'Failed to post listing. Please try again.'
+    );
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    });
+
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   // ==========================================================
   // SUCCESS SCREEN
@@ -2036,14 +2639,16 @@ export default function PostListingPage() {
         open={paymentModalOpen}
         onClose={() => setPaymentModalOpen(false)}
         role={listingRole}
-        amountKes={LISTING_FEE_KES}
+        amountKes={listingEntitlement?.individualListingPriceKes ?? 0}
         paymentLoading={paymentLoading}
         paymentCompleted={paymentCompleted}
         selectedPaymentMethod={selectedPaymentMethod}
         onSelectPaymentMethod={setSelectedPaymentMethod}
         onPayNow={handleListingPayment}
+        subscriptionPlans={subscriptionPlans}
+        subscriptionPlansLoading={subscriptionPlansLoading}
+        subscriptionPlansError={subscriptionPlansError}
         onContinueToSubscription={handleContinueToSubscription}
-        error={error}
       />
     </>
   );

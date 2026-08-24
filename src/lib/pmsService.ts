@@ -64,18 +64,25 @@ export interface PMSCapacity {
   listings_remaining: number | null;
 }
 
+// Matches get_my_pms_listings()'s row shape exactly — verified live.
 export interface PMSListing {
-  id: string;
+  subscription_listing_id: string;
   subscription_id: string;
   listing_id: string;
+  listing_title: string;
+  listing_city: string;
+  listing_price_kes: number;
   status: "ACTIVE" | "INACTIVE";
   activated_at: string;
-  deactivated_at: string | null;
 }
 
+// Matches get_my_available_pms_listings()'s row shape exactly — verified live.
 export interface PMSAvailableListing {
-  id: string;
+  listing_id: string;
   title: string;
+  city: string;
+  price_kes: number;
+  created_at: string;
 }
 
 /* ============================================================

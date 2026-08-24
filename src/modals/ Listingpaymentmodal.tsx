@@ -39,10 +39,15 @@ interface ListingPaymentModalProps {
   subscriptionPlans: SubscriptionPlan[];
   subscriptionPlansLoading?: boolean;
   subscriptionPlansError?: string | null;
+
   onContinueToSubscription: (
     plan: SubscriptionPlan,
     billingCycle: 'monthly' | 'annual'
   ) => void;
+
+  // ADD THESE
+  selectedSubscriptionPlan?: SubscriptionPlan | null;
+  selectedSubscriptionBillingCycle?: 'monthly' | 'annual' | null;
 
   paypalAvailable?: boolean;
   error?: string | null;
@@ -69,6 +74,8 @@ export default function ListingPaymentModal({
   subscriptionPlans,
   subscriptionPlansLoading = false,
   subscriptionPlansError = null,
+  selectedSubscriptionPlan = null,
+  selectedSubscriptionBillingCycle = null,
   onContinueToSubscription,
   paypalAvailable = false,
   error,
