@@ -75,7 +75,7 @@ export default function HomePage() {
       )}
       {/* Compact Hero Strip */}
       <section className="border-b border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-900">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl lg:px-4 py-4 p-1 lg:px-8 w-full">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">
@@ -83,7 +83,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
               </h1>
             </div>
             {/* Compact Search Strip */}
-            <div className="flex lg:flex-row gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative">
                 <MapPin className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <select
@@ -197,7 +197,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
       </section>
 
       {/* Immediate Listing Grid */}
-      <section className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-2 py-4 sm:px-6 lg:px-8">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-bold text-gray-900 dark:text-white">
             Featured Listings
@@ -300,7 +300,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
 
       {/* Role Cards */}
       {!isAdmin && (
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-2 py-8 lg:px-8">
         <h2 className="text-center text-xl font-bold text-gray-900 dark:text-white">How Saka Krib Works For You</h2>
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           {[
@@ -379,7 +379,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
 
       {/* Why Choose Us */}
       {!isAdmin && (
-      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-2 pb-8 sm:px-6 lg:px-8">
         <div className="grid gap-4 sm:grid-cols-3">
           {[
             { icon: ShieldCheck, title: 'Verified & Secure', desc: 'All landlords and movers undergo KYC verification.' },

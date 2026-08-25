@@ -1,19 +1,20 @@
-import { Building2, ArrowRight, Construction } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 
-import PMSAccessGuard from '@/components/PMS/PMSAccessGuard';
-import LandlordPMS from './Landlordpms';
+import PMSAccessGuard from '@/components/PMS/LandlordPms/LandlordPMSAccessGuard';
+import LandlordPMS from '@/components/PMS/LandlordPms/ Landlordpms';
+
+import RealEstatePMSAccessGuard from '@/components/PMS/RealEstate/Realestatepmsaccessguard';
+import RealEstatePMS from '@/components/PMS/RealEstate/Realestatepms';
 
 
 // ============================================================
 // LANDLORD PMS
 //
-// PMSAccessGuard is unchanged — already correctly gates this to
-// landlord role + active/grace PMS subscription (can_manage_pms's
-// own logic, mirrored client-side in PMSAccess.ts's hasPMSAccess).
-// The stub content is now replaced with the real shell.
+// Unchanged - PMSAccessGuard already correctly gates this to
+// landlord role + active/grace PMS subscription.
 // ============================================================
 
 function LandlordPMSEntry() {
@@ -28,56 +29,34 @@ function LandlordPMSEntry() {
 // ============================================================
 // REAL ESTATE PMS
 //
-// IMPORTANT:
+// UPDATED per live-database audit (project zrhvapntshgmhynqtbma):
 //
-// There is currently no Real Estate PMS backend. can_manage_pms()
-// is hardcoded to role = 'landlord' and reads exclusively from
-// landlord_subscriptions — there is no real_estate_subscriptions
-// branch anywhere in the PMS RPC layer. This is an honest "not yet
-// available" state, not a working PMS UI wired to nothing.
+// real_estate_subscriptions billing/entitlement IS real and
+// working (get_current_real_estate_subscription, PayPal recurring
+// checkout, subscription payment notifications all verified
+// against the live schema/functions). What's still missing is
+// specifically the PMS *listing/unit management* layer -
+// can_manage_pms() and every add/remove/list PMS RPC are hard-wired
+// to landlord_subscriptions only, verified by reading each function
+// body. RealEstatePMSAccessGuard + RealEstatePMS reflect that split
+// honestly: real subscription data, a clearly-labeled "not
+// available yet" state for property/unit management (no fabricated
+// listings/units), and a real activity feed (user_notifications,
+// populated by an existing trigger for both landlord and real
+// estate subscription payments).
 //
-// The underlying data RPCs/RLS (property_units, renter_unit_
-// associations, rent_payments, rent_invoices) are ownership-scoped
-// rather than role-restricted, so extending PMS to real estate
-// later is a narrow backend change (extend can_manage_pms with a
-// real_estate_subscriptions branch) — not a rebuild. Worth knowing
-// if/when this gets built out for real.
+// Known gap carried forward, not solved here: real estate can only
+// subscribe via PayPal right now - create_real_estate_subscription_
+// checkout exists as an RPC but no edge function calls it (M-Pesa
+// init only exists for landlords via subscription-stk). Needs its
+// own edge function before real estate M-Pesa checkout can work.
 // ============================================================
 
-function RealEstatePMS() {
-  const { navigate } = useNav();
-
+function RealEstatePMSEntry() {
   return (
-    <div className="mx-auto max-w-lg px-4 py-16">
-      <div className="card p-8 text-center">
-
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-900/30">
-          <Construction className="h-7 w-7 text-brand-600" />
-        </div>
-
-        <h2 className="mt-5 text-2xl font-bold text-gray-900 dark:text-white">
-          Property Management
-        </h2>
-
-        <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">
-          Property/unit management (PMS) isn't available for Real
-          Estate accounts yet. You can still create and manage your
-          listings from your dashboard.
-        </p>
-
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <button
-            type="button"
-            onClick={() => navigate('dashboard')}
-            className="btn-primary inline-flex items-center justify-center gap-2"
-          >
-            Back to Dashboard
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-
-      </div>
-    </div>
+    <RealEstatePMSAccessGuard>
+      <RealEstatePMS />
+    </RealEstatePMSAccessGuard>
   );
 }
 
@@ -85,11 +64,10 @@ function RealEstatePMS() {
 // ============================================================
 // SPLIT ENTRY POINT
 //
-// Role-aware routing only — the actual authorization for each
-// branch still lives server-side (PMSAccessGuard/can_manage_pms
-// for landlord; there is simply no grantable path for real_estate
-// yet). This component decides which shell to show, not whether
-// access is allowed.
+// Role-aware routing only - the actual authorization for each
+// branch still lives server-side (each guard's own access check).
+// This component decides which shell to show, not whether access
+// is allowed.
 // ============================================================
 
 export default function PMSDashboard() {
@@ -121,7 +99,7 @@ export default function PMSDashboard() {
   }
 
   if (profile.role === 'real_estate') {
-    return <RealEstatePMS />;
+    return <RealEstatePMSEntry />;
   }
 
   return (

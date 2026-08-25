@@ -17,7 +17,7 @@ import {
 import {
   hasPMSAccess,
   type PMSSubscription,
-} from '@/lib/PMSAccess';
+} from '@/lib/LandlordTs/LandlordPMSAccess';
 
 
 // ============================================================

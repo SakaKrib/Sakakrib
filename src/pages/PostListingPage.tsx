@@ -609,7 +609,7 @@ export default function PostListingPage() {
     }
 
     setPaymentModalOpen(false);
-    navigate('subscription');
+    navigate('subscription-plans');
   };
 
 

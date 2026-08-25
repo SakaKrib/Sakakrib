@@ -21,6 +21,7 @@ import DashboardPage from '@/Dashboards/DashboardPage';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
+import PMSDashboard from './components/PMS/PMSDashboard';
 
 function AppContent() {
   const { view } = useNav();
@@ -43,12 +44,13 @@ function AppContent() {
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
       case 'subscription-plans': return <PMSSubscriptionPage />;
+      case 'pms-dashboard': return <PMSDashboard />;
       default: return <HomePage />;
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-y-auto">
+    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-x-fixed">
       <SecurityBanner />
       <Header />
       <main className="flex-1 pb-20 md:pb-0">

@@ -87,6 +87,8 @@ export interface PMSPlanSelectorProps {
 
   disabled?: boolean;
 
+  onGoToDashboard: () => void;
+
   /**
    * Returns the complete database plan.
    */
@@ -180,6 +182,7 @@ export default function PMSPlanSelector({
   onPlanChange,
   onBillingCycleChange,
   onProceedToPayment,
+  onGoToDashboard,
 }: PMSPlanSelectorProps) {
   const [
     plans,
@@ -365,6 +368,21 @@ export default function PMSPlanSelector({
       plan.name === selectedPlanName
   ) ?? null;
 
+  const isCurrentPlan =
+  currentPlanName === selectedPlan?.name &&
+    currentBillingCycle === billingCycle;
+
+  const hasCurrentSubscription =
+    Boolean(currentPlanName);
+
+  const actionLabel = !hasCurrentSubscription
+    ? "Proceed to Payment"
+    : isCurrentPlan
+      ? "Go to PMS Dashboard"
+      : selectedPlan?.name === currentPlanName
+        ? "Change Billing Cycle"
+        : "Upgrade";
+
   /* ==========================================================
    * RENDER
    * ========================================================== */
@@ -491,12 +509,12 @@ export default function PMSPlanSelector({
                   {/* CURRENT */}
 
                   {current && (
-                    <span className="absolute right-5 top-5 inline-flex items-center rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                    <span className="absolute right-20 top-15 inline-flex items-center rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
                       Current Plan
                     </span>
                   )}
 
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start justify-between gap-4 relative">
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
                         {audienceLabel(
@@ -594,7 +612,7 @@ export default function PMSPlanSelector({
                   )}
 
                   <div
-                    className={`mt-6 flex items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-semibold ${
+                    className={`mt-6 flex items-center justify-center rounded-xl border px-2 py-2.5 text-sm font-semibold ${
                       selected
                         ? "border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900"
                         : "border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
@@ -645,19 +663,30 @@ export default function PMSPlanSelector({
             <button
               type="button"
               disabled={disabled}
-              onClick={() =>
-                onProceedToPayment(
-                  selectedPlan,
-                  billingCycle
-                )
-              }
+              onClick={() => {
+                if (!hasCurrentSubscription) {
+                  onProceedToPayment(selectedPlan, billingCycle);
+                  return;
+                }
+
+                if (isCurrentPlan) {
+                  onGoToDashboard();
+                  return;
+                }
+
+                onProceedToPayment(selectedPlan, billingCycle);
+              }}
               className={`inline-flex min-w-[240px] items-center justify-center rounded-xl px-6 py-3.5 text-sm font-bold shadow-sm transition-all ${
                 disabled
                   ? "cursor-not-allowed bg-gray-300 text-gray-500"
                   : "bg-gray-900 text-white hover:-translate-y-0.5 hover:bg-gray-800 hover:shadow-md dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
               }`}
             >
-              Proceed to Payment
+              {!hasCurrentSubscription
+                ? "Proceed to Payment"
+                : isCurrentPlan
+                  ? "Go to PMS Dashboard"
+                  : "Upgrade"}
             </button>
           </div>
         )}

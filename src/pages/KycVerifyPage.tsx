@@ -113,28 +113,9 @@ export default function KycVerifyPage() {
   const [error, setError] =
     useState<string | null>(null);
 
-  /*
-   * ------------------------------------------------------
-   * NO PROFILE
-   * ------------------------------------------------------
-   */
 
-  if (!profile) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-12">
-        <div className="card p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400">
-            Please sign in to continue with identity
-            verification.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
-  const role = profile.role;
-
-  /*
+      /*
    * ------------------------------------------------------
    * REDIRECT AFTER EXISTING KYC STATUS
    * ------------------------------------------------------
@@ -172,6 +153,29 @@ export default function KycVerifyPage() {
 
     navigate('home');
   }, [profile, navigate]);
+
+  /*
+   * ------------------------------------------------------
+   * NO PROFILE
+   * ------------------------------------------------------
+   */
+
+  if (!profile) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <div className="card p-8 text-center">
+          <p className="text-gray-500 dark:text-gray-400">
+            Please sign in to continue with identity
+            verification.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const role = profile.role;
+
+
 
   /*
    * ------------------------------------------------------
@@ -426,8 +430,6 @@ export default function KycVerifyPage() {
 
             selfie_url: selfiePath,
 
-            verification_status:
-              'pending_verification',
           })
           .eq(
             'id',

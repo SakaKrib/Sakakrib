@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
+
 import {
   AlertCircle,
   Building2,
@@ -19,18 +20,14 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { useNav } from "@/context/NavContext";
 
 import PMSPlanSelector, {
   type PMSBillingCycle,
   type PMSPlanName,
-  type PMSPlan,
-  PMS_PLANS,
+  type PMSSubscriptionPlan,
 } from "./PMSPlanSelector";
-
-import {
-  initiatePMSPayment,
-} from "./pmsService";
-
+import ListingPaymentModal from "@/modals/ Listingpaymentmodal";
 /* ============================================================
  * DEBUG
  * ============================================================ */
@@ -74,15 +71,17 @@ interface PMSSubscription {
   plan_id: string;
   plan_name: string;
 
-  /**
-   * Number of properties/listings managed by PMS.
+  /*
+   * IMPORTANT:
    *
-   * This is NOT the number of units inside one property.
+   * This is the number of properties/listings allowed by the
+   * subscription. It is NOT the number of units inside one
+   * property.
    */
   max_listings: number | null;
 
-  /**
-   * Future/property-level unit entitlement.
+  /*
+   * Optional future/property-level unit entitlement.
    */
   max_units_per_listing: number | null;
 
@@ -109,10 +108,10 @@ interface PMSSubscription {
   cancelled_at?: string | null;
 }
 
-interface PMSUsage {
-  used: number;
-  limit: number | null;
-  remaining: number | null;
+interface PMSUnitCount {
+  unit_count: number;
+  max_units: number | null;
+  remaining_units: number | null;
 }
 
 interface PMSListing {
@@ -131,8 +130,11 @@ interface PMSListing {
   deactivated_at?: string | null;
 
   approval_status?: string;
+
   admin_review_note?: string | null;
+
   is_approved?: boolean;
+
   is_property_management?: boolean;
 }
 
@@ -175,9 +177,7 @@ function normalizePlanName(
  * RPC HELPERS
  * ============================================================ */
 
-function firstRow(
-  data: unknown,
-): RPCRow | null {
+function firstRow(data: unknown): RPCRow | null {
   if (Array.isArray(data)) {
     const first = data[0];
 
@@ -203,9 +203,7 @@ function firstRow(
   return null;
 }
 
-function rows(
-  data: unknown,
-): RPCRow[] {
+function rows(data: unknown): RPCRow[] {
   if (!Array.isArray(data)) {
     return [];
   }
@@ -382,6 +380,11 @@ function normalizeStatus(
       return "PAST_DUE";
 
     default:
+      debug(
+        "Unknown subscription status; defaulting to EXPIRED",
+        value,
+      );
+
       return "EXPIRED";
   }
 }
@@ -390,9 +393,7 @@ function normalizeStatus(
  * LISTING NORMALIZATION
  * ============================================================ */
 
-function normalizeListing(
-  row: RPCRow,
-): PMSListing | null {
+function normalizeListing(row: RPCRow): PMSListing | null {
   const id = stringValue(
     row.id ??
       row.listing_id ??
@@ -400,11 +401,7 @@ function normalizeListing(
   );
 
   if (!id) {
-    debug(
-      "Ignoring listing row without ID",
-      row,
-    );
-
+    debug("Ignoring listing row without an ID", row);
     return null;
   }
 
@@ -430,7 +427,7 @@ function normalizeListing(
         row.county ??
           row.listing_county ??
           row.property_county,
-      ),
+      ) || "Unknown county",
 
     price_kes: numberValue(
       row.price_kes ??
@@ -446,18 +443,13 @@ function normalizeListing(
     ),
 
     status:
-      nullableString(row.status) ??
-      undefined,
+      nullableString(row.status) ?? undefined,
 
     activated_at:
-      nullableString(
-        row.activated_at,
-      ) ?? undefined,
+      nullableString(row.activated_at) ?? undefined,
 
     deactivated_at:
-      nullableString(
-        row.deactivated_at,
-      ),
+      nullableString(row.deactivated_at),
 
     approval_status:
       nullableString(
@@ -476,9 +468,7 @@ function normalizeListing(
     is_approved:
       row.is_approved === undefined
         ? undefined
-        : booleanValue(
-            row.is_approved,
-          ),
+        : booleanValue(row.is_approved),
 
     is_property_management:
       row.is_property_management === undefined
@@ -497,6 +487,16 @@ function normalizeSubscription(
   row: RPCRow,
   role: PMSRole,
 ): PMSSubscription | null {
+  debug(
+    `Normalizing ${role} subscription`,
+    row,
+  );
+
+  /*
+   * Live RPCs may return subscription_id rather than id.
+   *
+   * Support both.
+   */
   const id = stringValue(
     row.id ??
       row.subscription_id,
@@ -504,7 +504,7 @@ function normalizeSubscription(
 
   if (!id) {
     debugError(
-      "Subscription row has no ID",
+      "Subscription row has neither id nor subscription_id",
       row,
     );
 
@@ -524,7 +524,23 @@ function normalizeSubscription(
         row.name,
     ) || "STARTER";
 
-  return {
+  const maxListings =
+    nullableNumber(
+      row.max_listings ??
+        row.max_properties ??
+        row.listing_limit ??
+        row.subscription_limit ??
+        row.max_allowed,
+    );
+
+  const maxUnitsPerListing =
+    nullableNumber(
+      row.max_units_per_listing ??
+        row.units_per_listing ??
+        row.max_units,
+    );
+
+  const normalized: PMSSubscription = {
     id,
 
     owner_id: ownerId,
@@ -538,20 +554,10 @@ function normalizeSubscription(
     plan_name: planName,
 
     max_listings:
-      nullableNumber(
-        row.max_listings ??
-          row.max_properties ??
-          row.listing_limit ??
-          row.subscription_limit ??
-          row.max_allowed,
-      ),
+      maxListings,
 
     max_units_per_listing:
-      nullableNumber(
-        row.max_units_per_listing ??
-          row.units_per_listing ??
-          row.max_units,
-      ),
+      maxUnitsPerListing,
 
     billing_cycle:
       normalizeBillingCycle(
@@ -620,16 +626,25 @@ function normalizeSubscription(
       ),
 
     cancel_at_period_end:
-      booleanValue(
-        row.cancel_at_period_end,
-        false,
-      ),
+      row.cancel_at_period_end ===
+      undefined
+        ? false
+        : booleanValue(
+            row.cancel_at_period_end,
+          ),
 
     cancelled_at:
       nullableString(
         row.cancelled_at,
       ),
   };
+
+  debug(
+    `Normalized ${role} subscription`,
+    normalized,
+  );
+
+  return normalized;
 }
 
 /* ============================================================
@@ -652,8 +667,8 @@ export default function PMSSubscriptionPage() {
     selectedPlan,
     setSelectedPlan,
   ] =
-    useState<PMSPlanName>(
-      "STARTER",
+    useState<PMSPlanName | null>(
+      null,
     );
 
   const [
@@ -665,14 +680,14 @@ export default function PMSSubscriptionPage() {
     );
 
   const [
-    usage,
-    setUsage,
+    unitCount,
+    setUnitCount,
   ] =
-    useState<PMSUsage>({
-      used: 0,
-      limit: null,
-      remaining: null,
-    });
+    useState<PMSUnitCount | null>(
+      null,
+    );
+
+  const {navigate }= useNav()  
 
   const [
     listings,
@@ -704,24 +719,7 @@ export default function PMSSubscriptionPage() {
       null,
     );
 
-  const [
-    paymentLoading,
-    setPaymentLoading,
-  ] =
-    useState(false);
-
-  const [
-    paymentMessage,
-    setPaymentMessage,
-  ] =
-    useState<string | null>(
-      null,
-    );
-
-  const [
-    error,
-    setError,
-  ] =
+  const [error, setError] =
     useState<string | null>(
       null,
     );
@@ -735,21 +733,41 @@ export default function PMSSubscriptionPage() {
     );
 
   /* ==========================================================
+   * PAYMENT MODAL OPEN
+   * ========================================================== */
+
+    const [paymentPlan, setPaymentPlan] =
+      useState<PMSSubscriptionPlan | null>(null);
+
+    const [paymentCycle, setPaymentCycle] =
+      useState<PMSBillingCycle | null>(null);
+
+    const [showPaymentModal, setShowPaymentModal] =
+      useState(false);
+
+  /* ==========================================================
    * LOAD PROFILE
    * ========================================================== */
 
   const loadProfile =
     useCallback(
       async (): Promise<PMSProfile> => {
+        debug(
+          "Loading authenticated user",
+        );
+
         const {
-          data: {
-            user,
-          },
+          data: { user },
           error: userError,
         } =
           await supabase.auth.getUser();
 
         if (userError) {
+          debugError(
+            "supabase.auth.getUser failed",
+            userError,
+          );
+
           throw userError;
         }
 
@@ -770,18 +788,30 @@ export default function PMSSubscriptionPage() {
             .single();
 
         if (profileError) {
+          debugError(
+            "Failed to load profile",
+            profileError,
+          );
+
           throw profileError;
         }
 
-        const normalizedRole =
-          normalizeRole(
-            profile?.role,
-          );
+        debug(
+          "Profile returned",
+          profile,
+        );
+
+        const profileRole =
+          String(
+            profile?.role ?? "",
+          )
+            .trim()
+            .toLowerCase();
 
         if (
-          normalizedRole !==
+          profileRole !==
             "landlord" &&
-          normalizedRole !==
+          profileRole !==
             "real_estate"
         ) {
           throw new Error(
@@ -791,141 +821,26 @@ export default function PMSSubscriptionPage() {
 
         return {
           id: user.id,
-          role: normalizedRole,
+          role:
+            normalizeRole(
+              profileRole,
+            ),
         };
       },
       [],
     );
 
   /* ==========================================================
-   * ENRICH LISTINGS WITH ADMIN REVIEW DATA
-   * ========================================================== */
-
-  const enrichListings =
-    useCallback(
-      async (
-        source: PMSListing[],
-      ): Promise<PMSListing[]> => {
-        if (source.length === 0) {
-          return [];
-        }
-
-        const ids =
-          source.map(
-            (listing) =>
-              listing.id,
-          );
-
-        const {
-          data,
-          error: listingError,
-        } =
-          await supabase
-            .from("listings")
-            .select(
-              [
-                "id",
-                "county",
-                "approval_status",
-                "admin_review_note",
-                "is_approved",
-                "is_property_management",
-                "is_published",
-              ].join(", "),
-            )
-            .in("id", ids);
-
-        if (listingError) {
-          debugError(
-            "Listing enrichment failed",
-            listingError,
-          );
-
-          return source;
-        }
-
-        const metadata =
-          new Map<
-            string,
-            RPCRow
-          >(
-            (data ?? []).map(
-              (row) => [
-                String(row.id),
-                row as RPCRow,
-              ],
-            ),
-          );
-
-        return source.map(
-          (listing) => {
-            const extra =
-              metadata.get(
-                listing.id,
-              );
-
-            if (!extra) {
-              return listing;
-            }
-
-            return {
-              ...listing,
-
-              county:
-                stringValue(
-                  extra.county,
-                ) ||
-                listing.county,
-
-              approval_status:
-                nullableString(
-                  extra.approval_status,
-                ) ??
-                listing.approval_status,
-
-              admin_review_note:
-                nullableString(
-                  extra.admin_review_note,
-                ) ??
-                listing.admin_review_note,
-
-              is_approved:
-                extra.is_approved ===
-                undefined
-                  ? listing.is_approved
-                  : booleanValue(
-                      extra.is_approved,
-                    ),
-
-              is_property_management:
-                extra.is_property_management ===
-                undefined
-                  ? listing.is_property_management
-                  : booleanValue(
-                      extra.is_property_management,
-                    ),
-
-              is_published:
-                extra.is_published ===
-                undefined
-                  ? listing.is_published
-                  : booleanValue(
-                      extra.is_published,
-                    ),
-            };
-          },
-        );
-      },
-      [],
-    );
-
-  /* ==========================================================
-   * LOAD LANDLORD PMS
+   * LOAD LANDLORD PMS DATA
    * ========================================================== */
 
   const loadLandlordPMS =
     useCallback(
       async () => {
+        debug(
+          "Loading landlord PMS RPCs",
+        );
+
         const [
           subscriptionResult,
           unitCountResult,
@@ -949,6 +864,26 @@ export default function PMSSubscriptionPage() {
               "get_my_available_pms_listings",
             ),
           ]);
+
+        debug(
+          "get_my_pms_subscription response",
+          subscriptionResult,
+        );
+
+        debug(
+          "get_my_pms_unit_count response",
+          unitCountResult,
+        );
+
+        debug(
+          "get_my_pms_listings response",
+          listingsResult,
+        );
+
+        debug(
+          "get_my_available_pms_listings response",
+          availableListingsResult,
+        );
 
         if (
           subscriptionResult.error
@@ -974,80 +909,85 @@ export default function PMSSubscriptionPage() {
           throw availableListingsResult.error;
         }
 
-        const normalizedSubscription =
-          normalizeSubscription(
-            firstRow(
-              subscriptionResult.data,
-            ) ?? {},
-            "landlord",
-          );
-
-        /*
-         * get_my_pms_subscription() returns no row
-         * when the landlord has no current PMS subscription.
-         */
-        const actualSubscription =
+        const rawSubscription =
           firstRow(
             subscriptionResult.data,
-          )
-            ? normalizedSubscription
+          );
+
+        const normalizedSubscription =
+          rawSubscription
+            ? normalizeSubscription(
+                rawSubscription,
+                "landlord",
+              )
             : null;
 
         setSubscription(
-          actualSubscription,
+          normalizedSubscription,
         );
 
-        if (actualSubscription) {
+        if (
+          normalizedSubscription
+        ) {
+          setSelectedBillingCycle(
+            normalizedSubscription.billing_cycle,
+          );
+
           setSelectedPlan(
             normalizePlanName(
-              actualSubscription.plan_name,
-            ) ?? "STARTER",
-          );
-
-          setSelectedBillingCycle(
-            actualSubscription.billing_cycle,
+              normalizedSubscription.plan_name,
+            ),
           );
         } else {
-          setSelectedPlan(
-            "STARTER",
-          );
-
           setSelectedBillingCycle(
             "MONTHLY",
+          );
+
+          setSelectedPlan(
+            null,
           );
         }
 
         /*
-         * IMPORTANT:
-         *
-         * get_my_pms_unit_count() returns INTEGER.
-         * It does NOT return { unit_count, max_units }.
+         * The landlord unit-count RPC may return an integer.
          */
-        const used =
+        const parsedUnitCount =
           numberValue(
             unitCountResult.data,
           );
 
-        const max =
-          actualSubscription
+        /*
+         * The PMS property/listing entitlement comes from
+         * max_listings.
+         */
+        const maxListings =
+          normalizedSubscription
             ?.max_listings ??
           null;
 
-        setUsage({
-          used,
+        const normalizedUnitCount: PMSUnitCount =
+          {
+            unit_count:
+              parsedUnitCount,
 
-          limit: max,
+            max_units:
+              maxListings,
 
-          remaining:
-            max === null
-              ? null
-              : Math.max(
-                  0,
-                  max - used,
-                ),
-        });
+            remaining_units:
+              maxListings === null
+                ? null
+                : Math.max(
+                    0,
+                    maxListings -
+                      parsedUnitCount,
+                  ),
+          };
 
-        const rawListings =
+        setUnitCount(
+          normalizedUnitCount,
+        );
+
+        const normalizedListings =
           rows(
             listingsResult.data,
           )
@@ -1061,7 +1001,11 @@ export default function PMSSubscriptionPage() {
                 listing !== null,
             );
 
-        const rawAvailable =
+        setListings(
+          normalizedListings,
+        );
+
+        const normalizedAvailableListings =
           rows(
             availableListingsResult.data,
           )
@@ -1075,33 +1019,15 @@ export default function PMSSubscriptionPage() {
                 listing !== null,
             );
 
-        const [
-          enrichedListings,
-          enrichedAvailable,
-        ] =
-          await Promise.all([
-            enrichListings(
-              rawListings,
-            ),
-
-            enrichListings(
-              rawAvailable,
-            ),
-          ]);
-
-        setListings(
-          enrichedListings,
-        );
-
         setAvailableListings(
-          enrichedAvailable,
+          normalizedAvailableListings,
         );
       },
-      [enrichListings],
+      [],
     );
 
   /* ==========================================================
-   * LOAD REAL ESTATE PMS
+   * LOAD REAL ESTATE DATA
    * ========================================================== */
 
   const loadRealEstatePMS =
@@ -1109,6 +1035,11 @@ export default function PMSSubscriptionPage() {
       async (
         userId: string,
       ) => {
+        debug(
+          "Loading real-estate PMS data",
+          { userId },
+        );
+
         const [
           subscriptionResult,
           entitlementResult,
@@ -1116,10 +1047,6 @@ export default function PMSSubscriptionPage() {
           await Promise.all([
             supabase.rpc(
               "get_current_real_estate_subscription",
-              {
-                p_real_estate_id:
-                  userId,
-              },
             ),
 
             supabase.rpc(
@@ -1148,7 +1075,7 @@ export default function PMSSubscriptionPage() {
             subscriptionResult.data,
           );
 
-        const actualSubscription =
+        const normalizedSubscription =
           rawSubscription
             ? normalizeSubscription(
                 rawSubscription,
@@ -1157,26 +1084,36 @@ export default function PMSSubscriptionPage() {
             : null;
 
         setSubscription(
-          actualSubscription,
+          normalizedSubscription,
         );
 
-        if (actualSubscription) {
-          setSelectedBillingCycle(
-            actualSubscription.billing_cycle,
-          );
-        }
+        setSelectedBillingCycle(
+          normalizedSubscription
+            ?.billing_cycle ??
+            "MONTHLY",
+        );
 
+        /*
+         * The landlord selector must not be used for real-estate
+         * subscriptions.
+         */
+        setSelectedPlan(null);
+
+        /*
+         * Real-estate entitlement is JSONB.
+         */
         const entitlement =
           firstRow(
             entitlementResult.data,
           );
 
+        debug(
+          "Real-estate entitlement",
+          entitlement,
+        );
+
         if (!entitlement) {
-          setUsage({
-            used: 0,
-            limit: null,
-            remaining: null,
-          });
+          setUnitCount(null);
         } else {
           const used =
             numberValue(
@@ -1195,12 +1132,12 @@ export default function PMSSubscriptionPage() {
                 entitlement.max_allowed,
             );
 
-          setUsage({
-            used,
+          setUnitCount({
+            unit_count: used,
 
-            limit: max,
+            max_units: max,
 
-            remaining:
+            remaining_units:
               max === null
                 ? null
                 : Math.max(
@@ -1217,7 +1154,7 @@ export default function PMSSubscriptionPage() {
     );
 
   /* ==========================================================
-   * LOAD EVERYTHING
+   * LOAD ALL PMS DATA
    * ========================================================== */
 
   const loadSubscription =
@@ -1245,18 +1182,12 @@ export default function PMSSubscriptionPage() {
           }
         } catch (err) {
           debugError(
-            "Failed to load PMS",
+            "Failed to load PMS subscription",
             err,
           );
 
           setSubscription(null);
-
-          setUsage({
-            used: 0,
-            limit: null,
-            remaining: null,
-          });
-
+          setUnitCount(null);
           setListings([]);
           setAvailableListings([]);
 
@@ -1307,91 +1238,6 @@ export default function PMSSubscriptionPage() {
     );
 
   /* ==========================================================
-   * PAYMENT
-   * ========================================================== */
-
-  const handleProceedToPayment =
-    useCallback(
-      async () => {
-        if (role !== "landlord") {
-          setActionError(
-            "PMS subscription checkout is available for landlord accounts.",
-          );
-
-          return;
-        }
-
-        const plan =
-          PMS_PLANS.find(
-            (item) =>
-              item.name ===
-              selectedPlan,
-          );
-
-        if (!plan) {
-          setActionError(
-            "The selected PMS plan could not be found.",
-          );
-
-          return;
-        }
-
-        try {
-          setPaymentLoading(true);
-          setActionError(null);
-          setPaymentMessage(null);
-
-          const result =
-            await initiatePMSPayment({
-              plan_id:
-                plan.id,
-
-              billing_cycle:
-                selectedBillingCycle,
-            });
-
-          debug(
-            "PMS payment initiated",
-            result,
-          );
-
-          setPaymentMessage(
-            result.customer_message ||
-              result.message ||
-              `M-Pesa payment request sent for ${plan.name}. Check your phone and complete the payment.`,
-          );
-
-          /*
-           * The subscription should only become ACTIVE
-           * after the payment callback/finalizer succeeds.
-           *
-           * Do not activate it locally.
-           */
-          await loadSubscription();
-        } catch (err) {
-          debugError(
-            "PMS payment initiation failed",
-            err,
-          );
-
-          setActionError(
-            err instanceof Error
-              ? err.message
-              : "Unable to initiate PMS payment.",
-          );
-        } finally {
-          setPaymentLoading(false);
-        }
-      },
-      [
-        role,
-        selectedPlan,
-        selectedBillingCycle,
-        loadSubscription,
-      ],
-    );
-
-  /* ==========================================================
    * ADD PROPERTY
    * ========================================================== */
 
@@ -1410,7 +1256,9 @@ export default function PMSSubscriptionPage() {
           return;
         }
 
-        if (!subscription?.id) {
+        if (
+          !subscription?.id
+        ) {
           setActionError(
             "No PMS subscription found.",
           );
@@ -1431,11 +1279,20 @@ export default function PMSSubscriptionPage() {
           return;
         }
 
+        const used =
+          Number(
+            unitCount?.unit_count ??
+              listings.length,
+          );
+
+        const max =
+          unitCount?.max_units ??
+          subscription.max_listings ??
+          null;
+
         if (
-          usage.limit !==
-            null &&
-          usage.used >=
-            usage.limit
+          max !== null &&
+          used >= max
         ) {
           setActionError(
             "You have reached your PMS property limit. Upgrade your plan to add another property.",
@@ -1463,6 +1320,11 @@ export default function PMSSubscriptionPage() {
               },
             );
 
+          debug(
+            "add_listing_to_pms response",
+            result,
+          );
+
           if (result.error) {
             throw result.error;
           }
@@ -1480,18 +1342,22 @@ export default function PMSSubscriptionPage() {
               : "Unable to add property to PMS.",
           );
         } finally {
-          setProcessingListingId(
-            null,
-          );
+          setProcessingListingId(null);
         }
       },
       [
         role,
         subscription,
-        usage,
+        unitCount,
+        listings.length,
         loadSubscription,
       ],
     );
+
+    const handleGoToDashboard = () => {
+      navigate("pms-dashboard");
+    };
+    
 
   /* ==========================================================
    * REMOVE PROPERTY
@@ -1512,7 +1378,9 @@ export default function PMSSubscriptionPage() {
           return;
         }
 
-        if (!subscription?.id) {
+        if (
+          !subscription?.id
+        ) {
           setActionError(
             "No PMS subscription found.",
           );
@@ -1548,6 +1416,11 @@ export default function PMSSubscriptionPage() {
               },
             );
 
+          debug(
+            "remove_listing_from_pms response",
+            result,
+          );
+
           if (result.error) {
             throw result.error;
           }
@@ -1565,9 +1438,7 @@ export default function PMSSubscriptionPage() {
               : "Unable to remove property from PMS.",
           );
         } finally {
-          setProcessingListingId(
-            null,
-          );
+          setProcessingListingId(null);
         }
       },
       [
@@ -1576,28 +1447,41 @@ export default function PMSSubscriptionPage() {
         loadSubscription,
       ],
     );
+    
 
   /* ==========================================================
    * DERIVED VALUES
    * ========================================================== */
 
-  const maxListings =
-    usage.limit;
+  const usedUnits = Number(
+    unitCount?.unit_count ??
+      listings.length ??
+      0,
+  );
 
-  const usedListings =
-    usage.used;
+  const maxUnits =
+    unitCount?.max_units ??
+    subscription?.max_listings ??
+    null;
 
-  const remainingListings =
-    usage.remaining;
+  const remainingUnits =
+    unitCount?.remaining_units ??
+    (maxUnits === null
+      ? null
+      : Math.max(
+          0,
+          maxUnits -
+            usedUnits,
+        ));
 
   const usagePercentage =
-    maxListings === null
+    maxUnits === null
       ? null
-      : maxListings > 0
+      : maxUnits > 0
         ? Math.min(
             100,
-            (usedListings /
-              maxListings) *
+            (usedUnits /
+              maxUnits) *
               100,
           )
         : 100;
@@ -1612,24 +1496,12 @@ export default function PMSSubscriptionPage() {
     );
 
   const limitReached =
-    maxListings !== null &&
-    usedListings >=
-      maxListings;
+    maxUnits !== null &&
+    usedUnits >= maxUnits;
 
   const currentPlanName =
     normalizePlanName(
       subscription?.plan_name,
-    );
-
-  const selectedPlanObject =
-    useMemo(
-      () =>
-        PMS_PLANS.find(
-          (plan) =>
-            plan.name ===
-            selectedPlan,
-        ) ?? null,
-      [selectedPlan],
     );
 
   const planDescription =
@@ -1643,7 +1515,8 @@ export default function PMSSubscriptionPage() {
         "real_estate"
       ) {
         switch (
-          subscription.plan_name.toUpperCase()
+          subscription.plan_name
+            .toUpperCase()
         ) {
           case "STARTER":
             return "For real estate professionals starting with a growing listing portfolio.";
@@ -1663,7 +1536,8 @@ export default function PMSSubscriptionPage() {
       }
 
       switch (
-        subscription.plan_name.toUpperCase()
+        subscription.plan_name
+          .toUpperCase()
       ) {
         case "STARTER":
           return "For landlords starting with a small property portfolio.";
@@ -1674,6 +1548,9 @@ export default function PMSSubscriptionPage() {
         case "PRO":
           return "For professional landlords with larger portfolios.";
 
+        case "ENTERPRISE":
+          return "For larger property-management businesses.";
+
         default:
           return "Your current Saka Crib PMS subscription.";
       }
@@ -1682,17 +1559,75 @@ export default function PMSSubscriptionPage() {
       role,
     ]);
 
+  const handleProceedToPayment = (
+      plan: PMSSubscriptionPlan,
+      cycle: PMSBillingCycle
+    ) => {
+      console.log("Proceeding to payment:", {
+        plan,
+        cycle,
+      });
+
+      setPaymentPlan(plan);
+      setPaymentCycle(cycle);
+      setShowPaymentModal(true);
+    };
+
+    
+
+    
+
+
+  /* ============================================================
+ * LANDLORD PLAN SELECTOR
+ * ============================================================ */
+
+const handlePlanChange = useCallback(
+  (plan: PMSSubscriptionPlan) => {
+    setSelectedPlan(
+      normalizePlanName(plan.name),
+    );
+  },
+  [],
+);
+
+const landlordPlanSelector =
+  role === "landlord" ? (
+    <PMSPlanSelector
+        role="landlord"
+        selectedPlanName={
+          selectedPlan ??
+          currentPlanName ??
+          "STARTER"
+        }
+        billingCycle={selectedBillingCycle}
+        currentPlanName={currentPlanName}
+        currentBillingCycle={
+          subscription?.billing_cycle ?? null
+        }
+        onPlanChange={handlePlanChange}
+        onBillingCycleChange={
+          setSelectedBillingCycle
+        }
+        onProceedToPayment={handleProceedToPayment}
+        onGoToDashboard={handleGoToDashboard}
+      />
+      ) : null;
+
+
   /* ==========================================================
    * LOADING
    * ========================================================== */
 
+
   if (loading) {
     return (
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="animate-pulse space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <div className="h-7 w-64 rounded bg-gray-200 dark:bg-gray-800" />
+
               <div className="mt-2 h-4 w-96 max-w-full rounded bg-gray-200 dark:bg-gray-800" />
             </div>
 
@@ -1713,7 +1648,7 @@ export default function PMSSubscriptionPage() {
 
   if (error) {
     return (
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="card overflow-hidden border-red-200 dark:border-red-900">
           <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
             <p className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
@@ -1753,6 +1688,10 @@ export default function PMSSubscriptionPage() {
     );
   }
 
+  /* ==========================================================
+   * ROLE NOT READY
+   * ========================================================== */
+
   if (!role) {
     return null;
   }
@@ -1763,37 +1702,48 @@ export default function PMSSubscriptionPage() {
 
   if (!subscription) {
     return (
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <PageHeader
-          role={role}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-        />
+      <section className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
+              <Building2 className="h-6 w-6 text-brand-600" />
 
-        {actionError && (
-          <ActionError
-            message={actionError}
-            onDismiss={() =>
-              setActionError(null)
-            }
-          />
-        )}
+              Property Management
+            </h1>
 
-        {paymentMessage && (
-          <PaymentMessage
-            message={paymentMessage}
-            onDismiss={() =>
-              setPaymentMessage(null)
-            }
-          />
-        )}
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {role ===
+              "landlord"
+                ? "Manage your rental properties with Saka Crib PMS."
+                : "Manage your real estate listing portfolio with SakaHao."}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              void handleRefresh();
+            }}
+            disabled={refreshing}
+            className="btn-secondary"
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+
+            Refresh
+          </button>
+        </div>
 
         <div className="card overflow-hidden">
           <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
             <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
               <Crown className="h-4 w-4" />
 
-              {role === "landlord"
+              {role ===
+              "landlord"
                 ? "Landlord PMS Subscription"
                 : "Real Estate Subscription"}
             </p>
@@ -1807,7 +1757,8 @@ export default function PMSSubscriptionPage() {
 
               <h2 className="mt-5 text-xl font-bold text-gray-900 dark:text-white">
                 Choose your{" "}
-                {role === "landlord"
+                {role ===
+                "landlord"
                   ? "PMS"
                   : "subscription"}{" "}
                 plan
@@ -1816,54 +1767,46 @@ export default function PMSSubscriptionPage() {
               <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-500 dark:text-gray-400">
                 Select the plan that best
                 matches your{" "}
-                {role === "landlord"
+                {role ===
+                "landlord"
                   ? "property portfolio"
                   : "real estate listing portfolio"}
                 .
               </p>
             </div>
 
-            {role === "landlord" ? (
-              <>
-                <PMSPlanSelector
-                  selectedPlan={
-                    selectedPlan
-                  }
-                  billingCycle={
-                    selectedBillingCycle
-                  }
-                  onPlanChange={
-                    setSelectedPlan
-                  }
-                  onBillingCycleChange={
-                    setSelectedBillingCycle
-                  }
-                  disabled={
-                    paymentLoading
-                  }
-                />
-
-                <PlanCheckoutBar
-                  plan={
-                    selectedPlanObject
-                  }
-                  billingCycle={
-                    selectedBillingCycle
-                  }
-                  loading={
-                    paymentLoading
-                  }
-                  onCheckout={() => {
-                    void handleProceedToPayment();
-                  }}
-                />
-              </>
+            {role ===
+            "landlord" ? (
+              landlordPlanSelector
             ) : (
               <div className="rounded-xl border border-brand-200 bg-brand-50 p-5 text-center dark:border-brand-800 dark:bg-brand-950/20">
                 <p className="text-sm text-brand-700 dark:text-brand-300">
                   No active real estate
-                  subscription was returned
-                  by the subscription service.
+                  subscription was returned by
+                  the subscription service.
+                </p>
+
+                <p className="mt-2 text-xs text-brand-600 dark:text-brand-400">
+                  Use the real-estate subscription
+                  checkout flow to activate a plan.
+                </p>
+              </div>
+            )}
+
+            {role ===
+              "landlord" && (
+              <div className="mt-6 rounded-xl border border-brand-200 bg-brand-50 p-4 text-center dark:border-brand-800 dark:bg-brand-950/20">
+                <p className="text-sm text-brand-700 dark:text-brand-300">
+                  <span className="font-semibold">
+                    {selectedPlan ??
+                      "No plan selected"}
+                  </span>{" "}
+                  selected —{" "}
+                  {selectedBillingCycle ===
+                  "MONTHLY"
+                    ? "monthly"
+                    : "annual"}{" "}
+                  billing.
                 </p>
               </div>
             )}
@@ -1873,39 +1816,81 @@ export default function PMSSubscriptionPage() {
     );
   }
 
-  /* ==========================================================
+  /* ============================================================
    * MAIN DASHBOARD
-   * ========================================================== */
+   * ============================================================ */
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <PageHeader
-        role={role}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-      />
+    <section className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
+      {/* HEADER */}
+
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
+            <Building2 className="h-6 w-6 text-brand-600" />
+
+            Property Management
+          </h1>
+
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {role ===
+            "landlord"
+              ? "Manage your PMS subscription, property usage, and managed properties."
+              : "Manage your real estate subscription and listing entitlement."}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            void handleRefresh();
+          }}
+          disabled={refreshing}
+          className="btn-secondary"
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${
+              refreshing
+                ? "animate-spin"
+                : ""
+            }`}
+          />
+
+          Refresh
+        </button>
+      </div>
+
+      {/* ACTION ERROR */}
 
       {actionError && (
-        <ActionError
-          message={actionError}
-          onDismiss={() =>
-            setActionError(null)
-          }
-        />
+        <div className="card mb-6 overflow-hidden border-red-200 dark:border-red-900">
+          <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+            <p className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
+              <AlertCircle className="h-4 w-4" />
+
+              PMS Action Failed
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-red-700 dark:text-red-400">
+              {actionError}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActionError(null);
+              }}
+              className="btn-secondary shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
 
-      {paymentMessage && (
-        <PaymentMessage
-          message={paymentMessage}
-          onDismiss={() =>
-            setPaymentMessage(null)
-          }
-        />
-      )}
-
-      {/* ======================================================
-       * STATUS
-       * ====================================================== */}
+      {/* PENDING PAYMENT */}
 
       {subscription.status ===
         "PENDING_PAYMENT" && (
@@ -1914,11 +1899,21 @@ export default function PMSSubscriptionPage() {
             <Clock3 className="h-4 w-4" />
           }
           title="Payment Pending"
-          heading="Complete your PMS payment"
-          description="Complete the payment request sent to your phone. The subscription will only become active after the payment callback succeeds."
+          heading={`Complete your ${
+            role === "landlord"
+              ? "PMS"
+              : "subscription"
+          } payment`}
+          description={`Complete your payment to activate your ${
+            role === "landlord"
+              ? "PMS management"
+              : "real estate subscription"
+          }.`}
           tone="amber"
         />
       )}
+
+      {/* PAST DUE */}
 
       {subscription.status ===
         "PAST_DUE" && (
@@ -1928,59 +1923,12 @@ export default function PMSSubscriptionPage() {
           }
           title="Payment Past Due"
           heading="Your subscription payment is past due"
-          description="Complete payment to keep your subscription active."
+          description="Please complete payment to keep your subscription active."
           tone="amber"
         />
       )}
 
-      {subscription.status ===
-        "GRACE_PERIOD" && (
-        <StatusNotice
-          icon={
-            <Clock3 className="h-4 w-4" />
-          }
-          title="Grace Period"
-          heading="Your subscription is in the grace period"
-          description={`Renew before ${
-            subscription.grace_period_end
-              ? formatDate(
-                  subscription.grace_period_end,
-                )
-              : "the grace period ends"
-          } to maintain PMS access.`}
-          tone="amber"
-        />
-      )}
-
-      {subscription.status ===
-        "EXPIRED" && (
-        <StatusNotice
-          icon={
-            <ShieldAlert className="h-4 w-4" />
-          }
-          title="Subscription Expired"
-          heading="Your subscription has expired"
-          description="Select a plan below to start a new PMS subscription."
-          tone="red"
-        />
-      )}
-
-      {subscription.status ===
-        "CANCELLED" && (
-        <StatusNotice
-          icon={
-            <ShieldAlert className="h-4 w-4" />
-          }
-          title="Subscription Cancelled"
-          heading="Your subscription has been cancelled"
-          description="Select a plan below if you want to start a new PMS subscription."
-          tone="gray"
-        />
-      )}
-
-      {/* ======================================================
-       * CURRENT SUBSCRIPTION
-       * ====================================================== */}
+      {/* CURRENT SUBSCRIPTION */}
 
       <div className="card mb-6 overflow-hidden">
         <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
@@ -1988,7 +1936,8 @@ export default function PMSSubscriptionPage() {
             <Crown className="h-4 w-4" />
 
             Current{" "}
-            {role === "landlord"
+            {role ===
+            "landlord"
               ? "PMS"
               : "Real Estate"}{" "}
             Subscription
@@ -2030,9 +1979,7 @@ export default function PMSSubscriptionPage() {
             </div>
           </div>
 
-          {/* ==================================================
-           * LANDLORD PLAN SELECTOR
-           * ================================================== */}
+          {/* LANDLORD PLAN SELECTOR */}
 
           {role ===
             "landlord" && (
@@ -2043,73 +1990,48 @@ export default function PMSSubscriptionPage() {
                 </h3>
 
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Select a plan and billing
-                  cycle to upgrade, renew,
-                  or change your PMS
-                  subscription.
+                  Select a plan to compare
+                  your current PMS subscription
+                  with the available landlord
+                  plans.
                 </p>
               </div>
 
-              <PMSPlanSelector
-                selectedPlan={
-                  selectedPlan
-                }
-                billingCycle={
-                  selectedBillingCycle
-                }
-                currentPlan={
-                  currentPlanName
-                }
-                currentBillingCycle={
-                  subscription.billing_cycle
-                }
-                onPlanChange={
-                  setSelectedPlan
-                }
-                onBillingCycleChange={
-                  setSelectedBillingCycle
-                }
-                disabled={
-                  paymentLoading
-                }
-              />
+              {landlordPlanSelector}
 
-              {(
-                selectedPlan !==
+              {selectedPlan !==
                   currentPlanName ||
-                selectedBillingCycle !==
-                  subscription.billing_cycle
-              ) && (
-                <PlanCheckoutBar
-                  plan={
-                    selectedPlanObject
-                  }
-                  billingCycle={
-                    selectedBillingCycle
-                  }
-                  loading={
-                    paymentLoading
-                  }
-                  onCheckout={() => {
-                    void handleProceedToPayment();
-                  }}
-                  label="Continue to Payment"
-                />
-              )}
+              selectedBillingCycle !==
+                  subscription.billing_cycle ? (
+                <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-950/20">
+                  <p className="text-sm font-semibold text-brand-700 dark:text-brand-300">
+                    New selection
+                  </p>
 
-              {selectedPlan ===
-                currentPlanName &&
-                selectedBillingCycle ===
-                  subscription.billing_cycle && (
+                  <p className="mt-1 text-sm text-brand-600 dark:text-brand-400">
+                    {selectedPlan ??
+                      "No plan selected"}{" "}
+                    —{" "}
+                    {selectedBillingCycle ===
+                    "MONTHLY"
+                      ? "Monthly"
+                      : "Annual"}{" "}
+                    billing
+                  </p>
+                </div>
+              ) : (
                 <div className="mt-5 rounded-xl border border-success-200 bg-success-50 p-4 dark:border-success-800 dark:bg-success-950/20">
                   <p className="flex items-center gap-2 text-sm font-semibold text-success-700 dark:text-success-400">
                     <CheckCircle2 className="h-4 w-4" />
+
                     Current plan selected
                   </p>
                 </div>
               )}
             </div>
           )}
+
+          {/* REAL ESTATE NOTICE */}
 
           {role ===
             "real_estate" && (
@@ -2119,17 +2041,15 @@ export default function PMSSubscriptionPage() {
               </p>
 
               <p className="mt-1 text-sm text-brand-600 dark:text-brand-400">
-                Real estate subscriptions
-                use the separate REAL_ESTATE
-                audience and entitlement
+                Your real-estate subscription
+                uses the separate REAL_ESTATE
+                plan audience and entitlement
                 system.
               </p>
             </div>
           )}
 
-          {/* ==================================================
-           * DETAILS
-           * ================================================== */}
+          {/* SUBSCRIPTION DETAILS */}
 
           <div className="mt-6 grid gap-4 border-t border-gray-200 pt-6 dark:border-gray-800 sm:grid-cols-2 lg:grid-cols-4">
             <InfoItem
@@ -2154,7 +2074,8 @@ export default function PMSSubscriptionPage() {
 
             <InfoItem
               label={
-                role === "landlord"
+                role ===
+                "landlord"
                   ? "Property limit"
                   : "Listing limit"
               }
@@ -2163,7 +2084,8 @@ export default function PMSSubscriptionPage() {
                 null
                   ? "Unlimited"
                   : `${subscription.max_listings} ${
-                      role === "landlord"
+                      role ===
+                      "landlord"
                         ? "properties"
                         : "listings"
                     }`
@@ -2182,33 +2104,85 @@ export default function PMSSubscriptionPage() {
         </div>
       </div>
 
-      {/* ======================================================
-       * USAGE
-       * ====================================================== */}
+      {/* GRACE PERIOD */}
+
+      {subscription.status ===
+        "GRACE_PERIOD" && (
+        <StatusNotice
+          icon={
+            <Clock3 className="h-4 w-4" />
+          }
+          title="Grace Period"
+          heading="Your subscription is in the grace period"
+          description={`Renew before ${
+            subscription.grace_period_end
+              ? formatDate(
+                  subscription.grace_period_end,
+                )
+              : "the grace period ends"
+          } to maintain access.`}
+          tone="amber"
+        />
+      )}
+
+      {/* EXPIRED */}
+
+      {subscription.status ===
+        "EXPIRED" && (
+        <StatusNotice
+          icon={
+            <ShieldAlert className="h-4 w-4" />
+          }
+          title="Subscription Expired"
+          heading="Subscription expired"
+          description="Select a new plan above to review the subscription options available to your account."
+          tone="red"
+        />
+      )}
+
+      {/* CANCELLED */}
+
+      {subscription.status ===
+        "CANCELLED" && (
+        <StatusNotice
+          icon={
+            <ShieldAlert className="h-4 w-4" />
+          }
+          title="Subscription Cancelled"
+          heading="Subscription cancelled"
+          description="Select a plan above to review the subscription options available to your account."
+          tone="gray"
+        />
+      )}
+
+      {/* USAGE */}
 
       <div className="card mb-6 overflow-hidden">
         <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                {role === "landlord"
+                {role ===
+                "landlord"
                   ? "PMS Property Usage"
                   : "Listing Usage"}
               </p>
 
               <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                {role === "landlord"
+                {role ===
+                "landlord"
                   ? "Properties currently managed by PMS."
-                  : "Listings counted against your real estate entitlement."}
+                  : "Listings counted against your real estate subscription entitlement."}
               </p>
             </div>
 
             <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-              {usedListings}
-              {maxListings ===
+              {usedUnits}
+
+              {maxUnits ===
               null
                 ? " / Unlimited"
-                : ` / ${maxListings}`}
+                : ` / ${maxUnits}`}
             </span>
           </div>
         </div>
@@ -2236,9 +2210,9 @@ export default function PMSSubscriptionPage() {
 
               <div className="mt-3 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                 <span>
-                  {remainingListings ??
+                  {remainingUnits ??
                     0}{" "}
-                  {remainingListings ===
+                  {remainingUnits ===
                   1
                     ? role ===
                       "landlord"
@@ -2261,14 +2235,15 @@ export default function PMSSubscriptionPage() {
             </>
           )}
 
-          {maxListings ===
+          {maxUnits ===
             null && (
             <div className="flex items-center gap-2 rounded-lg bg-success-50 p-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400">
               <CheckCircle2 className="h-4 w-4" />
 
               <span>
                 Unlimited{" "}
-                {role === "landlord"
+                {role ===
+                "landlord"
                   ? "PMS properties"
                   : "listings"}{" "}
                 available.
@@ -2283,25 +2258,27 @@ export default function PMSSubscriptionPage() {
               <span>
                 You have reached your
                 plan's{" "}
-                {role === "landlord"
+                {role ===
+                "landlord"
                   ? "property"
                   : "listing"}{" "}
                 limit. Select a higher
-                plan above to continue.
+                plan above to review your
+                available options.
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* ======================================================
-       * LANDLORD PMS PROPERTIES
-       * ====================================================== */}
+      {/* LANDLORD PROPERTY MANAGEMENT */}
 
       {role ===
         "landlord" &&
         canManageProperties && (
           <>
+            {/* MANAGED PROPERTIES */}
+
             <div className="card mb-6 overflow-hidden">
               <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
                 <div className="flex items-center justify-between gap-4">
@@ -2316,12 +2293,14 @@ export default function PMSSubscriptionPage() {
                       1
                         ? "property"
                         : "properties"}{" "}
-                      currently managed by PMS.
+                      currently managed by
+                      PMS.
                     </p>
                   </div>
 
                   <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
                     <CheckCircle2 className="h-3 w-3" />
+
                     Active
                   </span>
                 </div>
@@ -2331,35 +2310,42 @@ export default function PMSSubscriptionPage() {
               0 ? (
                 <EmptyProperties
                   title="No PMS properties yet"
-                  description="Add one of your existing eligible listings to PMS to start managing it."
+                  description="Add one of your existing listings to PMS to start managing it."
                 />
               ) : (
                 <div className="divide-y divide-gray-200 dark:divide-gray-800">
                   {listings.map(
-                    (listing) => (
-                      <PropertyRow
-                        key={
-                          listing.id
-                        }
-                        listing={
-                          listing
-                        }
-                        processing={
-                          processingListingId ===
-                          listing.id
-                        }
-                        action="remove"
-                        onAction={() => {
-                          void handleRemoveFromPMS(
-                            listing.id,
-                          );
-                        }}
-                      />
-                    ),
+                    (listing) => {
+                      const processing =
+                        processingListingId ===
+                        listing.id;
+
+                      return (
+                        <PropertyRow
+                          key={
+                            listing.id
+                          }
+                          listing={
+                            listing
+                          }
+                          processing={
+                            processing
+                          }
+                          action="remove"
+                          onAction={() => {
+                            void handleRemoveFromPMS(
+                              listing.id,
+                            );
+                          }}
+                        />
+                      );
+                    },
                   )}
                 </div>
               )}
             </div>
+
+            {/* AVAILABLE PROPERTIES */}
 
             <div className="card mb-6 overflow-hidden">
               <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
@@ -2387,29 +2373,34 @@ export default function PMSSubscriptionPage() {
               ) : (
                 <div className="divide-y divide-gray-200 dark:divide-gray-800">
                   {availableListings.map(
-                    (listing) => (
-                      <PropertyRow
-                        key={
-                          listing.id
-                        }
-                        listing={
-                          listing
-                        }
-                        processing={
-                          processingListingId ===
-                          listing.id
-                        }
-                        action="add"
-                        disabled={
-                          limitReached
-                        }
-                        onAction={() => {
-                          void handleAddToPMS(
-                            listing.id,
-                          );
-                        }}
-                      />
-                    ),
+                    (listing) => {
+                      const processing =
+                        processingListingId ===
+                        listing.id;
+
+                      return (
+                        <PropertyRow
+                          key={
+                            listing.id
+                          }
+                          listing={
+                            listing
+                          }
+                          processing={
+                            processing
+                          }
+                          action="add"
+                          disabled={
+                            limitReached
+                          }
+                          onAction={() => {
+                            void handleAddToPMS(
+                              listing.id,
+                            );
+                          }}
+                        />
+                      );
+                    },
                   )}
                 </div>
               )}
@@ -2425,16 +2416,15 @@ export default function PMSSubscriptionPage() {
                   plan has reached its
                   property limit. Select a
                   higher plan above to
-                  continue.
+                  review the available
+                  options.
                 </div>
               )}
             </div>
           </>
         )}
 
-      {/* ======================================================
-       * REAL ESTATE
-       * ====================================================== */}
+      {/* REAL ESTATE */}
 
       {role ===
         "real_estate" && (
@@ -2442,6 +2432,7 @@ export default function PMSSubscriptionPage() {
           <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
             <p className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
               <Building2 className="h-4 w-4 text-brand-600" />
+
               Real Estate Listing Entitlement
             </p>
           </div>
@@ -2451,13 +2442,15 @@ export default function PMSSubscriptionPage() {
               Your listing allowance is
               determined by your real estate
               subscription. Real estate
-              subscriptions remain completely
+              subscriptions are completely
               separate from landlord PMS
               subscriptions.
             </p>
           </div>
         </div>
       )}
+
+      {/* FOOTER */}
 
       <div className="flex justify-end">
         <button
@@ -2478,201 +2471,6 @@ export default function PMSSubscriptionPage() {
         </button>
       </div>
     </section>
-  );
-}
-
-/* ============================================================
- * PAGE HEADER
- * ============================================================ */
-
-function PageHeader({
-  role,
-  refreshing,
-  onRefresh,
-}: {
-  role: PMSRole;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
-          <Building2 className="h-6 w-6 text-brand-600" />
-
-          Property Management
-        </h1>
-
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {role === "landlord"
-            ? "Manage your PMS subscription, property usage, and managed properties."
-            : "Manage your real estate subscription and listing entitlement."}
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="btn-secondary"
-      >
-        {refreshing ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <RefreshCw className="h-4 w-4" />
-        )}
-
-        Refresh
-      </button>
-    </div>
-  );
-}
-
-/* ============================================================
- * CHECKOUT BAR
- * ============================================================ */
-
-function PlanCheckoutBar({
-  plan,
-  billingCycle,
-  loading,
-  onCheckout,
-  label = "Pay with M-Pesa",
-}: {
-  plan: PMSPlan | null;
-  billingCycle: PMSBillingCycle;
-  loading: boolean;
-  onCheckout: () => void;
-  label?: string;
-}) {
-  if (!plan) {
-    return null;
-  }
-
-  const amount =
-    billingCycle ===
-    "MONTHLY"
-      ? plan.monthlyPrice
-      : plan.annualPrice;
-
-  return (
-    <div className="mt-6 flex flex-col gap-4 rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-950/20 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p className="text-sm font-semibold text-brand-700 dark:text-brand-300">
-          {plan.name} —{" "}
-          {billingCycle ===
-          "MONTHLY"
-            ? "Monthly"
-            : "Annual"}{" "}
-          billing
-        </p>
-
-        <p className="mt-1 text-sm text-brand-600 dark:text-brand-400">
-          KES{" "}
-          {amount.toLocaleString(
-            "en-KE",
-          )}{" "}
-          per{" "}
-          {billingCycle ===
-          "MONTHLY"
-            ? "month"
-            : "year"}
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={onCheckout}
-        disabled={loading}
-        className="btn-primary shrink-0"
-      >
-        {loading ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Sending Payment...
-          </>
-        ) : (
-          <>
-            <CheckCircle2 className="h-4 w-4" />
-            {label}
-          </>
-        )}
-      </button>
-    </div>
-  );
-}
-
-/* ============================================================
- * ACTION ERROR
- * ============================================================ */
-
-function ActionError({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="card mb-6 overflow-hidden border-red-200 dark:border-red-900">
-      <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
-        <p className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
-          <AlertCircle className="h-4 w-4" />
-          PMS Action Failed
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-red-700 dark:text-red-400">
-          {message}
-        </p>
-
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="btn-secondary shrink-0"
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
- * PAYMENT MESSAGE
- * ============================================================ */
-
-function PaymentMessage({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="card mb-6 overflow-hidden border-success-200 dark:border-success-800">
-      <div className="border-b border-success-200 bg-success-50 px-4 py-3 dark:border-success-800 dark:bg-success-950/20">
-        <p className="flex items-center gap-2 text-sm font-semibold text-success-700 dark:text-success-400">
-          <CheckCircle2 className="h-4 w-4" />
-          Payment Request Sent
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-success-700 dark:text-success-400">
-          {message}
-        </p>
-
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="btn-secondary shrink-0"
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -2736,6 +2534,7 @@ function StatusNotice({
           className={`flex items-center gap-2 text-sm font-semibold ${styles.text}`}
         >
           {icon}
+
           {title}
         </p>
       </div>
@@ -2834,6 +2633,7 @@ function InfoItem({
     <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-900/50">
       <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {icon}
+
         {label}
       </p>
 
@@ -2866,11 +2666,6 @@ function PropertyRow({
 
   onAction: () => void;
 }) {
-  const location =
-    listing.county
-      ? `${listing.city}, ${listing.county}`
-      : listing.city;
-
   return (
     <div className="flex flex-col gap-4 p-5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-900/40 md:flex-row md:items-center md:justify-between">
       <div className="min-w-0">
@@ -2879,7 +2674,8 @@ function PropertyRow({
         </h3>
 
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {location}
+          {listing.city},{" "}
+          {listing.county}
         </p>
 
         <p className="mt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2892,7 +2688,7 @@ function PropertyRow({
         </p>
 
         {listing.admin_review_note && (
-          <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
+          <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
             <span className="font-semibold">
               Admin note:
             </span>{" "}
@@ -2917,6 +2713,7 @@ function PropertyRow({
           "remove" && (
           <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
             <CheckCircle2 className="h-3 w-3" />
+
             PMS Managed
           </span>
         )}
@@ -2999,8 +2796,7 @@ function formatDate(
     return "—";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
   if (
     Number.isNaN(

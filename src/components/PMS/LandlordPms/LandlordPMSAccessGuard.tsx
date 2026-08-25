@@ -11,7 +11,7 @@ import { useNav } from '@/context/NavContext';
 import {
   getPMSAccessReason,
   hasPMSAccess,
-} from '@/lib/PMSAccess';
+} from '@/lib/LandlordTs/LandlordPMSAccess';
 
 
 // ============================================================
@@ -194,7 +194,7 @@ export default function PMSAccessGuard({
 
             <button
               type="button"
-              onClick={() => navigate('subscription')}
+              onClick={() => navigate('subscription-plans')}
               className="btn-primary inline-flex items-center justify-center gap-2"
             >
               View PMS Plans

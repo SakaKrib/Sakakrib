@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 
-// NOTE: adjust this relative path if it doesn't resolve — inferred
-// from the original files' differing "../lib/supabase" depths
-// (this hook's file appears to sit one folder deeper than
-// pmsService.ts). If your project has a "@/" alias configured
-// (it's used elsewhere, e.g. "@/lib/utils"), prefer importing via
-// "@/lib/pmsService" or wherever pmsService.ts actually lives instead.
 import {
   addListingToPMS,
   computePMSCapacity,
@@ -14,18 +8,33 @@ import {
   getMyPMSSubscription,
   getMyPMSUnitCount,
   removeListingFromPMS,
+  type PMSAvailableListing,
   type PMSCapacity,
   type PMSListing as PMSServiceListing,
   type PMSSubscription as PMSServiceSubscription,
-} from "@/lib/pmsService";
+} from "@/lib/LandlordTs/LandlordpmsService";
 
-// Re-exported so existing imports of `PMSSubscription` /
-// `PMSListing` from this hook file keep working. These are now
-// the single source of truth (pmsService.ts) rather than a second,
-// separately-maintained copy of the same shapes.
+/**
+ * Canonical PMS types come from LandlordpmsService.ts.
+ *
+ * These aliases are preserved for existing consumers.
+ */
 export type PMSSubscription = PMSServiceSubscription;
 export type PMSUnitCount = PMSCapacity;
 export type PMSListing = PMSServiceListing;
+export type PMSAvailableListingType = PMSAvailableListing;
+
+/**
+ * ACTIVE and GRACE_PERIOD subscriptions can manage PMS listings.
+ */
+function hasUsableSubscription(
+  subscription: PMSSubscription | null,
+): boolean {
+  return (
+    subscription?.status === "ACTIVE" ||
+    subscription?.status === "GRACE_PERIOD"
+  );
+}
 
 export function usePMSSubscription() {
   const [subscription, setSubscription] =
@@ -38,7 +47,7 @@ export function usePMSSubscription() {
     useState<PMSListing[]>([]);
 
   const [availableListings, setAvailableListings] =
-    useState<PMSListing[]>([]);
+    useState<PMSAvailableListing[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -46,6 +55,9 @@ export function usePMSSubscription() {
   const [error, setError] =
     useState<string | null>(null);
 
+  /**
+   * Load the complete landlord PMS state.
+   */
   const loadSubscription = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -55,94 +67,144 @@ export function usePMSSubscription() {
         await getMyPMSSubscription();
 
       const [
-        listingsUsed,
         listingsData,
         availableData,
       ] = await Promise.all([
-        getMyPMSUnitCount(
-          subscriptionData?.subscription_id
-        ),
-
         getMyPMSListings(),
-
         getMyAvailablePMSListings(),
       ]);
 
-      setSubscription(subscriptionData);
+      let capacity: PMSCapacity;
 
-      setUnitCount(
-        computePMSCapacity(
+      if (subscriptionData?.subscription_id) {
+        /*
+         * IMPORTANT:
+         *
+         * getMyPMSUnitCount() expects a STRING subscription ID.
+         * It does NOT expect the PMSSubscription object.
+         */
+        const listingsUsed =
+          await getMyPMSUnitCount(
+            subscriptionData.subscription_id,
+          );
+
+        /*
+         * computePMSCapacity() expects the number of used
+         * listings and the maximum allowed listings.
+         */
+        capacity = computePMSCapacity(
           listingsUsed,
-          subscriptionData?.max_listings ?? null
-        )
-      );
+          subscriptionData,
+        );
+      } else {
+        /*
+         * No subscription means no active PMS capacity.
+         */
+        capacity = computePMSCapacity(
+          0,
+          null,
+        );
+      }
 
+      setSubscription(subscriptionData);
+      setUnitCount(capacity);
       setListings(listingsData);
       setAvailableListings(availableData);
     } catch (err) {
       console.error(
         "Failed to load PMS subscription:",
-        err
+        err,
       );
 
       setError(
         err instanceof Error
           ? err.message
-          : "Unable to load PMS subscription."
+          : "Unable to load PMS subscription.",
       );
+
+      setSubscription(null);
+      setUnitCount(null);
+      setListings([]);
+      setAvailableListings([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadSubscription();
+    void loadSubscription();
   }, [loadSubscription]);
 
+  /**
+   * Add a listing/property to the landlord PMS.
+   *
+   * Kept as addUnit for backwards compatibility.
+   */
   const addUnit = useCallback(
-    async (
-      listingId: string
-    ) => {
-      if (!subscription?.subscription_id) {
+    async (listingId: string) => {
+      const subscriptionId =
+        subscription?.subscription_id;
+
+      if (!subscriptionId) {
         throw new Error(
-          "No active PMS subscription found."
+          "No PMS subscription found.",
+        );
+      }
+
+      if (!hasUsableSubscription(subscription)) {
+        throw new Error(
+          "No active PMS subscription found.",
         );
       }
 
       await addListingToPMS(
-        subscription.subscription_id,
-        listingId
+        subscriptionId,
+        listingId,
       );
 
       await loadSubscription();
     },
     [
       subscription?.subscription_id,
+      subscription?.status,
       loadSubscription,
-    ]
+    ],
   );
 
+  /**
+   * Remove a listing/property from the landlord PMS.
+   *
+   * Kept as removeUnit for backwards compatibility.
+   */
   const removeUnit = useCallback(
-    async (
-      listingId: string
-    ) => {
-      if (!subscription?.subscription_id) {
+    async (listingId: string) => {
+      const subscriptionId =
+        subscription?.subscription_id;
+
+      if (!subscriptionId) {
         throw new Error(
-          "No PMS subscription found."
+          "No PMS subscription found.",
+        );
+      }
+
+      if (!hasUsableSubscription(subscription)) {
+        throw new Error(
+          "No active PMS subscription found.",
         );
       }
 
       await removeListingFromPMS(
-        subscription.subscription_id,
-        listingId
+        subscriptionId,
+        listingId,
       );
 
       await loadSubscription();
     },
     [
       subscription?.subscription_id,
+      subscription?.status,
       loadSubscription,
-    ]
+    ],
   );
 
   return {
@@ -152,8 +214,17 @@ export function usePMSSubscription() {
     availableListings,
     loading,
     error,
+
     refresh: loadSubscription,
+
     addUnit,
     removeUnit,
+
+    /*
+     * Expose this so consuming components don't need to
+     * duplicate subscription-status logic.
+     */
+    hasUsableSubscription:
+      hasUsableSubscription(subscription),
   };
 }

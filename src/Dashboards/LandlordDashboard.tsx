@@ -1623,7 +1623,7 @@ const pmsBenefits = [
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-4 text-center sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-2 py-4 text-center sm:px-6 lg:px-8">
         <div className="card p-8">
           <User className="mx-auto h-12 w-12 text-gray-300" />
 
@@ -1646,7 +1646,7 @@ const pmsBenefits = [
 
   if (!isLandlord) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-2 py-20 sm:px-6 lg:px-8">
         <div className="card p-8 text-center">
           <ShieldCheck className="mx-auto h-12 w-12 text-error-500" />
 
@@ -1669,7 +1669,7 @@ const pmsBenefits = [
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="card flex min-h-[400px] items-center justify-center">
           <div className="text-center">
             <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand-600" />
@@ -1738,7 +1738,7 @@ const pmsBenefits = [
       emptyTitle: string,
       emptyDescription: string
     ) => (
-      <div className="card overflow-hidden mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="card overflow-hidden mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1985,7 +1985,7 @@ const pmsBenefits = [
 
   const renderProfilePage =
     () => (
-      <div className="card max-w-7xl overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
+      <div className="card max-w-7xl overflow-hidden px-2 py-8 sm:px-6 lg:px-8">
 
         {/* =====================================================
             HEADER
@@ -2822,7 +2822,7 @@ const pmsBenefits = [
     () => (
       <>
         {/* PROFILE CARD */}
-        <div className="card mb-6 overflow-hidden max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="card mb-6 overflow-hidden max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
           <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-2.5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
             <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
               <Home className="h-4 w-4" />
@@ -3073,14 +3073,14 @@ const pmsBenefits = [
                 Property Management
               </h3>
 
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-600">
                 Access your dedicated property management workspace.
               </p>
             </div>
 
             <div className="p-5">
               {hasActiveSubscription ? (
-                <div className="rounded-2xl border border-success-200 bg-success-50 p-5 dark:border-success-900/40 dark:bg-success-900/10">
+                <div className="rounded-2xl border border-brand-200 bg-brand-50 p-5 dark:border-brand-800 dark:bg-brand-900/30">
                   <div className="flex items-start gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400">
                       <Crown className="h-5 w-5" />
@@ -3472,7 +3472,7 @@ const pmsBenefits = [
   ========================================================= */
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
       {/* HEADER */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

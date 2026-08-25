@@ -18,7 +18,7 @@ import {
   loadRealEstateDashboardData,
   type RealEstateDashboardData,
   type RealEstateListingSummary,
-} from '@/lib/Realestateservice';
+} from '@/lib/RealEstateTs/Realestateservice';
 
 
 // ============================================================

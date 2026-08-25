@@ -16,7 +16,7 @@ import {
   type LandlordPaymentMethod,
   type MpesaMethod,
   type PaymentMethodProvider,
-} from '@/lib/Landlordpaymentmethods';
+} from '@/lib/LandlordTs/Landlordpaymentmethods';
 
 
 function methodLabel(method: LandlordPaymentMethod): string {
