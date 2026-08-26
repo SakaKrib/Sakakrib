@@ -56,20 +56,7 @@ interface MoverWithProfile extends Mover {
 }
 
 interface AdminUserDetailsProps {
-  /**
-   * The ID of the user being reviewed.
-   *
-   * Since this component does not use react-router-dom,
-   * the parent SPA should provide the user ID.
-   */
   userId: string;
-
-  /**
-   * Optional custom back handler.
-   *
-   * If not supplied, window.history.back()
-   * will be used.
-   */
   onBack?: () => void;
 }
 
@@ -90,6 +77,7 @@ const PROFILE_SELECT = `
   verification_status,
   landlord_application_status,
   mover_application_status,
+  admin_review_note,
   national_id,
   dl_number,
   phone,
@@ -147,11 +135,9 @@ export default function AdminUserDetails({
   userId,
   onBack,
 }: AdminUserDetailsProps) {
-  const [user, setUser] =
-    useState<UserData | null>(null);
+  const [user, setUser] = useState<UserData | null>(null);
 
-  const [movers, setMovers] =
-    useState<MoverWithProfile[]>([]);
+  const [movers, setMovers] = useState<MoverWithProfile[]>([]);
 
   const [selectedMover, setSelectedMover] =
     useState<MoverWithProfile | null>(null);
@@ -159,17 +145,22 @@ export default function AdminUserDetails({
   const [section, setSection] =
     useState<ReviewSection>('overview');
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
   const [loadingMovers, setLoadingMovers] =
     useState(false);
 
-  const [updating, setUpdating] =
-    useState(false);
+  const [updating, setUpdating] = useState(false);
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Optional note entered by the administrator.
+   *
+   * This is used for approve/reject/pending actions.
+   */
+  const [adminReviewNote, setAdminReviewNote] =
+    useState('');
 
   /* ==================================================
      BACK HANDLER
@@ -210,10 +201,6 @@ export default function AdminUserDetails({
       return;
     }
 
-    /*
-     * If a mover has already been selected,
-     * do not replace it with the mover list.
-     */
     if (selectedMover) {
       return;
     }
@@ -223,11 +210,7 @@ export default function AdminUserDetails({
     }
 
     void loadMovers();
-  }, [
-    section,
-    selectedMover,
-    userId,
-  ]);
+  }, [section, selectedMover, userId]);
 
   /* ==================================================
      LOAD USER
@@ -256,51 +239,75 @@ export default function AdminUserDetails({
       }
 
       if (!data) {
-        throw new Error(
-          'User profile was not found.'
-        );
+        throw new Error('User profile was not found.');
       }
 
-      /*
-       * Load latest subscription.
-       */
-      const {
-        data: subscription,
-        error: subscriptionError,
-      } = await supabase
-        .from('subscriptions')
-        .select(`
-          id,
-          user_id,
-          plan,
-          status,
-          starts_at,
-          expires_at,
-          created_at,
-          updated_at
-        `)
-        .eq('user_id', userId)
-        .order('created_at', {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
+      /* ==================================================
+         LOAD LATEST SUBSCRIPTION
+      ================================================== */
 
-      /*
-       * A user does not necessarily need
-       * to have a subscription.
-       */
-      if (subscriptionError) {
-        console.warn(
-          'Unable to load subscription:',
-          subscriptionError.message
-        );
+      let subscription: Subscription | null = null;
+
+      if (data.role === 'landlord') {
+        const {
+          data: subscriptionRow,
+          error: subscriptionError,
+        } = await supabase
+          .from('landlord_subscriptions')
+          .select(`
+            id,
+            landlord_id,
+            plan_id,
+            billing_cycle,
+            status,
+            current_period_start,
+            current_period_end,
+            grace_period_end,
+            auto_renew,
+            created_at,
+            updated_at,
+            paypal_subscription_id,
+            paypal_plan_id,
+            paypal_status,
+            next_billing_at,
+            cancel_at_period_end,
+            cancelled_at,
+            billing_amount_kes,
+            billing_amount_usd,
+            billing_exchange_rate,
+            billing_exchange_rate_timestamp,
+            plan:subscription_plans (
+              id,
+              name,
+              audience,
+              max_listings,
+              max_units_per_listing,
+              monthly_price_kes,
+              annual_price_kes
+            )
+          `)
+          .eq('landlord_id', userId)
+          .order('created_at', {
+            ascending: false,
+          })
+          .limit(1)
+          .maybeSingle();
+
+        if (subscriptionError) {
+          console.warn(
+            'Unable to load landlord subscription:',
+            subscriptionError.message
+          );
+        } else {
+          subscription =
+            (subscriptionRow as Subscription | null) ??
+            null;
+        }
       }
 
       setUser({
         ...(data as Profile),
-        subscription:
-          subscription || null,
+        subscription,
       });
     } catch (err) {
       setError(
@@ -308,7 +315,6 @@ export default function AdminUserDetails({
           ? err.message
           : 'Failed to load user.'
       );
-
       setUser(null);
     } finally {
       setLoading(false);
@@ -328,9 +334,6 @@ export default function AdminUserDetails({
     setError(null);
 
     try {
-      /*
-       * Only load movers belonging to this user.
-       */
       const {
         data: moverData,
         error: moverError,
@@ -355,15 +358,10 @@ export default function AdminUserDetails({
         return;
       }
 
-      /*
-       * Load profiles associated with movers.
-       */
       const userIds = [
         ...new Set(
           moverRows
-            .map(
-              (mover) => mover.user_id
-            )
+            .map((mover) => mover.user_id)
             .filter(Boolean)
         ),
       ];
@@ -399,11 +397,12 @@ export default function AdminUserDetails({
 
       setMovers(combined);
 
-      /*
-       * Automatically select if only one exists.
-       */
       if (combined.length === 1) {
         setSelectedMover(combined[0]);
+
+        setAdminReviewNote(
+          combined[0].profile?.admin_review_note || ''
+        );
       }
     } catch (err) {
       setError(
@@ -465,8 +464,7 @@ export default function AdminUserDetails({
           );
         } else {
           profile =
-            (profileData as Profile) ||
-            null;
+            (profileData as Profile) || null;
         }
       }
 
@@ -490,7 +488,8 @@ export default function AdminUserDetails({
 
   const updateMoverStatus = async (
     mover: MoverWithProfile,
-    status: ReviewStatus
+    status: ReviewStatus,
+    reviewNote?: string
   ) => {
     if (!mover.id) {
       return;
@@ -499,24 +498,32 @@ export default function AdminUserDetails({
     setUpdating(true);
     setError(null);
 
+    const note =
+      reviewNote?.trim() || null;
+
     try {
+      /* ==================================================
+         DATABASE STATUS
+      ================================================== */
+
       const databaseStatus =
         status === 'pending'
           ? 'pending_review'
           : status;
 
-      /*
-       * Update mover registration.
-       */
+      const now = new Date().toISOString();
+
+      /* ==================================================
+         1. UPDATE MOVER APPLICATION
+      ================================================== */
+
       const {
         error: moverError,
       } = await supabase
         .from('movers')
         .update({
-          approval_status:
-            databaseStatus,
-          updated_at:
-            new Date().toISOString(),
+          approval_status: databaseStatus,
+          updated_at: now,
         })
         .eq('id', mover.id);
 
@@ -524,47 +531,37 @@ export default function AdminUserDetails({
         throw moverError;
       }
 
-      /*
-       * Synchronize profile status.
-       */
-      if (mover.user_id) {
-        const profileUpdate: Record<
-          string,
-          unknown
-        > = {
-          mover_application_status:
-            status,
+      /* ==================================================
+         2. UPDATE PROFILE APPLICATION STATUS
+      ================================================== */
 
-          updated_at:
-            new Date().toISOString(),
+      if (mover.user_id) {
+        const profileUpdate: Record<string, unknown> = {
+          mover_application_status: status,
+          admin_review_note: note,
+          updated_at: now,
         };
 
+        /*
+         * Keep the existing verification behavior.
+         */
         switch (status) {
           case 'approved':
             profileUpdate.verification_status =
               'verified';
-
-            profileUpdate.kyc_completed =
-              true;
-
+            profileUpdate.kyc_completed = true;
             break;
 
           case 'rejected':
             profileUpdate.verification_status =
               'rejected';
-
-            profileUpdate.kyc_completed =
-              false;
-
+            profileUpdate.kyc_completed = false;
             break;
 
           case 'pending':
             profileUpdate.verification_status =
               'pending_verification';
-
-            profileUpdate.kyc_completed =
-              false;
-
+            profileUpdate.kyc_completed = false;
             break;
         }
 
@@ -573,46 +570,208 @@ export default function AdminUserDetails({
         } = await supabase
           .from('profiles')
           .update(profileUpdate)
-          .eq(
-            'id',
-            mover.user_id
-          );
+          .eq('id', mover.user_id);
 
         if (profileError) {
           throw profileError;
         }
       }
 
-      /*
-       * Reload mover.
-       */
+      /* ==================================================
+         3. DETERMINE EMAIL TEMPLATE
+      ================================================== */
+
+      let emailType:
+        | 'application_approved'
+        | 'application_declined'
+        | 'application_review';
+
+      switch (status) {
+        case 'approved':
+          emailType = 'application_approved';
+          break;
+
+        case 'rejected':
+          emailType = 'application_declined';
+          break;
+
+        case 'pending':
+          emailType = 'application_review';
+          break;
+
+        default:
+          throw new Error(
+            `Unsupported application status: ${status}`
+          );
+      }
+
+      /* ==================================================
+         4. SEND STATUS EMAIL
+      ================================================== */
+
+      const recipientEmail =
+        mover.profile?.email;
+
+      if (recipientEmail) {
+        const fullName =
+          mover.profile?.full_name ||
+          mover.driver_full_name ||
+          'Applicant';
+
+        const firstName =
+          mover.profile?.first_name ||
+          mover.driver_full_name
+            ?.trim()
+            .split(/\s+/)[0] ||
+          'Applicant';
+
+        const emailPayload = {
+          email: recipientEmail,
+
+          user: {
+            id: mover.user_id,
+            email: recipientEmail,
+            full_name: fullName,
+            first_name: firstName,
+            role: 'mover',
+          },
+
+          applicant: {
+            id: mover.user_id,
+            email: recipientEmail,
+            full_name: fullName,
+            first_name: firstName,
+            role: 'mover',
+          },
+
+          application_status: status,
+
+          /*
+           * Optional administrator explanation.
+           *
+           * Approved:
+           *   may contain an optional note.
+           *
+           * Rejected:
+           *   may contain the reason for rejection.
+           *
+           * Pending:
+           *   may contain an optional review message.
+           */
+          admin_review_note: note,
+
+          mover: {
+            id: mover.id,
+            user_id: mover.user_id,
+            driver_full_name:
+              mover.driver_full_name,
+            business_name:
+              mover.business_name,
+            operating_city:
+              mover.operating_city,
+            operating_county:
+              mover.operating_county,
+          },
+        };
+
+        /*
+         * The send-email Edge Function is responsible
+         * for selecting the corresponding template:
+         *
+         * application_approved
+         * application_declined
+         * application_review
+         */
+        const {
+          data: emailData,
+          error: emailError,
+        } = await supabase.functions.invoke(
+          'send-email',
+          {
+            body: {
+              type: emailType,
+              to: recipientEmail,
+              payload: emailPayload,
+            },
+          }
+        );
+
+        if (emailError) {
+          console.error(
+            'Application status updated but email failed:',
+            emailError
+          );
+
+          setError(
+            `Application ${status}, but the notification email could not be sent.`
+          );
+        } else if (
+          emailData &&
+          typeof emailData === 'object' &&
+          'error' in emailData &&
+          emailData.error
+        ) {
+          console.error(
+            'Email function returned an error:',
+            emailData.error
+          );
+
+          setError(
+            `Application ${status}, but the notification email could not be sent.`
+          );
+        }
+      } else {
+        console.warn(
+          'Application status updated but applicant has no email address.'
+        );
+
+        setError(
+          `Application ${status}, but the applicant does not have an email address.`
+        );
+      }
+
+      /* ==================================================
+         5. RELOAD MOVER
+      ================================================== */
+
       const refreshedMover =
         await getMover(mover.id);
 
       if (refreshedMover) {
-        setSelectedMover(
-          refreshedMover
-        );
+        setSelectedMover(refreshedMover);
 
         setMovers((current) =>
           current.map((item) =>
-            item.id ===
-            refreshedMover.id
+            item.id === refreshedMover.id
               ? refreshedMover
               : item
           )
         );
+
+        setAdminReviewNote(
+          refreshedMover.profile?.admin_review_note ||
+            note ||
+            ''
+        );
       }
 
-      /*
-       * Reload parent profile.
-       */
+      /* ==================================================
+         6. RELOAD PARENT PROFILE
+      ================================================== */
+
       if (
         userId &&
         mover.user_id === userId
       ) {
         await loadUser();
       }
+
+      /*
+       * Do not clear the note here.
+       *
+       * This allows the admin to see the saved note
+       * after the action completes.
+       */
     } catch (err) {
       setError(
         err instanceof Error
@@ -632,6 +791,11 @@ export default function AdminUserDetails({
     mover: MoverWithProfile
   ) => {
     setSelectedMover(mover);
+
+    setAdminReviewNote(
+      mover.profile?.admin_review_note || ''
+    );
+
     setSection('mover-kyc');
     setError(null);
   };
@@ -782,12 +946,14 @@ export default function AdminUserDetails({
         <div className="mb-5">
           <button
             type="button"
+            disabled={updating}
             onClick={() => {
               setSelectedMover(null);
               setSection('overview');
+              setAdminReviewNote('');
               setError(null);
             }}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-brand-600 dark:text-gray-300 dark:hover:text-brand-400"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-brand-600 disabled:opacity-50 dark:text-gray-300 dark:hover:text-brand-400"
           >
             <ArrowLeft className="h-5 w-5" />
             Back
@@ -801,9 +967,7 @@ export default function AdminUserDetails({
               <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl bg-brand-100 font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">
                 {selectedMover.profile_photo_url ? (
                   <img
-                    src={
-                      selectedMover.profile_photo_url
-                    }
+                    src={selectedMover.profile_photo_url}
                     alt={
                       selectedMover.driver_full_name ||
                       'Mover'
@@ -889,9 +1053,7 @@ export default function AdminUserDetails({
 
                 <Info
                   label="Email"
-                  value={
-                    moverProfile?.email
-                  }
+                  value={moverProfile?.email}
                   icon={Mail}
                 />
 
@@ -1129,7 +1291,6 @@ export default function AdminUserDetails({
                   }
                   icon={CreditCard}
                 />
-
               </div>
 
               <div>
@@ -1254,7 +1415,50 @@ export default function AdminUserDetails({
           </div>
         </div>
 
-        {/* Bottom actions */}
+        {/* ==================================================
+            ADMIN REVIEW NOTE
+        ================================================== */}
+
+        <div className="card mt-5 p-5">
+          <div className="mb-3">
+            <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+              <FileText className="h-5 w-5 text-brand-600" />
+              Admin Review Note
+              <span className="text-xs font-normal text-gray-500">
+                (optional)
+              </span>
+            </h2>
+
+            <p className="mt-1 text-xs text-gray-500">
+              Add an optional message for the applicant. If
+              provided, it will be included in the status
+              notification email.
+            </p>
+          </div>
+
+          <textarea
+            value={adminReviewNote}
+            onChange={(event) =>
+              setAdminReviewNote(event.target.value)
+            }
+            disabled={updating}
+            rows={4}
+            maxLength={2000}
+            placeholder="Optional reason, feedback, or review message..."
+            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-brand-800 dark:bg-brand-950 dark:text-white"
+          />
+
+          <div className="mt-2 flex justify-end">
+            <span className="text-xs text-gray-400">
+              {adminReviewNote.length}/2000
+            </span>
+          </div>
+        </div>
+
+        {/* ==================================================
+            BOTTOM ACTIONS
+        ================================================== */}
+
         <div className="card mt-5 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
@@ -1264,6 +1468,7 @@ export default function AdminUserDetails({
               onClick={() => {
                 setSelectedMover(null);
                 setSection('overview');
+                setAdminReviewNote('');
                 setError(null);
               }}
               className="btn-secondary disabled:opacity-50"
@@ -1281,7 +1486,8 @@ export default function AdminUserDetails({
                 onClick={() =>
                   void updateMoverStatus(
                     selectedMover,
-                    'rejected'
+                    'rejected',
+                    adminReviewNote
                   )
                 }
                 className="rounded-lg border border-error-200 bg-error-50 px-5 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-error-900/50 dark:bg-error-900/20 dark:text-error-400"
@@ -1292,7 +1498,9 @@ export default function AdminUserDetails({
                   <XCircle className="mr-2 inline h-4 w-4" />
                 )}
 
-                Reject
+                {updating
+                  ? 'Updating...'
+                  : 'Reject'}
               </button>
 
               {/* PENDING */}
@@ -1302,18 +1510,21 @@ export default function AdminUserDetails({
                 onClick={() =>
                   void updateMoverStatus(
                     selectedMover,
-                    'pending'
+                    'pending',
+                    adminReviewNote
                   )
                 }
                 className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {updating ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <Clock className="h-4 w-4" />
+                  <Clock className="mr-2 h-4 w-4" />
                 )}
 
-                Set Pending
+                {updating
+                  ? 'Updating...'
+                  : 'Set Pending'}
               </button>
 
               {/* APPROVE */}
@@ -1323,22 +1534,22 @@ export default function AdminUserDetails({
                 onClick={() =>
                   void updateMoverStatus(
                     selectedMover,
-                    'approved'
+                    'approved',
+                    adminReviewNote
                   )
                 }
                 className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {updating ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
                 )}
 
                 {updating
                   ? 'Updating...'
                   : 'Approve'}
               </button>
-
             </div>
           </div>
         </div>
@@ -1383,7 +1594,6 @@ export default function AdminUserDetails({
 
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
 
-            {/* Profile photo */}
             <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-brand-200 text-2xl font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">
 
               {user.profile_photo_url ? (
@@ -1555,23 +1765,14 @@ export default function AdminUserDetails({
           <button
             type="button"
             onClick={() => {
-
-              if (
-                user.role === 'landlord'
-              ) {
-                setSection(
-                  'landlord-kyc'
-                );
+              if (user.role === 'landlord') {
+                setSection('landlord-kyc');
                 return;
               }
 
-              if (
-                user.role === 'mover'
-              ) {
+              if (user.role === 'mover') {
                 setSelectedMover(null);
-                setSection(
-                  'mover-kyc'
-                );
+                setSection('mover-kyc');
                 return;
               }
 
@@ -1699,6 +1900,13 @@ export default function AdminUserDetails({
                 }
               />
 
+              <StatusRow
+                label="Admin Review Note"
+                value={
+                  user.admin_review_note
+                }
+              />
+
             </div>
 
             {user.subscription && (
@@ -1713,7 +1921,8 @@ export default function AdminUserDetails({
                   <StatusRow
                     label="Plan"
                     value={
-                      user.subscription.plan
+                      user.subscription.plan?.name ??
+                      user.subscription.plan_id
                     }
                   />
 
@@ -1724,12 +1933,44 @@ export default function AdminUserDetails({
                     }
                   />
 
+                  <StatusRow
+                    label="Billing Cycle"
+                    value={
+                      user.subscription.billing_cycle
+                    }
+                  />
+
                   <Info
-                    label="Expires"
+                    label="Current Period Start"
                     value={formatDate(
-                      user.subscription.expires_at
+                      user.subscription.current_period_start
                     )}
                     icon={CalendarDays}
+                  />
+
+                  <Info
+                    label="Current Period End"
+                    value={formatDate(
+                      user.subscription.current_period_end
+                    )}
+                    icon={CalendarDays}
+                  />
+
+                  {user.subscription.grace_period_end && (
+                    <Info
+                      label="Grace Period Ends"
+                      value={formatDate(
+                        user.subscription.grace_period_end
+                      )}
+                      icon={Clock}
+                    />
+                  )}
+
+                  <StatusRow
+                    label="Auto Renew"
+                    value={
+                      user.subscription.auto_renew
+                    }
                   />
 
                 </div>
@@ -1892,9 +2133,7 @@ export default function AdminUserDetails({
                       <button
                         type="button"
                         onClick={() =>
-                          openMoverReview(
-                            mover
-                          )
+                          openMoverReview(mover)
                         }
                         className="btn-primary"
                       >
@@ -2144,6 +2383,14 @@ function LandlordForm({
           icon={FileText}
         />
 
+        <Info
+          label="Admin Review Note"
+          value={
+            user.admin_review_note
+          }
+          icon={FileText}
+        />
+
       </div>
     </div>
   );
@@ -2209,7 +2456,7 @@ function StatusRow({
         {label}
       </span>
 
-      <span className="text-right text-sm font-semibold capitalize text-gray-900 dark:text-white">
+      <span className="max-w-[65%] text-right text-sm font-semibold capitalize text-gray-900 dark:text-white">
         {formatValue(value)}
       </span>
 
@@ -2312,4 +2559,4 @@ function formatDate(
       year: 'numeric',
     }
   ).format(date);
-};
+}

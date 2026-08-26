@@ -5,6 +5,7 @@ import {
   Truck,
   Check,
   ArrowRight,
+  BriefcaseBusiness,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -33,16 +34,29 @@ const ROLES: RoleOption[] = [
     ctaLabel: 'Browse Listings',
     redirectView: 'home',
   },
+
   {
     value: 'landlord',
-    label: 'Landlord / Real Estate',
+    label: 'Landlord',
     description:
-      'Post property listings, manage inquiries, and reach thousands of renters.',
+      'Manage your own rental properties, post listings, and manage tenants.',
     icon: Building2,
     gradient: 'from-success-500 to-success-700',
     ctaLabel: 'Complete Your Profile',
     redirectView: 'kyc-verify',
   },
+
+  {
+    value: 'real_estate',
+    label: 'Real Estate Agent',
+    description:
+      'Market properties, manage property listings, connect with clients, and grow your real estate business.',
+    icon: BriefcaseBusiness,
+    gradient: 'from-purple-500 to-purple-700',
+    ctaLabel: 'Complete Your Profile',
+    redirectView: 'kyc-verify',
+  },
+
   {
     value: 'mover',
     label: 'Mover',
@@ -58,7 +72,6 @@ const ROLES: RoleOption[] = [
 export default function RoleSelectionModal() {
   const { profile, needsRoleSelection, setRole } = useAuth();
 
-
   const {
     navigate,
     roleModalOpen,
@@ -68,18 +81,12 @@ export default function RoleSelectionModal() {
   const [selectedRole, setSelectedRole] =
     useState<UserRole | null>(profile?.role ?? null);
 
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // AuthContext determines whether role selection is required.
-  // if (!needsRoleSelection || !profile) {
-  //   return null;
-  // }
-
   if (!profile || (!needsRoleSelection && !roleModalOpen)) {
-  return null;
-}
+    return null;
+  }
 
   const handleSelect = (role: UserRole) => {
     if (loading) return;
@@ -94,7 +101,6 @@ export default function RoleSelectionModal() {
     setLoading(true);
     setError(null);
 
-    // Save the role through AuthContext.
     const { error } = await setRole(selectedRole);
 
     if (error) {
@@ -114,10 +120,6 @@ export default function RoleSelectionModal() {
       return;
     }
 
-    // Role was successfully saved, so now navigate.
-    // navigate(roleOption.redirectView);
-
-    // setLoading(false);
     navigate(roleOption.redirectView);
 
     setRoleModalOpen(false);
@@ -126,8 +128,7 @@ export default function RoleSelectionModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop intentionally cannot be dismissed.
-          The user must choose a role. */}
+      {/* Backdrop intentionally cannot be dismissed. */}
       <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" />
 
       <div
@@ -152,8 +153,6 @@ export default function RoleSelectionModal() {
             </p>
           </div>
 
-          {/* Decorative close icon — intentionally disabled because
-              role selection is required before continuing. */}
           <div
             className="rounded-full border border-gray-200 p-2 text-gray-300 dark:border-brand-800 dark:text-brand-700"
             aria-hidden="true"

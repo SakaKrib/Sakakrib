@@ -27,7 +27,10 @@ import PMSPlanSelector, {
   type PMSPlanName,
   type PMSSubscriptionPlan,
 } from "./PMSPlanSelector";
-import ListingPaymentModal from "@/modals/ Listingpaymentmodal";
+import PMSCheckoutModal, {
+  type PMSCheckoutPlan,
+} from "@/modals/Pmscheckoutmodal";
+import type { PMSCheckoutAudience } from "@/lib/LandlordTs/Pmspayments";
 /* ============================================================
  * DEBUG
  * ============================================================ */
@@ -744,6 +747,26 @@ export default function PMSSubscriptionPage() {
 
     const [showPaymentModal, setShowPaymentModal] =
       useState(false);
+
+    // Adapts the page's existing paymentPlan/paymentCycle state into
+    // the shape PMSCheckoutModal expects. No new state introduced -
+    // this is purely a derived view over what handleProceedToPayment
+    // already sets.
+    const checkoutPlan: PMSCheckoutPlan | null =
+      paymentPlan && paymentCycle
+        ? {
+            planId: paymentPlan.id,
+            planName: paymentPlan.name,
+            billingCycle: paymentCycle,
+            amountKes:
+              paymentCycle === "MONTHLY"
+                ? paymentPlan.monthly_price_kes
+                : paymentPlan.annual_price_kes,
+          }
+        : null;
+
+    const checkoutAudience: PMSCheckoutAudience =
+      role === "landlord" ? "LANDLORD" : "REAL_ESTATE";
 
   /* ==========================================================
    * LOAD PROFILE
@@ -2470,6 +2493,16 @@ const landlordPlanSelector =
           Refresh
         </button>
       </div>
+
+      <PMSCheckoutModal
+        open={showPaymentModal}
+        onOpenChange={setShowPaymentModal}
+        audience={checkoutAudience}
+        plan={checkoutPlan}
+        onSuccess={() => {
+          void handleRefresh();
+        }}
+      />
     </section>
   );
 }

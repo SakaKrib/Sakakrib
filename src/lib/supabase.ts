@@ -41,6 +41,8 @@ export interface Profile {
   free_listings_used: number;
   created_at: string;
   updated_at: string;
+  email_verified : boolean;
+  admin_review_note: string;
 }
 
 export interface Listing {

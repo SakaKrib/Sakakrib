@@ -1,4 +1,9 @@
-import { useState, useEffect } from 'react';
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+} from 'react';
+
 import {
   X,
   Mail,
@@ -9,10 +14,13 @@ import {
   Check,
   AlertCircle,
 } from 'lucide-react';
+
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { supabase } from '@/lib/supabase';
 import { cn, validateEmail } from '@/lib/utils';
+
+import EmailOtpVerification from '@/components/EmailOtpVerification';
 
 interface PasswordRule {
   label: string;
@@ -42,8 +50,18 @@ const PASSWORD_RULES: PasswordRule[] = [
   },
 ];
 
+type AuthMode = 'signin' | 'signup' | 'forgot';
+
 export default function AuthModal() {
-  const { signIn, signUp, signInWithGoogle } = useAuth();
+  const {
+    signIn,
+    signUp,
+    signInWithGoogle,
+    verifyEmailOtp,
+    resendSignupOtp,
+    needsEmailVerification,
+    pendingVerificationEmail,
+  } = useAuth();
 
   const {
     authModalOpen,
@@ -56,6 +74,9 @@ export default function AuthModal() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+
+  const [otpStep, setOtpStep] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -69,71 +90,408 @@ export default function AuthModal() {
     passwordStrength === PASSWORD_RULES.length;
 
   /*
-   * Reset temporary UI state whenever the modal opens.
-   * authMode itself is controlled by NavContext.
+   * ==========================================================
+   * VERIFICATION EMAIL
+   * ==========================================================
+   *
+   * AuthContext is the source of truth.
+   */
+  const verificationEmail = (
+    pendingVerificationEmail || email
+  )
+    .trim()
+    .toLowerCase();
+
+  /*
+   * ==========================================================
+   * RESET FORM
+   * ==========================================================
+   */
+  const clearAuthFields = () => {
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setOtpStep(false);
+    setShowPassword(false);
+    setError(null);
+    setInfo(null);
+    setLoading(false);
+  };
+
+  /*
+   * ==========================================================
+   * RESTORE OTP STATE
+   * ==========================================================
+   *
+   * If AuthContext says verification is pending, always
+   * restore the OTP screen when the modal opens.
    */
   useEffect(() => {
-    if (authModalOpen) {
+    if (!authModalOpen) {
+      return;
+    }
+
+    setError(null);
+    setInfo(null);
+    setShowPassword(false);
+    setLoading(false);
+
+    if (
+      needsEmailVerification &&
+      pendingVerificationEmail
+    ) {
+      const normalizedEmail =
+        pendingVerificationEmail
+          .trim()
+          .toLowerCase();
+
+      setEmail(normalizedEmail);
+      setPassword('');
+      setOtpStep(true);
+    }
+  }, [
+    authModalOpen,
+    needsEmailVerification,
+    pendingVerificationEmail,
+  ]);
+
+  /*
+   * ==========================================================
+   * CLOSE
+   * ==========================================================
+   */
+  const handleClose = () => {
+    if (loading) {
+      return;
+    }
+
+    /*
+     * Important:
+     *
+     * Closing this modal does NOT verify the user.
+     * They remain unverified and cannot receive a profile row
+     * or continue into the role-selection flow.
+     */
+    clearAuthFields();
+    setAuthModalOpen(false);
+  };
+
+  /*
+   * ==========================================================
+   * OPEN OTP STEP
+   * ==========================================================
+   */
+  const openOtpStep = (
+    emailAddress: string,
+    message?: string
+  ) => {
+    const normalizedEmail = emailAddress
+      .trim()
+      .toLowerCase();
+
+    setEmail(normalizedEmail);
+    setPassword('');
+    setError(null);
+    setOtpStep(true);
+
+    setInfo(
+      message ||
+        `A verification code has been sent to ${normalizedEmail}.`
+    );
+  };
+
+  /*
+   * ==========================================================
+   * VERIFY OTP
+   * ==========================================================
+   *
+   * AuthModal delegates verification to AuthContext.
+   *
+   * AuthContext is responsible for:
+   *
+   * 1. Supabase verifyOtp()
+   * 2. Confirming the authenticated user
+   * 3. Creating the profile ONLY after verification
+   * 4. Loading the profile
+   *
+   * Only after that succeeds do we open RoleModal.
+   */
+  const handleVerifyOtp = async (
+    otp: string
+  ): Promise<{ error: string | null }> => {
+    setError(null);
+    setInfo(null);
+
+    const normalizedEmail = verificationEmail
+      .trim()
+      .toLowerCase();
+
+    const normalizedOtp = otp
+      .replace(/\D/g, '')
+      .slice(0, 6);
+
+    if (!validateEmail(normalizedEmail)) {
+      return {
+        error:
+          'Your email address is invalid. Please start again.',
+      };
+    }
+
+    if (normalizedOtp.length !== 6) {
+      return {
+        error:
+          'Please enter the 6-digit verification code.',
+      };
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await verifyEmailOtp(
+        normalizedEmail,
+        normalizedOtp
+      );
+
+      /*
+       * Verification failed.
+       *
+       * DO NOT open RoleModal.
+       */
+      if (result.error) {
+        console.error(
+          'OTP verification error:',
+          result.error
+        );
+
+        return {
+          error: result.error,
+        };
+      }
+
+      /*
+       * ======================================================
+       * VERIFIED SUCCESS
+       * ======================================================
+       *
+       * At this point AuthContext has completed the verification
+       * and profile creation process.
+       */
+
+      setOtpStep(false);
       setError(null);
       setInfo(null);
+
+      setEmail('');
+      setPassword('');
+      setFullName('');
+
+      /*
+       * Close authentication modal first.
+       */
+      setAuthModalOpen(false);
+
+      /*
+       * Give AuthContext one render cycle to publish the
+       * verified session/profile before opening RoleModal.
+       */
+      window.setTimeout(() => {
+        setRoleModalOpen(true);
+      }, 200);
+
+      return {
+        error: null,
+      };
+    } catch (err) {
+      console.error(
+        'Unexpected OTP verification error:',
+        err
+      );
+
+      return {
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to verify your email. Please try again.',
+      };
+    } finally {
       setLoading(false);
-      setShowPassword(false);
     }
-  }, [authModalOpen]);
+  };
 
-  if (!authModalOpen) {
-    return null;
-  }
+  /*
+   * ==========================================================
+   * RESEND OTP
+   * ==========================================================
+   */
+  const handleResendOtp = async (): Promise<{
+    error: string | null;
+  }> => {
+    setError(null);
+    setInfo(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+    const normalizedEmail = verificationEmail
+      .trim()
+      .toLowerCase();
+
+    if (!validateEmail(normalizedEmail)) {
+      return {
+        error:
+          'Please enter a valid email address before requesting another code.',
+      };
+    }
+
+    setLoading(true);
+
+    try {
+      const result =
+        await resendSignupOtp(normalizedEmail);
+
+      if (result.error) {
+        console.error(
+          'OTP resend error:',
+          result.error
+        );
+
+        return {
+          error: result.error,
+        };
+      }
+
+      setEmail(normalizedEmail);
+      setOtpStep(true);
+
+      setInfo(
+        `A new verification code has been sent to ${normalizedEmail}.`
+      );
+
+      return {
+        error: null,
+      };
+    } catch (err) {
+      console.error(
+        'Unexpected OTP resend error:',
+        err
+      );
+
+      return {
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Unable to resend the verification code.',
+      };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * ==========================================================
+   * SUBMIT AUTH FORM
+   * ==========================================================
+   */
+  const handleSubmit = async (
+    e: FormEvent<HTMLFormElement>
+  ) => {
     e.preventDefault();
+
+    if (loading) {
+      return;
+    }
 
     setError(null);
     setInfo(null);
 
-    if (!validateEmail(email)) {
-      setError('Please enter a valid email address.');
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
+
+    if (!validateEmail(normalizedEmail)) {
+      setError(
+        'Please enter a valid email address.'
+      );
       return;
     }
 
+    setEmail(normalizedEmail);
+
     /*
-     * PASSWORD RESET
+     * ========================================================
+     * FORGOT PASSWORD
+     * ========================================================
      */
     if (authMode === 'forgot') {
       setLoading(true);
 
-      const { error: resetError } =
-        await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin,
-        });
+      try {
+        const { error: resetError } =
+          await supabase.auth.resetPasswordForEmail(
+            normalizedEmail,
+            {
+              redirectTo:
+                window.location.origin,
+            },
+          );
 
-      setLoading(false);
+        if (resetError) {
+          console.error(
+            'Password reset error:',
+            resetError
+          );
 
-      if (resetError) {
-        setError('Could not send reset email. Please try again.');
-      } else {
-        setInfo('Password reset link sent. Check your email inbox.');
+          setError(
+            resetError.message ||
+              'Could not send the password reset email.'
+          );
+
+          return;
+        }
+
+        setInfo(
+          'Password reset link sent. Check your email inbox.'
+        );
+      } catch (err) {
+        console.error(
+          'Unexpected password reset error:',
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Could not send the password reset email.'
+        );
+      } finally {
+        setLoading(false);
       }
 
       return;
     }
 
     /*
+     * ========================================================
      * SIGN IN VALIDATION
+     * ========================================================
      */
-    if (authMode === 'signin') {
-      if (!password) {
-        setError('Please enter your password.');
-        return;
-      }
+    if (
+      authMode === 'signin' &&
+      !password
+    ) {
+      setError(
+        'Please enter your password.'
+      );
+      return;
     }
 
     /*
+     * ========================================================
      * SIGN UP VALIDATION
+     * ========================================================
      */
     if (authMode === 'signup') {
       if (!fullName.trim()) {
-        setError('Please enter your full name.');
+        setError(
+          'Please enter your full name.'
+        );
         return;
       }
 
@@ -147,70 +505,268 @@ export default function AuthModal() {
 
     setLoading(true);
 
-    const result =
-      authMode === 'signin'
-        ? await signIn(email, password)
-        : await signUp(email, password, fullName);
+    try {
+      const result =
+        authMode === 'signin'
+          ? await signIn(
+              normalizedEmail,
+              password
+            )
+          : await signUp(
+              normalizedEmail,
+              password,
+              fullName.trim()
+            );
 
-    setLoading(false);
+      /*
+       * ======================================================
+       * VERIFICATION REQUIRED
+       * ======================================================
+       *
+       * This is the expected signup path when email
+       * confirmation is enabled.
+       */
+      if (
+        result.requiresEmailVerification
+      ) {
+        const emailForVerification = (
+          pendingVerificationEmail ||
+          normalizedEmail
+        )
+          .trim()
+          .toLowerCase();
 
-    if (result.error) {
-      console.error('Authentication error:', result.error);
-      setError(result.error);
+        openOtpStep(
+          emailForVerification,
+          `Your account has been created in authentication, but your application account is not active yet. Please verify ${emailForVerification} to continue.`
+        );
+
+        return;
+      }
+
+      /*
+       * ======================================================
+       * AUTH ERROR
+       * ======================================================
+       */
+      if (result.error) {
+        console.error(
+          'Authentication error:',
+          result.error
+        );
+
+        setError(result.error);
+        return;
+      }
+
+      /*
+       * ======================================================
+       * SIGN IN SUCCESS
+       * ======================================================
+       *
+       * Sign-in success is allowed to continue normally.
+       * AuthContext should already have rejected any
+       * unverified account.
+       */
+      if (authMode === 'signin') {
+        clearAuthFields();
+        setAuthModalOpen(false);
+        return;
+      }
+
+      /*
+       * ======================================================
+       * SIGN UP WITHOUT VERIFICATION
+       * ======================================================
+       *
+       * IMPORTANT:
+       *
+       * We deliberately DO NOT open RoleModal here.
+       *
+       * If signup reaches this point without
+       * requiresEmailVerification, AuthContext must have
+       * determined that the user is already verified.
+       *
+       * Nevertheless, because your business rule is:
+       *
+       * "No unverified user may be saved or continue."
+       *
+       * the safest UI behavior is to stop here unless
+       * AuthContext explicitly guarantees verified signup.
+       */
+      if (authMode === 'signup') {
+        setError(
+          'Please verify your email before continuing.'
+        );
+
+        /*
+         * If AuthContext has a pending verification email,
+         * return to the OTP screen.
+         */
+        if (pendingVerificationEmail) {
+          openOtpStep(
+            pendingVerificationEmail,
+            'Please verify your email before continuing.'
+          );
+        }
+
+        return;
+      }
+    } catch (err) {
+      console.error(
+        'Unexpected authentication error:',
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Authentication failed. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * ==========================================================
+   * SWITCH AUTH MODE
+   * ==========================================================
+   */
+  const switchMode = (
+    newMode: AuthMode
+  ) => {
+    if (loading) {
       return;
     }
 
-    /*
-     * Close authentication modal after successful authentication.
-     */
-    setAuthModalOpen(false);
-
-    /*
-     * After successful registration, open the role-selection modal.
-     */
-    if (authMode === 'signup') {
-      setInfo(null);
-
-      setTimeout(() => {
-        setRoleModalOpen(true);
-      }, 200);
-    }
-  };
-
-  const switchMode = (
-    newMode: 'signin' | 'signup' | 'forgot'
-  ) => {
     setAuthMode(newMode);
+
     setError(null);
     setInfo(null);
+
     setPassword('');
+    setFullName('');
+    setOtpStep(false);
     setShowPassword(false);
   };
 
+  /*
+   * ==========================================================
+   * OTP SCREEN
+   * ==========================================================
+   */
+  if (otpStep) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in"
+          onClick={handleClose}
+          aria-hidden="true"
+        />
+
+        <div className="relative w-full max-w-md animate-scale-in rounded-2xl bg-white p-6 shadow-2xl dark:bg-brand-900">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+              Verify Your Email
+            </h2>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={loading}
+              className="rounded-full border border-gray-300 p-2 text-gray-400 hover:text-gray-600 disabled:opacity-50 dark:border-brand-700"
+              aria-label="Close email verification"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <EmailOtpVerification
+            email={verificationEmail}
+            loading={loading}
+            onVerify={handleVerifyOtp}
+            onResend={handleResendOtp}
+            onBack={() => {
+              if (loading) {
+                return;
+              }
+
+              setOtpStep(false);
+              setError(null);
+              setInfo(null);
+            }}
+            onVerified={() => {
+              /*
+               * Intentionally empty.
+               *
+               * handleVerifyOtp owns the successful transition.
+               */
+            }}
+          />
+
+          {error && (
+            <div
+              role="alert"
+              className="mt-4 rounded-lg bg-error-50 px-4 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+            >
+              {error}
+            </div>
+          )}
+
+          {info && (
+            <div
+              role="status"
+              className="mt-4 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+            >
+              {info}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * ==========================================================
+   * NORMAL AUTH MODAL
+   * ==========================================================
+   */
+  if (!authModalOpen) {
+    return null;
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+    >
       <div
         className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in"
-        onClick={() => setAuthModalOpen(false)}
+        onClick={handleClose}
+        aria-hidden="true"
       />
 
-      {/* Modal */}
       <div className="relative w-full max-w-md animate-scale-in rounded-2xl bg-white shadow-2xl dark:bg-brand-900">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-brand-800">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          <h2
+            id="auth-modal-title"
+            className="text-xl font-bold text-gray-900 dark:text-white"
+          >
             {authMode === 'signin'
               ? 'Welcome Back'
               : authMode === 'signup'
-              ? 'Create Account'
-              : 'Reset Password'}
+                ? 'Create Account'
+                : 'Reset Password'}
           </h2>
 
           <button
             type="button"
-            onClick={() => setAuthModalOpen(false)}
-            className="rounded-full border border-gray-300 p-2 text-gray-400 transition-colors hover:border-btnblue-400 hover:text-btnblue-600 dark:border-brand-700 dark:hover:border-btnblue-500"
+            onClick={handleClose}
+            disabled={loading}
+            className="rounded-full border border-gray-300 p-2 text-gray-400 transition-colors hover:border-btnblue-400 hover:text-btnblue-600 disabled:opacity-50 dark:border-brand-700 dark:hover:border-btnblue-500"
             aria-label="Close authentication modal"
           >
             <X className="h-5 w-5" />
@@ -218,13 +774,17 @@ export default function AuthModal() {
         </div>
 
         <div className="p-6">
-          {/* Google Authentication */}
           {authMode !== 'forgot' && (
             <>
               <button
                 type="button"
-                onClick={signInWithGoogle}
-                className="btn-secondary w-full"
+                onClick={() => {
+                  if (!loading) {
+                    void signInWithGoogle();
+                  }
+                }}
+                disabled={loading}
+                className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg
                   className="h-5 w-5"
@@ -237,7 +797,7 @@ export default function AuthModal() {
                   />
                   <path
                     fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.93-2.71 4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
                   />
                   <path
                     fill="#FBBC05"
@@ -264,12 +824,16 @@ export default function AuthModal() {
             </>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Full Name */}
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+          >
             {authMode === 'signup' && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label
+                  htmlFor="auth-full-name"
+                  className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
                   Full Name
                 </label>
 
@@ -277,20 +841,26 @@ export default function AuthModal() {
                   <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
                   <input
+                    id="auth-full-name"
                     type="text"
                     value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
+                    onChange={(e) =>
+                      setFullName(e.target.value)
+                    }
                     placeholder="John Doe"
                     autoComplete="name"
+                    disabled={loading}
                     className="input-field pl-10"
                   />
                 </div>
               </div>
             )}
 
-            {/* Email */}
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label
+                htmlFor="auth-email"
+                className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+              >
                 Email Address
               </label>
 
@@ -298,20 +868,26 @@ export default function AuthModal() {
                 <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
                 <input
+                  id="auth-email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) =>
+                    setEmail(e.target.value)
+                  }
                   placeholder="you@example.com"
                   autoComplete="email"
+                  disabled={loading}
                   className="input-field pl-10"
                 />
               </div>
             </div>
 
-            {/* Password */}
             {authMode !== 'forgot' && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <label
+                  htmlFor="auth-password"
+                  className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
                   Password
                 </label>
 
@@ -319,22 +895,35 @@ export default function AuthModal() {
                   <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
                   <input
-                    type={showPassword ? 'text' : 'password'}
+                    id="auth-password"
+                    type={
+                      showPassword
+                        ? 'text'
+                        : 'password'
+                    }
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) =>
+                      setPassword(e.target.value)
+                    }
                     placeholder="••••••••"
                     autoComplete={
                       authMode === 'signin'
                         ? 'current-password'
                         : 'new-password'
                     }
+                    disabled={loading}
                     className="input-field pl-10 pr-10"
                   />
 
                   <button
                     type="button"
-                    onClick={() => setShowPassword((value) => !value)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    onClick={() =>
+                      setShowPassword(
+                        (value) => !value
+                      )
+                    }
+                    disabled={loading}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 disabled:opacity-50"
                     aria-label={
                       showPassword
                         ? 'Hide password'
@@ -349,81 +938,92 @@ export default function AuthModal() {
                   </button>
                 </div>
 
-                {/* Password Rules */}
-                {authMode === 'signup' && password.length > 0 && (
-                  <div className="mt-3 space-y-1.5">
-                    <div className="flex gap-1">
-                      {PASSWORD_RULES.map((rule, index) => (
-                        <div
-                          key={rule.label}
-                          className={cn(
-                            'h-1.5 flex-1 rounded-full transition-colors',
-                            index < passwordStrength
-                              ? 'bg-success-500'
-                              : 'bg-gray-200 dark:bg-brand-800'
-                          )}
-                        />
-                      ))}
+                {authMode === 'signup' &&
+                  password.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      <div className="flex gap-1">
+                        {PASSWORD_RULES.map(
+                          (rule, index) => (
+                            <div
+                              key={rule.label}
+                              className={cn(
+                                'h-1.5 flex-1 rounded-full transition-colors',
+                                index <
+                                  passwordStrength
+                                  ? 'bg-success-500'
+                                  : 'bg-gray-200 dark:bg-brand-800'
+                              )}
+                            />
+                          )
+                        )}
+                      </div>
+
+                      <ul className="space-y-1">
+                        {PASSWORD_RULES.map(
+                          (rule) => {
+                            const passed =
+                              rule.test(password);
+
+                            return (
+                              <li
+                                key={rule.label}
+                                className={cn(
+                                  'flex items-center gap-1.5 text-xs',
+                                  passed
+                                    ? 'text-success-600 dark:text-success-400'
+                                    : 'text-gray-400'
+                                )}
+                              >
+                                {passed ? (
+                                  <Check className="h-3 w-3" />
+                                ) : (
+                                  <AlertCircle className="h-3 w-3" />
+                                )}
+
+                                {rule.label}
+                              </li>
+                            );
+                          }
+                        )}
+                      </ul>
                     </div>
-
-                    <ul className="space-y-1">
-                      {PASSWORD_RULES.map((rule) => {
-                        const passed = rule.test(password);
-
-                        return (
-                          <li
-                            key={rule.label}
-                            className={cn(
-                              'flex items-center gap-1.5 text-xs',
-                              passed
-                                ? 'text-success-600 dark:text-success-400'
-                                : 'text-gray-400'
-                            )}
-                          >
-                            {passed ? (
-                              <Check className="h-3 w-3" />
-                            ) : (
-                              <AlertCircle className="h-3 w-3" />
-                            )}
-
-                            {rule.label}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                )}
+                  )}
               </div>
             )}
 
-            {/* Error */}
             {error && (
-              <div className="rounded-lg bg-error-50 px-4 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+              <div
+                role="alert"
+                className="rounded-lg bg-error-50 px-4 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+              >
                 {error}
               </div>
             )}
 
-            {/* Info */}
             {info && (
-              <div className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400">
+              <div
+                role="status"
+                className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+              >
                 {info}
               </div>
             )}
 
-            {/* Forgot Password */}
             {authMode === 'signin' && (
               <div className="text-right">
                 <button
                   type="button"
-                  onClick={() => switchMode('forgot')}
-                  className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                  onClick={() =>
+                    switchMode('forgot')
+                  }
+                  disabled={loading}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50 dark:text-brand-400"
                 >
                   Forgot password?
                 </button>
               </div>
             )}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -432,20 +1032,19 @@ export default function AuthModal() {
               {loading
                 ? 'Please wait...'
                 : authMode === 'signin'
-                ? 'Sign In'
-                : authMode === 'signup'
-                ? 'Create Account'
-                : 'Send Reset Link'}
+                  ? 'Sign In'
+                  : authMode === 'signup'
+                    ? 'Create Account'
+                    : 'Send Reset Link'}
             </button>
           </form>
 
-          {/* Mode Switch */}
           <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
             {authMode === 'signin'
               ? "Don't have an account? "
               : authMode === 'forgot'
-              ? 'Remember your password? '
-              : 'Already have an account? '}
+                ? 'Remember your password? '
+                : 'Already have an account? '}
 
             <button
               type="button"
@@ -456,7 +1055,8 @@ export default function AuthModal() {
                     : 'signin'
                 )
               }
-              className="font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+              disabled={loading}
+              className="font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50 dark:text-brand-400"
             >
               {authMode === 'signin'
                 ? 'Sign up'
@@ -465,7 +1065,6 @@ export default function AuthModal() {
           </p>
         </div>
 
-        {/* Footer */}
         <div className="border-t border-gray-200 px-6 py-4 dark:border-brand-800">
           <p className="text-center text-xs text-gray-500 dark:text-gray-400">
             © Copyright Saka Krib. All Rights Reserved.

@@ -496,7 +496,7 @@ export default function PMSPlanSelector({
                   onClick={() =>
                     onPlanChange(plan)
                   }
-                  className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6 text-left shadow-sm transition-all dark:bg-gray-900 ${
+                  className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6  text-left shadow-sm transition-all dark:bg-gray-900 ${
                     selected
                       ? "border-gray-900 shadow-md ring-2 ring-gray-900/10 dark:border-white"
                       : "border-gray-200 hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md dark:border-gray-700"

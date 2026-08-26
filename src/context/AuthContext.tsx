@@ -6,7 +6,10 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { Session } from '@supabase/supabase-js';
+import type {
+  Session,
+  User,
+} from '@supabase/supabase-js';
 
 import {
   supabase,
@@ -14,60 +17,57 @@ import {
   type UserRole,
 } from '@/lib/supabase';
 
-import {
-  hasPMSAccess,
-  type PMSSubscription,
-} from '@/lib/LandlordTs/LandlordPMSAccess';
-
-
 // ============================================================
-// AUTH CONTEXT TYPE
+// TYPES
 // ============================================================
+
+interface RegistrationEmailApplication {
+  email: string;
+  applicant_email?: string;
+  full_name?: string;
+  purpose?: string;
+  [key: string]: unknown;
+}
+
+interface AuthResult {
+  error: string | null;
+  requiresEmailVerification?: boolean;
+}
 
 interface AuthContextValue {
-  // ----------------------------------------------------------
-  // AUTH
-  // ----------------------------------------------------------
-
   session: Session | null;
-
   profile: Profile | null;
-
   loading: boolean;
 
   needsRoleSelection: boolean;
 
-
-  // ----------------------------------------------------------
-  // PMS SUBSCRIPTION
-  // ----------------------------------------------------------
-
-  subscription: PMSSubscription | null;
+  needsEmailVerification: boolean;
+  pendingVerificationEmail: string | null;
 
   /**
-   * True when the current user has valid PMS access.
+   * TRUE only when:
    *
-   * Valid:
-   * - active (and not past current_period_end)
-   * - grace_period (and not past grace_period_end)
-   *
-   * Invalid:
-   * - null
-   * - pending_payment
-   * - cancelled
-   * - expired
+   * 1. Supabase session exists
+   * 2. Application profile exists
+   * 3. profiles.email_verified = true
    */
-  hasActivePMS: boolean;
-
-
-  // ----------------------------------------------------------
-  // AUTH ACTIONS
-  // ----------------------------------------------------------
+  isAuthenticated: boolean;
 
   signUp: (
     email: string,
     password: string,
     fullName: string
+  ) => Promise<AuthResult>;
+
+  verifyEmailOtp: (
+    email: string,
+    otp: string
+  ) => Promise<{
+    error: string | null;
+  }>;
+
+  resendSignupOtp: (
+    email: string
   ) => Promise<{
     error: string | null;
   }>;
@@ -75,18 +75,11 @@ interface AuthContextValue {
   signIn: (
     email: string,
     password: string
-  ) => Promise<{
-    error: string | null;
-  }>;
+  ) => Promise<AuthResult>;
 
   signInWithGoogle: () => Promise<void>;
 
   signOut: () => Promise<void>;
-
-
-  // ----------------------------------------------------------
-  // ROLE
-  // ----------------------------------------------------------
 
   setRole: (
     role: UserRole
@@ -94,26 +87,149 @@ interface AuthContextValue {
     error: string | null;
   }>;
 
-
-  // ----------------------------------------------------------
-  // REFRESH
-  // ----------------------------------------------------------
-
   refreshProfile: () => Promise<void>;
-
-  refreshSubscription: () => Promise<void>;
 }
-
 
 // ============================================================
 // CONTEXT
 // ============================================================
 
-const AuthContext =
-  createContext<AuthContextValue | undefined>(
-    undefined
+const AuthContext = createContext<
+  AuthContextValue | undefined
+>(undefined);
+
+// ============================================================
+// EMAIL FUNCTION
+// ============================================================
+
+/**
+ * Sends application emails through the Supabase Edge Function.
+ *
+ * IMPORTANT:
+ *
+ * The browser NEVER generates or supplies the OTP.
+ *
+ * For otp_verification:
+ *
+ *   Browser
+ *      ↓
+ *   send-notification-emails
+ *      ↓
+ *   issue_signup_otp()
+ *      ↓
+ *   get_signup_otp_for_email()
+ *      ↓
+ *   Resend
+ *
+ * The plaintext OTP only exists inside the trusted
+ * server-side Edge Function during email generation.
+ */
+const sendRegistrationEmail = async (
+  type:
+    | 'otp_verification'
+    | 'sign_in_notification'
+    | 'sign_up_welcome',
+  application: RegistrationEmailApplication
+): Promise<void> => {
+  const FUNCTION_NAME = 'send-notification-emails';
+
+  const {
+    data,
+    error,
+  } = await supabase.functions.invoke(
+    FUNCTION_NAME,
+    {
+      body: {
+        type,
+        application,
+      },
+    }
   );
 
+  if (error) {
+    let serverMessage =
+      error.message ||
+      'Email delivery failed.';
+
+    try {
+      const context = (
+        error as {
+          context?: Response;
+        }
+      ).context;
+
+      if (context) {
+        try {
+          const responseBody =
+            await context.json();
+
+          if (
+            typeof responseBody === 'object' &&
+            responseBody !== null
+          ) {
+            const body =
+              responseBody as {
+                error?: unknown;
+                message?: unknown;
+              };
+
+            if (
+              typeof body.error === 'string'
+            ) {
+              serverMessage =
+                body.error;
+            } else if (
+              typeof body.message === 'string'
+            ) {
+              serverMessage =
+                body.message;
+            }
+          }
+        } catch (jsonError) {
+          console.error(
+            'Unable to parse notification Edge Function response:',
+            jsonError
+          );
+        }
+      }
+    } catch (readError) {
+      console.error(
+        'Unable to read notification Edge Function error:',
+        readError
+      );
+    }
+
+    console.error(
+      `sendRegistrationEmail(${type}) failed:`,
+      {
+        error,
+        serverMessage,
+      }
+    );
+
+    throw new Error(serverMessage);
+  }
+
+  if (
+    data &&
+    typeof data === 'object' &&
+    'success' in data &&
+    data.success === false
+  ) {
+    const message =
+      'error' in data &&
+      typeof data.error === 'string'
+        ? data.error
+        : 'Email delivery failed.';
+
+    throw new Error(message);
+  }
+
+  console.info(
+    `sendRegistrationEmail(${type}) succeeded.`,
+    data
+  );
+};
 
 // ============================================================
 // PROVIDER
@@ -124,18 +240,109 @@ export function AuthProvider({
 }: {
   children: ReactNode;
 }) {
+  // ==========================================================
+  // AUTH STATE
+  // ==========================================================
+
   const [session, setSession] =
     useState<Session | null>(null);
 
   const [profile, setProfile] =
     useState<Profile | null>(null);
 
-  const [subscription, setSubscription] =
-    useState<PMSSubscription | null>(null);
-
   const [loading, setLoading] =
     useState(true);
 
+  // ==========================================================
+  // EMAIL VERIFICATION STATE
+  // ==========================================================
+
+  const [
+    needsEmailVerification,
+    setNeedsEmailVerification,
+  ] = useState(false);
+
+  const [
+    pendingVerificationEmail,
+    setPendingVerificationEmail,
+  ] = useState<string | null>(null);
+
+  // ==========================================================
+  // EMAIL HELPERS
+  // ==========================================================
+
+  const normalizeEmail = (
+    email: string
+  ): string => {
+    return email.trim().toLowerCase();
+  };
+
+  const isValidEmail = (
+    email: string
+  ): boolean => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email.trim()
+    );
+  };
+
+  // ==========================================================
+  // APPLICATION EMAIL VERIFICATION
+  // ==========================================================
+  //
+  // profiles.email_verified is the application's
+  // verification source of truth.
+  //
+  // DO NOT use:
+  //
+  // user.email_confirmed_at
+  //
+  // for application authorization.
+  //
+  // ==========================================================
+
+  const isProfileEmailVerified = (
+    nextProfile: Profile | null
+  ): boolean => {
+    return Boolean(
+      nextProfile?.email_verified
+    );
+  };
+
+  // ==========================================================
+  // CLEAR AUTH STATE
+  // ==========================================================
+
+  const clearAuthState = () => {
+    setSession(null);
+    setProfile(null);
+  };
+
+  // ==========================================================
+  // SET VERIFICATION STATE
+  // ==========================================================
+
+  const requireEmailVerification = (
+    email: string | null
+  ) => {
+    clearAuthState();
+
+    setNeedsEmailVerification(true);
+
+    setPendingVerificationEmail(
+      email
+        ? normalizeEmail(email)
+        : null
+    );
+  };
+
+  // ==========================================================
+  // CLEAR VERIFICATION STATE
+  // ==========================================================
+
+  const clearVerificationState = () => {
+    setNeedsEmailVerification(false);
+    setPendingVerificationEmail(null);
+  };
 
   // ==========================================================
   // FETCH PROFILE
@@ -143,7 +350,7 @@ export function AuthProvider({
 
   const fetchProfile = async (
     userId: string
-  ) => {
+  ): Promise<Profile | null> => {
     const {
       data,
       error,
@@ -160,133 +367,108 @@ export function AuthProvider({
       );
 
       setProfile(null);
-      return;
+
+      return null;
     }
 
-    setProfile(
-      data as Profile | null
-    );
+    const nextProfile =
+      data as Profile | null;
+
+    setProfile(nextProfile);
+
+    return nextProfile;
   };
 
-
   // ==========================================================
-  // FETCH PMS SUBSCRIPTION
-  //
-  // IMPORTANT:
-  //
-  // public.subscriptions does NOT exist in the live database.
-  // The authoritative source is the get_my_pms_subscription RPC,
-  // which reads from landlord_subscriptions (joined with
-  // subscription_plans for plan_name / max_listings) and is
-  // scoped to auth.uid() server-side.
-  //
-  // Only landlords have PMS subscriptions today — real estate
-  // PMS is out of scope (see subscription-stk Edge Function,
-  // which rejects non-landlord roles). Skip the fetch entirely
-  // for other roles rather than calling an RPC that will return
-  // nothing useful for them.
+  // APPLICATION AUTHENTICATION
   // ==========================================================
 
-  const fetchSubscription = async (
-    userId: string,
-    role: UserRole | null | undefined
-  ) => {
-    if (role !== 'landlord') {
-      setSubscription(null);
-      return;
+  const loadAuthenticatedUser = async (
+    user: User,
+    currentSession: Session
+  ): Promise<boolean> => {
+    const loadedProfile =
+      await fetchProfile(user.id);
+
+    // --------------------------------------------------------
+    // PROFILE DOES NOT EXIST
+    // --------------------------------------------------------
+
+    if (!loadedProfile) {
+      console.warn(
+        'Authenticated Supabase user has no application profile.'
+      );
+
+      clearAuthState();
+      clearVerificationState();
+
+      return false;
     }
 
-    const {
-      data,
-      error,
-    } = await supabase.rpc(
-      'get_my_pms_subscription'
-    );
+    // --------------------------------------------------------
+    // PROFILE EXISTS BUT EMAIL IS NOT VERIFIED
+    // --------------------------------------------------------
 
-    if (error) {
-      console.error('Subscription fetch error:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
+    if (
+      !isProfileEmailVerified(
+        loadedProfile
+      )
+    ) {
+      requireEmailVerification(
+        loadedProfile.email ||
+          user.email ||
+          null
+      );
 
-      setSubscription(null);
-      return;
+      /*
+       * IMPORTANT:
+       *
+       * We deliberately do NOT call auth.signOut()
+       * here.
+       *
+       * The temporary Supabase session can remain
+       * available for the OTP flow.
+       *
+       * Application authorization is still denied
+       * because:
+       *
+       * isAuthenticated === false
+       */
+
+      return false;
     }
 
-    // get_my_pms_subscription is defined RETURNS TABLE(...), so
-    // Supabase returns an array even for a single logical row.
-    const row = Array.isArray(data) ? data[0] : data;
+    // --------------------------------------------------------
+    // FULLY VERIFIED APPLICATION USER
+    // --------------------------------------------------------
 
-    setSubscription(
-      (row as PMSSubscription | undefined) ?? null
-    );
+    setSession(currentSession);
+    setProfile(loadedProfile);
+
+    clearVerificationState();
+
+    return true;
   };
 
-
   // ==========================================================
-  // PMS ACCESS
+  // APPLICATION AUTH STATE
   // ==========================================================
 
   /**
-   * IMPORTANT:
-   *
-   * Do not simply check:
-   *
-   * subscription.status === 'ACTIVE'
-   *
-   * because an active subscription may already have
-   * passed current_period_end.
-   *
-   * hasPMSAccess() handles:
-   *
-   * - ACTIVE (checked against current_period_end)
-   * - GRACE_PERIOD (checked against grace_period_end)
-   * - EXPIRED / CANCELLED / PENDING_PAYMENT / null (all false)
+   * A user is considered authenticated by the application
+   * ONLY when both session and verified profile exist.
    */
-  const hasActivePMS =
-    hasPMSAccess(subscription);
-
-
-  // ==========================================================
-  // ROLE SELECTION
-  // ==========================================================
+  const isAuthenticated =
+    Boolean(
+      session &&
+      profile &&
+      profile.email_verified === true
+    );
 
   const needsRoleSelection =
     !loading &&
-    !!session &&
-    !!profile &&
-    !profile.role;
-
-
-  // ==========================================================
-  // LOAD USER DATA
-  // ==========================================================
-
-  const loadUserData = async (
-    userId: string
-  ) => {
-    await fetchProfile(userId);
-
-    // fetchSubscription needs the just-fetched role, so read it
-    // back from state after fetchProfile resolves. We can't rely
-    // on the `profile` closure variable here since setProfile is
-    // async — fetch it directly instead.
-    const {
-      data: freshProfile,
-    } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .maybeSingle();
-
-    await fetchSubscription(
-      userId,
-      freshProfile?.role as UserRole | null | undefined
-    );
-  };
-
+    isAuthenticated &&
+    !profile?.role;
 
   // ==========================================================
   // INITIAL AUTHENTICATION
@@ -295,35 +477,70 @@ export function AuthProvider({
   useEffect(() => {
     let mounted = true;
 
-    const initializeAuth =
-      async () => {
+    // --------------------------------------------------------
+    // INITIALIZE
+    // --------------------------------------------------------
+
+    const initializeAuth = async () => {
+      try {
         const {
           data: {
-            session,
+            session: currentSession,
           },
+          error,
         } =
           await supabase.auth.getSession();
 
-        if (!mounted) return;
-
-        setSession(session);
-
-        if (session?.user) {
-          await loadUserData(
-            session.user.id
+        if (error) {
+          console.error(
+            'Get session error:',
+            error
           );
-        } else {
-          setProfile(null);
-          setSubscription(null);
         }
 
+        if (!mounted) {
+          return;
+        }
+
+        // ----------------------------------------------------
+        // NO SESSION
+        // ----------------------------------------------------
+
+        if (
+          !currentSession?.user
+        ) {
+          clearAuthState();
+          clearVerificationState();
+
+          return;
+        }
+
+        // ----------------------------------------------------
+        // SESSION EXISTS
+        // ----------------------------------------------------
+
+        await loadAuthenticatedUser(
+          currentSession.user,
+          currentSession
+        );
+      } catch (error) {
+        console.error(
+          'Auth initialization error:',
+          error
+        );
+
+        if (mounted) {
+          clearAuthState();
+          clearVerificationState();
+        }
+      } finally {
         if (mounted) {
           setLoading(false);
         }
-      };
+      }
+    };
 
-    initializeAuth();
-
+    void initializeAuth();
 
     // ========================================================
     // AUTH STATE LISTENER
@@ -333,45 +550,51 @@ export function AuthProvider({
       data: listener,
     } =
       supabase.auth.onAuthStateChange(
-        (_event, session) => {
-          if (!mounted) return;
-
-          setSession(session);
+        (
+          _event,
+          currentSession
+        ) => {
+          if (!mounted) {
+            return;
+          }
 
           // --------------------------------------------------
           // SIGNED OUT
           // --------------------------------------------------
 
-          if (!session?.user) {
-            setProfile(null);
-            setSubscription(null);
+          if (
+            !currentSession?.user
+          ) {
+            clearAuthState();
+            clearVerificationState();
+
             setLoading(false);
+
             return;
           }
 
-
-          // --------------------------------------------------
-          // SIGNED IN
-          // --------------------------------------------------
-
           /*
-           * Defer database requests so Supabase's auth
-           * callback is not blocked by database operations.
+           * Delay the database query so the auth event
+           * completes before we query profiles.
            */
-          setTimeout(async () => {
-            if (!mounted) return;
-
-            await loadUserData(
-              session.user.id
-            );
-
-            if (mounted) {
-              setLoading(false);
+          setTimeout(() => {
+            if (!mounted) {
+              return;
             }
+
+            void (async () => {
+              await loadAuthenticatedUser(
+                currentSession.user,
+                currentSession
+              );
+
+              if (mounted) {
+                setLoading(false);
+              }
+            })();
           }, 0);
         }
       );
-
 
     // ========================================================
     // CLEANUP
@@ -384,7 +607,6 @@ export function AuthProvider({
     };
   }, []);
 
-
   // ==========================================================
   // SIGN UP
   // ==========================================================
@@ -393,70 +615,570 @@ export function AuthProvider({
     email: string,
     password: string,
     fullName: string
-  ) => {
+  ): Promise<AuthResult> => {
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    const normalizedName =
+      fullName.trim();
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (
+      !isValidEmail(
+        normalizedEmail
+      )
+    ) {
+      return {
+        error:
+          'Please enter a valid email address.',
+      };
+    }
+
+    if (password.length < 6) {
+      return {
+        error:
+          'Password must be at least 6 characters long.',
+      };
+    }
+
+    if (!normalizedName) {
+      return {
+        error:
+          'Please enter your full name.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // CREATE AUTH ACCOUNT
+    // --------------------------------------------------------
+
     const {
       data,
       error,
     } =
       await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           data: {
-            full_name: fullName,
+            full_name:
+              normalizedName,
           },
         },
       });
 
     if (error) {
+      console.error(
+        'Supabase signup error:',
+        error
+      );
+
       return {
         error: error.message,
       };
     }
 
+    // --------------------------------------------------------
+    // EXISTING ACCOUNT DETECTION
+    // --------------------------------------------------------
+
+    /*
+     * Supabase may return a user without identities when
+     * the email already belongs to an account.
+     *
+     * That means:
+     *
+     *     DO NOT create another profile.
+     *     DO NOT treat this as a new registration.
+     *
+     * The user must log in.
+     */
+
+    if (
+      data.user &&
+      Array.isArray(data.user.identities) &&
+      data.user.identities.length === 0
+    ) {
+      clearAuthState();
+
+      return {
+        error:
+          'An account with this email already exists. Please log in.',
+      };
+    }
 
     // --------------------------------------------------------
-    // CREATE PROFILE
+    // USER REQUIRED
     // --------------------------------------------------------
 
-    if (data.user) {
-      const {
-        error: profileError,
-      } =
-        await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            email,
-            full_name: fullName,
-            role: null,
-            verification_status:
-              'unverified',
-          });
+    if (!data.user) {
+      return {
+        error:
+          'Unable to create your account.',
+      };
+    }
 
-      if (
-        profileError &&
-        !profileError.message.includes(
-          'duplicate'
-        )
-      ) {
+    // --------------------------------------------------------
+    // PROFILE IS CREATED BY DATABASE TRIGGER
+    // --------------------------------------------------------
+
+    /*
+     * The database trigger:
+     *
+     * auth.users INSERT
+     *       ↓
+     * profiles INSERT
+     *       ↓
+     * issue_signup_otp()
+     *
+     * Therefore the frontend must NOT insert the profile.
+     */
+
+    const loadedProfile =
+      await fetchProfile(
+        data.user.id
+      );
+
+    // --------------------------------------------------------
+    // PROFILE NOT READY
+    // --------------------------------------------------------
+
+    if (!loadedProfile) {
+      clearAuthState();
+
+      return {
+        error:
+          'Your account was created, but your application profile could not be created. Please try again.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // PROFILE EXISTS
+    // --------------------------------------------------------
+
+    if (
+      !isProfileEmailVerified(
+        loadedProfile
+      )
+    ) {
+      requireEmailVerification(
+        normalizedEmail
+      );
+
+      // ------------------------------------------------------
+      // SEND OTP
+      // ------------------------------------------------------
+
+      const application:
+        RegistrationEmailApplication = {
+        email: normalizedEmail,
+
+        applicant_email:
+          normalizedEmail,
+
+        full_name:
+          normalizedName,
+
+        purpose:
+          'verify your Saka Krib account',
+      };
+
+      try {
+        /*
+         * The Edge Function generates/refreshes the OTP
+         * server-side and retrieves the encrypted OTP
+         * server-side.
+         *
+         * The browser never creates the OTP.
+         */
+
+        await sendRegistrationEmail(
+          'otp_verification',
+          application
+        );
+      } catch (error) {
         console.error(
-          'Profile creation error:',
-          profileError
+          'OTP email delivery failed:',
+          error
         );
 
         return {
           error:
-            profileError.message,
+            error instanceof Error
+              ? `Your account was created, but the verification email could not be sent: ${error.message}`
+              : 'Your account was created, but the verification email could not be sent.',
+          requiresEmailVerification:
+            true,
         };
       }
+
+      return {
+        error: null,
+        requiresEmailVerification:
+          true,
+      };
     }
+
+    // --------------------------------------------------------
+    // ALREADY VERIFIED
+    // --------------------------------------------------------
+
+    if (data.session) {
+      setSession(data.session);
+    }
+
+    setProfile(
+      loadedProfile
+    );
+
+    clearVerificationState();
+
+    // --------------------------------------------------------
+    // WELCOME EMAIL
+    // --------------------------------------------------------
+
+    try {
+      await sendRegistrationEmail(
+        'sign_up_welcome',
+        {
+          email:
+            normalizedEmail,
+
+          applicant_email:
+            normalizedEmail,
+
+          full_name:
+            normalizedName,
+        }
+      );
+    } catch (error) {
+      console.error(
+        'Welcome email delivery failed:',
+        error
+      );
+    }
+
+    return {
+      error: null,
+      requiresEmailVerification:
+        false,
+    };
+  };
+
+  // ==========================================================
+  // VERIFY EMAIL OTP
+  // ==========================================================
+
+  const verifyEmailOtp = async (
+    email: string,
+    otp: string
+  ): Promise<{
+    error: string | null;
+  }> => {
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    const normalizedOtp =
+      otp.replace(/\D/g, '');
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (
+      !isValidEmail(
+        normalizedEmail
+      )
+    ) {
+      return {
+        error:
+          'Please enter a valid email address.',
+      };
+    }
+
+    if (
+      normalizedOtp.length !== 6
+    ) {
+      return {
+        error:
+          'Please enter the 6-digit verification code.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // VERIFY CUSTOM OTP
+    // --------------------------------------------------------
+
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      'verify_signup_otp',
+      {
+        p_email:
+          normalizedEmail,
+
+        p_otp:
+          normalizedOtp,
+      }
+    );
+
+    if (error) {
+      console.error(
+        'Email OTP verification RPC error:',
+        error
+      );
+
+      return {
+        error:
+          error.message ||
+          'Invalid or expired verification code.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // PARSE RPC RESULT
+    // --------------------------------------------------------
+
+    const result =
+      data as {
+        success?: boolean;
+        already_verified?: boolean;
+        error?: string;
+        profile_id?: string;
+        email?: string;
+        full_name?: string;
+      };
+
+    if (!result?.success) {
+      return {
+        error:
+          result?.error ||
+          'Invalid or expired verification code.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // PROFILE ID
+    // --------------------------------------------------------
+
+    const profileId =
+      result.profile_id;
+
+    if (!profileId) {
+      clearAuthState();
+      clearVerificationState();
+
+      return {
+        error:
+          'Email verification succeeded, but the account profile could not be identified.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // FETCH VERIFIED PROFILE
+    // --------------------------------------------------------
+
+    const loadedProfile =
+      await fetchProfile(
+        profileId
+      );
+
+    if (!loadedProfile) {
+      clearAuthState();
+
+      return {
+        error:
+          'Your email was verified, but your application profile could not be loaded. Please sign in again.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // DATABASE MUST CONFIRM VERIFIED STATE
+    // --------------------------------------------------------
+
+    if (
+      !isProfileEmailVerified(
+        loadedProfile
+      )
+    ) {
+      requireEmailVerification(
+        normalizedEmail
+      );
+
+      return {
+        error:
+          'Email verification has not been completed.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // GET CURRENT SESSION
+    // --------------------------------------------------------
+
+    const {
+      data: {
+        session: currentSession,
+      },
+    } =
+      await supabase.auth.getSession();
+
+    /*
+     * With the custom verification architecture, the
+     * application uses profiles.email_verified as its
+     * verification source of truth.
+     *
+     * If Supabase Auth email confirmation is enabled,
+     * signUp may return no session. In that configuration
+     * the user should sign in normally after verification.
+     *
+     * If the signup session exists, keep it.
+     */
+
+    if (currentSession) {
+      setSession(
+        currentSession
+      );
+    }
+
+    setProfile(
+      loadedProfile
+    );
+
+    clearVerificationState();
 
     return {
       error: null,
     };
   };
 
+  // ==========================================================
+  // RESEND SIGNUP OTP
+  // ==========================================================
+
+  const resendSignupOtp = async (
+    email: string
+  ): Promise<{
+    error: string | null;
+  }> => {
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (
+      !isValidEmail(
+        normalizedEmail
+      )
+    ) {
+      return {
+        error:
+          'Please enter a valid email address.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // CHECK EXISTING PROFILE
+    // --------------------------------------------------------
+
+    /*
+     * We intentionally do not query profiles from the
+     * browser here.
+     *
+     * The Edge Function/database handles the account
+     * state without exposing account existence.
+     */
+
+    requireEmailVerification(
+      normalizedEmail
+    );
+
+    // --------------------------------------------------------
+    // BUILD PAYLOAD
+    // --------------------------------------------------------
+
+    const application:
+      RegistrationEmailApplication = {
+      email:
+        normalizedEmail,
+
+      applicant_email:
+        normalizedEmail,
+
+      purpose:
+        'verify your Saka Krib account',
+    };
+
+    // --------------------------------------------------------
+    // CURRENT AUTH USER
+    // --------------------------------------------------------
+
+    const {
+      data: {
+        user,
+      },
+      error: userError,
+    } =
+      await supabase.auth.getUser();
+
+    if (userError) {
+      /*
+       * This is expected for an unconfirmed account
+       * when there is no active session.
+       *
+       * Do not fail resend because of it.
+       */
+
+      console.info(
+        'No active Supabase session during OTP resend.'
+      );
+    }
+
+    if (user?.user_metadata) {
+      const metadata =
+        user.user_metadata;
+
+      if (
+        typeof metadata.full_name ===
+        'string'
+      ) {
+        application.full_name =
+          metadata.full_name.trim();
+      }
+    }
+
+    // --------------------------------------------------------
+    // SEND FRESH OTP
+    // --------------------------------------------------------
+
+    try {
+      await sendRegistrationEmail(
+        'otp_verification',
+        application
+      );
+
+      return {
+        error: null,
+      };
+    } catch (error) {
+      console.error(
+        'OTP resend email delivery failed:',
+        error
+      );
+
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unable to send a new verification code.',
+      };
+    }
+  };
 
   // ==========================================================
   // SIGN IN
@@ -465,86 +1187,226 @@ export function AuthProvider({
   const signIn = async (
     email: string,
     password: string
-  ) => {
+  ): Promise<AuthResult> => {
+    const normalizedEmail =
+      normalizeEmail(email);
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
+
+    if (
+      !isValidEmail(
+        normalizedEmail
+      )
+    ) {
+      return {
+        error:
+          'Please enter a valid email address.',
+      };
+    }
+
+    if (!password) {
+      return {
+        error:
+          'Please enter your password.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // SIGN IN
+    // --------------------------------------------------------
+
     const {
       data,
       error,
     } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      await supabase.auth.signInWithPassword(
+        {
+          email:
+            normalizedEmail,
+
+          password,
+        }
+      );
+
+    // --------------------------------------------------------
+    // AUTH ERROR
+    // --------------------------------------------------------
 
     if (error) {
+      console.error(
+        'Supabase sign-in error:',
+        error
+      );
+
+      const message =
+        error.message?.toLowerCase() ||
+        '';
+
+      // ------------------------------------------------------
+      // EMAIL NOT CONFIRMED BY SUPABASE AUTH
+      // ------------------------------------------------------
+
+      if (
+        message.includes(
+          'email not confirmed'
+        ) ||
+        message.includes(
+          'email not verified'
+        ) ||
+        message.includes(
+          'not confirmed'
+        )
+      ) {
+        requireEmailVerification(
+          normalizedEmail
+        );
+
+        const resendResult =
+          await resendSignupOtp(
+            normalizedEmail
+          );
+
+        if (
+          resendResult.error
+        ) {
+          return {
+            error:
+              `Your email has not been verified. ${resendResult.error}`,
+            requiresEmailVerification:
+              true,
+          };
+        }
+
+        return {
+          error:
+            'Your email is not verified. A new verification code has been sent to your email.',
+          requiresEmailVerification:
+            true,
+        };
+      }
+
       return {
-        error: error.message,
+        error:
+          error.message,
       };
     }
 
+    // --------------------------------------------------------
+    // SESSION REQUIRED
+    // --------------------------------------------------------
 
-    if (data.user) {
+    if (
+      !data.user ||
+      !data.session
+    ) {
+      clearAuthState();
 
-      // ------------------------------------------------------
-      // CHECK PROFILE
-      // ------------------------------------------------------
+      return {
+        error:
+          'Unable to create an authenticated session.',
+      };
+    }
 
-      const {
-        data: existing,
-      } =
-        await supabase
-          .from('profiles')
-          .select('id')
-          .eq(
-            'id',
-            data.user.id
-          )
-          .maybeSingle();
+    // --------------------------------------------------------
+    // PROFILE REQUIRED
+    // --------------------------------------------------------
 
+    const loadedProfile =
+      await fetchProfile(
+        data.user.id
+      );
 
-      // ------------------------------------------------------
-      // CREATE PROFILE IF MISSING
-      // ------------------------------------------------------
+    if (!loadedProfile) {
+      console.warn(
+        'Authenticated user has no application profile.'
+      );
 
-      if (!existing) {
-        const {
-          error: profileError,
-        } =
-          await supabase
-            .from('profiles')
-            .insert({
-              id: data.user.id,
+      clearAuthState();
 
-              email:
-                data.user.email ||
-                email,
+      await supabase.auth.signOut();
 
-              full_name:
-                data.user
-                  .user_metadata
-                  ?.full_name ||
-                '',
+      return {
+        error:
+          'Your account does not have an application profile. Please complete registration.',
+      };
+    }
 
-              role: null,
+    // --------------------------------------------------------
+    // APPLICATION EMAIL VERIFICATION
+    // --------------------------------------------------------
 
-              verification_status:
-                'unverified',
-            });
+    if (
+      !isProfileEmailVerified(
+        loadedProfile
+      )
+    ) {
+      requireEmailVerification(
+        normalizedEmail
+      );
 
-        if (profileError) {
-          console.error(
-            'Profile creation error:',
-            profileError
-          );
-        }
+      const resendResult =
+        await resendSignupOtp(
+          normalizedEmail
+        );
+
+      if (
+        resendResult.error
+      ) {
+        return {
+          error:
+            `Your email is not verified. ${resendResult.error}`,
+          requiresEmailVerification:
+            true,
+        };
       }
 
+      return {
+        error:
+          'Your email is not verified. A new verification code has been sent to your email.',
+        requiresEmailVerification:
+          true,
+      };
+    }
 
-      // ------------------------------------------------------
-      // LOAD PROFILE + SUBSCRIPTION
-      // ------------------------------------------------------
+    // --------------------------------------------------------
+    // VERIFIED SIGN IN
+    // --------------------------------------------------------
 
-      await loadUserData(
-        data.user.id
+    setSession(
+      data.session
+    );
+
+    setProfile(
+      loadedProfile
+    );
+
+    clearVerificationState();
+
+    // --------------------------------------------------------
+    // SIGN-IN NOTIFICATION
+    // --------------------------------------------------------
+
+    try {
+      await sendRegistrationEmail(
+        'sign_in_notification',
+        {
+          email:
+            normalizedEmail,
+
+          applicant_email:
+            normalizedEmail,
+
+          full_name:
+            loadedProfile.full_name ??
+            undefined,
+        }
+      );
+    } catch (emailError) {
+      console.error(
+        'Sign-in notification email failed:',
+        emailError
       );
     }
 
@@ -553,36 +1415,55 @@ export function AuthProvider({
     };
   };
 
-
   // ==========================================================
   // GOOGLE SIGN IN
   // ==========================================================
 
   const signInWithGoogle =
-    async () => {
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
+    async (): Promise<void> => {
+      const {
+        error,
+      } =
+        await supabase.auth.signInWithOAuth(
+          {
+            provider: 'google',
 
-        options: {
-          redirectTo:
-            window.location.origin,
-        },
-      });
+            options: {
+              redirectTo:
+                window.location.origin,
+            },
+          }
+        );
+
+      if (error) {
+        console.error(
+          'Google sign-in error:',
+          error
+        );
+      }
     };
-
 
   // ==========================================================
   // SIGN OUT
   // ==========================================================
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const signOut =
+    async (): Promise<void> => {
+      const {
+        error,
+      } =
+        await supabase.auth.signOut();
 
-    setProfile(null);
-    setSession(null);
-    setSubscription(null);
-  };
+      if (error) {
+        console.error(
+          'Sign out error:',
+          error
+        );
+      }
 
+      clearAuthState();
+      clearVerificationState();
+    };
 
   // ==========================================================
   // SET ROLE
@@ -590,12 +1471,49 @@ export function AuthProvider({
 
   const setRole = async (
     role: UserRole
-  ) => {
+  ): Promise<{
+    error: string | null;
+  }> => {
+    // --------------------------------------------------------
+    // SESSION REQUIRED
+    // --------------------------------------------------------
+
     if (!session?.user) {
       return {
-        error: 'Not authenticated',
+        error:
+          'Not authenticated.',
       };
     }
+
+    // --------------------------------------------------------
+    // PROFILE REQUIRED
+    // --------------------------------------------------------
+
+    if (!profile) {
+      return {
+        error:
+          'Application profile is required.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // EMAIL VERIFICATION REQUIRED
+    // --------------------------------------------------------
+
+    if (
+      !isProfileEmailVerified(
+        profile
+      )
+    ) {
+      return {
+        error:
+          'Email verification is required before setting a role.',
+      };
+    }
+
+    // --------------------------------------------------------
+    // UPDATE ROLE
+    // --------------------------------------------------------
 
     const {
       error,
@@ -612,7 +1530,8 @@ export function AuthProvider({
 
     if (error) {
       return {
-        error: error.message,
+        error:
+          error.message,
       };
     }
 
@@ -620,50 +1539,84 @@ export function AuthProvider({
       session.user.id
     );
 
-    await fetchSubscription(
-      session.user.id,
-      role
-    );
-
     return {
       error: null,
     };
   };
-
 
   // ==========================================================
   // REFRESH PROFILE
   // ==========================================================
 
   const refreshProfile =
-    async () => {
+    async (): Promise<void> => {
+      // ------------------------------------------------------
+      // SESSION REQUIRED
+      // ------------------------------------------------------
+
       if (!session?.user) {
+        clearAuthState();
+
         return;
       }
 
-      await fetchProfile(
-        session.user.id
-      );
-    };
+      // ------------------------------------------------------
+      // FETCH PROFILE
+      // ------------------------------------------------------
 
+      const loadedProfile =
+        await fetchProfile(
+          session.user.id
+        );
 
-  // ==========================================================
-  // REFRESH SUBSCRIPTION
-  // ==========================================================
+      // ------------------------------------------------------
+      // PROFILE DISAPPEARED
+      // ------------------------------------------------------
 
-  const refreshSubscription =
-    async () => {
-      if (!session?.user) {
-        setSubscription(null);
+      if (!loadedProfile) {
+        console.warn(
+          'Application profile no longer exists. Signing user out.'
+        );
+
+        clearAuthState();
+
+        await supabase.auth.signOut();
+
         return;
       }
 
-      await fetchSubscription(
-        session.user.id,
-        profile?.role
-      );
-    };
+      // ------------------------------------------------------
+      // EMAIL NO LONGER VERIFIED
+      // ------------------------------------------------------
 
+      if (
+        !isProfileEmailVerified(
+          loadedProfile
+        )
+      ) {
+        requireEmailVerification(
+          loadedProfile.email ||
+            session.user.email ||
+            null
+        );
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // VERIFIED
+      // ------------------------------------------------------
+
+      setSession(
+        session
+      );
+
+      setProfile(
+        loadedProfile
+      );
+
+      clearVerificationState();
+    };
 
   // ==========================================================
   // PROVIDER
@@ -672,10 +1625,6 @@ export function AuthProvider({
   return (
     <AuthContext.Provider
       value={{
-        // ----------------------------------------------------
-        // AUTH
-        // ----------------------------------------------------
-
         session,
 
         profile,
@@ -684,21 +1633,17 @@ export function AuthProvider({
 
         needsRoleSelection,
 
+        needsEmailVerification,
 
-        // ----------------------------------------------------
-        // PMS
-        // ----------------------------------------------------
+        pendingVerificationEmail,
 
-        subscription,
-
-        hasActivePMS,
-
-
-        // ----------------------------------------------------
-        // AUTH ACTIONS
-        // ----------------------------------------------------
+        isAuthenticated,
 
         signUp,
+
+        verifyEmailOtp,
+
+        resendSignupOtp,
 
         signIn,
 
@@ -706,28 +1651,15 @@ export function AuthProvider({
 
         signOut,
 
-
-        // ----------------------------------------------------
-        // ROLE
-        // ----------------------------------------------------
-
         setRole,
 
-
-        // ----------------------------------------------------
-        // REFRESH
-        // ----------------------------------------------------
-
         refreshProfile,
-
-        refreshSubscription,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
-
 
 // ============================================================
 // HOOK

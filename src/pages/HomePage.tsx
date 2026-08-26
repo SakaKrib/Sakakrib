@@ -19,18 +19,112 @@ export default function HomePage() {
 
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchStats = async () => {
-      const [listingCount, landlordCount, moverCount, reviewCount] = await Promise.all([
-        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('is_published', true),
-        supabase.from('profiles').select('*', { count: 'exact', head: true }).in('role', ['landlord', 'real_estate']).eq('verification_status', 'verified'),
-        supabase.from('movers').select('*', { count: 'exact', head: true }).eq('is_available', true),
-        supabase.from('reviews').select('*', { count: 'exact', head: true }),
+      const [
+        listingCount,
+        landlordCount,
+        moverCount,
+        reviewCount,
+      ] = await Promise.all([
+        supabase
+          .from('listings')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_published', true)
+          .eq('is_approved', true),
+
+        supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'landlord')
+          .eq('kyc_completed', true)
+          .eq('verification_status', 'verified')
+          .eq('landlord_application_status', 'approved'),
+
+        supabase
+          .from('movers')
+          .select('*', { count: 'exact', head: true })
+          .eq('approval_status', 'approved')
+          .eq('is_available', true),
+
+        supabase
+          .from('reviews')
+          .select('*', { count: 'exact', head: true }),
       ]);
-      setStats({ listings: listingCount.count || 0, landlords: landlordCount.count || 0, movers: moverCount.count || 0, reviews: reviewCount.count || 0 });
+
+      if (!mounted) return;
+
+      if (listingCount.error) {
+        console.error('Listing stats:', listingCount.error);
+      }
+
+      if (landlordCount.error) {
+        console.error('Landlord stats:', landlordCount.error);
+      }
+
+      if (moverCount.error) {
+        console.error('Mover stats:', moverCount.error);
+      }
+
+      if (reviewCount.error) {
+        console.error('Review stats:', reviewCount.error);
+      }
+
+      setStats({
+        listings: listingCount.count ?? 0,
+        landlords: landlordCount.count ?? 0,
+        movers: moverCount.count ?? 0,
+        reviews: reviewCount.count ?? 0,
+      });
     };
+
     fetchStats();
-    const channel = supabase.channel('homepage-metrics').on('postgres_changes', { event: '*', schema: 'public', table: 'listings' }, fetchStats).on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchStats).on('postgres_changes', { event: '*', schema: 'public', table: 'movers' }, fetchStats).on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, fetchStats).subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    const channel = supabase
+      .channel('homepage-metrics')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'listings',
+        },
+        fetchStats
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+        },
+        fetchStats
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'movers',
+        },
+        fetchStats
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reviews',
+        },
+        fetchStats
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -83,7 +177,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
               </h1>
             </div>
             {/* Compact Search Strip */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-row gap-2 sm:items-center">
               <div className="relative">
                 <MapPin className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <select
@@ -281,17 +375,39 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-4 py-6 sm:grid-cols-4">
             {[
-              { icon: Building2, label: 'Vendor Listings', value: stats.listings.toLocaleString() },
-              { icon: ShieldCheck, label: 'Verified Landlords', value: stats.landlords.toLocaleString() },
-              { icon: Truck, label: 'Professional Movers', value: stats.movers.toLocaleString() },
-              { icon: Star, label: 'User Reviews', value: stats.reviews.toLocaleString() },
+              {
+                icon: Building2,
+                label: 'Vendor Listings',
+                value: stats.listings.toLocaleString(),
+              },
+              {
+                icon: ShieldCheck,
+                label: 'Verified Landlords',
+                value: stats.landlords.toLocaleString(),
+              },
+              {
+                icon: Truck,
+                label: 'Professional Movers',
+                value: stats.movers.toLocaleString(),
+              },
+              {
+                icon: Star,
+                label: 'User Reviews',
+                value: stats.reviews.toLocaleString(),
+              },
             ].map((stat, i) => (
               <div key={i} className="text-center">
                 <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-800/50">
                   <stat.icon className="h-5 w-5 text-brand-600 dark:text-brand-400" />
                 </div>
-                <p className="mt-1.5 text-xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p>
+
+                <p className="mt-1.5 text-xl font-bold text-gray-900 dark:text-white">
+                  {stat.value}
+                </p>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {stat.label}
+                </p>
               </div>
             ))}
           </div>
@@ -350,7 +466,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
                   return;
                 }
                 // if user is landlord and tries to post a listing, redirect to post listing
-                if (card.view === "post-listing" && profile.role === "landlord") {
+                if (card.view === "post-listing" && profile.role === "landlord" || profile.role === "real_estate") {
                   navigate('post-listing');
                   return;
                 }
