@@ -1378,6 +1378,9 @@ export function AuthProvider({
       data.session
     );
 
+    
+    console.log("session data", session)
+
     setProfile(
       loadedProfile
     );

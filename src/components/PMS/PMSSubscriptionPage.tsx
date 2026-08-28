@@ -27,10 +27,6 @@ import PMSPlanSelector, {
   type PMSPlanName,
   type PMSSubscriptionPlan,
 } from "./PMSPlanSelector";
-import PMSCheckoutModal, {
-  type PMSCheckoutPlan,
-} from "@/modals/Pmscheckoutmodal";
-import type { PMSCheckoutAudience } from "@/lib/LandlordTs/Pmspayments";
 /* ============================================================
  * DEBUG
  * ============================================================ */
@@ -739,34 +735,12 @@ export default function PMSSubscriptionPage() {
    * PAYMENT MODAL OPEN
    * ========================================================== */
 
-    const [paymentPlan, setPaymentPlan] =
-      useState<PMSSubscriptionPlan | null>(null);
-
-    const [paymentCycle, setPaymentCycle] =
-      useState<PMSBillingCycle | null>(null);
-
-    const [showPaymentModal, setShowPaymentModal] =
-      useState(false);
-
-    // Adapts the page's existing paymentPlan/paymentCycle state into
-    // the shape PMSCheckoutModal expects. No new state introduced -
-    // this is purely a derived view over what handleProceedToPayment
-    // already sets.
-    const checkoutPlan: PMSCheckoutPlan | null =
-      paymentPlan && paymentCycle
-        ? {
-            planId: paymentPlan.id,
-            planName: paymentPlan.name,
-            billingCycle: paymentCycle,
-            amountKes:
-              paymentCycle === "MONTHLY"
-                ? paymentPlan.monthly_price_kes
-                : paymentPlan.annual_price_kes,
-          }
-        : null;
-
-    const checkoutAudience: PMSCheckoutAudience =
-      role === "landlord" ? "LANDLORD" : "REAL_ESTATE";
+    // Payment modal state used to live here, but PMSPlanSelector now
+    // owns its own PMSCheckoutModal internally (opened by its pay
+    // button regardless of what any parent wires up) - keeping a
+    // second copy here would open a second, overlapping modal on the
+    // same click. handleProceedToPayment below is kept only as an
+    // optional informational hook.
 
   /* ==========================================================
    * LOAD PROFILE
@@ -1586,14 +1560,12 @@ export default function PMSSubscriptionPage() {
       plan: PMSSubscriptionPlan,
       cycle: PMSBillingCycle
     ) => {
+      // Purely informational now - PMSPlanSelector opens its own
+      // checkout modal regardless of this callback.
       console.log("Proceeding to payment:", {
         plan,
         cycle,
       });
-
-      setPaymentPlan(plan);
-      setPaymentCycle(cycle);
-      setShowPaymentModal(true);
     };
 
     
@@ -1633,6 +1605,35 @@ const landlordPlanSelector =
           setSelectedBillingCycle
         }
         onProceedToPayment={handleProceedToPayment}
+        onPaymentSuccess={handleRefresh}
+        onGoToDashboard={handleGoToDashboard}
+      />
+      ) : null;
+
+// Mirrors landlordPlanSelector exactly, just role="real_estate" -
+// this was previously missing entirely, which is why real estate
+// accounts had a static "use the checkout flow" message instead of
+// an actual selector + pay button wired to onProceedToPayment.
+const realEstatePlanSelector =
+  role === "real_estate" ? (
+    <PMSPlanSelector
+        role="real_estate"
+        selectedPlanName={
+          selectedPlan ??
+          currentPlanName ??
+          "STARTER"
+        }
+        billingCycle={selectedBillingCycle}
+        currentPlanName={currentPlanName}
+        currentBillingCycle={
+          subscription?.billing_cycle ?? null
+        }
+        onPlanChange={handlePlanChange}
+        onBillingCycleChange={
+          setSelectedBillingCycle
+        }
+        onProceedToPayment={handleProceedToPayment}
+        onPaymentSuccess={handleRefresh}
         onGoToDashboard={handleGoToDashboard}
       />
       ) : null;
@@ -1802,18 +1803,7 @@ const landlordPlanSelector =
             "landlord" ? (
               landlordPlanSelector
             ) : (
-              <div className="rounded-xl border border-brand-200 bg-brand-50 p-5 text-center dark:border-brand-800 dark:bg-brand-950/20">
-                <p className="text-sm text-brand-700 dark:text-brand-300">
-                  No active real estate
-                  subscription was returned by
-                  the subscription service.
-                </p>
-
-                <p className="mt-2 text-xs text-brand-600 dark:text-brand-400">
-                  Use the real-estate subscription
-                  checkout flow to activate a plan.
-                </p>
-              </div>
+              realEstatePlanSelector
             )}
 
             {role ===
@@ -2054,21 +2044,59 @@ const landlordPlanSelector =
             </div>
           )}
 
-          {/* REAL ESTATE NOTICE */}
+          {/* REAL ESTATE PLAN SELECTOR
+              Mirrors the landlord block above exactly - previously
+              this was just a static "uses the separate REAL_ESTATE
+              audience" notice with no selector and no way to reach
+              the pay button. */}
 
           {role ===
             "real_estate" && (
-            <div className="mt-6 rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-950/20">
-              <p className="text-sm font-semibold text-brand-700 dark:text-brand-300">
-                Real estate subscription
-              </p>
+            <div className="mt-6 border-t border-gray-200 pt-6 dark:border-gray-800">
+              <div className="mb-4">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                  Available Subscription Plans
+                </h3>
 
-              <p className="mt-1 text-sm text-brand-600 dark:text-brand-400">
-                Your real-estate subscription
-                uses the separate REAL_ESTATE
-                plan audience and entitlement
-                system.
-              </p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Select a plan to compare
+                  your current subscription
+                  with the available real
+                  estate plans.
+                </p>
+              </div>
+
+              {realEstatePlanSelector}
+
+              {selectedPlan !==
+                  currentPlanName ||
+              selectedBillingCycle !==
+                  subscription.billing_cycle ? (
+                <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-950/20">
+                  <p className="text-sm font-semibold text-brand-700 dark:text-brand-300">
+                    New selection
+                  </p>
+
+                  <p className="mt-1 text-sm text-brand-600 dark:text-brand-400">
+                    {selectedPlan ??
+                      "No plan selected"}{" "}
+                    —{" "}
+                    {selectedBillingCycle ===
+                    "MONTHLY"
+                      ? "Monthly"
+                      : "Annual"}{" "}
+                    billing
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-xl border border-success-200 bg-success-50 p-4 dark:border-success-800 dark:bg-success-950/20">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-success-700 dark:text-success-400">
+                    <CheckCircle2 className="h-4 w-4" />
+
+                    Current plan selected
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -2493,16 +2521,6 @@ const landlordPlanSelector =
           Refresh
         </button>
       </div>
-
-      <PMSCheckoutModal
-        open={showPaymentModal}
-        onOpenChange={setShowPaymentModal}
-        audience={checkoutAudience}
-        plan={checkoutPlan}
-        onSuccess={() => {
-          void handleRefresh();
-        }}
-      />
     </section>
   );
 }

@@ -29,7 +29,6 @@ import {
   getMyPMSSubscription,
   getMyPMSUnitCount,
   getPMSPlans,
-  initiatePMSPayment,
   removeListingFromPMS,
   type PMSAvailableListing,
   type PMSBillingCycle,
@@ -52,9 +51,16 @@ import {
 
 import LandlordPMSSettings from '@/components/PMS/LandlordPms/Landlordpmssettings';
 
-import LandlordPMSInvoices from '@/components/PMS/LandlordPms/ Landlordpmsinvoices';
+import LandlordPMSInvoices from '@/components/PMS/LandlordPms/Landlordpmsinvoices';
+
+import PMSPlanSelector, {
+  type PMSSubscriptionPlan,
+  type PMSBillingCycle as PMSPlanSelectorBillingCycle,
+} from '@/components/PMS/PMSPlanSelector';
 
 import LandlordPMSPaymentConfirmations from '@/components/PMS/LandlordPms/Landlordpmspaymentconfirmations';
+
+// import LandlordPMSRenters from '@/components/PMS/LandlordPms/LandlordPMSRenters';
 
 
 // ============================================================
@@ -536,12 +542,12 @@ export default function LandlordPMS() {
           </div>
         )}
 
-        {page === 'renters' && (
-          <RentersView
+        {/* {page === 'renters' && (
+          <LandlordPMSRenters
             units={data.units}
-            onOpenUnit={openUnit}
+            onChanged={load}
           />
-        )}
+        )} */}
 
         {page === 'invoices' && (
           <LandlordPMSInvoices
@@ -595,6 +601,7 @@ function OverviewView({
         capacity={capacity}
         plans={plans}
         onChanged={onSubscriptionChanged}
+        onNavigate={onNavigate}
       />
 
       {usable && rentSummary && (
@@ -715,87 +722,34 @@ function OverviewView({
 function SubscriptionPanel({
   subscription,
   capacity,
-  plans,
   onChanged,
+  onNavigate,
 }: {
   subscription: PMSSubscription | null;
   capacity: PMSCapacity;
-  plans: PMSPlan[];
+  // `plans` is intentionally no longer a required prop here - the
+  // real PMSPlanSelector fetches LANDLORD-audience plans itself
+  // (see its own useEffect), so the duplicate plans list this panel
+  // used to receive and render its own grid from is gone. Still
+  // accepted (unused) so the OverviewView call site above doesn't
+  // need to change.
+  plans?: PMSPlan[];
   onChanged: () => Promise<void>;
+  onNavigate: (page: PMSPage) => void;
 }) {
-  const [selectedPlanId, setSelectedPlanId] =
-    useState<string>(
-      plans[0]?.id ?? '',
-    );
+  const [selectedPlan, setSelectedPlan] =
+    useState<PMSSubscriptionPlan | null>(null);
 
   const [billingCycle, setBillingCycle] =
-    useState<PMSBillingCycle>('MONTHLY');
+    useState<PMSPlanSelectorBillingCycle>(
+      (subscription?.billing_cycle as PMSPlanSelectorBillingCycle) ?? 'MONTHLY',
+    );
 
-  const [processing, setProcessing] =
-    useState(false);
-
-  const [paymentMessage, setPaymentMessage] =
-    useState<string | null>(null);
-
-  const [paymentError, setPaymentError] =
-    useState<string | null>(null);
-
-  useEffect(() => {
-    if (
-      selectedPlanId &&
-      plans.some(
-        (plan) => plan.id === selectedPlanId,
-      )
-    ) {
-      return;
-    }
-
-    if (plans[0]) {
-      setSelectedPlanId(plans[0].id);
-    }
-  }, [plans, selectedPlanId]);
-
-  const selectedPlan =
-    plans.find(
-      (plan) => plan.id === selectedPlanId,
-    ) ?? null;
-
-  const handlePayment = async () => {
-    if (!selectedPlan) {
-      setPaymentError(
-        'Please select a PMS plan.',
-      );
-      return;
-    }
-
-    setProcessing(true);
-    setPaymentError(null);
-    setPaymentMessage(null);
-
-    try {
-      const response =
-        await initiatePMSPayment({
-          plan_id: selectedPlan.id,
-          billing_cycle: billingCycle,
-        });
-
-      setPaymentMessage(
-        response.customer_message ||
-          response.message ||
-          'M-Pesa payment request sent. Complete the payment on your phone.',
-      );
-
-      await onChanged();
-    } catch (err) {
-      setPaymentError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to initiate M-Pesa payment.',
-      );
-    } finally {
-      setProcessing(false);
-    }
-  };
+  // PMSCheckoutModal is owned internally by PMSPlanSelector itself
+  // (it opens on its own pay button click, no wiring required here)
+  // - this panel doesn't need its own checkout state or a second
+  // modal render, which would otherwise stack two overlapping
+  // modals on the same click.
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
@@ -913,165 +867,29 @@ function SubscriptionPanel({
         subscription.status === 'CANCELLED' ? (
         <div className="mt-6 border-t border-gray-100 pt-6 dark:border-brand-800">
 
-          <div>
+          <div className="mb-5">
             <h3 className="font-semibold text-gray-900 dark:text-white">
               Choose a PMS plan
             </h3>
 
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Select a plan and pay securely using
-              M-Pesa.
+              Select a plan, then pay with M-Pesa or PayPal.
             </p>
           </div>
 
-          <div className="mt-5 flex justify-center">
-            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-brand-700 dark:bg-brand-800">
-
-              <button
-                type="button"
-                onClick={() =>
-                  setBillingCycle('MONTHLY')
-                }
-                disabled={processing}
-                className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                  billingCycle === 'MONTHLY'
-                    ? 'bg-white text-gray-900 shadow-sm dark:bg-brand-900 dark:text-white'
-                    : 'text-gray-500'
-                }`}
-              >
-                Monthly
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setBillingCycle('ANNUAL')
-                }
-                disabled={processing}
-                className={`rounded-md px-4 py-2 text-sm font-semibold ${
-                  billingCycle === 'ANNUAL'
-                    ? 'bg-white text-gray-900 shadow-sm dark:bg-brand-900 dark:text-white'
-                    : 'text-gray-500'
-                }`}
-              >
-                Annual
-              </button>
-
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-
-            {plans.map((plan) => {
-              const selected =
-                plan.id === selectedPlanId;
-
-              const price =
-                billingCycle === 'MONTHLY'
-                  ? plan.monthly_price_kes
-                  : plan.annual_price_kes;
-
-              return (
-                <button
-                  key={plan.id}
-                  type="button"
-                  disabled={processing}
-                  onClick={() =>
-                    setSelectedPlanId(plan.id)
-                  }
-                  className={`rounded-xl border p-4 text-left transition ${
-                    selected
-                      ? 'border-brand-500 ring-2 ring-brand-500/20'
-                      : 'border-gray-200 hover:border-brand-400 dark:border-brand-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-
-                    <h4 className="font-bold text-gray-900 dark:text-white">
-                      {plan.name}
-                    </h4>
-
-                    {selected && (
-                      <CheckCircle2 className="h-5 w-5 text-success-600" />
-                    )}
-
-                  </div>
-
-                  <p className="mt-3 text-2xl font-bold text-gray-900 dark:text-white">
-                    {formatKES(price)}
-                  </p>
-
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    per{' '}
-                    {billingCycle ===
-                    'MONTHLY'
-                      ? 'month'
-                      : 'year'}
-                  </p>
-
-                  <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
-                    {plan.max_listings === null
-                      ? 'Unlimited properties'
-                      : `Up to ${plan.max_listings} properties`}
-                  </div>
-
-                  {plan.max_units_per_listing !==
-                    null && (
-                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Up to{' '}
-                      {
-                        plan.max_units_per_listing
-                      } units per property
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-
-          </div>
-
-          {paymentError && (
-            <div className="mt-4 rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700 dark:border-error-900 dark:bg-error-900/20 dark:text-error-400">
-              {paymentError}
-            </div>
-          )}
-
-          {paymentMessage && (
-            <div className="mt-4 rounded-lg border border-success-200 bg-success-50 p-3 text-sm text-success-700 dark:border-success-900 dark:bg-success-900/20 dark:text-success-400">
-              {paymentMessage}
-            </div>
-          )}
-
-          <button
-            type="button"
-            disabled={
-              processing ||
-              !selectedPlan
+          <PMSPlanSelector
+            role="landlord"
+            selectedPlanId={selectedPlan?.id ?? null}
+            billingCycle={billingCycle}
+            currentPlanId={subscription?.plan_id ?? null}
+            currentBillingCycle={
+              (subscription?.billing_cycle as PMSPlanSelectorBillingCycle) ?? null
             }
-            onClick={() =>
-              void handlePayment()
-            }
-            className="btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {processing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <WalletCards className="h-4 w-4" />
-            )}
-
-            {processing
-              ? 'Starting M-Pesa payment...'
-              : `Pay ${
-                  selectedPlan
-                    ? formatKES(
-                        billingCycle ===
-                          'MONTHLY'
-                          ? selectedPlan.monthly_price_kes
-                          : selectedPlan.annual_price_kes,
-                      )
-                    : ''
-                } with M-Pesa`}
-          </button>
+            onPlanChange={setSelectedPlan}
+            onBillingCycleChange={setBillingCycle}
+            onPaymentSuccess={onChanged}
+            onGoToDashboard={() => onNavigate('overview')}
+          />
 
         </div>
       ) : null}
@@ -1917,170 +1735,6 @@ const [paidThroughMonth, setPaidThroughMonth] =
           )}
 
         </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// RENTERS
-// ============================================================
-
-function RentersView({
-  units,
-  onOpenUnit,
-}: {
-  units: PMSUnit[];
-  onOpenUnit: (unitId: string) => void;
-}) {
-  const occupiedUnits = units.filter(
-    (unit) =>
-      unit.assoc_status === 'ACTIVE',
-  );
-
-  if (occupiedUnits.length === 0) {
-    return (
-      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center dark:border-brand-700 dark:bg-brand-900">
-
-        <Users className="mx-auto h-10 w-10 text-gray-400" />
-
-        <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
-          No active renters
-        </h2>
-
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          Units with active renter associations will
-          appear here.
-        </p>
-
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-          Renters
-        </h2>
-
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          View units that currently have active renter
-          associations.
-        </p>
-      </div>
-
-
-      <div className="grid gap-4 md:grid-cols-2">
-
-        {occupiedUnits.map((unit) => {
-          const renter =
-            unit as PMSUnit & {
-              renter_name?: string | null;
-              renter_email?: string | null;
-              renter_phone?: string | null;
-              tenant_name?: string | null;
-              tenant_email?: string | null;
-              tenant_phone?: string | null;
-            };
-
-          const renterName =
-            renter.renter_name ??
-            renter.tenant_name ??
-            'Active renter';
-
-          const renterEmail =
-            renter.renter_email ??
-            renter.tenant_email ??
-            null;
-
-          const renterPhone =
-            renter.renter_phone ??
-            renter.tenant_phone ??
-            null;
-
-          return (
-            <div
-              key={unit.unit_id}
-              className="rounded-xl border border-gray-200 bg-white p-5 dark:border-brand-700 dark:bg-brand-900"
-            >
-
-              <div className="flex items-start justify-between gap-4">
-
-                <div className="flex items-start gap-3">
-
-                  <div className="rounded-lg bg-brand-50 p-3 dark:bg-brand-800">
-                    <Users className="h-5 w-5 text-brand-600 dark:text-brand-400" />
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white">
-                      {renterName}
-                    </h3>
-
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Unit {unit.unit_id.slice(0, 8)}
-                    </p>
-                  </div>
-
-                </div>
-
-                <span className="rounded-full bg-success-100 px-2.5 py-1 text-xs font-semibold text-success-700 dark:bg-success-900/30 dark:text-success-400">
-                  Active
-                </span>
-
-              </div>
-
-
-              <div className="mt-5 space-y-3">
-
-                {renterEmail && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                    <Mail className="h-4 w-4 text-gray-400" />
-                    <span className="break-all">
-                      {renterEmail}
-                    </span>
-                  </div>
-                )}
-
-                {renterPhone && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                    <Phone className="h-4 w-4 text-gray-400" />
-                    <span>
-                      {renterPhone}
-                    </span>
-                  </div>
-                )}
-
-                {!renterEmail &&
-                  !renterPhone && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Renter contact details are not
-                      available in the current unit record.
-                    </p>
-                  )}
-
-              </div>
-
-
-              <button
-                type="button"
-                onClick={() =>
-                  onOpenUnit(unit.unit_id)
-                }
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 dark:border-brand-700 dark:text-gray-300"
-              >
-                <Eye className="h-4 w-4" />
-                View unit
-              </button>
-
-            </div>
-          );
-        })}
 
       </div>
 

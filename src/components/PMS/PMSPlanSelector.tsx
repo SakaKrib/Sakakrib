@@ -8,6 +8,11 @@ import {
 
 import { supabase } from "../../lib/supabase";
 
+import PMSCheckoutModal, {
+  type PMSCheckoutPlan,
+} from "@/modals/Pmscheckoutmodal";
+import type { PMSCheckoutAudience } from "@/lib/LandlordTs/Pmspayments";
+
 /* ============================================================
  * TYPES
  * ============================================================ */
@@ -52,10 +57,23 @@ export interface PMSSubscriptionPlan {
 
 export interface PMSPlanSelectorProps {
 
-  onProceedToPayment: (
+  /**
+   * Optional - fired when payment starts, purely informational
+   * (e.g. analytics). The selector opens its own PMSCheckoutModal
+   * regardless of whether this is provided, so the pay button works
+   * even if a parent never wires this up.
+   */
+  onProceedToPayment?: (
     plan: PMSSubscriptionPlan,
     billingCycle: PMSBillingCycle
   ) => void;
+
+  /**
+   * Optional - fired once PMSCheckoutModal confirms the payment
+   * succeeded (invoice PAID / subscription ACTIVE). Use this to
+   * refresh whatever subscription state the parent page displays.
+   */
+  onPaymentSuccess?: () => void;
   
   /**
    * Determines which subscription_plans.audience
@@ -182,6 +200,7 @@ export default function PMSPlanSelector({
   onPlanChange,
   onBillingCycleChange,
   onProceedToPayment,
+  onPaymentSuccess,
   onGoToDashboard,
 }: PMSPlanSelectorProps) {
   const [
@@ -198,6 +217,18 @@ export default function PMSPlanSelector({
     error,
     setError,
   ] = useState<string | null>(null);
+
+  // The selector owns the checkout modal itself - the pay button
+  // below always opens THIS modal directly. It no longer depends on
+  // a parent correctly wiring onProceedToPayment into its own modal
+  // (that's exactly what silently broke for the real-estate case
+  // previously - the parent's wiring is easy to forget or get
+  // wrong, and every future consumer of this component would carry
+  // the same risk).
+  const [
+    checkoutOpen,
+    setCheckoutOpen,
+  ] = useState(false);
 
   /* ==========================================================
    * LOAD PLANS FOR CURRENT ROLE
@@ -383,6 +414,37 @@ export default function PMSPlanSelector({
         ? "Change Billing Cycle"
         : "Upgrade";
 
+  const checkoutAudience: PMSCheckoutAudience =
+    role === "landlord" ? "LANDLORD" : "REAL_ESTATE";
+
+  const checkoutPlan: PMSCheckoutPlan | null =
+    selectedPlan
+      ? {
+          planId: selectedPlan.id,
+          planName: selectedPlan.name,
+          billingCycle,
+          amountKes:
+            billingCycle === "MONTHLY"
+              ? selectedPlan.monthly_price_kes
+              : selectedPlan.annual_price_kes,
+        }
+      : null;
+
+  const handlePayClick = () => {
+    if (!selectedPlan) return;
+
+    if (hasCurrentSubscription && isCurrentPlan) {
+      onGoToDashboard();
+      return;
+    }
+
+    // Fire the optional informational callback, then always open
+    // this component's own modal - the parent doesn't need to do
+    // anything further for payment to actually work.
+    onProceedToPayment?.(selectedPlan, billingCycle);
+    setCheckoutOpen(true);
+  };
+
   /* ==========================================================
    * RENDER
    * ========================================================== */
@@ -496,7 +558,7 @@ export default function PMSPlanSelector({
                   onClick={() =>
                     onPlanChange(plan)
                   }
-                  className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6  text-left shadow-sm transition-all dark:bg-gray-900 ${
+                  className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6 text-left shadow-sm transition-all dark:bg-gray-900 ${
                     selected
                       ? "border-gray-900 shadow-md ring-2 ring-gray-900/10 dark:border-white"
                       : "border-gray-200 hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md dark:border-gray-700"
@@ -663,19 +725,7 @@ export default function PMSPlanSelector({
             <button
               type="button"
               disabled={disabled}
-              onClick={() => {
-                if (!hasCurrentSubscription) {
-                  onProceedToPayment(selectedPlan, billingCycle);
-                  return;
-                }
-
-                if (isCurrentPlan) {
-                  onGoToDashboard();
-                  return;
-                }
-
-                onProceedToPayment(selectedPlan, billingCycle);
-              }}
+              onClick={handlePayClick}
               className={`inline-flex min-w-[240px] items-center justify-center rounded-xl px-6 py-3.5 text-sm font-bold shadow-sm transition-all ${
                 disabled
                   ? "cursor-not-allowed bg-gray-300 text-gray-500"
@@ -713,6 +763,17 @@ export default function PMSPlanSelector({
             </p>
           </div>
         )}
+
+      <PMSCheckoutModal
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        audience={checkoutAudience}
+        plan={checkoutPlan}
+        onSuccess={() => {
+          setCheckoutOpen(false);
+          onPaymentSuccess?.();
+        }}
+      />
     </div>
   );
 }
