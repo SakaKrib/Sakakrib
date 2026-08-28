@@ -17,12 +17,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 const allowedOrigin = (request: Request): string => {
   const origin = request.headers.get('origin');
-
-  // Never reflect an arbitrary Origin. Configure APP_ORIGIN in production.
   const configuredOrigin = Deno.env.get('APP_ORIGIN');
+
   if (configuredOrigin && origin === configuredOrigin) return origin;
 
-  // Local development fallback.
   if (origin === 'http://localhost:5173' || origin === 'http://127.0.0.1:5173') {
     return origin;
   }
@@ -46,16 +44,19 @@ const json = (
   request: Request,
   body: Record<string, unknown>,
   status = 200,
-  extraHeaders: HeadersInit = {},
+  extraHeaders: HeadersInit = [],
 ) => {
+  const headers = new Headers(corsHeaders(request));
+  headers.set('Content-Type', 'application/json');
+  headers.set('Cache-Control', 'no-store');
+
+  for (const [name, value] of extraHeaders) {
+    headers.append(name, value);
+  }
+
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      ...corsHeaders(request),
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-      ...extraHeaders,
-    },
+    headers,
   });
 };
 
@@ -66,19 +67,27 @@ const cookieBase = [
   'SameSite=None',
 ];
 
-const setAuthCookies = (accessToken: string, refreshToken: string): HeadersInit => ({
-  'Set-Cookie': [
+const setAuthCookies = (accessToken: string, refreshToken: string): HeadersInit => [
+  [
+    'Set-Cookie',
     `sk_access=${encodeURIComponent(accessToken)}; ${cookieBase.join('; ')}; Max-Age=3600`,
+  ],
+  [
+    'Set-Cookie',
     `sk_refresh=${encodeURIComponent(refreshToken)}; ${cookieBase.join('; ')}; Max-Age=2592000`,
-  ].join(', '),
-});
+  ],
+];
 
-const clearAuthCookies = (): HeadersInit => ({
-  'Set-Cookie': [
+const clearAuthCookies = (): HeadersInit => [
+  [
+    'Set-Cookie',
     `sk_access=; ${cookieBase.join('; ')}; Max-Age=0`,
+  ],
+  [
+    'Set-Cookie',
     `sk_refresh=; ${cookieBase.join('; ')}; Max-Age=0`,
-  ].join(', '),
-});
+  ],
+];
 
 const readCookies = (request: Request): Record<string, string> => {
   const header = request.headers.get('cookie') ?? '';
@@ -90,6 +99,7 @@ const readCookies = (request: Request): Record<string, string> => {
 
     const name = part.slice(0, index).trim();
     const value = part.slice(index + 1).trim();
+
     if (name) result[name] = decodeURIComponent(value);
   }
 
@@ -163,6 +173,14 @@ Deno.serve(async (request) => {
     return json(request, { error: 'Method not allowed.' }, 405);
   }
 
+  // Cross-site requests must come from the configured application origin.
+  // This is required because the HttpOnly cookies use SameSite=None.
+  const origin = request.headers.get('origin');
+  const configuredOrigin = Deno.env.get('APP_ORIGIN');
+  if (configuredOrigin && origin && origin !== configuredOrigin) {
+    return json(request, { error: 'Origin not allowed.' }, 403);
+  }
+
   try {
     const payload = await request.json().catch(() => ({}));
     const action = typeof payload.action === 'string' ? payload.action : '';
@@ -185,7 +203,12 @@ Deno.serve(async (request) => {
 
       if (!profile) {
         await supabase.auth.signOut();
-        return json(request, { error: 'Your account does not have an application profile.' }, 403, clearAuthCookies());
+        return json(
+          request,
+          { error: 'Your account does not have an application profile.' },
+          403,
+          clearAuthCookies(),
+        );
       }
 
       if (profile.email_verified !== true) {
@@ -239,12 +262,23 @@ Deno.serve(async (request) => {
         return json(request, { authenticated: false }, 401, clearAuthCookies());
       }
 
+      const profile = await getProfile(data.session.access_token, data.user.id);
+
+      if (!profile || profile.email_verified !== true) {
+        return json(
+          request,
+          { authenticated: false, requiresEmailVerification: true },
+          403,
+          clearAuthCookies(),
+        );
+      }
+
       return json(
         request,
         {
           authenticated: true,
           user: { id: data.user.id, email: data.user.email ?? null },
-          profile: await getProfile(data.session.access_token, data.user.id),
+          profile,
         },
         200,
         setAuthCookies(data.session.access_token, data.session.refresh_token),
