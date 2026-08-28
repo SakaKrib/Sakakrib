@@ -41,7 +41,6 @@ interface RenterHomeCardProps {
     | 'city'
     | 'county'
     | 'location_search'
-    | 'cover_image_url'
   > | null;
   onViewProperty?: (listingId: string) => void;
 }
