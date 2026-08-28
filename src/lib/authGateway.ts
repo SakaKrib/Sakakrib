@@ -15,6 +15,7 @@ export interface GatewaySession {
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const AUTH_GATEWAY_URL = `${SUPABASE_URL}/functions/v1/auth-gateway`;
 
 async function request<T>(
@@ -28,6 +29,8 @@ async function request<T>(
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         ...(options.headers ?? {}),
       },
     }
