@@ -6,13 +6,23 @@ interface GatewayUser {
 }
 
 export interface GatewaySessionResponse {
-  authenticated: boolean;
+  authenticated?: boolean;
+  success?: boolean;
   user?: GatewayUser;
   profile?: Profile;
   requiresEmailVerification?: boolean;
   email?: string | null;
+  profile_id?: string | null;
   error?: string;
 }
+
+type AuthGatewayAction =
+  | 'signup'
+  | 'login'
+  | 'session'
+  | 'refresh'
+  | 'verify_otp'
+  | 'logout';
 
 const FUNCTION_NAME = 'auth-gateway';
 
@@ -36,8 +46,22 @@ const getAnonKey = (): string => {
   return key;
 };
 
+/**
+ * Browser-side transport for the HttpOnly auth gateway.
+ *
+ * IMPORTANT:
+ * - No user access token is read from JavaScript.
+ * - credentials: 'include' allows the browser to send/receive
+ *   the gateway's HttpOnly cookies.
+ * - The Supabase publishable/anon key is public and is NOT a
+ *   user credential.
+ *
+ * This module is intentionally independent from the existing
+ * Supabase browser client until the application's data calls
+ * have been migrated to the authenticated server boundary.
+ */
 export const authGateway = async (
-  action: 'login' | 'session' | 'refresh' | 'logout',
+  action: AuthGatewayAction,
   payload: Record<string, unknown> = {},
 ): Promise<GatewaySessionResponse> => {
   const response = await fetch(getFunctionUrl(), {
@@ -45,7 +69,6 @@ export const authGateway = async (
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      // This is the public Supabase publishable/anon key, not a user token.
       apikey: getAnonKey(),
       Authorization: `Bearer ${getAnonKey()}`,
     },
@@ -63,3 +86,38 @@ export const authGateway = async (
 
   return body;
 };
+
+export const gatewaySignup = (
+  email: string,
+  password: string,
+  fullName: string,
+) =>
+  authGateway('signup', {
+    email,
+    password,
+    fullName,
+  });
+
+export const gatewayLogin = (
+  email: string,
+  password: string,
+) =>
+  authGateway('login', {
+    email,
+    password,
+  });
+
+export const gatewayVerifyOtp = (
+  email: string,
+  otp: string,
+) =>
+  authGateway('verify_otp', {
+    email,
+    otp,
+  });
+
+export const gatewaySession = () => authGateway('session');
+
+export const gatewayRefresh = () => authGateway('refresh');
+
+export const gatewayLogout = () => authGateway('logout');
