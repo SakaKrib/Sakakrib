@@ -6,6 +6,8 @@ if (!SUPABASE_ANON_KEY) {
   throw new Error('Missing Supabase anon key configuration.');
 }
 
+const PROTECTED_API_URL = AUTH_GATEWAY_URL.replace(/auth-gateway$/, 'protected-api');
+
 export interface ProtectedApiErrorShape {
   error?: string;
   code?: string;
@@ -27,21 +29,18 @@ async function request<T>(
   operation: string,
   payload: Record<string, unknown> = {},
 ): Promise<T> {
-  const response = await fetch(
-    `${AUTH_GATEWAY_URL}?action=protected-api`,
-    {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        operation,
-        ...payload,
-      }),
+  const response = await fetch(PROTECTED_API_URL, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_ANON_KEY,
     },
-  );
+    body: JSON.stringify({
+      operation,
+      ...payload,
+    }),
+  });
 
   const responsePayload = (await response.json().catch(() => ({}))) as T & ProtectedApiErrorShape;
 
