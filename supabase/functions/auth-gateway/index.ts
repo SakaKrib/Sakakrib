@@ -2,50 +2,49 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const ALLOWED_ORIGIN = Deno.env.get('AUTH_ALLOWED_ORIGIN') ?? '*';
+const CONFIGURED_ORIGIN = Deno.env.get('AUTH_ALLOWED_ORIGIN') ?? '';
 
-const isProduction = Deno.env.get('ENVIRONMENT') === 'production';
 const ACCESS_COOKIE = 'saka_access';
 const REFRESH_COOKIE = 'saka_refresh';
 const ACCESS_MAX_AGE = 60 * 15;
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 30;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Credentials': 'true',
-  'Access-Control-Allow-Headers': 'content-type, x-client-info, apikey',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Vary': 'Origin',
-};
-
-function json(data: unknown, status = 200, extra: HeadersInit = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      ...corsHeaders,
-      'Content-Type': 'application/json',
-      ...extra,
-    },
+function corsHeaders(request: Request): Headers {
+  const origin = request.headers.get('Origin') ?? '';
+  const allowedOrigin = CONFIGURED_ORIGIN || origin;
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers': 'content-type, x-client-info, apikey, authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Vary': 'Origin',
   });
+  if (allowedOrigin) headers.set('Access-Control-Allow-Origin', allowedOrigin);
+  return headers;
+}
+
+function json(request: Request, data: unknown, status = 200, cookies: string[] = []) {
+  const headers = corsHeaders(request);
+  for (const value of cookies) headers.append('Set-Cookie', value);
+  return new Response(JSON.stringify(data), { status, headers });
 }
 
 function parseCookies(request: Request) {
-  const header = request.headers.get('cookie') ?? '';
   const result: Record<string, string> = {};
-  for (const part of header.split(';')) {
+  for (const part of (request.headers.get('cookie') ?? '').split(';')) {
     const index = part.indexOf('=');
     if (index === -1) continue;
-    const key = part.slice(0, index).trim();
-    const value = part.slice(index + 1).trim();
-    result[key] = decodeURIComponent(value);
+    result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
   }
   return result;
 }
 
 function cookie(name: string, value: string, maxAge: number) {
-  const sameSite = isProduction ? 'SameSite=Lax' : 'SameSite=None';
-  const secure = isProduction || sameSite.includes('None') ? '; Secure' : '';
-  return `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; ${sameSite}${secure}`;
+  // The Supabase function is cross-origin from a Vite/SPA host during development.
+  // Production should use a custom API subdomain so SameSite=Lax can be used there.
+  const sameSite = Deno.env.get('COOKIE_SAMESITE') ?? 'None';
+  const secure = sameSite === 'None' || Deno.env.get('ENVIRONMENT') === 'production';
+  return `${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=${sameSite}${secure ? '; Secure' : ''}`;
 }
 
 function clearCookie(name: string) {
@@ -59,98 +58,84 @@ function sessionCookies(accessToken: string, refreshToken: string) {
   ];
 }
 
-function clientForToken(accessToken: string) {
+function publicClient() {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+function authenticatedClient(accessToken: string) {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
   });
 }
 
-async function getSessionFromAccessToken(accessToken: string) {
-  const client = clientForToken(accessToken);
+async function authenticate(accessToken: string) {
+  const client = authenticatedClient(accessToken);
   const { data, error } = await client.auth.getUser(accessToken);
   if (error || !data.user) return null;
-  return { user: data.user, client };
+  return { client, user: data.user };
 }
 
 async function handle(request: Request) {
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    const headers = corsHeaders(request);
+    return new Response(null, { status: 204, headers });
   }
-
   if (request.method !== 'GET' && request.method !== 'POST') {
-    return json({ error: 'Method not allowed.' }, 405);
+    return json(request, { error: 'Method not allowed.' }, 405);
   }
 
   const url = new URL(request.url);
   const action = url.searchParams.get('action') ?? (request.method === 'GET' ? 'session' : '');
   const cookies = parseCookies(request);
-  const body = request.method === 'POST'
-    ? await request.json().catch(() => ({}))
-    : {};
+  const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
 
   if (action === 'login') {
     const email = String(body.email ?? '').trim().toLowerCase();
     const password = String(body.password ?? '');
-    if (!email || !password) return json({ error: 'Email and password are required.' }, 400);
+    if (!email || !password) return json(request, { error: 'Email and password are required.' }, 400);
 
-    const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const client = publicClient();
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error || !data.session || !data.user) {
-      return json({ error: error?.message ?? 'Unable to sign in.' }, 401);
+      return json(request, { error: error?.message ?? 'Unable to sign in.' }, 401);
     }
 
     const { data: profile, error: profileError } = await client
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      return json({ error: 'Your application profile could not be loaded.' }, 403);
-    }
+      .from('profiles').select('*').eq('id', data.user.id).maybeSingle();
+    if (profileError || !profile) return json(request, { error: 'Your application profile could not be loaded.' }, 403);
 
     if (profile.email_verified !== true) {
-      return json({
+      return json(request, {
         error: 'Your email is not verified.',
         requiresEmailVerification: true,
         email: profile.email ?? email,
       }, 403);
     }
 
-    return json({
-      authenticated: true,
-      user: data.user,
-      profile,
-    }, 200, {
-      'Set-Cookie': sessionCookies(data.session.access_token, data.session.refresh_token).join(', '),
-    });
+    return json(request, { authenticated: true, user: data.user, profile }, 200,
+      sessionCookies(data.session.access_token, data.session.refresh_token));
   }
 
   if (action === 'signup') {
     const email = String(body.email ?? '').trim().toLowerCase();
     const password = String(body.password ?? '');
     const fullName = String(body.fullName ?? '').trim();
-    if (!email || !password || !fullName) return json({ error: 'Email, password and full name are required.' }, 400);
+    if (!email || !password || !fullName) return json(request, { error: 'Email, password and full name are required.' }, 400);
 
-    const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const client = publicClient();
     const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
+      email, password, options: { data: { full_name: fullName } },
     });
-    if (error) return json({ error: error.message }, 400);
-    if (!data.user) return json({ error: 'Unable to create your account.' }, 400);
-
+    if (error) return json(request, { error: error.message }, 400);
+    if (!data.user) return json(request, { error: 'Unable to create your account.' }, 400);
     if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-      return json({ error: 'An account with this email already exists. Please log in.' }, 409);
+      return json(request, { error: 'An account with this email already exists. Please log in.' }, 409);
     }
 
-    return json({
+    return json(request, {
       created: true,
       userId: data.user.id,
       requiresEmailVerification: true,
@@ -161,97 +146,75 @@ async function handle(request: Request) {
 
   if (action === 'refresh') {
     const refreshToken = cookies[REFRESH_COOKIE];
-    if (!refreshToken) return json({ authenticated: false }, 401, {
-      'Set-Cookie': [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)].join(', '),
-    });
+    if (!refreshToken) {
+      return json(request, { authenticated: false }, 401,
+        [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)]);
+    }
 
-    const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const client = publicClient();
     const { data, error } = await client.auth.refreshSession({ refresh_token: refreshToken });
     if (error || !data.session || !data.user) {
-      return json({ authenticated: false, error: 'Session expired. Please sign in again.' }, 401, {
-        'Set-Cookie': [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)].join(', '),
-      });
+      return json(request, { authenticated: false, error: 'Session expired. Please sign in again.' }, 401,
+        [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)]);
     }
 
     const { data: profile } = await client
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
+      .from('profiles').select('*').eq('id', data.user.id).maybeSingle();
     if (!profile || profile.email_verified !== true) {
-      return json({ authenticated: false, requiresEmailVerification: true }, 403, {
-        'Set-Cookie': [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)].join(', '),
-      });
+      return json(request, { authenticated: false, requiresEmailVerification: true }, 403,
+        [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)]);
     }
 
-    return json({ authenticated: true, user: data.user, profile }, 200, {
-      'Set-Cookie': sessionCookies(data.session.access_token, data.session.refresh_token).join(', '),
-    });
+    return json(request, { authenticated: true, user: data.user, profile }, 200,
+      sessionCookies(data.session.access_token, data.session.refresh_token));
   }
 
   if (action === 'logout') {
-    return json({ authenticated: false }, 200, {
-      'Set-Cookie': [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)].join(', '),
-    });
+    const accessToken = cookies[ACCESS_COOKIE];
+    if (accessToken) {
+      try { await authenticatedClient(accessToken).auth.signOut(); } catch (_) { /* cookie clearing is authoritative */ }
+    }
+    return json(request, { authenticated: false }, 200,
+      [clearCookie(ACCESS_COOKIE), clearCookie(REFRESH_COOKIE)]);
   }
 
   const accessToken = cookies[ACCESS_COOKIE];
-  if (!accessToken) return json({ authenticated: false }, 401);
+  if (!accessToken) return json(request, { authenticated: false }, 401);
 
-  const authenticated = await getSessionFromAccessToken(accessToken);
-  if (!authenticated) return json({ authenticated: false }, 401);
+  const auth = await authenticate(accessToken);
+  if (!auth) return json(request, { authenticated: false }, 401);
 
-  if (action === 'session') {
-    const { data: profile, error } = await authenticated.client
-      .from('profiles')
-      .select('*')
-      .eq('id', authenticated.user.id)
-      .maybeSingle();
-
-    if (error || !profile) return json({ authenticated: false }, 403);
-    if (profile.email_verified !== true) return json({
-      authenticated: false,
-      requiresEmailVerification: true,
-      email: profile.email ?? authenticated.user.email ?? null,
-    }, 403);
-
-    return json({ authenticated: true, user: authenticated.user, profile });
-  }
-
-  if (action === 'profile') {
-    const { data: profile, error } = await authenticated.client
-      .from('profiles')
-      .select('*')
-      .eq('id', authenticated.user.id)
-      .maybeSingle();
-    if (error || !profile) return json({ error: 'Profile not found.' }, 404);
-    return json({ profile });
+  if (action === 'session' || action === 'profile') {
+    const { data: profile, error } = await auth.client
+      .from('profiles').select('*').eq('id', auth.user.id).maybeSingle();
+    if (error || !profile) return json(request, { authenticated: false }, 403);
+    if (profile.email_verified !== true) {
+      return json(request, {
+        authenticated: false,
+        requiresEmailVerification: true,
+        email: profile.email ?? auth.user.email ?? null,
+      }, 403);
+    }
+    return action === 'profile'
+      ? json(request, { profile })
+      : json(request, { authenticated: true, user: auth.user, profile });
   }
 
   if (action === 'set-role') {
     const role = String(body.role ?? '');
     const allowed = ['renter', 'landlord', 'mover', 'real_estate', 'admin'];
-    if (!allowed.includes(role)) return json({ error: 'Invalid role.' }, 400);
+    if (!allowed.includes(role)) return json(request, { error: 'Invalid role.' }, 400);
 
-    const { data: currentProfile } = await authenticated.client
-      .from('profiles')
-      .select('email_verified')
-      .eq('id', authenticated.user.id)
-      .maybeSingle();
-    if (currentProfile?.email_verified !== true) return json({ error: 'Email verification is required.' }, 403);
+    const { data: currentProfile } = await auth.client
+      .from('profiles').select('email_verified').eq('id', auth.user.id).maybeSingle();
+    if (currentProfile?.email_verified !== true) return json(request, { error: 'Email verification is required.' }, 403);
 
-    const { error } = await authenticated.client
-      .from('profiles')
-      .update({ role })
-      .eq('id', authenticated.user.id);
-    if (error) return json({ error: error.message }, 400);
-    return json({ success: true });
+    const { error } = await auth.client.from('profiles').update({ role }).eq('id', auth.user.id);
+    if (error) return json(request, { error: error.message }, 400);
+    return json(request, { success: true });
   }
 
-  return json({ error: 'Unknown auth action.' }, 404);
+  return json(request, { error: 'Unknown auth action.' }, 404);
 }
 
 Deno.serve(async (request) => {
@@ -259,6 +222,6 @@ Deno.serve(async (request) => {
     return await handle(request);
   } catch (error) {
     console.error('auth-gateway error:', error);
-    return json({ error: 'Authentication service error.' }, 500);
+    return json(request, { error: 'Authentication service error.' }, 500);
   }
 });
