@@ -24,67 +24,62 @@ export class ProtectedApiError extends Error {
 }
 
 async function request<T>(
-  action: string,
-  options: RequestInit = {},
+  operation: string,
+  payload: Record<string, unknown> = {},
 ): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set('Content-Type', 'application/json');
-  headers.set('apikey', SUPABASE_ANON_KEY);
-
   const response = await fetch(
-    `${AUTH_GATEWAY_URL.replace(/auth-gateway$/, 'protected-api')}?action=${encodeURIComponent(action)}`,
+    `${AUTH_GATEWAY_URL}?action=protected-api`,
     {
-      ...options,
+      method: 'POST',
       credentials: 'include',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        operation,
+        ...payload,
+      }),
     },
   );
 
-  const payload = (await response.json().catch(() => ({}))) as T & ProtectedApiErrorShape;
+  const responsePayload = (await response.json().catch(() => ({}))) as T & ProtectedApiErrorShape;
 
   if (!response.ok) {
     throw new ProtectedApiError(
-      typeof payload.error === 'string'
-        ? payload.error
+      typeof responsePayload.error === 'string'
+        ? responsePayload.error
         : `Protected API request failed (${response.status}).`,
       response.status,
-      typeof payload.code === 'string' ? payload.code : undefined,
+      typeof responsePayload.code === 'string' ? responsePayload.code : undefined,
     );
   }
 
-  return payload;
+  return responsePayload;
 }
 
 export const protectedApi = {
-  request,
-
   async profile() {
     return request<{ profile: unknown }>('profile');
   },
 
   async updateProfile(patch: Record<string, unknown>) {
-    return request<{ profile: unknown }>('profile-update', {
-      method: 'POST',
-      body: JSON.stringify({ patch }),
-    });
+    return request<{ profile: unknown }>('profile-update', { patch });
   },
 
-  async list<T = unknown>(resource: string, options?: { limit?: number; offset?: number }) {
+  async list<T = unknown>(
+    resource: string,
+    options?: { limit?: number; offset?: number },
+  ) {
     return request<{ data: T[]; count?: number }>('list', {
-      method: 'POST',
-      body: JSON.stringify({
-        resource,
-        limit: options?.limit,
-        offset: options?.offset,
-      }),
+      resource,
+      limit: options?.limit,
+      offset: options?.offset,
     });
   },
 
   async create<T = unknown>(resource: string, values: Record<string, unknown>) {
-    return request<{ data: T }>('create', {
-      method: 'POST',
-      body: JSON.stringify({ resource, values }),
-    });
+    return request<{ data: T }>('create', { resource, values });
   },
 
   async update<T = unknown>(
@@ -93,22 +88,26 @@ export const protectedApi = {
     values: Record<string, unknown>,
   ) {
     return request<{ data: T }>('update', {
-      method: 'POST',
-      body: JSON.stringify({ resource, id, values }),
+      resource,
+      id,
+      values,
     });
   },
 
   async remove(resource: string, id: string) {
     return request<{ success: boolean }>('delete', {
-      method: 'POST',
-      body: JSON.stringify({ resource, id }),
+      resource,
+      id,
     });
   },
 
-  async rpc<T = unknown>(functionName: string, args: Record<string, unknown> = {}) {
+  async rpc<T = unknown>(
+    functionName: string,
+    args: Record<string, unknown> = {},
+  ) {
     return request<{ data: T }>('rpc', {
-      method: 'POST',
-      body: JSON.stringify({ functionName, args }),
+      functionName,
+      args,
     });
   },
 };
