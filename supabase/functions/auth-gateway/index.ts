@@ -76,6 +76,28 @@ const authenticatedResponse = async (request: Request, accessToken: string) => {
   return json(request, { authenticated: true, user: { id: data.user.id, email: data.user.email ?? null }, profile });
 };
 
+const refreshFromCookie = async (request: Request, refreshToken: string) => {
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+  if (error || !data.session || !data.user) {
+    return json(request, { authenticated: false }, 401, clearAuthCookies());
+  }
+
+  const profile = await getProfile(data.session.access_token, data.user.id);
+  if (!profile || profile.email_verified !== true) {
+    return json(request, {
+      authenticated: false,
+      requiresEmailVerification: true,
+      email: profile?.email ?? data.user.email ?? null,
+    }, 403, clearAuthCookies());
+  }
+
+  return json(request, {
+    authenticated: true,
+    user: { id: data.user.id, email: data.user.email ?? null },
+    profile,
+  }, 200, setAuthCookies(data.session.access_token, data.session.refresh_token));
+};
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(request) });
   if (request.method !== 'POST') return json(request, { error: 'Method not allowed.' }, 405);
@@ -133,19 +155,22 @@ Deno.serve(async (request) => {
     }
 
     if (action === 'session') {
-      const token = readCookies(request).sk_access;
-      if (!token) return json(request, { authenticated: false }, 401);
-      return authenticatedResponse(request, token);
+      const cookies = readCookies(request);
+      const accessToken = cookies.sk_access;
+      if (accessToken) {
+        const sessionResponse = await authenticatedResponse(request, accessToken);
+        if (sessionResponse.status !== 401) return sessionResponse;
+      }
+
+      const refreshToken = cookies.sk_refresh;
+      if (!refreshToken) return json(request, { authenticated: false }, 401, clearAuthCookies());
+      return refreshFromCookie(request, refreshToken);
     }
 
     if (action === 'refresh') {
       const refreshToken = readCookies(request).sk_refresh;
       if (!refreshToken) return json(request, { authenticated: false }, 401, clearAuthCookies());
-      const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
-      if (error || !data.session || !data.user) return json(request, { authenticated: false }, 401, clearAuthCookies());
-      const profile = await getProfile(data.session.access_token, data.user.id);
-      if (!profile || profile.email_verified !== true) return json(request, { authenticated: false, requiresEmailVerification: true }, 403, clearAuthCookies());
-      return json(request, { authenticated: true, user: { id: data.user.id, email: data.user.email ?? null }, profile }, 200, setAuthCookies(data.session.access_token, data.session.refresh_token));
+      return refreshFromCookie(request, refreshToken);
     }
 
     if (action === 'verify_otp') {
