@@ -49,21 +49,24 @@ Deno.serve(async (request: Request) => {
     const bookingId = url.searchParams.get('booking_id');
     const peerUserId = url.searchParams.get('peer_user_id');
     let conversationId = '';
-    let authorized = false;
+    let participantId = '';
 
     if (bookingId) {
       const { data: booking } = await admin.from('bookings').select('id,renter_id,mover_id').eq('id', bookingId).maybeSingle();
       if (!booking) return new Response(JSON.stringify({ error: 'Booking not found.' }), { status: 404, headers: { ...cors(request), 'Content-Type': 'application/json' } });
       const { data: mover } = await admin.from('movers').select('user_id').eq('id', booking.mover_id).maybeSingle();
-      authorized = booking.renter_id === user.id || mover?.user_id === user.id;
-      conversationId = booking.id;
+      if (booking.renter_id !== user.id && mover?.user_id !== user.id) return new Response(JSON.stringify({ error: 'Not authorized for this booking conversation.' }), { status: 403, headers: { ...cors(request), 'Content-Type': 'application/json' } });
+      participantId = mover?.user_id === user.id ? booking.renter_id : mover?.user_id ?? '';
+      if (!participantId) return new Response(JSON.stringify({ error: 'Conversation participant not found.' }), { status: 403, headers: { ...cors(request), 'Content-Type': 'application/json' } });
+      conversationId = [user.id, participantId].sort().join('__');
     } else if (peerUserId && peerUserId !== user.id) {
       const { data: mover } = await admin.from('movers').select('user_id,approval_status').eq('user_id', peerUserId).maybeSingle();
-      authorized = !!mover && mover.approval_status === 'approved';
+      if (!mover || mover.approval_status !== 'approved') return new Response(JSON.stringify({ error: 'Mover not available.' }), { status: 403, headers: { ...cors(request), 'Content-Type': 'application/json' } });
+      participantId = peerUserId;
       conversationId = [user.id, peerUserId].sort().join('__');
     }
 
-    if (!authorized || !conversationId) return new Response(JSON.stringify({ error: 'Not authorized for this conversation.' }), { status: 403, headers: { ...cors(request), 'Content-Type': 'application/json' } });
+    if (!conversationId) return new Response(JSON.stringify({ error: 'A booking_id or peer_user_id is required.' }), { status: 400, headers: { ...cors(request), 'Content-Type': 'application/json' } });
 
     const encoder = new TextEncoder();
     let lastCreatedAt = url.searchParams.get('after') || new Date(0).toISOString();
@@ -77,29 +80,21 @@ Deno.serve(async (request: Request) => {
         try {
           while (!closed && Date.now() - started < 45_000) {
             const { data: messages } = await admin.from('chat_messages').select('*').eq('conversation_id', conversationId).gt('created_at', lastCreatedAt).order('created_at', { ascending: true }).limit(100);
-            if (messages?.length) {
-              send('messages', messages);
-              lastCreatedAt = messages[messages.length - 1].created_at;
-            }
+            if (messages?.length) { send('messages', messages); lastCreatedAt = messages[messages.length - 1].created_at; }
             if (bookingId) {
               const { data: booking } = await admin.from('bookings').select('*').eq('id', bookingId).maybeSingle();
-              if (booking && booking.updated_at !== lastBookingUpdatedAt) {
-                lastBookingUpdatedAt = booking.updated_at;
-                send('booking', booking);
-              }
+              if (booking && booking.updated_at !== lastBookingUpdatedAt) { lastBookingUpdatedAt = booking.updated_at; send('booking', booking); }
             }
+            send('ping', { at: new Date().toISOString() });
             await new Promise((resolve) => setTimeout(resolve, 2000));
           }
-        } catch (error) {
-          console.error('chat-stream error:', error);
-        } finally {
-          try { controller.close(); } catch { /* already closed */ }
-        }
+        } catch (error) { console.error('chat-stream error:', error); }
+        finally { try { controller.close(); } catch { /* already closed */ } }
       },
       cancel() { closed = true; },
     });
 
-    return new Response(stream, { status: 200, headers: { ...cors(request), 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate', Connection: 'keep-alive' } });
+    return new Response(stream, { status: 200, headers: { ...cors(request), 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-store, must-revalidate', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' } });
   } catch (error) {
     console.error('chat-stream error:', error);
     return new Response(JSON.stringify({ error: 'Chat stream failed.' }), { status: 500, headers: { ...cors(request), 'Content-Type': 'application/json' } });
