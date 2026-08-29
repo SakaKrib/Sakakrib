@@ -443,7 +443,7 @@ export default function RealEstateDashboard() {
 
                 <button
                   type="button"
-                  onClick={() => navigate('subscription')}
+                  onClick={() => navigate('subscription-plans')}
                   className="btn-secondary mt-2 w-full"
                 >
                   Manage subscription
@@ -469,7 +469,7 @@ export default function RealEstateDashboard() {
 
                 <button
                   type="button"
-                  onClick={() => navigate('subscription')}
+                  onClick={() => navigate('subscription-plans')}
                   className="btn-primary mt-3 w-full"
                 >
                   View plans

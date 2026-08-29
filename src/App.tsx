@@ -46,7 +46,11 @@ function AppContent() {
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
       case 'subscription-plans': return <PMSSubscriptionPage />;
-      case 'pms-dashboard': return <PMSDashboard />;
+      case 'renter-invoices': return <RenterInvoicesPage />;
+      case 'renter-payment': return <RenterPaymentPage />;
+      case 'mover-tracking': return (<MoverTrackingPage bookingId={selectedBookingId}/>)
+      case 'renter-calendar': return <RenterCalendarPage />;
+      case 'notifications': return <NotificationsPage />;
       default: return <HomePage />;
     }
   };

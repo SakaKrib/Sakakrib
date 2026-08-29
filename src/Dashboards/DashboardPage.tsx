@@ -15,11 +15,12 @@ import { useNav } from '@/context/NavContext';
 import { supabase } from '@/lib/supabase';
 import RealEstateDashboard from './Realestatedashboard';
 
+import { protectedGet } from '@/lib/protectedApi';
 import {
   formatKES,
   cn,
   getPlatformSettings,
-  getListingEntitlement,
+  ListingEntitlement,
 } from '@/lib/utils';
 
 import type {
@@ -76,9 +77,7 @@ export default function DashboardPage() {
     >(null);
 
   const [listingEntitlement, setListingEntitlement] =
-    useState<
-      Awaited<ReturnType<typeof getListingEntitlement>> | null
-    >(null);
+    useState<ListingEntitlement | null>(null);
 
   const [configurationLoading, setConfigurationLoading] =
     useState(true);
@@ -112,135 +111,40 @@ export default function DashboardPage() {
           platformSettingsResponse,
           listingEntitlementResponse,
         ] = await Promise.all([
-          /*
-           * User listings
-           */
-          supabase
-            .from('listings')
-            .select('*')
-            .eq('user_id', profile.id)
-            .order('created_at', {
-              ascending: false,
-            }),
-
-          /*
-           * Mover profile
-           */
-          supabase
-            .from('movers')
-            .select('*')
-            .eq('user_id', profile.id)
-            .maybeSingle(),
-
-          /*
-           * Renter bookings
-           */
-          supabase
-            .from('bookings')
-            .select('*, mover:movers(*)')
-            .eq('renter_id', profile.id)
-            .order('created_at', {
-              ascending: false,
-            }),
-
-          /*
-           * Reviews
-           */
-          supabase
-            .from('reviews')
-            .select('*')
-            .eq('reviewer_id', profile.id)
-            .order('created_at', {
-              ascending: false,
-            }),
-
-          /*
-           * AUTHORITATIVE:
-           * Mover commission + operational markup
-           */
+          protectedGet<Listing[]>(
+            '/rest/v1/listings?select=*&order=created_at.desc'
+          ),
+          protectedGet<Mover | null>(
+            '/rest/v1/movers?select=*&limit=1'
+          ).then((rows) => (Array.isArray(rows) ? rows[0] ?? null : rows)),
+          protectedGet<(Booking & { mover?: Mover })[]>(
+            '/rest/v1/bookings?select=*,mover:movers(*)&order=created_at.desc'
+          ),
+          protectedGet<Review[]>(
+            '/rest/v1/reviews?select=*&order=created_at.desc'
+          ),
           getPlatformSettings(),
-
-          /*
-           * AUTHORITATIVE:
-           * Landlord listing entitlement
-           *
-           * This provides:
-           *
-           * - free_limit
-           * - free_listings_used
-           * - free_listings_remaining
-           * - individual_listing_price_kes
-           * - subscription information
-           * - listing eligibility
-           */
-          getListingEntitlement(profile.id),
+          protectedGet<ListingEntitlement>(
+            '/rest/v1/landlord/listing-entitlement'
+          ),
         ]);
 
         if (cancelled) {
           return;
         }
 
-        if (listingResponse.error) {
-          console.error(
-            'Failed to load listings:',
-            listingResponse.error
-          );
-        } else if (listingResponse.data) {
-          setListings(
-            listingResponse.data as Listing[]
-          );
-        }
-
-        if (moverResponse.error) {
-          console.error(
-            'Failed to load mover profile:',
-            moverResponse.error
-          );
-        } else if (moverResponse.data) {
-          setMoverProfile(
-            moverResponse.data as Mover
-          );
-        }
-
-        if (bookingResponse.error) {
-          console.error(
-            'Failed to load bookings:',
-            bookingResponse.error
-          );
-        } else if (bookingResponse.data) {
-          setBookings(
-            bookingResponse.data as (
-              Booking & {
-                mover?: Mover;
-              }
-            )[]
-          );
-        }
-
-        if (reviewResponse.error) {
-          console.error(
-            'Failed to load reviews:',
-            reviewResponse.error
-          );
-        } else if (reviewResponse.data) {
-          setReviews(
-            reviewResponse.data as Review[]
-          );
-        }
-
-        /*
-         * Store authoritative platform configuration.
-         */
-        setPlatformSettings(
-          platformSettingsResponse
+        setListings(listingResponse as Listing[]);
+        setMoverProfile(moverResponse as Mover | null);
+        setBookings(
+          bookingResponse as (
+            Booking & {
+              mover?: Mover;
+            }
+          )[]
         );
-
-        /*
-         * Store authoritative listing entitlement.
-         */
-        setListingEntitlement(
-          listingEntitlementResponse
-        );
+        setReviews(reviewResponse as Review[]);
+        setPlatformSettings(platformSettingsResponse);
+        setListingEntitlement(listingEntitlementResponse);
       } catch (error) {
         console.error(
           'Failed to load dashboard data:',

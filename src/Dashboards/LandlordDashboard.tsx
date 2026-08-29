@@ -39,16 +39,20 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 
-import { ListingEntitlement, getListingEntitlement  } from '@/lib/utils';
-
 import {
-  supabase,
+  protectedGet,
+  protectedPost,
+  protectedPatch,
+} from '@/lib/protectedApi';
+
+import type {
   Listing,
   Subscription,
   Profile,
 } from '@/lib/supabase';
+import {cn} from "@/lib/utils"
 
-import { cn } from '@/lib/utils';
+import type { ListingEntitlement } from '@/lib/ListingEntitlement';
 
 
 /* =========================================================
@@ -281,6 +285,8 @@ const getListingStatus = (
   }
 };
 
+
+
 const getListingLocation = (
   listing: Listing
 ): string => {
@@ -292,6 +298,7 @@ const getListingLocation = (
     .filter(Boolean)
     .join(', ') || 'Location not provided';
 };
+
 
 /* =========================================================
    MAIN COMPONENT
@@ -554,6 +561,7 @@ export default function LandlordDashboard({
   /* =========================================================
      LOAD DASHBOARD
   ========================================================= */
+  
 
   const loadDashboard = useCallback(
     async (showLoader = true) => {
@@ -562,11 +570,6 @@ export default function LandlordDashboard({
         return;
       }
 
-      const entitlement =
-        await getListingEntitlement(profile?.id);
-
-      setListingEntitlement(entitlement);
-
       if (showLoader) {
         setLoading(true);
       }
@@ -574,45 +577,33 @@ export default function LandlordDashboard({
       setError(null);
 
       try {
-        /* -----------------------------------------------------
-           PROFILE
-        ----------------------------------------------------- */
+        const entitlementResponse =
+          await protectedPost<ListingEntitlement>(
+            '/rest/v1/rpc/get_landlord_listing_entitlement',
+            {
+              p_landlord_id: profile.id,
+            }
+          );
 
-        const {
-          data: profileData,
-          error: profileError,
-        } = await supabase
-          .from('profiles')
-          .select(`
-            id,
-            email,
-            full_name,
-            first_name,
-            middle_name,
-            last_name,
-            phone,
-            national_id,
-            profile_photo_url,
-            id_photo_url,
-            selfie_url,
-            id_document_url,
-            id_document_type,
-            city,
-            county,
-            role,
-            verification_status,
-            kyc_completed,
-            landlord_application_status,
-            is_agency,
-            created_at,
-            updated_at
-          `)
-          .eq('id', profile.id)
-          .maybeSingle();
+        const entitlement = Array.isArray(entitlementResponse)
+          ? entitlementResponse[0]
+          : entitlementResponse;
 
-        if (profileError) {
-          throw profileError;
+        if (!entitlement) {
+          throw new Error(
+            'Unable to determine your listing entitlement.'
+          );
         }
+
+        setListingEntitlement(entitlement);
+
+        const profileResponse = await protectedGet<Profile[]>(
+          `/rest/v1/profiles?select=id,email,full_name,first_name,middle_name,last_name,phone,national_id,profile_photo_url,id_photo_url,selfie_url,id_document_url,id_document_type,city,county,role,verification_status,kyc_completed,landlord_application_status,is_agency,created_at,updated_at&id=eq.${profile.id}`
+        );
+        const profileData =
+          Array.isArray(profileResponse)
+            ? profileResponse[0] ?? null
+            : profileResponse ?? null;
 
         if (!profileData) {
           throw new Error(
@@ -620,184 +611,36 @@ export default function LandlordDashboard({
           );
         }
 
-
-        /* -----------------------------------------------------
-           LISTINGS
-           
-           IMPORTANT:
-           Ownership is user_id.
-           There is no images column here.
-        ----------------------------------------------------- */
-
-        const {
-          data: listingsData,
-          error: listingsError,
-        } = await supabase
-          .from('listings')
-          .select(`
-            id,
-            user_id,
-            title,
-            description,
-            city,
-            county,
-            price_kes,
-            listing_type,
-            deposit_required,
-            deposit_structure,
-            deposit_amount,
-            size,
-            beds,
-            baths,
-            contact_phone,
-            contact_email,
-            social_links,
-            status,
-            approval_status,
-            is_approved,
-            is_published,
-            admin_reviewed_at,
-            admin_review_note,
-            is_property_management,
-            property_name,
-            property_type,
-            location_search,
-            latitude,
-            longitude,
-            booking_enabled,
-            payment_enabled,
-            ai_caption,
-            ai_caption_generated_at,
-            created_at,
-            updated_at
-          `)
-          .eq('user_id', profile.id)
-          .order('updated_at', {
-            ascending: false,
-          });
-
-        if (listingsError) {
-          throw listingsError;
-        }
-
-        /* -----------------------------------------------------
-           LISTING MEDIA
-
-           Images live in listing_media.
-        ----------------------------------------------------- */
+        const listingsResponse = await protectedGet<Listing[]>(
+          `/rest/v1/listings?select=id,user_id,title,description,city,county,price_kes,listing_type,deposit_required,deposit_structure,deposit_amount,size,beds,baths,contact_phone,contact_email,social_links,status,approval_status,is_approved,is_published,admin_reviewed_at,admin_review_note,is_property_management,property_name,property_type,location_search,latitude,longitude,booking_enabled,payment_enabled,ai_caption,ai_caption_generated_at,created_at,updated_at&user_id=eq.${profile.id}&order=updated_at.desc`
+        );
 
         const listingIds =
-          (listingsData || []).map(
+          (listingsResponse || []).map(
             (listing) => listing.id
           );
 
         let mediaData: ListingMediaRow[] = [];
 
         if (listingIds.length > 0) {
-          const {
-            data,
-            error: mediaError,
-          } = await supabase
-            .from('listing_media')
-            .select(`
-              id,
-              listing_id,
-              user_id,
-              url,
-              label,
-              media_type,
-              position,
-              created_at,
-              unit_id
-            `)
-            .in(
-              'listing_id',
-              listingIds
-            )
-            .order('position', {
-              ascending: true,
-              nullsFirst: false,
-            })
-            .order('created_at', {
-              ascending: true,
-            });
-
-          if (mediaError) {
-            throw mediaError;
-          }
-
-          mediaData =
-            (data || []) as ListingMediaRow[];
+          const mediaResponse = await protectedGet<ListingMediaRow[]>(
+            `/rest/v1/listing_media?select=id,listing_id,user_id,url,label,media_type,position,created_at,unit_id&listing_id=in.(${listingIds.join(',')})&order=position.asc.nullsfirst=false&order=created_at.asc`
+          );
+          mediaData = mediaResponse || [];
         }
 
-        /* -----------------------------------------------------
-           SUBSCRIPTIONS
-
-           IMPORTANT:
-           landlord_subscriptions uses landlord_id.
-        ----------------------------------------------------- */
-
-        const {
-          data: subscriptionData,
-          error: subscriptionError,
-        } = await supabase
-          .from('landlord_subscriptions')
-          .select(`
-            id,
-            landlord_id,
-            plan_id,
-            billing_cycle,
-            status,
-            current_period_start,
-            current_period_end,
-            grace_period_end,
-            auto_renew,
-            created_at,
-            updated_at,
-            paypal_subscription_id,
-            paypal_plan_id,
-            paypal_status,
-            next_billing_at,
-            cancel_at_period_end,
-            cancelled_at,
-            billing_amount_kes,
-            billing_amount_usd,
-            billing_exchange_rate,
-            billing_exchange_rate_timestamp,
-            plan:subscription_plans (
-              id,
-              name,
-              audience,
-              max_listings,
-              max_units_per_listing,
-              monthly_price_kes,
-              annual_price_kes
-            )
-          `)
-          .eq(
-            'landlord_id',
-            profile.id
-          )
-          .order('created_at', {
-            ascending: false,
-          });
-
-        if (subscriptionError) {
-          throw subscriptionError;
-        }
-
-        /* -----------------------------------------------------
-           NORMALIZE DATA
-        ----------------------------------------------------- */
+        const subscriptionResponse = await protectedGet<any[]>(
+          `/rest/v1/landlord_subscriptions?select=id,landlord_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&landlord_id=eq.${profile.id}&order=created_at.desc`
+        );
 
         const loadedProfile =
           (profileData || null) as Profile | null;
 
         const loadedListings =
-          (listingsData || []) as Listing[];
+          (listingsResponse || []) as Listing[];
 
         const normalizedSubscriptions: Subscription[] =
-          (subscriptionData || []).map(
+          (subscriptionResponse || []).map(
             (subscription) => {
               const rawPlan =
                 subscription.plan;
@@ -1020,26 +863,15 @@ const pmsBenefits = [
     setSuccess(false);
 
     try {
-      /* -------------------------------------------------------
-        AUTHENTICATED USER
-      ------------------------------------------------------- */
+      const currentUserId = profile?.id ?? landlord?.id;
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
+      if (!currentUserId) {
         throw new Error(
           'Your session has expired. Please sign in again.'
         );
       }
 
-      /*
-      * Make sure we are updating the same profile that
-      * belongs to the authenticated user.
-      */
-      if (landlord?.id && landlord.id !== user.id) {
+      if (landlord?.id && landlord.id !== currentUserId) {
         throw new Error(
           'Your profile could not be verified. Please refresh the page and try again.'
         );
@@ -1054,86 +886,8 @@ const pmsBenefits = [
         null;
 
       if (profileImageFile) {
-        /*
-        * Keep one predictable file per user.
-        *
-        * Using a fixed filename means uploading a new photo
-        * replaces the previous photo instead of creating
-        * hundreds of unused files.
-        */
-        const extension =
-          profileImageFile.type === 'image/png'
-            ? 'png'
-            : profileImageFile.type === 'image/webp'
-              ? 'webp'
-              : 'jpg';
-
-        const filePath =
-          `${user.id}/profile.${extension}`;
-
-        console.log(
-          'Uploading profile photo:',
-          filePath
-        );
-
-        /* -----------------------------------------------------
-          UPLOAD
-        ----------------------------------------------------- */
-
-        const {
-          error: uploadError,
-        } = await supabase.storage
-          .from('profile-photos')
-          .upload(
-            filePath,
-            profileImageFile,
-            {
-              cacheControl: '3600',
-              contentType:
-                profileImageFile.type,
-              upsert: true,
-            }
-          );
-
-        if (uploadError) {
-          console.error(
-            'Profile photo upload failed:',
-            uploadError
-          );
-
-          throw new Error(
-            uploadError.message ||
-              'We could not upload your profile photo.'
-          );
-        }
-
-        /* -----------------------------------------------------
-          GET PUBLIC URL
-        ----------------------------------------------------- */
-
-        const {
-          data: publicUrlData,
-        } = supabase.storage
-          .from('profile-photos')
-          .getPublicUrl(filePath);
-
-        if (!publicUrlData?.publicUrl) {
-          throw new Error(
-            'The profile photo was uploaded, but its public URL could not be generated.'
-          );
-        }
-
-        /*
-        * THIS is what should be stored in:
-        *
-        * profiles.profile_photo_url
-        */
-        profilePhotoUrl =
-          publicUrlData.publicUrl;
-
-        console.log(
-          'Profile photo URL:',
-          profilePhotoUrl
+        throw new Error(
+          'Profile photo upload must be handled by a protected server-side Storage endpoint. Browser uploads are not allowed under the HttpOnly-cookie architecture.'
         );
       }
 
@@ -1141,79 +895,27 @@ const pmsBenefits = [
         UPDATE PROFILE DATABASE ROW
       ------------------------------------------------------- */
 
-      const {
-        data: updatedProfile,
-        error: profileError,
-      } = await supabase
-        .from('profiles')
-        .update({
-          full_name:
-            profileForm.full_name.trim(),
+      const savedProfile = await protectedPatch<Profile>(
+        `/rest/v1/profiles?id=eq.${currentUserId}&select=id,email,full_name,first_name,middle_name,last_name,phone,national_id,profile_photo_url,id_photo_url,selfie_url,id_document_url,id_document_type,city,county,role,verification_status,kyc_completed,landlord_application_status,is_agency,created_at,updated_at`,
+        {
+          full_name: profileForm.full_name.trim(),
+          phone: profileForm.phone.trim(),
+          city: profileForm.city.trim(),
+          county: profileForm.county.trim(),
+          profile_photo_url: profilePhotoUrl,
+          updated_at: new Date().toISOString(),
+        }
+      );
 
-          phone:
-            profileForm.phone.trim(),
-
-          city:
-            profileForm.city.trim(),
-
-          county:
-            profileForm.county.trim(),
-
-          profile_photo_url:
-            profilePhotoUrl,
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq('id', user.id)
-        .select(`
-          id,
-          email,
-          full_name,
-          first_name,
-          middle_name,
-          last_name,
-          phone,
-          national_id,
-          profile_photo_url,
-          id_photo_url,
-          selfie_url,
-          id_document_url,
-          id_document_type,
-          city,
-          county,
-          role,
-          verification_status,
-          kyc_completed,
-          landlord_application_status,
-          is_agency,
-          created_at,
-          updated_at
-        `)
-        .single();
-
-      if (profileError) {
-        console.error(
-          'Profile database update failed:',
-          profileError
-        );
-
-        /*
-        * The photo may already have uploaded successfully.
-        * Do not hide the actual database error.
-        */
+      if (!savedProfile) {
         throw new Error(
-          profileError.message ||
-            'We could not save your profile.'
+          'We could not save your profile.'
         );
       }
 
       /* -------------------------------------------------------
         UPDATE LOCAL STATE IMMEDIATELY
       ------------------------------------------------------- */
-
-      const savedProfile =
-        updatedProfile as Profile;
 
       setLandlord(savedProfile);
 
