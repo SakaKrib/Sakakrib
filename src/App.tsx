@@ -13,6 +13,7 @@ import ListingDetailPage from '@/pages/ListingDetailPage';
 import MoversPage from '@/pages/MoversPage';
 import MoverDetailPage from '@/pages/MoverDetailPage';
 import MoverBookingDetailPage from '@/pages/MoverBookingDetailPage';
+import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
 import PostListingPage from '@/pages/PostListingPage';
 import RegisterMoverPage from '@/pages/RegisterMoverPage';
@@ -36,6 +37,7 @@ function AppContent() {
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetailPage />;
+      case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
       case 'register-mover': return <RegisterMoverPage />;
@@ -48,7 +50,7 @@ function AppContent() {
       case 'subscription-plans': return <PMSSubscriptionPage />;
       case 'renter-invoices': return <RenterInvoicesPage />;
       case 'renter-payment': return <RenterPaymentPage />;
-      case 'mover-tracking': return (<MoverTrackingPage bookingId={selectedBookingId}/>)
+      case 'mover-tracking': return (<MoverTrackingPage bookingId={selectedBookingId}/>);
       case 'renter-calendar': return <RenterCalendarPage />;
       case 'notifications': return <NotificationsPage />;
       default: return <HomePage />;
