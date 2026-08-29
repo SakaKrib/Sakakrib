@@ -19,49 +19,58 @@ import RegisterMoverPage from '@/pages/RegisterMoverPage';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
+import RenterDashboard from '@/Dashboards/RenterDashboard';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
-import PMSDashboard from './components/PMS/PMSDashboard';
 
 function AppContent() {
   const { view } = useNav();
 
   const renderView = () => {
     switch (view) {
-      case 'home': return <HomePage />;
-      case 'listings': return <ListingsPage />;
-      case 'listing-detail': return <ListingDetailPage />;
-      case 'listing-manage': return <ListingManagePage />;
-      case 'movers': return <MoversPage />;
-      case 'mover-detail': return <MoverDetailPage />;
-      case 'mover-booking-detail': return <MoverBookingDetailPage />;
-      case 'community': return <CommunityPage />;
-      case 'post-listing': return <PostListingPage />;
-      case 'register-mover': return <RegisterMoverPage />;
-      case 'register-landlord': return <RegisterLandlordPage />;
-      case 'kyc-verify': return <KycVerifyPage />;
-      case 'dashboard': return <DashboardPage />;
-      case 'profile': return <ProfilePage />;
-      case 'my-bookings': return <DashboardPage />;
-      case 'my-listings': return <DashboardPage />;
-      case 'subscription-plans': return <PMSSubscriptionPage />;
-      case 'renter-invoices': return <RenterInvoicesPage />;
-      case 'renter-payment': return <RenterPaymentPage />;
-      case 'mover-tracking': return (<MoverTrackingPage bookingId={selectedBookingId}/>)
-      case 'renter-calendar': return <RenterCalendarPage />;
-      case 'notifications': return <NotificationsPage />;
-      default: return <HomePage />;
+      case 'home':
+        return <HomePage />;
+      case 'listings':
+        return <ListingsPage />;
+      case 'listing-detail':
+        return <ListingDetailPage />;
+      case 'listing-manage':
+        return <ListingManagePage />;
+      case 'movers':
+        return <MoversPage />;
+      case 'mover-detail':
+        return <MoverDetailPage />;
+      case 'mover-booking-detail':
+        return <MoverBookingDetailPage />;
+      case 'community':
+        return <CommunityPage />;
+      case 'post-listing':
+        return <PostListingPage />;
+      case 'register-mover':
+        return <RegisterMoverPage />;
+      case 'register-landlord':
+        return <RegisterLandlordPage />;
+      case 'kyc-verify':
+        return <KycVerifyPage />;
+      case 'renter-dashboard':
+        return <RenterDashboard />;
+      case 'dashboard':
+        return <DashboardPage />;
+      case 'profile':
+        return <ProfilePage />;
+      case 'subscription-plans':
+        return <PMSSubscriptionPage />;
+      default:
+        return <HomePage />;
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-x-fixed">
+    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-x-hidden">
       <SecurityBanner />
       <Header />
-      <main className="flex-1 pb-20 md:pb-0">
-        {renderView()}
-      </main>
+      <main className="flex-1 pb-20 md:pb-0">{renderView()}</main>
       <Footer />
       <BottomBar />
       <AuthModal />
