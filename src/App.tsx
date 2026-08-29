@@ -12,6 +12,7 @@ import ListingsPage from '@/pages/ListingsPage';
 import ListingDetailPage from '@/pages/ListingDetailPage';
 import MoversPage from '@/pages/MoversPage';
 import MoverDetailPage from '@/pages/MoverDetailPage';
+import MoverBookingDetailPage from '@/pages/MoverBookingDetailPage';
 import CommunityPage from '@/pages/CommunityPage';
 import PostListingPage from '@/pages/PostListingPage';
 import RegisterMoverPage from '@/pages/RegisterMoverPage';
@@ -34,6 +35,7 @@ function AppContent() {
       case 'listing-manage': return <ListingManagePage />;
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
+      case 'mover-booking-detail': return <MoverBookingDetailPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
       case 'register-mover': return <RegisterMoverPage />;
