@@ -22,6 +22,7 @@ type AuthGatewayAction =
   | 'session'
   | 'refresh'
   | 'verify_otp'
+  | 'set_role'
   | 'logout';
 
 const FUNCTION_NAME = 'auth-gateway';
@@ -36,7 +37,7 @@ const getFunctionUrl = (): string => {
   return `${baseUrl.replace(/\/$/, '')}/functions/v1/${FUNCTION_NAME}`;
 };
 
-const getAnonKey = (): string => {
+const getPublishableKey = (): string => {
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
   if (!key) {
@@ -51,14 +52,14 @@ const getAnonKey = (): string => {
  *
  * IMPORTANT:
  * - No user access token is read from JavaScript.
+ * - No refresh token is read from JavaScript.
  * - credentials: 'include' allows the browser to send/receive
- *   the gateway's HttpOnly cookies.
+ *   the HttpOnly authentication cookies.
  * - The Supabase publishable/anon key is public and is NOT a
- *   user credential.
+ *   user authentication credential.
  *
- * This module is intentionally independent from the existing
- * Supabase browser client until the application's data calls
- * have been migrated to the authenticated server boundary.
+ * User authentication is performed server-side by auth-gateway
+ * using the HttpOnly cookies.
  */
 export const authGateway = async (
   action: AuthGatewayAction,
@@ -66,12 +67,18 @@ export const authGateway = async (
 ): Promise<GatewaySessionResponse> => {
   const response = await fetch(getFunctionUrl(), {
     method: 'POST',
+
+    // Required for HttpOnly cookies.
     credentials: 'include',
+
     headers: {
       'Content-Type': 'application/json',
-      apikey: getAnonKey(),
-      Authorization: `Bearer ${getAnonKey()}`,
+
+      // Public Supabase project key used to invoke the Edge Function.
+      // DO NOT put the user's JWT here.
+      apikey: getPublishableKey(),
     },
+
     body: JSON.stringify({
       action,
       ...payload,
@@ -80,6 +87,14 @@ export const authGateway = async (
 
   const body = (await response.json().catch(() => ({}))) as GatewaySessionResponse;
 
+  /*
+   * 401/403 are intentionally returned to the AuthContext so it
+   * can handle:
+   *
+   * - unauthenticated sessions
+   * - expired sessions
+   * - email verification requirements
+   */
   if (!response.ok && response.status !== 401 && response.status !== 403) {
     throw new Error(body.error ?? 'Authentication service error.');
   }
@@ -116,8 +131,11 @@ export const gatewayVerifyOtp = (
     otp,
   });
 
-export const gatewaySession = () => authGateway('session');
+export const gatewaySession = () =>
+  authGateway('session');
 
-export const gatewayRefresh = () => authGateway('refresh');
+export const gatewayRefresh = () =>
+  authGateway('refresh');
 
-export const gatewayLogout = () => authGateway('logout');
+export const gatewayLogout = () =>
+  authGateway('logout');

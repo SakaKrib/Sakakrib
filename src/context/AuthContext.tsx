@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase, type Profile, type UserRole } from '@/lib/supabase';
 import { authGateway } from '@/lib/authGateway';
 
+
 interface RegistrationEmailApplication {
   email: string;
   applicant_email?: string;
@@ -47,7 +48,7 @@ const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.
 const toAuthSession = (user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }): AuthSession => ({
   user: {
     id: user.id,
-    email: user.email ?? null,
+    email: user.email ?? undefined,
     user_metadata: user.user_metadata ?? {},
   },
 });
@@ -328,16 +329,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const setRole = async (role: UserRole) => {
-    if (!session?.user) return { error: 'Not authenticated.' };
-    if (!profile) return { error: 'Application profile is required.' };
-    if (!isProfileEmailVerified(profile)) return { error: 'Email verification is required before setting a role.' };
-
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', session.user.id);
-    if (error) return { error: error.message };
-    await refreshProfile();
-    return { error: null };
-  };
 
   const refreshProfile = async (): Promise<void> => {
     if (!session?.user) {
@@ -347,17 +338,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const result = await authGateway('session');
+
       if (!result.authenticated) {
-        if (result.requiresEmailVerification) requireEmailVerification(result.email ?? session.user.email ?? null);
-        else clearAuthState();
+        if (result.requiresEmailVerification) {
+          requireEmailVerification(
+            result.email ?? session.user.email ?? null,
+          );
+        } else {
+          clearAuthState();
+        }
+
         return;
       }
+
       applyGatewayAuth(result);
     } catch (error) {
       console.error('Session refresh error:', error);
       clearAuthState();
     }
   };
+
+  const setRole = async (role: UserRole) => {
+    if (!session?.user) {
+      return { error: 'Not authenticated.' };
+    }
+
+    if (!profile) {
+      return { error: 'Application profile is required.' };
+    }
+
+    if (!isProfileEmailVerified(profile)) {
+      return {
+        error: 'Email verification is required before setting a role.',
+      };
+    }
+
+    try {
+      const result = await authGateway('set_role', {
+        role,
+      });
+
+      if (!result.success && !result.authenticated) {
+        return {
+          error: result.error ?? 'Unable to save your role.',
+        };
+      }
+
+      await refreshProfile();
+
+      return { error: null };
+    } catch (error) {
+      console.error('Set role gateway error:', error);
+
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unable to save your role.',
+      };
+    }
+  };
+
 
   return (
     <AuthContext.Provider

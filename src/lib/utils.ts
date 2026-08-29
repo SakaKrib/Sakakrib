@@ -1,21 +1,33 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { supabase } from '@/lib/supabase';
 
-/* ============================================================
- * GENERAL UTILITIES
- * ============================================================ */
+import {
+  protectedGet,
+  protectedPost,
+} from '@/lib/protectedApi';
 
-export function cn(...inputs: ClassValue[]) {
+import type { ListingEntitlement } from './ListingEntitlement';
+
+// ============================================================
+// TYPES
+// ============================================================
+
+export type ListingRole = 'landlord' | 'real_estate';
+
+// ============================================================
+// GENERAL UTILITIES
+// ============================================================
+
+export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-/* ============================================================
- * CURRENCY
- * ============================================================ */
+// ============================================================
+// CURRENCY
+// ============================================================
 
 export function formatKES(
-  amount: number | null | undefined
+  amount: number | null | undefined,
 ): string {
   if (
     amount === null ||
@@ -33,19 +45,21 @@ export function formatKES(
   }).format(amount);
 }
 
-/* ============================================================
- * DATE / TIME
- * ============================================================ */
+// ============================================================
+// DATE / TIME
+// ============================================================
 
 export function timeAgo(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
 
   const seconds = Math.floor(
-    (now.getTime() - date.getTime()) / 1000
+    (now.getTime() - date.getTime()) / 1000,
   );
 
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) {
+    return 'just now';
+  }
 
   const minutes = Math.floor(seconds / 60);
 
@@ -82,9 +96,9 @@ export function timeAgo(dateString: string): string {
   return `${years}y ago`;
 }
 
-/* ============================================================
- * VALIDATION
- * ============================================================ */
+// ============================================================
+// VALIDATION
+// ============================================================
 
 export function validateNationalID(id: string): boolean {
   const cleaned = id.trim().replace(/\s/g, '');
@@ -98,7 +112,9 @@ export function validateDL(dl: string): boolean {
   return /^[A-Za-z0-9]{4,10}$/.test(cleaned);
 }
 
-export function validateNumberPlate(plate: string): boolean {
+export function validateNumberPlate(
+  plate: string,
+): boolean {
   const cleaned = plate
     .trim()
     .toUpperCase()
@@ -111,21 +127,25 @@ export function validateNumberPlate(plate: string): boolean {
 }
 
 export function validatePhone(phone: string): boolean {
-  const cleaned = phone.trim().replace(/\s/g, '');
+  const cleaned = phone
+    .trim()
+    .replace(/\s/g, '');
 
   return (
-    /^(?:\+?254|0)?7\d{8}$/.test(cleaned) ||
-    /^(?:\+?254|0)?1\d{8}$/.test(cleaned)
+    /^(?:\+254|0)?7\d{8}$/.test(cleaned) ||
+    /^(?:\+254|0)?1\d{8}$/.test(cleaned)
   );
 }
 
 export function validateEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email.trim(),
+  );
 }
 
-/* ============================================================
- * LOCATION DATA
- * ============================================================ */
+// ============================================================
+// LOCATION DATA
+// ============================================================
 
 export const KENYAN_CITIES = [
   'Nairobi',
@@ -200,9 +220,9 @@ export const KENYAN_COUNTIES = [
   'West Pokot',
 ] as const;
 
-/* ============================================================
- * VEHICLES
- * ============================================================ */
+// ============================================================
+// VEHICLES
+// ============================================================
 
 export const VEHICLE_TYPES = [
   {
@@ -219,9 +239,9 @@ export const VEHICLE_TYPES = [
   },
 ] as const;
 
-/* ============================================================
- * HOUSE SIZES
- * ============================================================ */
+// ============================================================
+// HOUSE SIZES
+// ============================================================
 
 export const HOUSE_SIZES = [
   'Bedsitter',
@@ -236,240 +256,427 @@ export const HOUSE_SIZES = [
   'Custom Size',
 ] as const;
 
-/* ============================================================
- * PLATFORM CONFIGURATION
+// ============================================================
+// PLATFORM CONFIGURATION
+// ============================================================
+
+/**
+ * Backwards-compatible convenience exports.
  *
- * These variables are intentionally kept because existing
- * components import them.
+ * These values are populated by loadPlatformConfiguration().
+ * They are NOT authoritative until configuration has been loaded.
  *
- * IMPORTANT:
- * They are NOT initialized with business values.
- *
- * Call loadPlatformConfiguration() before code that depends
- * on these values.
- * ============================================================ */
+ * Entitlement decisions must come from the role-specific RPC.
+ */
 
 export let COMMISSION_RATE = 0;
-
 export let LISTING_FEE_KES = 0;
-
 export let FREE_LISTING_LIMIT = 0;
 
-/* ============================================================
- * PLATFORM SETTINGS
- * ============================================================ */
+// ============================================================
+// PLATFORM SETTINGS
+// ============================================================
 
 export interface PlatformSettings {
   id: boolean;
+
   mover_commission_rate: number;
+
   mover_operational_markup_rate: number;
+
   created_at?: string;
+
   updated_at?: string;
 }
 
 /**
  * Fetch platform settings.
  *
- * Database is the source of truth.
+ * Database remains the source of truth.
  */
 export async function getPlatformSettings(): Promise<PlatformSettings> {
-  const { data, error } = await supabase
-    .from('platform_settings')
-    .select(`
-      id,
-      mover_commission_rate,
-      mover_operational_markup_rate,
-      created_at,
-      updated_at
-    `)
-    .eq('id', true)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(
-      `Failed to load platform settings: ${error.message}`
-    );
-  }
-
-  if (!data) {
-    throw new Error(
-      'Platform settings are not configured in the database.'
-    );
-  }
-
-  return {
-    id: Boolean(data.id),
-    mover_commission_rate: Number(
-      data.mover_commission_rate
-    ),
-    mover_operational_markup_rate: Number(
-      data.mover_operational_markup_rate
-    ),
-    created_at: data.created_at,
-    updated_at: data.updated_at,
-  };
-}
-
-/* ============================================================
- * LISTING ENTITLEMENT
- * ============================================================ */
-
-export interface ListingEntitlement {
-  landlord_id: string;
-  authorized_landlord: boolean;
-
-  free_limit: number;
-  free_listings_used: number;
-  free_listings_remaining: number;
-
-  individual_paid_listings: number;
-  individual_listing_price_kes: number;
-
-  can_start_listing: boolean;
-  can_create: boolean;
-
-  requires_subscription: boolean;
-  requires_individual_payment: boolean;
-
-  subscription_id: string | null;
-  plan_id: string | null;
-  subscription_plan: string | null;
-  subscription_status: string | null;
-
-  subscription_limit: number | null;
-  max_units_per_listing: number | null;
-
-  subscription_listings_used: number;
-  subscription_listings_remaining: number | null;
-
-  pms_access: boolean;
-  upgrade_available: boolean;
-  upgrade_target: string | null;
-}
-
-/**
- * Fetch authoritative landlord listing entitlement.
- *
- * The RPC is responsible for determining:
- * - free listing allowance
- * - individual listing price
- * - subscription allowance
- * - whether payment is required
- */
-export async function getListingEntitlement(
-  landlordId?: string
-): Promise<ListingEntitlement> {
-  const { data, error } = await supabase.rpc(
-    'get_landlord_listing_entitlement',
-    landlordId
-      ? {
-          p_landlord_id: landlordId,
-        }
-      : {}
+  const data = await protectedGet<PlatformSettings[]>(
+    '/rest/v1/platform_settings' +
+      '?select=id,mover_commission_rate,mover_operational_markup_rate,created_at,updated_at' +
+      '&id=eq.true',
   );
 
-  if (error) {
-    throw new Error(
-      `Failed to load listing entitlement: ${error.message}`
-    );
-  }
+  const row = data?.[0];
 
-  if (!data) {
+  if (!row) {
     throw new Error(
-      'The database did not return listing entitlement.'
+      'Platform settings are not configured in the database.',
     );
   }
 
   return {
-    landlord_id: String(data.landlord_id),
-    authorized_landlord: Boolean(
-      data.authorized_landlord
+    id: Boolean(row.id),
+
+    mover_commission_rate: Number(
+      row.mover_commission_rate ?? 0,
     ),
 
-    free_limit: Number(data.free_limit ?? 0),
-    free_listings_used: Number(
-      data.free_listings_used ?? 0
-    ),
-    free_listings_remaining: Number(
-      data.free_listings_remaining ?? 0
+    mover_operational_markup_rate: Number(
+      row.mover_operational_markup_rate ?? 0,
     ),
 
-    individual_paid_listings: Number(
-      data.individual_paid_listings ?? 0
-    ),
+    created_at: row.created_at,
 
-    individual_listing_price_kes: Number(
-      data.individual_listing_price_kes ?? 0
-    ),
-
-    can_start_listing: Boolean(
-      data.can_start_listing
-    ),
-    can_create: Boolean(data.can_create),
-
-    requires_subscription: Boolean(
-      data.requires_subscription
-    ),
-    requires_individual_payment: Boolean(
-      data.requires_individual_payment
-    ),
-
-    subscription_id:
-      data.subscription_id ?? null,
-
-    plan_id:
-      data.plan_id ?? null,
-
-    subscription_plan:
-      data.subscription_plan ?? null,
-
-    subscription_status:
-      data.subscription_status ?? null,
-
-    subscription_limit:
-      data.subscription_limit === null ||
-      data.subscription_limit === undefined
-        ? null
-        : Number(data.subscription_limit),
-
-    max_units_per_listing:
-      data.max_units_per_listing === null ||
-      data.max_units_per_listing === undefined
-        ? null
-        : Number(data.max_units_per_listing),
-
-    subscription_listings_used: Number(
-      data.subscription_listings_used ?? 0
-    ),
-
-    subscription_listings_remaining:
-      data.subscription_listings_remaining === null ||
-      data.subscription_listings_remaining === undefined
-        ? null
-        : Number(
-            data.subscription_listings_remaining
-          ),
-
-    pms_access: Boolean(data.pms_access),
-
-    upgrade_available: Boolean(
-      data.upgrade_available
-    ),
-
-    upgrade_target:
-      data.upgrade_target ?? null,
+    updated_at: row.updated_at,
   };
 }
 
-/* ============================================================
- * LOAD BUSINESS CONFIGURATION
- *
- * Keeps the existing exported variable names working while
- * loading their values from Supabase.
- * ============================================================ */
+// ============================================================
+// RAW ENTITLEMENT RESPONSE
+// ============================================================
 
+/**
+ * Database/RPC response.
+ *
+ * Values are intentionally unknown because PostgREST/Supabase
+ * can return numeric values as strings depending on the column
+ * and RPC response.
+ */
+type RawListingEntitlement = {
+  landlord_id?: unknown;
+
+  real_estate_id?: unknown;
+
+  authorized_landlord?: unknown;
+
+  authorized_real_estate?: unknown;
+
+  free_limit?: unknown;
+
+  free_listings_used?: unknown;
+
+  free_listings_remaining?: unknown;
+
+  individual_paid_listings?: unknown;
+
+  individual_listing_price_kes?: unknown;
+
+  can_start_listing?: unknown;
+
+  can_create?: unknown;
+
+  requires_subscription?: unknown;
+
+  requires_individual_payment?: unknown;
+
+  subscription_id?: unknown;
+
+  plan_id?: unknown;
+
+  subscription_plan?: unknown;
+
+  subscription_status?: unknown;
+
+  subscription_limit?: unknown;
+
+  subscription_listings_used?: unknown;
+
+  subscription_listings_remaining?: unknown;
+
+  max_units_per_listing?: unknown;
+
+  pms_access?: unknown;
+
+  upgrade_available?: unknown;
+
+  upgrade_target?: unknown;
+
+  reason?: unknown;
+};
+
+// ============================================================
+// NORMALIZATION HELPERS
+// ============================================================
+
+function normalizeSubscriptionStatus(
+  value: unknown,
+): ListingEntitlement['subscriptionStatus'] {
+  if (typeof value !== 'string') {
+    return 'none';
+  }
+
+  switch (value.toLowerCase()) {
+    case 'trial':
+      return 'trial';
+
+    case 'active':
+      return 'active';
+
+    case 'expired':
+      return 'expired';
+
+    case 'none':
+    default:
+      return 'none';
+  }
+}
+
+function nullableString(
+  value: unknown,
+): string | null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  return String(value);
+}
+
+function nullableNumber(
+  value: unknown,
+): number | null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
+}
+
+function numberValue(
+  value: unknown,
+  fallback = 0,
+): number {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : fallback;
+}
+
+// ============================================================
+// NORMALIZE ENTITLEMENT
+// ============================================================
+
+/**
+ * The two role-specific RPCs return the same entitlement
+ * structure. Only the role changes.
+ */
+function normalizeListingEntitlement(
+  raw: RawListingEntitlement,
+  role: ListingRole,
+): ListingEntitlement {
+  return {
+    role,
+
+    canStartListing: Boolean(
+      raw.can_start_listing,
+    ),
+
+    canCreate: Boolean(
+      raw.can_create,
+    ),
+
+    requiresSubscription: Boolean(
+      raw.requires_subscription,
+    ),
+
+    requiresIndividualPayment: Boolean(
+      raw.requires_individual_payment,
+    ),
+
+    free_limit: numberValue(
+      raw.free_limit,
+    ),
+
+    free_listings_used: numberValue(
+      raw.free_listings_used,
+    ),
+
+    free_listings_remaining: numberValue(
+      raw.free_listings_remaining,
+    ),
+
+    subscriptionId: nullableString(
+      raw.subscription_id,
+    ),
+
+    subscriptionPlan: nullableString(
+      raw.subscription_plan,
+    ),
+
+    subscriptionStatus:
+      normalizeSubscriptionStatus(
+        raw.subscription_status,
+      ),
+
+    subscriptionLimit: nullableNumber(
+      raw.subscription_limit,
+    ),
+
+    subscriptionListingsUsed: numberValue(
+      raw.subscription_listings_used,
+    ),
+
+    subscriptionListingsRemaining:
+      nullableNumber(
+        raw.subscription_listings_remaining,
+      ),
+
+    individualPaidListings: numberValue(
+      raw.individual_paid_listings,
+    ),
+
+    individualListingPriceKes:
+      numberValue(
+        raw.individual_listing_price_kes,
+        1000,
+      ),
+
+    pmsAccess: Boolean(
+      raw.pms_access,
+    ),
+
+    upgradeAvailable: Boolean(
+      raw.upgrade_available,
+    ),
+
+    upgradeTarget: nullableString(
+      raw.upgrade_target,
+    ),
+  };
+}
+
+// ============================================================
+// LANDLORD LISTING ENTITLEMENT
+// ============================================================
+
+export async function getLandlordListingEntitlement(
+  landlordId?: string,
+): Promise<ListingEntitlement> {
+  const payload = landlordId
+    ? {
+        p_landlord_id: landlordId,
+      }
+    : {};
+
+  const response = await protectedPost<
+    RawListingEntitlement |
+    RawListingEntitlement[]
+  >(
+    '/rest/v1/rpc/get_landlord_listing_entitlement',
+    payload,
+  );
+
+  const raw = Array.isArray(response)
+    ? response[0]
+    : response;
+
+  if (!raw) {
+    throw new Error(
+      'The database did not return landlord listing entitlement.',
+    );
+  }
+
+  if (raw.authorized_landlord === false) {
+    throw new Error(
+      typeof raw.reason === 'string'
+        ? raw.reason
+        : 'This account is not authorized for landlord listings.',
+    );
+  }
+
+  return normalizeListingEntitlement(
+    raw,
+    'landlord',
+  );
+}
+
+// ============================================================
+// REAL ESTATE LISTING ENTITLEMENT
+// ============================================================
+
+export async function getRealEstateListingEntitlement(
+  realEstateId?: string,
+): Promise<ListingEntitlement> {
+  const payload = realEstateId
+    ? {
+        p_real_estate_id: realEstateId,
+      }
+    : {};
+
+  const response = await protectedPost<
+    RawListingEntitlement |
+    RawListingEntitlement[]
+  >(
+    '/rest/v1/rpc/get_real_estate_listing_entitlement',
+    payload,
+  );
+
+  const raw = Array.isArray(response)
+    ? response[0]
+    : response;
+
+  if (!raw) {
+    throw new Error(
+      'The database did not return real estate listing entitlement.',
+    );
+  }
+
+  if (raw.authorized_real_estate === false) {
+    throw new Error(
+      typeof raw.reason === 'string'
+        ? raw.reason
+        : 'This account is not authorized for real estate listings.',
+    );
+  }
+
+  return normalizeListingEntitlement(
+    raw,
+    'real_estate',
+  );
+}
+
+// ============================================================
+// ROLE-AWARE LISTING ENTITLEMENT
+// ============================================================
+
+export async function getListingEntitlement(
+  role: ListingRole,
+  userId?: string,
+): Promise<ListingEntitlement> {
+  if (role === 'landlord') {
+    return getLandlordListingEntitlement(
+      userId,
+    );
+  }
+
+  return getRealEstateListingEntitlement(
+    userId,
+  );
+}
+
+// ============================================================
+// LOAD BUSINESS CONFIGURATION
+// ============================================================
+
+/**
+ * Load platform configuration plus the correct
+ * role-specific listing entitlement.
+ *
+ * The role MUST be supplied.
+ *
+ * This prevents a real-estate account from accidentally
+ * receiving landlord entitlement information.
+ */
 export async function loadPlatformConfiguration(
-  landlordId?: string
+  role: ListingRole,
+  userId?: string,
 ): Promise<{
   platformSettings: PlatformSettings;
   listingEntitlement: ListingEntitlement | null;
@@ -480,18 +687,22 @@ export async function loadPlatformConfiguration(
   COMMISSION_RATE =
     platformSettings.mover_commission_rate;
 
-  let listingEntitlement: ListingEntitlement | null =
-    null;
+  let listingEntitlement:
+    | ListingEntitlement
+    | null = null;
 
-  if (landlordId) {
+  if (userId) {
     listingEntitlement =
-      await getListingEntitlement(landlordId);
+      await getListingEntitlement(
+        role,
+        userId,
+      );
 
     FREE_LISTING_LIMIT =
       listingEntitlement.free_limit;
 
     LISTING_FEE_KES =
-      listingEntitlement.individual_listing_price_kes;
+      listingEntitlement.individualListingPriceKes;
   }
 
   return {
@@ -500,39 +711,53 @@ export async function loadPlatformConfiguration(
   };
 }
 
-/* ============================================================
- * MOVER PRICING
- * ============================================================ */
+// ============================================================
+// MOVER PRICING
+// ============================================================
 
 export interface MoverQuote {
   distance_km: number;
+
   base_rate_kes: number;
+
   rate_per_km_kes: number;
 
   operational_markup_rate: number;
+
   operational_markup_amount: number;
 
   subtotal_kes: number;
 
   commission_rate: number;
+
   commission_amount: number;
 
   total_amount_kes: number;
+
   net_mover_payable_kes: number;
 }
+
+type RawMoverQuote = Partial<MoverQuote> & {
+  booking_amount?: unknown;
+
+  total_amount?: unknown;
+
+  net_mover_payable?: unknown;
+};
 
 /**
  * Get authoritative mover pricing.
  *
- * The calculation is performed by the database RPC.
- * The frontend does not independently calculate pricing.
+ * Calculation is performed by the database RPC.
  */
 export async function getMoverQuote(
   moverId: string,
-  distanceKm: number
+  distanceKm: number,
 ): Promise<MoverQuote> {
   if (!moverId) {
-    throw new Error('Mover ID is required.');
+    throw new Error(
+      'Mover ID is required.',
+    );
   }
 
   if (
@@ -540,82 +765,83 @@ export async function getMoverQuote(
     distanceKm < 0
   ) {
     throw new Error(
-      'A valid distance is required.'
+      'A valid distance is required.',
     );
   }
 
-  const { data, error } = await supabase.rpc(
-    'get_mover_quote',
+  const response = await protectedPost<
+    RawMoverQuote |
+    RawMoverQuote[]
+  >(
+    '/rest/v1/rpc/get_mover_quote',
     {
       p_mover_id: moverId,
       p_distance_km: distanceKm,
-    }
+    },
   );
 
-  if (error) {
-    throw new Error(
-      `Failed to calculate mover quote: ${error.message}`
-    );
-  }
-
-  const quote = Array.isArray(data)
-    ? data[0]
-    : data;
+  const quote = Array.isArray(response)
+    ? response[0]
+    : response;
 
   if (!quote) {
     throw new Error(
-      'The database did not return a mover quote.'
+      'The database did not return a mover quote.',
     );
   }
 
   return {
-    distance_km: Number(quote.distance_km),
-    base_rate_kes: Number(
-      quote.base_rate_kes
-    ),
-    rate_per_km_kes: Number(
-      quote.rate_per_km_kes
+    distance_km: numberValue(
+      quote.distance_km,
     ),
 
-    operational_markup_rate: Number(
-      quote.operational_markup_rate ?? 0
+    base_rate_kes: numberValue(
+      quote.base_rate_kes,
     ),
 
-    operational_markup_amount: Number(
-      quote.operational_markup_amount ?? 0
+    rate_per_km_kes: numberValue(
+      quote.rate_per_km_kes,
     ),
 
-    subtotal_kes: Number(
+    operational_markup_rate:
+      numberValue(
+        quote.operational_markup_rate,
+      ),
+
+    operational_markup_amount:
+      numberValue(
+        quote.operational_markup_amount,
+      ),
+
+    subtotal_kes: numberValue(
       quote.subtotal_kes ??
-        quote.booking_amount ??
-        0
+        quote.booking_amount,
     ),
 
-    commission_rate: Number(
-      quote.commission_rate ?? 0
+    commission_rate: numberValue(
+      quote.commission_rate,
     ),
 
-    commission_amount: Number(
-      quote.commission_amount ?? 0
+    commission_amount: numberValue(
+      quote.commission_amount,
     ),
 
-    total_amount_kes: Number(
+    total_amount_kes: numberValue(
       quote.total_amount_kes ??
-        quote.total_amount ??
-        0
+        quote.total_amount,
     ),
 
-    net_mover_payable_kes: Number(
-      quote.net_mover_payable_kes ??
-        quote.net_mover_payable ??
-        0
-    ),
+    net_mover_payable_kes:
+      numberValue(
+        quote.net_mover_payable_kes ??
+          quote.net_mover_payable,
+      ),
   };
 }
 
-/* ============================================================
- * DAYS / AVAILABILITY
- * ============================================================ */
+// ============================================================
+// DAYS / AVAILABILITY
+// ============================================================
 
 export const DAYS_OF_WEEK = [
   'Monday',
@@ -627,7 +853,10 @@ export const DAYS_OF_WEEK = [
   'Sunday',
 ] as const;
 
-export const DAY_INDEX: Record<string, number> = {
+export const DAY_INDEX: Record<
+  string,
+  number
+> = {
   Sunday: 0,
   Monday: 1,
   Tuesday: 2,
@@ -637,16 +866,24 @@ export const DAY_INDEX: Record<string, number> = {
   Saturday: 6,
 };
 
-/* ============================================================
- * TIME
- * ============================================================ */
+// ============================================================
+// TIME
+// ============================================================
 
-export function formatTime(time: string): string {
-  if (!time) return '';
+export function formatTime(
+  time: string,
+): string {
+  if (!time) {
+    return '';
+  }
 
-  const [h, m] = time.split(':').map(Number);
+  const [h, m] = time
+    .split(':')
+    .map(Number);
 
-  const period = h >= 12 ? 'PM' : 'AM';
+  const period = h >= 12
+    ? 'PM'
+    : 'AM';
 
   const hour12 =
     h === 0
@@ -655,14 +892,16 @@ export function formatTime(time: string): string {
         ? h - 12
         : h;
 
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+  return `${hour12}:${String(
+    m,
+  ).padStart(2, '0')} ${period}`;
 }
 
 export function getDayOfWeek(
-  dateStr: string
+  dateStr: string,
 ): string {
   const date = new Date(
-    `${dateStr}T00:00:00`
+    `${dateStr}T00:00:00`,
   );
 
   return [
@@ -676,16 +915,16 @@ export function getDayOfWeek(
   ][date.getDay()];
 }
 
-/* ============================================================
- * MOVER AVAILABILITY
- * ============================================================ */
+// ============================================================
+// MOVER AVAILABILITY
+// ============================================================
 
 export function isMoverAvailable(
   workingDays: string[],
   startTime: string,
   endTime: string,
   dateStr: string,
-  pickupTime: string
+  pickupTime: string,
 ): {
   valid: boolean;
   reason?: string;
@@ -695,9 +934,10 @@ export function isMoverAvailable(
   if (!workingDays.includes(day)) {
     return {
       valid: false,
-      reason: `Driver is only available on ${workingDays.join(
-        ', '
-      )}.`,
+      reason:
+        `Driver is only available on ${workingDays.join(
+          ', ',
+        )}.`,
     };
   }
 
@@ -712,11 +952,12 @@ export function isMoverAvailable(
     ) {
       return {
         valid: false,
-        reason: `Driver works between ${formatTime(
-          startTime
-        )} and ${formatTime(
-          endTime
-        )} on ${day}.`,
+        reason:
+          `Driver works between ${formatTime(
+            startTime,
+          )} and ${formatTime(
+            endTime,
+          )} on ${day}.`,
       };
     }
   }

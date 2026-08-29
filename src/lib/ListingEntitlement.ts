@@ -1,7 +1,28 @@
-import { supabase } from '@/lib/supabase';
+import {
+  protectedGet,
+  protectedPost,
+} from '@/lib/protectedApi';
 
 // ============================================================
 // TYPES
+//
+// The application has TWO separate listing entitlement systems.
+//
+// LANDLORD
+//   -> get_landlord_listing_entitlement()
+//   -> get_current_landlord_subscription()
+//
+// REAL ESTATE
+//   -> get_real_estate_listing_entitlement()
+//   -> get_current_real_estate_subscription()
+//
+// Do not merge these database entitlement systems.
+//
+// Field naming: free_limit / free_listings_used /
+// free_listings_remaining are kept snake_case here to match the
+// shape utils.ts's normalizeListingEntitlement already produces and
+// type-checks against - this file and utils.ts share the same
+// ListingEntitlement type, so the two must agree.
 // ============================================================
 
 export type ListingRole = 'landlord' | 'real_estate';
@@ -9,7 +30,10 @@ export type ListingRole = 'landlord' | 'real_estate';
 export type SubscriptionStatus =
   | 'trial'
   | 'active'
+  | 'pending_payment'
+  | 'grace_period'
   | 'expired'
+  | 'cancelled'
   | 'none';
 
 export interface ListingEntitlement {
@@ -21,13 +45,14 @@ export interface ListingEntitlement {
   requiresSubscription: boolean;
   requiresIndividualPayment: boolean;
 
-  freeLimit: number;
-  freeListingsUsed: number;
-  freeListingsRemaining: number;
+  free_limit: number;
+  free_listings_used: number;
+  free_listings_remaining: number;
 
   subscriptionId: string | null;
   subscriptionPlan: string | null;
   subscriptionStatus: SubscriptionStatus;
+
   subscriptionLimit: number | null;
   subscriptionListingsUsed: number;
   subscriptionListingsRemaining: number | null;
@@ -35,6 +60,10 @@ export interface ListingEntitlement {
   individualPaidListings: number;
   individualListingPriceKes: number;
 
+  /**
+   * PMS access is currently meaningful for landlords.
+   * Real-estate entitlement safely returns false.
+   */
   pmsAccess: boolean;
 
   upgradeAvailable: boolean;
@@ -42,247 +71,269 @@ export interface ListingEntitlement {
 }
 
 /**
- * Subscription plans are also sourced directly from Supabase.
- *
- * This type intentionally lives in this file so listing entitlement
- * and subscription-plan data have one service-layer home.
+ * Subscription plans are shared by the platform table,
+ * but filtered by audience.
  */
 export interface SubscriptionPlan {
   id: string;
   name: string;
   audience: 'LANDLORD' | 'REAL_ESTATE';
+
   monthly_price_kes: number;
   annual_price_kes: number;
+
   max_listings: number | null;
   max_units_per_listing: number | null;
 }
 
 // ============================================================
-// NORMALIZATION
+// RAW DATABASE TYPES
+// ============================================================
+
+interface RawEntitlement {
+  authorized_landlord?: boolean;
+  authorized_real_estate?: boolean;
+  reason?: string;
+
+  free_limit?: number | string | null;
+  free_listings_used?: number | string | null;
+  free_listings_remaining?: number | string | null;
+
+  subscription_id?: string | null;
+  subscription_plan?: string | null;
+  subscription_status?: string | null;
+
+  subscription_limit?: number | string | null;
+  subscription_listings_used?: number | string | null;
+  subscription_listings_remaining?: number | string | null;
+
+  individual_paid_listings?: number | string | null;
+  individual_listing_price_kes?: number | string | null;
+
+  can_start_listing?: boolean;
+  can_create?: boolean;
+
+  requires_subscription?: boolean;
+  requires_individual_payment?: boolean;
+
+  pms_access?: boolean;
+
+  upgrade_available?: boolean;
+  upgrade_target?: string | null;
+}
+
+interface RawSubscriptionPlan {
+  id: unknown;
+  name: unknown;
+  audience: unknown;
+  monthly_price_kes: unknown;
+  annual_price_kes: unknown;
+  max_listings: unknown;
+  max_units_per_listing: unknown;
+}
+
+// ============================================================
+// NORMALIZATION HELPERS
 // ============================================================
 
 function normalizeSubscriptionStatus(
   raw: unknown
 ): SubscriptionStatus {
   const value =
-    typeof raw === 'string' ? raw.toLowerCase() : '';
+    typeof raw === 'string' ? raw.trim().toLowerCase() : '';
 
-  if (value === 'active') return 'active';
-  if (value === 'trial') return 'trial';
-  if (value === 'expired') return 'expired';
-
-  return 'none';
+  switch (value) {
+    case 'trial':
+      return 'trial';
+    case 'active':
+      return 'active';
+    case 'pending_payment':
+    case 'pending payment':
+    case 'pending-payment':
+      return 'pending_payment';
+    case 'grace_period':
+    case 'grace period':
+    case 'grace-period':
+      return 'grace_period';
+    case 'expired':
+      return 'expired';
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
+    default:
+      return 'none';
+  }
 }
 
-function normalizeNullableNumber(
-  raw: unknown
-): number | null {
-  if (raw === null || raw === undefined) {
-    return null;
-  }
-
+function normalizeNumber(raw: unknown, fallback = 0): number {
+  if (raw === null || raw === undefined || raw === '') return fallback;
   const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
 
+function normalizeNullableNumber(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const value = Number(raw);
   return Number.isFinite(value) ? value : null;
 }
 
+function normalizeNullableString(raw: unknown): string | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  return String(raw);
+}
+
 // ============================================================
-// LISTING ENTITLEMENT
+// NORMALIZE ENTITLEMENT
 // ============================================================
 
-export async function fetchListingEntitlement(
+function normalizeEntitlement(
   role: ListingRole,
-  userId: string
-): Promise<ListingEntitlement> {
-  const rpcName =
-    role === 'landlord'
-      ? 'get_landlord_listing_entitlement'
-      : 'get_real_estate_listing_entitlement';
-
-  const rpcParams =
-    role === 'landlord'
-      ? { p_landlord_id: userId }
-      : { p_real_estate_id: userId };
-
-  const { data, error } = await supabase.rpc(
-    rpcName,
-    rpcParams
-  );
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    throw new Error(
-      'Entitlement check returned no data.'
-    );
-  }
-
-  const raw = Array.isArray(data)
-    ? data[0]
-    : data;
-
-  if (!raw) {
-    throw new Error(
-      'Unable to determine listing entitlement.'
-    );
-  }
-
-  if (
-    role === 'landlord' &&
-    raw.authorized_landlord === false
-  ) {
-    throw new Error(
-      raw.reason ===
-        'REAL_ESTATE_USES_SEPARATE_ENTITLEMENTS'
-        ? 'This account must use the real estate listing flow.'
-        : 'This account is not authorized for landlord listings.'
-    );
-  }
-
-  if (
-    role === 'real_estate' &&
-    raw.authorized_real_estate === false
-  ) {
-    throw new Error(
-      'This account is not authorized for real estate listings.'
-    );
-  }
-
+  raw: RawEntitlement
+): ListingEntitlement {
   return {
     role,
 
-    canStartListing: Boolean(
-      raw.can_start_listing
+    canStartListing: Boolean(raw.can_start_listing),
+    canCreate: Boolean(raw.can_create),
+
+    requiresSubscription: Boolean(raw.requires_subscription),
+    requiresIndividualPayment: Boolean(raw.requires_individual_payment),
+
+    free_limit: normalizeNumber(raw.free_limit, 3),
+    free_listings_used: normalizeNumber(raw.free_listings_used),
+    free_listings_remaining: normalizeNumber(raw.free_listings_remaining),
+
+    subscriptionId: normalizeNullableString(raw.subscription_id),
+    subscriptionPlan: normalizeNullableString(raw.subscription_plan),
+    subscriptionStatus: normalizeSubscriptionStatus(raw.subscription_status),
+
+    subscriptionLimit: normalizeNullableNumber(raw.subscription_limit),
+    subscriptionListingsUsed: normalizeNumber(raw.subscription_listings_used),
+    subscriptionListingsRemaining: normalizeNullableNumber(
+      raw.subscription_listings_remaining
     ),
 
-    canCreate: Boolean(
-      raw.can_create
+    individualPaidListings: normalizeNumber(raw.individual_paid_listings),
+    individualListingPriceKes: normalizeNumber(
+      raw.individual_listing_price_kes,
+      1000
     ),
 
-    requiresSubscription: Boolean(
-      raw.requires_subscription
-    ),
+    // PMS access belongs to landlord entitlement - real-estate
+    // accounts must not inherit landlord PMS access.
+    pmsAccess: role === 'landlord' ? Boolean(raw.pms_access) : false,
 
-    requiresIndividualPayment: Boolean(
-      raw.requires_individual_payment
-    ),
-
-    freeLimit: Number(
-      raw.free_limit ?? 0
-    ),
-
-    freeListingsUsed: Number(
-      raw.free_listings_used ?? 0
-    ),
-
-    freeListingsRemaining: Number(
-      raw.free_listings_remaining ?? 0
-    ),
-
-    subscriptionId:
-      raw.subscription_id ?? null,
-
-    subscriptionPlan:
-      raw.subscription_plan ?? null,
-
-    subscriptionStatus:
-      normalizeSubscriptionStatus(
-        raw.subscription_status
-      ),
-
-    subscriptionLimit:
-      normalizeNullableNumber(
-        raw.subscription_limit
-      ),
-
-    subscriptionListingsUsed: Number(
-      raw.subscription_listings_used ?? 0
-    ),
-
-    subscriptionListingsRemaining:
-      normalizeNullableNumber(
-        raw.subscription_listings_remaining
-      ),
-
-    individualPaidListings: Number(
-      raw.individual_paid_listings ?? 0
-    ),
-
-    individualListingPriceKes: Number(
-      raw.individual_listing_price_kes ?? 1000
-    ),
-
-    pmsAccess: Boolean(
-      raw.pms_access
-    ),
-
-    upgradeAvailable: Boolean(
-      raw.upgrade_available
-    ),
-
-    upgradeTarget:
-      raw.upgrade_target ?? null,
+    upgradeAvailable: Boolean(raw.upgrade_available),
+    upgradeTarget: normalizeNullableString(raw.upgrade_target),
   };
 }
 
 // ============================================================
+// LANDLORD / REAL ESTATE ENTITLEMENT
+//
+// Migrated from raw supabase.rpc() to protectedPost() - auth now
+// flows through the HttpOnly-cookie-backed protected-api Edge
+// Function (see protectedApi.ts), not a client-readable session
+// token. Same RPCs, same payload shape, different transport.
+// ============================================================
+
+export async function fetchLandlordListingEntitlement(
+  landlordId?: string
+): Promise<ListingEntitlement> {
+  const payload = landlordId ? { p_landlord_id: landlordId } : {};
+
+  const response = await protectedPost<RawEntitlement | RawEntitlement[]>(
+    '/rest/v1/rpc/get_landlord_listing_entitlement',
+    payload
+  );
+
+  const raw = Array.isArray(response) ? response[0] : response;
+
+  if (!raw) {
+    throw new Error('The database did not return landlord listing entitlement.');
+  }
+
+  if (raw.authorized_landlord === false) {
+    throw new Error(
+      raw.reason === 'REAL_ESTATE_USES_SEPARATE_ENTITLEMENTS'
+        ? 'This account must use the real estate listing flow.'
+        : raw.reason || 'This account is not authorized for landlord listings.'
+    );
+  }
+
+  return normalizeEntitlement('landlord', raw);
+}
+
+export async function fetchRealEstateListingEntitlement(
+  realEstateId?: string
+): Promise<ListingEntitlement> {
+  const payload = realEstateId ? { p_real_estate_id: realEstateId } : {};
+
+  const response = await protectedPost<RawEntitlement | RawEntitlement[]>(
+    '/rest/v1/rpc/get_real_estate_listing_entitlement',
+    payload
+  );
+
+  const raw = Array.isArray(response) ? response[0] : response;
+
+  if (!raw) {
+    throw new Error('The database did not return real estate listing entitlement.');
+  }
+
+  if (raw.authorized_real_estate === false) {
+    throw new Error(
+      raw.reason || 'This account is not authorized for real estate listings.'
+    );
+  }
+
+  return normalizeEntitlement('real_estate', raw);
+}
+
+/**
+ * Fetch the correct entitlement for the account role. Does NOT
+ * merge the landlord and real-estate database entitlement systems
+ * - only dispatches to the correct RPC.
+ */
+export async function fetchListingEntitlement(
+  role: ListingRole,
+  userId?: string
+): Promise<ListingEntitlement> {
+  if (role === 'landlord') {
+    return fetchLandlordListingEntitlement(userId);
+  }
+  return fetchRealEstateListingEntitlement(userId);
+}
+
+// ============================================================
 // SUBSCRIPTION PLANS
-//
-// Source of truth: Supabase subscription_plans table.
-//
-// This function belongs here rather than inside the modal.
 // ============================================================
 
 export async function fetchSubscriptionPlans(
   role: ListingRole
 ): Promise<SubscriptionPlan[]> {
-  const audience =
-    role === 'landlord'
-      ? 'LANDLORD'
-      : 'REAL_ESTATE';
+  const audience = role === 'landlord' ? 'LANDLORD' : 'REAL_ESTATE';
 
-  const { data, error } = await supabase
-    .from('subscription_plans')
-    .select(
-      [
-        'id',
-        'name',
-        'audience',
-        'monthly_price_kes',
-        'annual_price_kes',
-        'max_listings',
-        'max_units_per_listing',
-      ].join(', ')
-    )
-    .eq('audience', audience)
-    .order('monthly_price_kes', {
-      ascending: true,
-    });
+  const query =
+    '/rest/v1/subscription_plans' +
+    '?select=id,name,audience,monthly_price_kes,annual_price_kes,max_listings,max_units_per_listing' +
+    `&audience=eq.${audience}` +
+    '&order=monthly_price_kes.asc';
 
-  if (error) {
-    throw error;
-  }
+  const rows = await protectedGet<RawSubscriptionPlan[]>(query);
 
-  return (data ?? []).map((row: any): SubscriptionPlan => ({
-    id: String(row.id),
-    name: String(row.name),
-    audience: row.audience as 'LANDLORD' | 'REAL_ESTATE',
+  return (rows ?? []).map(
+    (row): SubscriptionPlan => ({
+      id: String(row.id),
+      name: String(row.name),
+      audience: row.audience === 'REAL_ESTATE' ? 'REAL_ESTATE' : 'LANDLORD',
 
-    monthly_price_kes: Number(row.monthly_price_kes),
-    annual_price_kes: Number(row.annual_price_kes),
+      monthly_price_kes: normalizeNumber(row.monthly_price_kes),
+      annual_price_kes: normalizeNumber(row.annual_price_kes),
 
-    max_listings:
-        row.max_listings === null
-        ? null
-        : Number(row.max_listings),
-
-    max_units_per_listing:
-        row.max_units_per_listing === null
-        ? null
-        : Number(row.max_units_per_listing),
-    }));
+      max_listings: normalizeNullableNumber(row.max_listings),
+      max_units_per_listing: normalizeNullableNumber(row.max_units_per_listing),
+    })
+  );
 }
 
 // ============================================================
@@ -338,9 +389,7 @@ export interface RoleAwareListingResult {
 
   listing_id?: string;
 
-  listing_entitlement?:
-    | 'FREE'
-    | 'SUBSCRIPTION';
+  listing_entitlement?: 'FREE' | 'SUBSCRIPTION';
 
   is_paid?: boolean;
   is_published?: boolean;
@@ -368,6 +417,9 @@ export interface RoleAwareListingResult {
 
 // ============================================================
 // CREATE ROLE-AWARE LISTING
+//
+// RESTORED - was missing from the last revision of this file.
+// Migrated to protectedPost.
 // ============================================================
 
 export async function createRoleAwareListing(
@@ -379,76 +431,39 @@ export async function createRoleAwareListing(
     p_city: payload.city,
     p_county: payload.county,
 
-    p_location_search:
-      payload.location_search ?? null,
+    p_location_search: payload.location_search ?? null,
+    p_latitude: payload.latitude ?? null,
+    p_longitude: payload.longitude ?? null,
 
-    p_latitude:
-      payload.latitude ?? null,
+    p_property_name: payload.property_name ?? null,
+    p_property_type: payload.property_type ?? null,
 
-    p_longitude:
-      payload.longitude ?? null,
+    p_price_kes: payload.price_kes ?? null,
 
-    p_property_name:
-      payload.property_name ?? null,
+    p_listing_type: payload.listing_type ?? 'rent',
 
-    p_property_type:
-      payload.property_type ?? null,
+    p_deposit_required: payload.deposit_required ?? false,
+    p_deposit_structure: payload.deposit_structure ?? null,
+    p_deposit_amount: payload.deposit_amount ?? 0,
 
-    p_price_kes:
-      payload.price_kes ?? null,
+    p_size: payload.size ?? null,
+    p_beds: payload.beds ?? 0,
+    p_baths: payload.baths ?? 0,
 
-    p_listing_type:
-      payload.listing_type ?? 'rent',
+    p_contact_phone: payload.contact_phone ?? null,
+    p_contact_email: payload.contact_email ?? null,
 
-    p_deposit_required:
-      payload.deposit_required ?? false,
+    p_social_links: payload.social_links ?? [],
 
-    p_deposit_structure:
-      payload.deposit_structure ?? null,
+    p_booking_enabled: payload.booking_enabled ?? false,
+    p_payment_enabled: payload.payment_enabled ?? false,
 
-    p_deposit_amount:
-      payload.deposit_amount ?? 0,
-
-    p_size:
-      payload.size ?? null,
-
-    p_beds:
-      payload.beds ?? 0,
-
-    p_baths:
-      payload.baths ?? 0,
-
-    p_contact_phone:
-      payload.contact_phone ?? null,
-
-    p_contact_email:
-      payload.contact_email ?? null,
-
-    p_social_links:
-      payload.social_links ?? [],
-
-    p_booking_enabled:
-      payload.booking_enabled ?? false,
-
-    p_payment_enabled:
-      payload.payment_enabled ?? false,
-
-    p_is_property_management:
-      payload.is_property_management ?? false,
+    p_is_property_management: payload.is_property_management ?? false,
   };
 
-  const { data, error } =
-    await supabase.rpc(
-      'create_role_aware_listing',
-      rpcPayload
-    );
-
-  if (error) {
-    throw new Error(
-      error.message ||
-        'The database rejected the listing.'
-    );
-  }
+  const data = await protectedPost<
+    RoleAwareListingResult | RoleAwareListingResult[]
+  >('/rest/v1/rpc/create_role_aware_listing', rpcPayload);
 
   if (!data) {
     throw new Error(
@@ -456,15 +471,14 @@ export async function createRoleAwareListing(
     );
   }
 
-  return (
-    Array.isArray(data)
-      ? data[0]
-      : data
-  ) as RoleAwareListingResult;
+  return Array.isArray(data) ? data[0] : data;
 }
 
 // ============================================================
 // LISTING PAYMENT INTENT
+//
+// RESTORED - was missing from the last revision of this file.
+// Migrated to protectedPost/protectedGet.
 // ============================================================
 
 export async function createListingPaymentIntent(
@@ -473,54 +487,38 @@ export async function createListingPaymentIntent(
   paymentIntentId: string;
   amountKes: number;
 }> {
-  const { data, error } =
-    await supabase.rpc(
-      'create_listing_payment_intent',
-      {
-        p_listing_data: payload,
-      }
-    );
+  const data = await protectedPost<
+    { payment_intent_id?: string; amount_kes?: unknown } |
+    { payment_intent_id?: string; amount_kes?: unknown }[]
+  >('/rest/v1/rpc/create_listing_payment_intent', {
+    p_listing_data: payload,
+  });
 
-  if (error) {
-    throw new Error(
-      error.message ||
-        'Unable to start the listing payment.'
-    );
-  }
-
-  const raw = Array.isArray(data)
-    ? data[0]
-    : data;
+  const raw = Array.isArray(data) ? data[0] : data;
 
   if (!raw?.payment_intent_id) {
-    throw new Error(
-      'The payment service did not return a payment intent.'
-    );
+    throw new Error('The payment service did not return a payment intent.');
   }
 
-  const amountKes = Number(
-    raw.amount_kes
-  );
+  const amountKes = Number(raw.amount_kes);
 
-  if (
-    !Number.isFinite(amountKes) ||
-    amountKes <= 0
-  ) {
+  if (!Number.isFinite(amountKes) || amountKes <= 0) {
     throw new Error(
       'The payment service returned an invalid listing payment amount.'
     );
   }
 
   return {
-    paymentIntentId: String(
-      raw.payment_intent_id
-    ),
+    paymentIntentId: String(raw.payment_intent_id),
     amountKes,
   };
 }
 
 // ============================================================
 // PAYMENT INTENT STATUS
+//
+// RESTORED - was missing from the last revision of this file.
+// Migrated to protectedGet.
 // ============================================================
 
 export type ListingPaymentIntentStatus =
@@ -540,34 +538,15 @@ export async function waitForListingPaymentIntent(
     intervalMs?: number;
   } = {}
 ): Promise<boolean> {
-  for (
-    let attempt = 0;
-    attempt < maxAttempts;
-    attempt++
-  ) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const { data, error } =
-        await supabase
-          .from('listing_payment_intents')
-          .select('status')
-          .eq('id', paymentIntentId)
-          .single();
+      const rows = await protectedGet<{ status: string }[]>(
+        `/rest/v1/listing_payment_intents?select=status&id=eq.${paymentIntentId}`
+      );
 
-      if (error) {
-        console.error(
-          'Payment intent status check failed:',
-          error
-        );
-      }
+      const status = rows?.[0]?.status as ListingPaymentIntentStatus | undefined;
 
-      const status =
-        data?.status as
-          | ListingPaymentIntentStatus
-          | undefined;
-
-      if (status === 'PAID') {
-        return true;
-      }
+      if (status === 'PAID') return true;
 
       if (
         status === 'FAILED' ||
@@ -577,15 +556,10 @@ export async function waitForListingPaymentIntent(
         return false;
       }
     } catch (err) {
-      console.error(
-        'Error checking listing payment intent:',
-        err
-      );
+      console.error('Error checking listing payment intent:', err);
     }
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, intervalMs)
-    );
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
   return false;
@@ -593,62 +567,54 @@ export async function waitForListingPaymentIntent(
 
 // ============================================================
 // GET LISTING CREATED FROM PAYMENT
+//
+// RESTORED - was missing from the last revision of this file.
 // ============================================================
 
 export async function getListingIdFromPaymentIntent(
   paymentIntentId: string
 ): Promise<string | null> {
-  const { data, error } =
-    await supabase
-      .from('listing_payment_intents')
-      .select('status, listing_id')
-      .eq('id', paymentIntentId)
-      .single();
-
-  if (error) {
-    console.error(
-      'Unable to read listing payment intent:',
-      error
+  try {
+    const rows = await protectedGet<
+      { status: string; listing_id: string | null }[]
+    >(
+      `/rest/v1/listing_payment_intents?select=status,listing_id&id=eq.${paymentIntentId}`
     );
 
+    const row = rows?.[0];
+
+    if (row?.status !== 'PAID') return null;
+
+    return row.listing_id ?? null;
+  } catch (err) {
+    console.error('Unable to read listing payment intent:', err);
     return null;
   }
-
-  if (data?.status !== 'PAID') {
-    return null;
-  }
-
-  return data.listing_id ?? null;
 }
 
 // ============================================================
 // RECENTLY PAID LISTING
+//
+// RESTORED - was missing from the last revision of this file.
 // ============================================================
 
 export async function findRecentlyPaidListing(
   userId: string
 ): Promise<string | null> {
-  const { data, error } =
-    await supabase
-      .from('listing_payment_intents')
-      .select('listing_id')
-      .eq('user_id', userId)
-      .eq('status', 'PAID')
-      .not('listing_id', 'is', null)
-      .order('paid_at', {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
-
-  if (error) {
-    console.error(
-      'Unable to look up the paid listing intent:',
-      error
+  try {
+    const rows = await protectedGet<{ listing_id: string | null }[]>(
+      '/rest/v1/listing_payment_intents' +
+        '?select=listing_id' +
+        `&user_id=eq.${userId}` +
+        '&status=eq.PAID' +
+        '&listing_id=not.is.null' +
+        '&order=paid_at.desc' +
+        '&limit=1'
     );
 
+    return rows?.[0]?.listing_id ?? null;
+  } catch (err) {
+    console.error('Unable to look up the paid listing intent:', err);
     return null;
   }
-
-  return data?.listing_id ?? null;
 }

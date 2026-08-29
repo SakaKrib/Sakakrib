@@ -6,7 +6,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { supabase } from "../../lib/supabase";
+import { protectedGet } from "@/lib/protectedApi";
 
 import PMSCheckoutModal, {
   type PMSCheckoutPlan,
@@ -247,36 +247,9 @@ export default function PMSPlanSelector({
             ? "LANDLORD"
             : "REAL_ESTATE";
 
-        const {
-          data,
-          error: queryError,
-        } = await supabase
-          .from("subscription_plans")
-          .select(
-            `
-              id,
-              name,
-              audience,
-              max_listings,
-              max_units_per_listing,
-              monthly_price_kes,
-              annual_price_kes,
-              paypal_product_id,
-              paypal_monthly_plan_id,
-              paypal_annual_plan_id,
-              paypal_monthly_price_usd,
-              paypal_annual_price_usd,
-              paypal_fx_rate
-            `
-          )
-          .eq("audience", audience)
-          .order("monthly_price_kes", {
-            ascending: true,
-          });
-
-        if (queryError) {
-          throw queryError;
-        }
+        const data = await protectedGet<PMSSubscriptionPlan[]>(
+          `/rest/v1/subscription_plans?select=id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes,paypal_product_id,paypal_monthly_plan_id,paypal_annual_plan_id,paypal_monthly_price_usd,paypal_annual_price_usd,paypal_fx_rate&audience=eq.${audience}&order=monthly_price_kes.asc`
+        );
 
         if (cancelled) {
           return;

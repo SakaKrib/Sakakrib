@@ -21,6 +21,7 @@ export type AppView =
   | 'listing-manage'
   | 'movers'
   | 'mover-detail'
+  | 'mover-booking-detail'
   | 'chat'
   | 'community'
   | 'post-listing'
@@ -32,7 +33,16 @@ export type AppView =
   | 'my-listings'
   | 'profile'
   | 'subscription-plans'
-  | 'pms-dashboard';
+  | 'pms-dashboard'
+  | 'renter-invoices'
+  | 'renter-payment'
+  | 'mover-tracking'
+  | 'renter-calendar'
+  | 'notifications';
+
+/* ============================================================
+ * AUTH MODE
+ * ============================================================ */
 
 export type AuthMode =
   | 'signin'
@@ -51,63 +61,96 @@ interface NavContextValue {
   view: AppView;
 
   /**
-   * ID of the listing currently being viewed
-   * on the listing-detail page.
+   * Listing currently being viewed.
+   *
+   * Used by:
+   * #listing-detail/:id
    */
   selectedListingId: string | null;
 
   /**
-   * ID of the listing currently being managed
-   * on the listing-manage page.
+   * Listing currently being managed.
+   *
+   * Used by:
+   * #listing-manage/:id
    */
   selectedListingManageId: string | null;
 
   /**
-   * ID of the mover currently being viewed
-   * on the mover-detail page.
+   * Mover currently being viewed.
+   *
+   * Used by:
+   * #mover-detail/:id
    */
   selectedMoverId: string | null;
 
   /**
-   * ID of the mover currently associated with
-   * the active chat.
+   * Mover associated with the active chat.
+   *
+   * Used by:
+   * #chat/:moverId
    */
   selectedChatMoverId: string | null;
 
   /**
+   * Moving booking currently being viewed.
+   *
+   * Used by:
+   * #mover-booking-detail/:bookingId
+   */
+  selectedMoverBookingId: string | null;
+
+  /**
    * Navigate to an application view.
    *
-   * For detail/manage pages, pass the entity ID:
+   * Examples:
    *
+   * navigate('home')
+   * navigate('listings')
    * navigate('listing-detail', listing.id)
    * navigate('listing-manage', listing.id)
+   * navigate('movers')
    * navigate('mover-detail', mover.id)
+   * navigate('mover-booking-detail', booking.id)
    * navigate('chat', mover.id)
    */
-  navigate: (view: AppView, id?: string) => void;
+  navigate: (
+    view: AppView,
+    id?: string
+  ) => void;
 
   /* ----------------------------------------------------------
    * Authentication modal
    * ---------------------------------------------------------- */
 
   authModalOpen: boolean;
-  setAuthModalOpen: (open: boolean) => void;
+
+  setAuthModalOpen: (
+    open: boolean
+  ) => void;
 
   authMode: AuthMode;
-  setAuthMode: Dispatch<SetStateAction<AuthMode>>;
+
+  setAuthMode: Dispatch<
+    SetStateAction<AuthMode>
+  >;
 
   /* ----------------------------------------------------------
    * Role selection modal
    * ---------------------------------------------------------- */
 
   roleModalOpen: boolean;
-  setRoleModalOpen: (open: boolean) => void;
+
+  setRoleModalOpen: (
+    open: boolean
+  ) => void;
 
   /* ----------------------------------------------------------
    * Dashboard simulator
    * ---------------------------------------------------------- */
 
   simulatorRole: UserRole | null;
+
   setSimulatorRole: Dispatch<
     SetStateAction<UserRole | null>
   >;
@@ -132,6 +175,7 @@ const VALID_APP_VIEWS: AppView[] = [
   'listing-manage',
   'movers',
   'mover-detail',
+  'mover-booking-detail',
   'chat',
   'community',
   'post-listing',
@@ -144,6 +188,23 @@ const VALID_APP_VIEWS: AppView[] = [
   'profile',
   'subscription-plans',
   'pms-dashboard',
+  'renter-invoices',
+  'renter-payment',
+  'mover-tracking',
+  'renter-calendar',
+  'notifications',
+];
+
+/* ============================================================
+ * DETAIL VIEWS
+ * ============================================================ */
+
+const DETAIL_VIEWS: AppView[] = [
+  'listing-detail',
+  'listing-manage',
+  'mover-detail',
+  'mover-booking-detail',
+  'chat',
 ];
 
 /* ============================================================
@@ -155,57 +216,89 @@ export function NavProvider({
 }: {
   children: ReactNode;
 }) {
-  /* ----------------------------------------------------------
-   * Navigation state
-   * ---------------------------------------------------------- */
+  /* ==========================================================
+   * NAVIGATION STATE
+   * ========================================================== */
 
   const [view, setView] =
     useState<AppView>('home');
 
-  const [selectedListingId, setSelectedListingId] =
-    useState<string | null>(null);
+  const [
+    selectedListingId,
+    setSelectedListingId,
+  ] = useState<string | null>(null);
 
-  const [selectedListingManageId, setSelectedListingManageId] =
-    useState<string | null>(null);
+  const [
+    selectedListingManageId,
+    setSelectedListingManageId,
+  ] = useState<string | null>(null);
 
-  const [selectedMoverId, setSelectedMoverId] =
-    useState<string | null>(null);
+  const [
+    selectedMoverId,
+    setSelectedMoverId,
+  ] = useState<string | null>(null);
 
-  const [selectedChatMoverId, setSelectedChatMoverId] =
-    useState<string | null>(null);
+  const [
+    selectedChatMoverId,
+    setSelectedChatMoverId,
+  ] = useState<string | null>(null);
 
-  /* ----------------------------------------------------------
-   * Authentication modal state
-   * ---------------------------------------------------------- */
+  const [
+    selectedMoverBookingId,
+    setSelectedMoverBookingId,
+  ] = useState<string | null>(null);
 
-  const [authModalOpen, setAuthModalOpen] =
-    useState(false);
+  /* ==========================================================
+   * AUTHENTICATION MODAL STATE
+   * ========================================================== */
 
-  const [authMode, setAuthMode] =
-    useState<AuthMode>('signin');
+  const [
+    authModalOpen,
+    setAuthModalOpen,
+  ] = useState(false);
 
-  /* ----------------------------------------------------------
-   * Role selection modal state
-   * ---------------------------------------------------------- */
+  const [
+    authMode,
+    setAuthMode,
+  ] = useState<AuthMode>('signin');
 
-  const [roleModalOpen, setRoleModalOpen] =
-    useState(false);
+  /* ==========================================================
+   * ROLE SELECTION MODAL STATE
+   * ========================================================== */
 
-  /* ----------------------------------------------------------
-   * Dashboard simulator state
-   * ---------------------------------------------------------- */
+  const [
+    roleModalOpen,
+    setRoleModalOpen,
+  ] = useState(false);
+
+  /* ==========================================================
+   * DASHBOARD SIMULATOR STATE
+   * ========================================================== */
 
   /**
-   * This does NOT change the user's actual role
-   * in Supabase.
+   * This does NOT modify the user's real role.
    *
    * It only controls which dashboard UI is displayed
-   * while an admin is testing the application.
+   * while an administrator is testing the application.
    *
-   * null = use the real profile.role
+   * null = use the real profile.role.
    */
-  const [simulatorRole, setSimulatorRole] =
-    useState<UserRole | null>(null);
+  const [
+    simulatorRole,
+    setSimulatorRole,
+  ] = useState<UserRole | null>(null);
+
+  /* ==========================================================
+   * CLEAR ENTITY SELECTIONS
+   * ========================================================== */
+
+  const clearSelections = () => {
+    setSelectedListingId(null);
+    setSelectedListingManageId(null);
+    setSelectedMoverId(null);
+    setSelectedChatMoverId(null);
+    setSelectedMoverBookingId(null);
+  };
 
   /* ==========================================================
    * READ URL HASH
@@ -223,26 +316,35 @@ export function NavProvider({
 
       if (!hash) {
         setView('home');
-        setSelectedListingId(null);
-        setSelectedListingManageId(null);
-        setSelectedMoverId(null);
-        setSelectedChatMoverId(null);
+        clearSelections();
         return;
       }
 
       /* --------------------------------------------------------
-       * Split:
+       * Split URL hash
        *
-       * #listing-manage/123
+       * Examples:
        *
-       * becomes:
+       * #listing-detail/123
+       * #mover-detail/456
+       * #mover-booking-detail/789
+       * #chat/456
        *
-       * hashView = listing-manage
+       * Result:
+       *
+       * hashView = listing-detail
        * hashId   = 123
        * -------------------------------------------------------- */
 
-      const [hashView, hashId] =
-        hash.split('/');
+      const [
+        hashView,
+        ...idParts
+      ] = hash.split('/');
+
+      const hashId =
+        idParts.length > 0
+          ? idParts.join('/')
+          : undefined;
 
       /* --------------------------------------------------------
        * Validate view
@@ -260,22 +362,19 @@ export function NavProvider({
         hashView as AppView;
 
       /* --------------------------------------------------------
-       * Set active view
+       * Update active view
        * -------------------------------------------------------- */
 
       setView(nextView);
 
       /* --------------------------------------------------------
-       * Reset all entity selections first
+       * Clear all previous selections
        * -------------------------------------------------------- */
 
-      setSelectedListingId(null);
-      setSelectedListingManageId(null);
-      setSelectedMoverId(null);
-      setSelectedChatMoverId(null);
+      clearSelections();
 
       /* --------------------------------------------------------
-       * Restore entity ID for detail/manage pages
+       * Restore entity selection
        * -------------------------------------------------------- */
 
       switch (nextView) {
@@ -297,6 +396,12 @@ export function NavProvider({
           );
           break;
 
+        case 'mover-booking-detail':
+          setSelectedMoverBookingId(
+            hashId ?? null
+          );
+          break;
+
         case 'chat':
           setSelectedChatMoverId(
             hashId ?? null
@@ -309,14 +414,16 @@ export function NavProvider({
     };
 
     /* --------------------------------------------------------
-     * Read the current URL immediately on mount.
-     * This is what makes browser refresh work.
+     * Read current URL immediately.
+     *
+     * This is important because it makes browser refresh
+     * work correctly on detail pages.
      * -------------------------------------------------------- */
 
     handleHashChange();
 
     /* --------------------------------------------------------
-     * Listen for browser hash navigation.
+     * Listen for browser back/forward hash navigation.
      * -------------------------------------------------------- */
 
     window.addEventListener(
@@ -341,99 +448,80 @@ export function NavProvider({
     id?: string
   ) => {
     /* --------------------------------------------------------
-     * Set destination
+     * Update view
      * -------------------------------------------------------- */
 
     setView(newView);
 
     /* --------------------------------------------------------
-     * Clear listing-detail selection when leaving
-     * listing-detail.
+     * Clear all entity selections first.
+     *
+     * This prevents stale IDs from being reused when moving
+     * between unrelated pages.
      * -------------------------------------------------------- */
 
-    if (newView !== 'listing-detail') {
-      setSelectedListingId(null);
-    }
+    clearSelections();
 
     /* --------------------------------------------------------
-     * Clear listing-manage selection when leaving
-     * listing-manage.
+     * Store destination entity ID.
      * -------------------------------------------------------- */
 
-    if (newView !== 'listing-manage') {
-      setSelectedListingManageId(null);
-    }
-
-    /* --------------------------------------------------------
-     * Clear mover selection when leaving
-     * mover-detail.
-     * -------------------------------------------------------- */
-
-    if (newView !== 'mover-detail') {
-      setSelectedMoverId(null);
-    }
-
-    /* --------------------------------------------------------
-     * Clear chat mover selection when leaving chat.
-     * -------------------------------------------------------- */
-
-    if (newView !== 'chat') {
-      setSelectedChatMoverId(null);
-    }
-
-    /* --------------------------------------------------------
-     * Store destination ID
-     * -------------------------------------------------------- */
-
-    if (id) {
-      switch (newView) {
-        case 'listing-detail':
+    switch (newView) {
+      case 'listing-detail':
+        if (id) {
           setSelectedListingId(id);
-          break;
+        }
+        break;
 
-        case 'listing-manage':
+      case 'listing-manage':
+        if (id) {
           setSelectedListingManageId(id);
-          break;
+        }
+        break;
 
-        case 'mover-detail':
+      case 'mover-detail':
+        if (id) {
           setSelectedMoverId(id);
-          break;
+        }
+        break;
 
-        case 'chat':
+      case 'mover-booking-detail':
+        if (id) {
+          setSelectedMoverBookingId(id);
+        }
+        break;
+
+      case 'chat':
+        if (id) {
           setSelectedChatMoverId(id);
-          break;
+        }
+        break;
 
-        default:
-          break;
-      }
+      default:
+        break;
     }
 
     /* --------------------------------------------------------
-     * Update browser URL hash
-     *
-     * Examples:
-     *
-     * #home
-     * #listings
-     * #listing-detail/123
-     * #listing-manage/123
-     * #mover-detail/123
-     * #chat/123
+     * Update browser URL hash.
      * -------------------------------------------------------- */
 
-    const nextHash = id
-      ? `${newView}/${id}`
-      : newView;
+    const nextHash =
+      id
+        ? `${newView}/${encodeURIComponent(id)}`
+        : newView;
+
+    const currentHash =
+      window.location.hash
+        .replace(/^#/, '');
 
     if (
-      window.location.hash.replace(/^#/, '') !==
-      nextHash
+      currentHash !== nextHash
     ) {
       window.location.hash = nextHash;
     }
 
     /* --------------------------------------------------------
-     * Scroll to top whenever navigation occurs.
+     * Scroll to top.
      * -------------------------------------------------------- */
 
     window.scrollTo({
@@ -449,28 +537,51 @@ export function NavProvider({
   return (
     <NavContext.Provider
       value={{
-        /* Navigation */
+        /* ------------------------------------------------------
+         * Navigation
+         * ------------------------------------------------------ */
+
         view,
+
         selectedListingId,
+
         selectedListingManageId,
+
         selectedMoverId,
+
         selectedChatMoverId,
+
+        selectedMoverBookingId,
+
         navigate,
 
-        /* Authentication */
+        /* ------------------------------------------------------
+         * Authentication
+         * ------------------------------------------------------ */
+
         authModalOpen,
+
         setAuthModalOpen,
+
         authMode,
+
         setAuthMode,
 
-        /* Role selection */
+        /* ------------------------------------------------------
+         * Role selection
+         * ------------------------------------------------------ */
+
         roleModalOpen,
+
         setRoleModalOpen,
 
-        /* Dashboard simulator */
+        /* ------------------------------------------------------
+         * Dashboard simulator
+         * ------------------------------------------------------ */
+
         simulatorRole,
+
         setSimulatorRole,
-        
       }}
     >
       {children}
@@ -483,7 +594,8 @@ export function NavProvider({
  * ============================================================ */
 
 export function useNav(): NavContextValue {
-  const ctx = useContext(NavContext);
+  const ctx =
+    useContext(NavContext);
 
   if (!ctx) {
     throw new Error(
