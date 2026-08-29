@@ -1,36 +1,36 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Send,
-  ArrowLeft,
-  Calendar,
-  Clock,
-  MapPin,
-  Navigation,
-  DollarSign,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  CreditCard,
-  ShieldCheck,
   AlertCircle,
+  ArrowLeft,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  Clock3,
+  ImagePlus,
+  Loader2,
+  MapPin,
   MessageCircle,
+  Navigation,
+  Paperclip,
+  RefreshCw,
+  Send,
+  ShieldCheck,
   Truck,
+  X,
+  XCircle,
 } from 'lucide-react';
-import { useNav } from '@/context/NavContext';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { useAuth } from '@/context/AuthContext';
+import { useNav } from '@/context/NavContext';
+import MoverSchedulePicker, {
+  type MoverBlockedInterval,
+  type MoverScheduleValue,
+} from '@/components/Renter/MoverSchedulePicker';
 import {
   protectedGet,
   protectedPost,
-  protectedPatch,
 } from '@/lib/protectedApi';
-import {
-  formatKES,
-  formatTime,
-  getDayOfWeek,
-  isMoverAvailable,
-  COMMISSION_RATE,
-  cn,
-} from '@/lib/utils';
+import { cn, formatKES } from '@/lib/utils';
 
 /* ============================================================
  * TYPES
@@ -62,64 +62,234 @@ interface ChatMessage {
   receiver_id: string;
   content: string;
   message_type: string | null;
-  event_data: BookingEventData | null;
+  event_data: Record<string, unknown> | null;
   created_at: string;
-  updated_at?: string | null;
 }
 
-interface BookingEventData {
-  relocation_date: string;
-  day_of_week: string;
-  pickup_time: string;
-  pickup_address: string;
-  dropoff_address: string;
-  negotiated_price: number;
-}
-
-interface BookingEvent {
+interface MovingBooking {
   id: string;
-  conversation_id: string;
   renter_id: string;
   mover_id: string;
-  mover_profile_id: string;
-  relocation_date: string;
-  day_of_week: string;
-  pickup_time: string;
   pickup_address: string;
   dropoff_address: string;
-  negotiated_price: number;
+  moving_date: string | null;
+  booking_amount: number | null;
   commission_amount: number | null;
   total_amount: number | null;
-  status: string;
+  status: string | null;
+  payment_status: string | null;
+  requested_at: string | null;
+  request_expires_at: string | null;
   confirmed_at: string | null;
-  paid_at: string | null;
-  created_at: string;
-  updated_at: string | null;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+}
+
+interface ScheduleEvent {
+  id: string;
+  mover_id: string;
+  booking_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  title: string | null;
+}
+
+interface ChatAttachment {
+  path: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  signed_url?: string;
 }
 
 /* ============================================================
  * HELPERS
  * ============================================================ */
 
-function getConversationId(userIdA: string, userIdB: string): string {
+const MEDIA_FUNCTION = 'chat-media-upload';
+const STREAM_FUNCTION = 'chat-stream';
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
+function getConversationId(userIdA: string, userIdB: string) {
   return [userIdA, userIdB].sort().join('__');
 }
 
-function normalizeRows<T>(value: T | T[]): T[] {
-  return Array.isArray(value) ? value : [value];
-}
-
-function getFirst<T>(value: T | T[] | null | undefined): T | null {
+function first<T>(value: T | T[] | null | undefined): T | null {
   if (value == null) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-function getErrorMessage(error: unknown, fallback: string): string {
+function asRows<T>(value: T | T[] | null | undefined): T[] {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function normalizeStatus(value: string | null | undefined) {
+  return String(value ?? '').trim().toLowerCase().replace(/-/g, '_');
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = new Date(`${value}T00:00:00+03:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-KE', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-KE', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function formatTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const match = String(value).match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value;
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+  return date.toLocaleTimeString('en-KE', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function toNairobiIso(date: string, time: string) {
+  return `${date}T${time}:00+03:00`;
+}
+
+function getBookingIdFromMessage(message: ChatMessage) {
+  const value = message.event_data?.booking_id;
+  return typeof value === 'string' ? value : null;
+}
+
+function getAttachment(message: ChatMessage): ChatAttachment | null {
+  const raw = message.event_data?.attachments;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const item = raw[0];
+  if (!item || typeof item !== 'object') return null;
+  const value = item as Record<string, unknown>;
+  if (
+    typeof value.path !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.mime_type !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    path: value.path,
+    name: value.name,
+    mime_type: value.mime_type,
+    size: typeof value.size === 'number' ? value.size : 0,
+    signed_url: typeof value.signed_url === 'string' ? value.signed_url : undefined,
+  };
+}
+
 /* ============================================================
- * COMPONENT
+ * IMAGE MESSAGE
+ * ============================================================ */
+
+function ChatImage({ messageId, attachment }: { messageId: string; attachment: ChatAttachment }) {
+  const [url, setUrl] = useState(attachment.signed_url ?? '');
+  const [loading, setLoading] = useState(!url);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (url) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+        if (!baseUrl) throw new Error('VITE_SUPABASE_URL is not configured.');
+
+        const form = new FormData();
+        form.append('action', 'sign');
+        form.append('message_id', messageId);
+
+        const response = await fetch(
+          `${baseUrl.replace(/\/+$/, '')}/functions/v1/${MEDIA_FUNCTION}`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            body: form,
+          },
+        );
+
+        const body = (await response.json().catch(() => null)) as
+          | { signed_url?: string; error?: string }
+          | null;
+
+        if (!response.ok || !body?.signed_url) {
+          throw new Error(body?.error || 'Unable to load image.');
+        }
+
+        if (!cancelled) setUrl(body.signed_url);
+      } catch (error) {
+        console.error('Failed to sign chat image:', error);
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [messageId, url]);
+
+  if (loading) {
+    return (
+      <div className="flex h-40 w-56 items-center justify-center rounded-xl bg-brand-800/40">
+        <Loader2 className="h-5 w-5 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !url) {
+    return (
+      <div className="rounded-xl bg-brand-800/40 px-4 py-3 text-xs text-gray-400">
+        Image unavailable
+      </div>
+    );
+  }
+
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl">
+      <img
+        src={url}
+        alt={attachment.name}
+        className="max-h-72 w-full max-w-xs object-cover"
+        loading="lazy"
+      />
+    </a>
+  );
+}
+
+/* ============================================================
+ * PAGE
  * ============================================================ */
 
 export default function ChatPage() {
@@ -127,38 +297,53 @@ export default function ChatPage() {
   const { profile } = useAuth();
 
   const [mover, setMover] = useState<ChatMover | null>(null);
+  const [booking, setBooking] = useState<MovingBooking | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [responding, setResponding] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
-  const [activeBookingEvent, setActiveBookingEvent] = useState<BookingEvent | null>(null);
-  const [paying, setPaying] = useState(false);
+  const [scheduleValue, setScheduleValue] = useState<MoverScheduleValue | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [schedError, setSchedError] = useState<string | null>(null);
-  const [submittingEvent, setSubmittingEvent] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const [schedDate, setSchedDate] = useState('');
-  const [schedTime, setSchedTime] = useState('');
-  const [schedPickup, setSchedPickup] = useState('');
-  const [schedDropoff, setSchedDropoff] = useState('');
-  const [schedPrice, setSchedPrice] = useState('');
-
-  const conversationId =
-    profile && mover ? getConversationId(profile.id, mover.user_id) : '';
+  const streamRef = useRef<EventSource | null>(null);
 
   const isMover = profile?.id === mover?.user_id;
+  const bookingStatus = normalizeStatus(booking?.status);
+  const canonicalConversationId = booking?.id ??
+    (profile && mover ? getConversationId(profile.id, mover.user_id) : '');
+
+  const blockedIntervals: MoverBlockedInterval[] = useMemo(
+    () => scheduleEvents
+      .filter((event) => event.booking_id !== booking?.id)
+      .map((event) => ({
+        id: event.id,
+        starts_at: event.starts_at,
+        ends_at: event.ends_at,
+        status: event.status,
+      })),
+    [scheduleEvents, booking?.id],
+  );
+
+  const latestSchedule = useMemo(() => {
+    if (!booking) return null;
+    return scheduleEvents.find((event) => event.booking_id === booking.id) ?? null;
+  }, [booking, scheduleEvents]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (messages.length) scrollToBottom();
+  }, [messages.length, scrollToBottom]);
 
   /* ==========================================================
    * LOAD MOVER
@@ -173,443 +358,408 @@ export default function ChatPage() {
     const rows = await protectedGet<ChatMover[]>(
       `/rest/v1/movers?select=*&id=eq.${encodeURIComponent(selectedChatMoverId)}&limit=1`,
     );
-
-    setMover(getFirst(rows));
+    setMover(first(rows));
   }, [selectedChatMoverId]);
 
   /* ==========================================================
-   * LOAD CHAT
+   * LOAD BOOKING / CHAT DATA
    * ========================================================== */
 
-  const loadChat = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!profile || !mover) return;
 
-    const convId = getConversationId(profile.id, mover.user_id);
+    const bookingFilter = isMover
+      ? `mover_id=eq.${encodeURIComponent(mover.id)}`
+      : `renter_id=eq.${encodeURIComponent(profile.id)}&mover_id=eq.${encodeURIComponent(mover.id)}`;
 
-    const [messageRows, eventRows] = await Promise.all([
-      protectedGet<ChatMessage[]>(
-        `/rest/v1/chat_messages?select=*&conversation_id=eq.${encodeURIComponent(convId)}&order=created_at.asc`,
+    const [bookingRows, generalMessages] = await Promise.all([
+      protectedGet<MovingBooking[]>(
+        `/rest/v1/bookings?select=*&${bookingFilter}&order=requested_at.desc&limit=1`,
       ),
-      protectedGet<BookingEvent[]>(
-        `/rest/v1/booking_events?select=*&conversation_id=eq.${encodeURIComponent(convId)}&order=created_at.desc&limit=1`,
+      protectedGet<ChatMessage[]>(
+        `/rest/v1/chat_messages?select=*&conversation_id=eq.${encodeURIComponent(getConversationId(profile.id, mover.user_id))}&order=created_at.asc`,
       ),
     ]);
 
-    setMessages(normalizeRows(messageRows ?? []));
-    setActiveBookingEvent(getFirst(eventRows));
+    const nextBooking = first(bookingRows);
+    setBooking(nextBooking);
 
-    const savedDraft = localStorage.getItem(`draft_${convId}`);
-    setDraft(savedDraft ?? '');
-  }, [profile, mover]);
+    const conversationId = nextBooking?.id ?? getConversationId(profile.id, mover.user_id);
 
-  const loadPage = useCallback(async () => {
-    setLoading(true);
-    setPageError(null);
+    const [canonicalMessages, events] = await Promise.all([
+      protectedGet<ChatMessage[]>(
+        `/rest/v1/chat_messages?select=*&conversation_id=eq.${encodeURIComponent(conversationId)}&order=created_at.asc`,
+      ),
+      protectedGet<ScheduleEvent[]>(
+        `/rest/v1/mover_schedule_events?select=*&mover_id=eq.${encodeURIComponent(mover.id)}&order=starts_at.asc`,
+      ),
+    ]);
 
-    try {
-      await loadMover();
-    } catch (error) {
-      console.error('Failed to load mover chat:', error);
-      setPageError(getErrorMessage(error, 'Unable to load mover chat.'));
-      setMover(null);
-    } finally {
-      setLoading(false);
-    }
+    const merged = [...asRows(generalMessages), ...asRows(canonicalMessages)];
+    const unique = Array.from(new Map(merged.map((message) => [message.id, message])).values())
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    setMessages(unique);
+    setScheduleEvents(asRows(events));
+  }, [profile, mover, isMover]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      setLoading(true);
+      setPageError(null);
+      try {
+        await loadMover();
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load mover:', error);
+          setPageError(errorMessage(error, 'Unable to load mover chat.'));
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [loadMover]);
 
   useEffect(() => {
-    void loadPage();
-  }, [loadPage]);
-
-  useEffect(() => {
     if (!profile || !mover) return;
-
-    void loadChat().catch((error) => {
-      console.error('Failed to load chat:', error);
-      setPageError(getErrorMessage(error, 'Unable to load chat messages.'));
+    void loadData().catch((error) => {
+      console.error('Failed to load chat data:', error);
+      setPageError(errorMessage(error, 'Unable to load chat.'));
     });
-  }, [profile, mover, loadChat]);
+  }, [profile, mover, loadData]);
 
   /* ==========================================================
-   * POLLING
-   *
-   * HttpOnly authentication means the browser Supabase client
-   * must not be used as the application's authenticated realtime
-   * client. Poll the protected endpoint until a dedicated server
-   * realtime gateway is introduced.
+   * HTTP-ONLY REALTIME STREAM
    * ========================================================== */
 
   useEffect(() => {
     if (!profile || !mover) return;
 
-    const interval = window.setInterval(() => {
-      void loadChat().catch((error) => {
-        console.error('Chat refresh failed:', error);
-      });
-    }, 15_000);
+    const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    if (!baseUrl) return;
 
-    return () => window.clearInterval(interval);
-  }, [profile, mover, loadChat]);
+    streamRef.current?.close();
+
+    const params = new URLSearchParams();
+    if (booking?.id) params.set('booking_id', booking.id);
+    else params.set('peer_user_id', mover.user_id);
+
+    const url = `${baseUrl.replace(/\/+$/, '')}/functions/v1/${STREAM_FUNCTION}?${params.toString()}`;
+    const stream = new EventSource(url, { withCredentials: true });
+    streamRef.current = stream;
+
+    stream.addEventListener('messages', (event) => {
+      try {
+        const incoming = JSON.parse((event as MessageEvent).data) as ChatMessage[];
+        setMessages((previous) => {
+          const map = new Map(previous.map((message) => [message.id, message]));
+          for (const message of incoming) map.set(message.id, message);
+          return Array.from(map.values()).sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+          );
+        });
+      } catch (error) {
+        console.error('Invalid chat stream message:', error);
+      }
+    });
+
+    stream.addEventListener('booking', (event) => {
+      try {
+        setBooking(JSON.parse((event as MessageEvent).data) as MovingBooking);
+      } catch (error) {
+        console.error('Invalid booking stream event:', error);
+      }
+    });
+
+    stream.onerror = () => {
+      // The browser automatically reconnects EventSource. Do not surface a transient error.
+    };
+
+    return () => {
+      stream.close();
+      if (streamRef.current === stream) streamRef.current = null;
+    };
+  }, [profile, mover, booking?.id]);
 
   /* ==========================================================
-   * SAVE DRAFT
+   * SEND TEXT
    * ========================================================== */
 
-  useEffect(() => {
-    if (!conversationId) return;
-
-    if (draft) {
-      localStorage.setItem(`draft_${conversationId}`, draft);
-    } else {
-      localStorage.removeItem(`draft_${conversationId}`);
-    }
-  }, [draft, conversationId]);
-
-  /* ==========================================================
-   * SEND MESSAGE
-   * ========================================================== */
-
-  const handleSend = async () => {
+  const sendText = async () => {
     if (!profile || !mover || !newMessage.trim()) return;
 
     setSending(true);
     setPageError(null);
 
     try {
-      const convId = getConversationId(profile.id, mover.user_id);
-
       const created = await protectedPost<ChatMessage | ChatMessage[]>(
         '/rest/v1/chat_messages',
         {
-          conversation_id: convId,
+          conversation_id: canonicalConversationId,
           sender_id: profile.id,
           receiver_id: mover.user_id,
           content: newMessage.trim(),
           message_type: 'text',
+          event_data: null,
         },
-        {
-          headers: {
-            Prefer: 'return=representation',
-          },
-        },
+        { headers: { Prefer: 'return=representation' } },
       );
 
-      const message = getFirst(created);
+      const message = first(created);
       if (message) {
-        setMessages((previous) => {
-          if (previous.some((item) => item.id === message.id)) return previous;
-          return [...previous, message];
-        });
+        setMessages((previous) => [...previous.filter((item) => item.id !== message.id), message]);
       }
-
       setNewMessage('');
-      setDraft('');
     } catch (error) {
-      console.error('Failed to send message:', error);
-      setPageError(getErrorMessage(error, 'Unable to send message.'));
+      console.error('Failed to send chat message:', error);
+      setPageError(errorMessage(error, 'Unable to send message.'));
     } finally {
       setSending(false);
     }
   };
 
   /* ==========================================================
-   * CREATE BOOKING EVENT
+   * IMAGE ATTACHMENT
    * ========================================================== */
 
-  const handleSchedule = async () => {
-    setSchedError(null);
-
+  const uploadImage = async (file: File) => {
     if (!profile || !mover) return;
 
-    if (
-      !schedDate ||
-      !schedTime ||
-      !schedPickup.trim() ||
-      !schedDropoff.trim() ||
-      !schedPrice
-    ) {
-      setSchedError('Please fill in all scheduling fields.');
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setPageError('Only JPG, PNG, WEBP, and GIF pictures are allowed.');
       return;
     }
 
-    const price = Number(schedPrice);
-
-    if (!Number.isFinite(price) || price <= 0) {
-      setSchedError('Enter a valid negotiated price greater than zero.');
+    if (file.size <= 0 || file.size > MAX_IMAGE_BYTES) {
+      setPageError('Picture attachments must be smaller than 8 MB.');
       return;
     }
 
-    const day = getDayOfWeek(schedDate);
-    const availability = isMoverAvailable(
-      mover.working_days || [],
-      mover.start_time || '08:00',
-      mover.end_time || '18:00',
-      schedDate,
-      schedTime,
-    );
-
-    if (!availability.valid) {
-      setSchedError(
-        availability.reason ||
-          'Mover is not available at the requested time.',
-      );
-      return;
-    }
-
-    setSubmittingEvent(true);
+    setUploading(true);
+    setPageError(null);
 
     try {
-      const convId = getConversationId(profile.id, mover.user_id);
-      const commission = price * COMMISSION_RATE;
-      const total = price + commission;
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+      if (!baseUrl) throw new Error('VITE_SUPABASE_URL is not configured.');
 
-      const eventData: BookingEventData = {
-        relocation_date: schedDate,
-        day_of_week: day,
-        pickup_time: schedTime,
-        pickup_address: schedPickup.trim(),
-        dropoff_address: schedDropoff.trim(),
-        negotiated_price: price,
-      };
+      const form = new FormData();
+      form.append('file', file);
 
-      const createdEvent = await protectedPost<BookingEvent | BookingEvent[]>(
-        '/rest/v1/booking_events',
+      const response = await fetch(
+        `${baseUrl.replace(/\/+$/, '')}/functions/v1/${MEDIA_FUNCTION}`,
         {
-          conversation_id: convId,
-          renter_id: profile.id,
-          mover_id: mover.user_id,
-          mover_profile_id: mover.id,
-          relocation_date: schedDate,
-          day_of_week: day,
-          pickup_time: schedTime,
-          pickup_address: schedPickup.trim(),
-          dropoff_address: schedDropoff.trim(),
-          negotiated_price: price,
-          commission_amount: commission,
-          total_amount: total,
-          status: 'pending',
-        },
-        {
-          headers: {
-            Prefer: 'return=representation',
-          },
+          method: 'POST',
+          credentials: 'include',
+          body: form,
         },
       );
 
-      const bookingEvent = getFirst(createdEvent);
+      const body = (await response.json().catch(() => null)) as
+        | (ChatAttachment & { error?: string })
+        | null;
 
-      const createdMessage = await protectedPost<ChatMessage | ChatMessage[]>(
-        '/rest/v1/chat_messages',
-        {
-          conversation_id: convId,
-          sender_id: profile.id,
-          receiver_id: mover.user_id,
-          content: 'Booking Event Request',
-          message_type: 'event_request',
-          event_data: eventData,
-        },
-        {
-          headers: {
-            Prefer: 'return=representation',
-          },
-        },
-      );
-
-      const message = getFirst(createdMessage);
-      if (message) {
-        setMessages((previous) => {
-          if (previous.some((item) => item.id === message.id)) return previous;
-          return [...previous, message];
-        });
+      if (!response.ok || !body?.path) {
+        throw new Error(body?.error || 'Unable to upload picture.');
       }
 
-      if (bookingEvent) setActiveBookingEvent(bookingEvent);
+      const attachment: ChatAttachment = {
+        path: body.path,
+        name: body.name,
+        mime_type: body.mime_type,
+        size: body.size,
+        signed_url: body.signed_url,
+      };
+
+      const created = await protectedPost<ChatMessage | ChatMessage[]>(
+        '/rest/v1/chat_messages',
+        {
+          conversation_id: canonicalConversationId,
+          sender_id: profile.id,
+          receiver_id: mover.user_id,
+          content: attachment.name,
+          message_type: 'image',
+          event_data: { attachments: [attachment] },
+        },
+        { headers: { Prefer: 'return=representation' } },
+      );
+
+      const message = first(created);
+      if (message) {
+        setMessages((previous) => [...previous.filter((item) => item.id !== message.id), message]);
+      }
+    } catch (error) {
+      console.error('Failed to send picture:', error);
+      setPageError(errorMessage(error, 'Unable to send picture.'));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  /* ==========================================================
+   * MOVER RESPONSE TO CANONICAL BOOKING
+   * ========================================================== */
+
+  const respondToBooking = async (decision: 'confirm' | 'cancel') => {
+    if (!profile || !booking || !isMover) return;
+
+    setResponding(true);
+    setPageError(null);
+
+    try {
+      await protectedPost(
+        '/rest/v1/rpc/respond_to_mover_booking',
+        {
+          p_booking_id: booking.id,
+          p_decision: decision,
+          p_reason: decision === 'cancel' ? 'Mover declined the request.' : null,
+        },
+      );
+
+      await loadData();
+    } catch (error) {
+      console.error('Failed to respond to mover booking:', error);
+      setPageError(errorMessage(error, 'Unable to update the booking request.'));
+    } finally {
+      setResponding(false);
+    }
+  };
+
+  /* ==========================================================
+   * RENTER PROPOSES SCHEDULE
+   * ========================================================== */
+
+  const proposeSchedule = async () => {
+    if (!profile || !mover || !booking || isMover || !scheduleValue) return;
+
+    setProposing(true);
+    setScheduleError(null);
+
+    try {
+      if (bookingStatus !== 'confirmed') {
+        throw new Error('The mover must accept the request before a moving time can be proposed.');
+      }
+
+      const startsAt = toNairobiIso(scheduleValue.date, scheduleValue.startTime);
+      const endsAt = toNairobiIso(scheduleValue.date, scheduleValue.endTime);
+
+      await protectedPost(
+        '/rest/v1/rpc/propose_moving_schedule',
+        {
+          p_booking_id: booking.id,
+          p_starts_at: startsAt,
+          p_ends_at: endsAt,
+        },
+      );
+
+      await protectedPost(
+        '/rest/v1/chat_messages',
+        {
+          conversation_id: booking.id,
+          sender_id: profile.id,
+          receiver_id: mover.user_id,
+          content: 'Moving schedule proposed. Please confirm the requested date and time.',
+          message_type: 'schedule_proposed',
+          event_data: {
+            booking_id: booking.id,
+            starts_at: startsAt,
+            ends_at: endsAt,
+          },
+        },
+        { headers: { Prefer: 'return=minimal' } },
+      );
 
       setShowScheduler(false);
-      setSchedDate('');
-      setSchedTime('');
-      setSchedPickup('');
-      setSchedDropoff('');
-      setSchedPrice('');
+      setScheduleValue(null);
+      await loadData();
     } catch (error) {
-      console.error('Failed to create booking event:', error);
-      setSchedError(
-        getErrorMessage(error, 'Failed to create booking event.'),
-      );
+      console.error('Failed to propose moving schedule:', error);
+      setScheduleError(errorMessage(error, 'Unable to propose the moving schedule.'));
     } finally {
-      setSubmittingEvent(false);
+      setProposing(false);
     }
   };
 
   /* ==========================================================
-   * MOVER CONFIRMS EVENT
+   * MOVER CONFIRMS SCHEDULE
    * ========================================================== */
 
-  const handleConfirmEvent = async (eventId: string) => {
-    if (!profile || !mover || !isMover) return;
+  const confirmSchedule = async () => {
+    if (!profile || !booking || !isMover) return;
 
+    setResponding(true);
     setPageError(null);
 
     try {
-      const updated = await protectedPatch<BookingEvent | BookingEvent[]>(
-        `/rest/v1/booking_events?id=eq.${encodeURIComponent(eventId)}`,
-        {
-          status: 'confirmed',
-          confirmed_at: new Date().toISOString(),
-        },
-        {
-          headers: {
-            Prefer: 'return=representation',
-          },
-        },
+      await protectedPost(
+        '/rest/v1/rpc/confirm_moving_schedule',
+        { p_booking_id: booking.id },
       );
 
-      const event = getFirst(updated);
-      if (event) setActiveBookingEvent(event);
-
-      await protectedPost<ChatMessage | ChatMessage[]>(
+      await protectedPost(
         '/rest/v1/chat_messages',
         {
-          conversation_id: getConversationId(profile.id, mover.user_id),
+          conversation_id: booking.id,
           sender_id: profile.id,
-          receiver_id: mover.user_id === profile.id ? event?.renter_id : mover.user_id,
-          content: 'Event Confirmed! The renter can now proceed to payment.',
-          message_type: 'event_confirmed',
-        },
-        {
-          headers: {
-            Prefer: 'return=minimal',
+          receiver_id: booking.renter_id,
+          content: 'The mover confirmed the moving date and time.',
+          message_type: 'schedule_confirmed',
+          event_data: {
+            booking_id: booking.id,
           },
         },
+        { headers: { Prefer: 'return=minimal' } },
       );
+
+      await loadData();
     } catch (error) {
-      console.error('Failed to confirm booking event:', error);
-      setPageError(getErrorMessage(error, 'Unable to confirm booking event.'));
+      console.error('Failed to confirm schedule:', error);
+      setPageError(errorMessage(error, 'Unable to confirm the moving schedule.'));
+    } finally {
+      setResponding(false);
     }
   };
 
-  /* ==========================================================
-   * MOVER DECLINES EVENT
-   * ========================================================== */
-
-  const handleDeclineEvent = async (eventId: string) => {
-    if (!profile || !mover || !isMover) return;
-
-    setPageError(null);
-
-    try {
-      const updated = await protectedPatch<BookingEvent | BookingEvent[]>(
-        `/rest/v1/booking_events?id=eq.${encodeURIComponent(eventId)}`,
-        { status: 'declined' },
-        {
-          headers: {
-            Prefer: 'return=representation',
-          },
-        },
-      );
-
-      const event = getFirst(updated);
-      if (event) setActiveBookingEvent(event);
-
-      await protectedPost<ChatMessage | ChatMessage[]>(
-        '/rest/v1/chat_messages',
-        {
-          conversation_id: getConversationId(profile.id, mover.user_id),
-          sender_id: profile.id,
-          receiver_id: event?.renter_id ?? '',
-          content: 'Event Declined. Please propose a new time.',
-          message_type: 'event_declined',
-        },
-        {
-          headers: {
-            Prefer: 'return=minimal',
-          },
-        },
-      );
-    } catch (error) {
-      console.error('Failed to decline booking event:', error);
-      setPageError(getErrorMessage(error, 'Unable to decline booking event.'));
-    }
-  };
-
-  /* ==========================================================
-   * PAYMENT
-   *
-   * Do not mark an event paid from the browser. Payment must be
-   * confirmed by the payment gateway/backend before the event
-   * becomes paid.
-   * ========================================================== */
-
-  const handlePay = () => {
-    if (!activeBookingEvent) return;
-
-    navigate('renter-payment', activeBookingEvent.id);
-  };
-
-  /* ==========================================================
-   * MANUAL REFRESH
-   * ========================================================== */
-
-  const handleRefresh = async () => {
+  const refresh = async () => {
     setRefreshing(true);
-
+    setPageError(null);
     try {
-      await loadChat();
+      await loadData();
     } catch (error) {
-      console.error('Failed to refresh chat:', error);
-      setPageError(getErrorMessage(error, 'Unable to refresh chat.'));
+      setPageError(errorMessage(error, 'Unable to refresh chat.'));
     } finally {
       setRefreshing(false);
     }
   };
 
   /* ==========================================================
-   * LOADING / ERROR
+   * LOADING / EMPTY
    * ========================================================== */
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20">
+      <div className="flex min-h-[500px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
-      </div>
-    );
-  }
-
-  if (pageError && !mover) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-        <div className="card p-6 text-center">
-          <AlertCircle className="mx-auto h-10 w-10 text-error-500" />
-          <h1 className="mt-3 text-lg font-bold text-gray-900 dark:text-white">
-            Unable to load chat
-          </h1>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {pageError}
-          </p>
-          <button
-            type="button"
-            onClick={() => void loadPage()}
-            className="btn-primary mt-4"
-          >
-            Try again
-          </button>
-        </div>
       </div>
     );
   }
 
   if (!mover) {
     return (
-      <div className="py-20 text-center">
+      <div className="mx-auto max-w-2xl px-4 py-12 text-center">
         <MessageCircle className="mx-auto h-12 w-12 text-gray-300" />
-        <p className="mt-4 text-gray-500 dark:text-gray-400">
-          Chat not found.
+        <h1 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Chat unavailable</h1>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          The selected mover could not be found.
         </p>
-        <button
-          type="button"
-          onClick={() => navigate('movers')}
-          className="btn-primary mt-4"
-        >
+        <button type="button" onClick={() => navigate('movers')} className="btn-primary mt-5">
           Browse Movers
         </button>
       </div>
@@ -617,192 +767,316 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-4 sm:px-6">
-      {/* Chat Header */}
-      <div className="card mb-4 flex items-center gap-3 p-4">
+    <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6 lg:px-8">
+      {/* HEADER */}
+      <header className="card mb-4 flex items-center gap-3 p-4">
         <button
           type="button"
           onClick={() => navigate('mover-detail', mover.id)}
-          className="text-gray-400 hover:text-brand-600"
+          className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-brand-800"
           aria-label="Back to mover"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
 
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-accent-400 to-accent-600 text-white">
-          <Truck className="h-5 w-5" />
-        </div>
+        {mover.profile_photo_url ? (
+          <img
+            src={mover.profile_photo_url}
+            alt={mover.driver_full_name || 'Mover'}
+            className="h-11 w-11 rounded-full object-cover"
+          />
+        ) : (
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-800">
+            <Truck className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-bold text-gray-900 dark:text-white">
+          <h1 className="truncate text-sm font-bold text-gray-900 dark:text-white">
             {mover.business_name || mover.driver_full_name || 'Mover'}
-          </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {mover.operating_city || '—'} · {mover.working_days?.length || 7} days/week ·{' '}
-            {formatTime(mover.start_time)} - {formatTime(mover.end_time)}
+          </h1>
+          <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+            {mover.operating_city || mover.operating_county || 'Mover'}
+            {mover.vehicle_type ? ` · ${mover.vehicle_type}` : ''}
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => void handleRefresh()}
+          onClick={() => void refresh()}
           disabled={refreshing}
           className="rounded-full p-2 text-gray-400 hover:text-brand-600 disabled:opacity-50"
-          title="Refresh chat"
           aria-label="Refresh chat"
         >
-          <Loader2 className={cn('h-5 w-5', refreshing && 'animate-spin')} />
+          <RefreshCw className={cn('h-5 w-5', refreshing && 'animate-spin')} />
         </button>
-
-        <span
-          className={cn(
-            'rounded-full px-2 py-0.5 text-xs font-medium',
-            mover.is_available
-              ? 'bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400'
-              : 'bg-gray-100 text-gray-500 dark:bg-brand-800 dark:text-gray-400',
-          )}
-        >
-          {mover.is_available ? 'Available' : 'Busy'}
-        </span>
-      </div>
+      </header>
 
       {pageError && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-error-200 bg-error-50 p-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-400">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{pageError}</span>
+          <button type="button" onClick={() => setPageError(null)} className="ml-auto" aria-label="Dismiss error">
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
-      {/* Messages */}
-      <div className="card mb-4 h-[400px] overflow-y-auto p-4">
+      {/* CANONICAL BOOKING STATE */}
+      {booking && (
+        <section className="card mb-4 overflow-hidden">
+          <div className="border-b border-gray-200 p-4 dark:border-brand-800">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                  Moving request
+                </p>
+                <h2 className="mt-1 font-bold text-gray-900 dark:text-white">
+                  {booking.pickup_address} → {booking.dropoff_address}
+                </h2>
+              </div>
+              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold capitalize text-gray-700 dark:bg-brand-800 dark:text-gray-300">
+                {bookingStatus.replace(/_/g, ' ') || 'unknown'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 p-4 sm:grid-cols-3">
+            <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-800/30">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
+              <p className="mt-1 font-bold text-gray-900 dark:text-white">
+                {formatKES(booking.total_amount)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-800/30">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Requested</p>
+              <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                {formatDateTime(booking.requested_at)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-800/30">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Moving time</p>
+              <p className="mt-1 font-semibold text-gray-900 dark:text-white">
+                {booking.scheduled_start_at ? formatDateTime(booking.scheduled_start_at) : 'Not scheduled'}
+              </p>
+            </div>
+          </div>
+
+          {isMover && bookingStatus === 'pending' && (
+            <div className="flex gap-2 border-t border-gray-200 p-4 dark:border-brand-800">
+              <button
+                type="button"
+                onClick={() => void respondToBooking('confirm')}
+                disabled={responding}
+                className="btn-primary flex flex-1 items-center justify-center gap-2 text-sm"
+              >
+                {responding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Accept Request
+              </button>
+              <button
+                type="button"
+                onClick={() => void respondToBooking('cancel')}
+                disabled={responding}
+                className="btn-secondary flex flex-1 items-center justify-center gap-2 text-sm"
+              >
+                <XCircle className="h-4 w-4" /> Decline
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* SCHEDULE */}
+      {booking && bookingStatus === 'confirmed' && !booking.scheduled_start_at && !isMover && (
+        <section className="mb-4">
+          {!showScheduler ? (
+            <button
+              type="button"
+              onClick={() => setShowScheduler(true)}
+              className="card flex w-full items-center gap-3 p-4 text-left transition hover:border-brand-400"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-800/50">
+                <CalendarDays className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+              </div>
+              <div className="flex-1">
+                <h2 className="font-bold text-gray-900 dark:text-white">Choose moving date & time</h2>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Only this mover's working days and free time are selectable.
+                </p>
+              </div>
+            </button>
+          ) : (
+            <div className="card p-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-gray-900 dark:text-white">Select moving schedule</h2>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    The mover has accepted your request. Select a time within their availability.
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowScheduler(false)} className="rounded-full p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-brand-800">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <MoverSchedulePicker
+                workingDays={mover.working_days}
+                startTime={mover.start_time}
+                endTime={mover.end_time}
+                blockedIntervals={blockedIntervals}
+                value={scheduleValue ?? undefined}
+                onChange={setScheduleValue}
+              />
+
+              {scheduleValue && (
+                <div className="mt-4 rounded-xl bg-brand-50 p-4 text-sm dark:bg-brand-800/40">
+                  <div className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+                    <Clock3 className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                    {formatDate(scheduleValue.date)} · {formatTime(scheduleValue.startTime)} – {formatTime(scheduleValue.endTime)}
+                  </div>
+                </div>
+              )}
+
+              {scheduleError && (
+                <p className="mt-3 rounded-xl bg-error-50 p-3 text-xs text-error-700 dark:bg-error-900/20 dark:text-error-400">
+                  {scheduleError}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => void proposeSchedule()}
+                disabled={!scheduleValue || proposing}
+                className="btn-primary mt-4 flex w-full items-center justify-center gap-2"
+              >
+                {proposing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
+                Propose This Time
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {booking && bookingStatus === 'confirmed' && latestSchedule && normalizeStatus(latestSchedule.status) === 'tentative' && isMover && (
+        <section className="card mb-4 border-2 border-brand-300 p-4 dark:border-brand-600">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 text-brand-600 dark:text-brand-400" />
+            <div className="flex-1">
+              <h2 className="font-bold text-gray-900 dark:text-white">Schedule awaiting your confirmation</h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                {formatDateTime(latestSchedule.starts_at)} – {formatTime(latestSchedule.ends_at)}
+              </p>
+              <button
+                type="button"
+                onClick={() => void confirmSchedule()}
+                disabled={responding}
+                className="btn-primary mt-3 flex items-center gap-2 text-sm"
+              >
+                {responding ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Confirm Schedule
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {booking?.scheduled_start_at && (
+        <section className="card mb-4 border-2 border-success-200 p-4 dark:border-success-800">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 text-success-600 dark:text-success-400" />
+            <div>
+              <h2 className="font-bold text-gray-900 dark:text-white">Moving schedule confirmed</h2>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                {formatDateTime(booking.scheduled_start_at)} – {formatTime(booking.scheduled_end_at)}
+              </p>
+              {!isMover && booking.payment_status !== 'paid' && (
+                <button
+                  type="button"
+                  onClick={() => navigate('renter-payment', booking.id)}
+                  className="btn-primary mt-3 text-sm"
+                >
+                  Continue to payment
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* MESSAGES */}
+      <section className="card mb-4 h-[55vh] min-h-[420px] overflow-y-auto p-4 sm:p-5">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <MessageCircle className="h-10 w-10 text-gray-300" />
-            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-              Start negotiating with {mover.driver_full_name || 'your mover'}. Discuss pickup logistics, pricing, and details.
+            <h2 className="mt-3 font-semibold text-gray-900 dark:text-white">Start the conversation</h2>
+            <p className="mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
+              Discuss pickup details, access instructions, moving items, and anything the mover needs to know.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg) => {
-              const ownMessage = msg.sender_id === profile?.id;
-              const eventData = msg.event_data;
+            {messages.map((message) => {
+              const own = message.sender_id === profile?.id;
+              const attachment = message.message_type === 'image' ? getAttachment(message) : null;
+              const bookingId = getBookingIdFromMessage(message);
 
-              if (msg.message_type === 'event_request' && eventData) {
+              if (attachment) {
                 return (
-                  <div key={msg.id} className="flex justify-center">
-                    <div className="max-w-md rounded-xl border-2 border-brand-300 bg-brand-50 p-4 dark:border-brand-600 dark:bg-brand-800/40">
-                      <div className="mb-2 flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-brand-600 dark:text-brand-400" />
-                        <span className="text-sm font-bold text-brand-700 dark:text-brand-300">
-                          Booking Event Request
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5 text-sm">
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>{eventData.relocation_date} ({eventData.day_of_week})</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>{formatTime(eventData.pickup_time)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <Navigation className="h-3.5 w-3.5" />
-                          <span>{eventData.pickup_address}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span>{eventData.dropoff_address}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <DollarSign className="h-3.5 w-3.5" />
-                          <span className="font-semibold">
-                            {formatKES(eventData.negotiated_price)}
-                          </span>
-                          <span className="text-xs">
-                            + {COMMISSION_RATE * 100}% commission ={' '}
-                            {formatKES(
-                              eventData.negotiated_price * (1 + COMMISSION_RATE),
-                            )}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isMover && activeBookingEvent?.id && activeBookingEvent.id === msg.event_data?.negotiated_price && false}
-
-                      {isMover && activeBookingEvent?.status === 'pending' && (
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handleConfirmEvent(activeBookingEvent.id)}
-                            className="flex-1 rounded-full bg-success-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-success-700"
-                          >
-                            <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />
-                            Confirm & Accept
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeclineEvent(activeBookingEvent.id)}
-                            className="flex-1 rounded-full bg-error-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-error-600"
-                          >
-                            <XCircle className="mr-1 inline h-3.5 w-3.5" />
-                            Decline
-                          </button>
-                        </div>
-                      )}
+                  <div key={message.id} className={cn('flex', own ? 'justify-end' : 'justify-start')}>
+                    <div className={cn('max-w-[82%] rounded-2xl p-2', own ? 'bg-brand-600' : 'bg-gray-100 dark:bg-brand-800')}>
+                      <ChatImage messageId={message.id} attachment={attachment} />
+                      <p className={cn('px-2 pt-1 text-xs', own ? 'text-brand-100' : 'text-gray-500 dark:text-gray-400')}>
+                        {formatDateTime(message.created_at)}
+                      </p>
                     </div>
                   </div>
                 );
               }
 
-              if (msg.message_type === 'event_confirmed') {
+              if (message.message_type === 'booking_request') {
                 return (
-                  <div key={msg.id} className="flex justify-center">
-                    <div className="rounded-full bg-success-50 px-4 py-2 text-sm text-success-700 dark:bg-success-900/30 dark:text-success-400">
-                      <CheckCircle2 className="mr-1 inline h-4 w-4" />
-                      {msg.content}
+                  <div key={message.id} className="flex justify-center">
+                    <div className="max-w-xl rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-700 dark:bg-brand-900/30">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                        <p className="font-semibold text-brand-800 dark:text-brand-300">Moving request</p>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{message.content}</p>
+                      {bookingId && <p className="mt-2 text-xs text-gray-500">Booking #{bookingId.slice(0, 8)}</p>}
                     </div>
                   </div>
                 );
               }
 
-              if (msg.message_type === 'event_declined') {
+              if (message.message_type === 'schedule_proposed') {
                 return (
-                  <div key={msg.id} className="flex justify-center">
-                    <div className="rounded-full bg-error-50 px-4 py-2 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
-                      <XCircle className="mr-1 inline h-4 w-4" />
-                      {msg.content}
+                  <div key={message.id} className="flex justify-center">
+                    <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-700 dark:bg-brand-900/30">
+                      <div className="flex items-center gap-2 font-semibold text-brand-800 dark:text-brand-300">
+                        <CalendarDays className="h-4 w-4" /> Schedule proposed
+                      </div>
+                      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{message.content}</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (message.message_type === 'schedule_confirmed') {
+                return (
+                  <div key={message.id} className="flex justify-center">
+                    <div className="rounded-full bg-success-50 px-4 py-2 text-xs font-medium text-success-700 dark:bg-success-900/30 dark:text-success-400">
+                      <CheckCircle2 className="mr-1 inline h-4 w-4" /> {message.content}
                     </div>
                   </div>
                 );
               }
 
               return (
-                <div
-                  key={msg.id}
-                  className={cn('flex', ownMessage ? 'justify-end' : 'justify-start')}
-                >
-                  <div
-                    className={cn(
-                      'max-w-[75%] rounded-2xl px-4 py-2 text-sm',
-                      ownMessage
-                        ? 'bg-brand-600 text-white'
-                        : 'bg-gray-100 text-gray-800 dark:bg-brand-800 dark:text-gray-200',
-                    )}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                    <p
-                      className={cn(
-                        'mt-0.5 text-xs',
-                        ownMessage ? 'text-brand-200' : 'text-gray-400',
-                      )}
-                    >
-                      {new Date(msg.created_at).toLocaleTimeString('en-KE', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                <div key={message.id} className={cn('flex', own ? 'justify-end' : 'justify-start')}>
+                  <div className={cn('max-w-[82%] rounded-2xl px-4 py-2.5', own ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800 dark:bg-brand-800 dark:text-gray-200')}>
+                    <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
+                    <p className={cn('mt-1 text-[10px]', own ? 'text-brand-100' : 'text-gray-400')}>
+                      {formatDateTime(message.created_at)}
                     </p>
                   </div>
                 </div>
@@ -811,243 +1085,78 @@ export default function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Payment Section */}
-      {!isMover && activeBookingEvent?.status === 'confirmed' && (
-        <div className="card mb-4 border-2 border-success-300 p-4 dark:border-success-600">
-          <div className="mb-3 flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-success-600" />
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-              Event Confirmed — Pay Securely
-            </h3>
-          </div>
+      {/* COMPOSER */}
+      <section className="card p-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void uploadImage(file);
+          }}
+        />
 
-          <div className="mb-3 rounded-xl bg-gray-50 p-3 text-sm dark:bg-brand-800/30">
-            <div className="flex justify-between py-0.5">
-              <span className="text-gray-500 dark:text-gray-400">Service Amount</span>
-              <span className="font-semibold">
-                {formatKES(activeBookingEvent.negotiated_price)}
-              </span>
-            </div>
-            <div className="flex justify-between py-0.5">
-              <span className="text-gray-500 dark:text-gray-400">Platform Commission (10%)</span>
-              <span className="font-semibold text-brand-600 dark:text-brand-400">
-                {formatKES(activeBookingEvent.commission_amount)}
-              </span>
-            </div>
-            <div className="mt-1 flex justify-between border-t border-gray-200 pt-1 dark:border-brand-700">
-              <span className="font-bold">Total</span>
-              <span className="font-bold text-brand-600 dark:text-brand-400">
-                {formatKES(activeBookingEvent.total_amount)}
-              </span>
-            </div>
-          </div>
-
+        <div className="flex items-end gap-2">
           <button
             type="button"
-            onClick={handlePay}
-            disabled={paying}
-            className="btn-primary flex w-full items-center justify-center gap-2"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || sending}
+            className="rounded-full p-2.5 text-gray-400 hover:bg-gray-100 hover:text-brand-600 disabled:opacity-50 dark:hover:bg-brand-800"
+            aria-label="Attach picture"
+            title="Attach picture"
           >
-            {paying ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Processing...
-              </>
-            ) : (
-              <>
-                <CreditCard className="h-4 w-4" /> Pay via Saka Krib Platform
-              </>
-            )}
+            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
           </button>
-        </div>
-      )}
 
-      {/* Paid state is display-only. Payment status must come from backend. */}
-      {!isMover && activeBookingEvent?.status === 'paid' && (
-        <div className="card mb-4 border-2 border-success-300 p-4 text-center dark:border-success-600">
-          <CheckCircle2 className="mx-auto h-10 w-10 text-success-600" />
-          <h3 className="mt-2 text-sm font-bold text-gray-900 dark:text-white">
-            Payment Complete!
-          </h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Your booking is confirmed for {activeBookingEvent.relocation_date} at{' '}
-            {formatTime(activeBookingEvent.pickup_time)}.
-          </p>
-        </div>
-      )}
-
-      {/* Scheduler */}
-      {showScheduler && !isMover && (
-        <div className="card mb-4 border-2 border-brand-300 p-4 dark:border-brand-600">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
-            <Calendar className="h-4 w-4 text-brand-600" />
-            Schedule Relocation Event
-          </h3>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                Relocation Date
-              </label>
-              <input
-                type="date"
-                value={schedDate}
-                onChange={(event) => setSchedDate(event.target.value)}
-                className="input-field text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                Pickup Time
-              </label>
-              <input
-                type="time"
-                value={schedTime}
-                onChange={(event) => setSchedTime(event.target.value)}
-                className="input-field text-sm"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                Pickup Address
-              </label>
-              <input
-                type="text"
-                value={schedPickup}
-                onChange={(event) => setSchedPickup(event.target.value)}
-                placeholder="Current location"
-                className="input-field text-sm"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                Drop-off Address
-              </label>
-              <input
-                type="text"
-                value={schedDropoff}
-                onChange={(event) => setSchedDropoff(event.target.value)}
-                placeholder="Destination"
-                className="input-field text-sm"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                Negotiated Price (KES)
-              </label>
-              <input
-                type="number"
-                value={schedPrice}
-                onChange={(event) => setSchedPrice(event.target.value)}
-                placeholder="e.g. 5000"
-                className="input-field text-sm"
-                min={1}
-                step="1"
-              />
-            </div>
-          </div>
-
-          {schedError && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl bg-error-50 px-3 py-2 text-xs text-error-700 dark:bg-error-900/20 dark:text-error-400">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{schedError}</span>
-            </div>
-          )}
-
-          <div className="mt-3 flex gap-2">
+          {!isMover && booking && bookingStatus === 'confirmed' && !booking.scheduled_start_at && (
             <button
               type="button"
-              onClick={() => void handleSchedule()}
-              disabled={submittingEvent}
-              className="btn-primary flex flex-1 items-center justify-center gap-2 text-sm"
+              onClick={() => setShowScheduler((value) => !value)}
+              className={cn('rounded-full p-2.5', showScheduler ? 'bg-brand-100 text-brand-600 dark:bg-brand-800 dark:text-brand-400' : 'text-gray-400 hover:bg-gray-100 hover:text-brand-600 dark:hover:bg-brand-800')}
+              aria-label="Choose moving date and time"
+              title="Choose moving date and time"
             >
-              {submittingEvent ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Sending...
-                </>
-              ) : (
-                'Send Event Request'
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowScheduler(false)}
-              className="btn-secondary text-sm"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Message Input */}
-      <div className="card p-3">
-        {draft && draft !== newMessage && (
-          <p className="mb-1.5 text-xs text-gray-400">
-            Draft saved: "{draft.slice(0, 40)}{draft.length > 40 ? '...' : ''}"
-          </p>
-        )}
-
-        <div className="flex gap-2">
-          {!isMover && (
-            <button
-              type="button"
-              onClick={() => setShowScheduler((open) => !open)}
-              className={cn(
-                'rounded-full p-2.5 transition-colors',
-                showScheduler
-                  ? 'bg-brand-100 text-brand-600 dark:bg-brand-800 dark:text-brand-400'
-                  : 'text-gray-400 hover:text-brand-600',
-              )}
-              title="Schedule relocation"
-              aria-label="Schedule relocation"
-            >
-              <Calendar className="h-5 w-5" />
+              <CalendarDays className="h-5 w-5" />
             </button>
           )}
 
           <input
             type="text"
             value={newMessage}
-            onChange={(event) => {
-              setNewMessage(event.target.value);
-              setDraft(event.target.value);
-            }}
+            onChange={(event) => setNewMessage(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !sending) {
+              if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
-                void handleSend();
+                void sendText();
               }
             }}
             placeholder="Type a message..."
-            className="input-field flex-1"
             maxLength={2000}
+            className="input-field flex-1"
           />
 
           <button
             type="button"
-            onClick={() => void handleSend()}
-            disabled={!newMessage.trim() || sending}
+            onClick={() => void sendText()}
+            disabled={!newMessage.trim() || sending || uploading}
             className="btn-primary flex items-center justify-center gap-2"
             aria-label="Send message"
           >
-            {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
-      </div>
 
-      <p className="mt-4 text-center text-xs text-gray-400">
-        © Copyright Saka Krib. All Rights Reserved.
+        <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-gray-400">
+          <Paperclip className="h-3 w-3" /> Pictures only · max 8 MB
+        </div>
+      </section>
+
+      <p className="mt-4 flex items-center justify-center gap-1 text-center text-xs text-gray-400">
+        <Navigation className="h-3 w-3" /> Saka Krib moving conversations are protected.
       </p>
     </div>
   );
