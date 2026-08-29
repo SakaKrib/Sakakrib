@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@/context/ThemeContext';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NavProvider, useNav } from '@/context/NavContext';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -20,13 +20,14 @@ import RegisterMoverPage from '@/pages/RegisterMoverPage';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
+import RenterDashboard from '@/Dashboards/RenterDashboard';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
-import PMSDashboard from './components/PMS/PMSDashboard';
 
 function AppContent() {
   const { view } = useNav();
+  const { profile } = useAuth();
 
   const renderView = () => {
     switch (view) {
@@ -43,16 +44,14 @@ function AppContent() {
       case 'register-mover': return <RegisterMoverPage />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
-      case 'dashboard': return <DashboardPage />;
+      case 'dashboard':
+        return profile?.role === 'renter'
+          ? <RenterDashboard />
+          : <DashboardPage />;
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
       case 'subscription-plans': return <PMSSubscriptionPage />;
-      case 'renter-invoices': return <RenterInvoicesPage />;
-      case 'renter-payment': return <RenterPaymentPage />;
-      case 'mover-tracking': return (<MoverTrackingPage bookingId={selectedBookingId}/>);
-      case 'renter-calendar': return <RenterCalendarPage />;
-      case 'notifications': return <NotificationsPage />;
       default: return <HomePage />;
     }
   };
