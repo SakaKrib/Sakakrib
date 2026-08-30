@@ -76,6 +76,15 @@ const PAYMENT_CHANNELS = [
   },
 ] as const;
 
+interface MoverApplicationResponse {
+  success: boolean;
+  code?: string;
+  status?: string;
+  message?: string;
+  mover_id?: string;
+  profile_id?: string;
+}
+
 type PaymentChannel =
   (typeof PAYMENT_CHANNELS)[number]['value'];
 
@@ -370,7 +379,7 @@ export default function RegisterMoverPage() {
       <StatusCard
         icon="success"
         title="Mover application approved"
-        message="Your mover application has been approved. You can now manage your moving services from your dashboard."
+        message="Your mover application has been approved. You can now manage your mover services from your dashboard."
         actionLabel="Open Dashboard"
         onAction={() =>
           navigate('dashboard')
@@ -392,8 +401,12 @@ export default function RegisterMoverPage() {
     return (
       <StatusCard
         icon="pending"
-        title="Mover application pending"
-        message="Your mover application has already been submitted and is waiting for administrator verification. You cannot submit another application while this request is being reviewed."
+        title="Your application is under review"
+        message="Your mover application has been submitted successfully and is currently being reviewed by our administration team. You do not need to submit another application. This page is temporarily unavailable until your review is completed."
+        actionLabel="Go to Dashboard"
+        onAction={() =>
+          navigate('dashboard')
+        }
       />
     );
   }
@@ -1120,13 +1133,91 @@ export default function RegisterMoverPage() {
       |--------------------------------------------------------------------------
       */
 
-      await protectedPost<unknown>(
-        '/rest/v1/rpc/submit_mover_application',
-        {
-          p_application:
-            application,
+      const submissionResult =
+        await protectedPost<MoverApplicationResponse>(
+          '/rest/v1/rpc/submit_mover_application',
+          {
+            p_application: application,
+          }
+        );
+
+      if (!submissionResult?.success) {
+        const code =
+          submissionResult?.code;
+
+        const message =
+          submissionResult?.message?.trim();
+
+        switch (code) {
+          case 'MOVER_APPLICATION_ALREADY_PENDING':
+            setError(
+              'Your mover application has already been submitted and is currently under review. You cannot submit another application until the administrator completes the review.'
+            );
+            return;
+
+          case 'MOVER_ALREADY_APPROVED':
+            setError(
+              'Your mover application has already been approved. You can manage your mover services from your dashboard.'
+            );
+            return;
+
+          case 'MOVER_APPLICATION_ALREADY_EXISTS':
+            setError(
+              'A mover application already exists for your account. Please refresh the page to view its current status.'
+            );
+            return;
+
+          case 'PROFILE_NOT_FOUND':
+            setError(
+              'We could not find your account profile. Please sign in again and try again.'
+            );
+            return;
+
+          case 'INVALID_ROLE':
+            setError(
+              'Only renter accounts can submit a mover application.'
+            );
+            return;
+
+          case 'MOVER_EVIDENCE_REQUIRED':
+            setError(
+              'Your driving licence photo and vehicle number plate are required before you can submit your mover application.'
+            );
+            return;
+
+          case 'VEHICLE_CAPACITY_REQUIRED':
+            setError(
+              'Please provide your vehicle capacity details before submitting your mover application.'
+            );
+            return;
+
+          case 'TERMS_NOT_ACCEPTED':
+            setError(
+              'Please accept the Mover Terms and Conditions before submitting your application.'
+            );
+            return;
+
+          case 'INVALID_LATITUDE':
+          case 'INVALID_LONGITUDE':
+            setError(
+              'Your GPS location could not be verified. Please capture your current location again.'
+            );
+            return;
+
+          case 'INVALID_APPLICATION_DATA':
+            setError(
+              'Some of the information in your application is invalid. Please review the form and try again.'
+            );
+            return;
+
+          default:
+            setError(
+              message ||
+                'We could not submit your mover application. Please review the form and try again.'
+            );
+            return;
         }
-      );
+      }
 
       /*
       |--------------------------------------------------------------------------
