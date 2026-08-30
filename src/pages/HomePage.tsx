@@ -28,6 +28,10 @@ export default function HomePage() {
     let mounted = true;
 
     const fetchHomepageData = async () => {
+      // HttpOnly authentication is restored asynchronously after a page reload.
+      // Do not call protected endpoints until AuthContext has finished restoring it.
+      if (loading || !session) return;
+
       try {
         const [
           listings,
@@ -75,7 +79,7 @@ export default function HomePage() {
     return () => {
       mounted = false;
     };
-  }, [session]);
+  }, [session, loading]);
 
   // ============================================================
   // FEATURED LISTINGS
@@ -85,6 +89,9 @@ export default function HomePage() {
     let mounted = true;
 
     const fetchFeaturedListings = async () => {
+      // HttpOnly authentication is restored asynchronously after a page reload.
+      if (loading || !session) return;
+
       try {
         const listings =
           await protectedGet<Listing[]>(
@@ -141,7 +148,7 @@ export default function HomePage() {
     return () => {
       mounted = false;
     };
-  }, [session]);
+  }, [session, loading]);
 
   const handleSearch = () => navigate('listings');
 
