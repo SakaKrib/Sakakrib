@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { User } from '@supabase/supabase-js';
 import type { Profile, UserRole } from '@/lib/supabase';
 import { authGateway } from '@/lib/authGateway';
+import { protectedFunctionPost } from '@/lib/protectedApi';
 
 interface RegistrationEmailApplication {
   email: string;
@@ -52,14 +53,6 @@ const toAuthSession = (user: { id: string; email?: string | null; user_metadata?
   },
 });
 
-/**
- * Send an application notification without creating or using a
- * browser Supabase Auth client.
- *
- * This Edge Function is intentionally public (verify_jwt=false).
- * It receives only the notification payload. No Supabase Auth
- * access token or refresh token is read, stored, or attached here.
- */
 const sendRegistrationEmail = async (
   type: 'otp_verification' | 'sign_in_notification' | 'sign_up_welcome',
   application: RegistrationEmailApplication,
@@ -67,13 +60,8 @@ const sendRegistrationEmail = async (
   const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-  if (!baseUrl) {
-    throw new Error('VITE_SUPABASE_URL is not configured.');
-  }
-
-  if (!publishableKey) {
-    throw new Error('VITE_SUPABASE_ANON_KEY is not configured.');
-  }
+  if (!baseUrl) throw new Error('VITE_SUPABASE_URL is not configured.');
+  if (!publishableKey) throw new Error('VITE_SUPABASE_ANON_KEY is not configured.');
 
   const response = await fetch(
     `${baseUrl.replace(/\/+$/, '')}/functions/v1/send-notification-emails`,
@@ -97,16 +85,11 @@ const sendRegistrationEmail = async (
         : typeof body.message === 'string'
           ? body.message
           : 'Email delivery failed.';
-
     throw new Error(message);
   }
 
   if (body.success === false) {
-    throw new Error(
-      typeof body.error === 'string'
-        ? body.error
-        : 'Email delivery failed.',
-    );
+    throw new Error(typeof body.error === 'string' ? body.error : 'Email delivery failed.');
   }
 };
 
@@ -152,9 +135,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  // The browser no longer asks Supabase Auth for a session.
-  // The HttpOnly cookie is resolved by auth-gateway and only safe
-  // user/profile data returns to React.
   useEffect(() => {
     let mounted = true;
 
@@ -331,8 +311,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<void> => {
-    // Deliberately disabled until the server-side OAuth callback is implemented.
-    // Using supabase.auth.signInWithOAuth here would reintroduce browser token handling.
     console.warn('Google OAuth HttpOnly migration is pending its server callback implementation.');
   };
 
@@ -358,13 +336,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!result.authenticated) {
         if (result.requiresEmailVerification) {
-          requireEmailVerification(
-            result.email ?? session.user.email ?? null,
-          );
+          requireEmailVerification(result.email ?? session.user.email ?? null);
         } else {
           clearAuthState();
         }
-
         return;
       }
 
@@ -376,42 +351,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const setRole = async (role: UserRole) => {
-    if (!session?.user) {
-      return { error: 'Not authenticated.' };
-    }
-
-    if (!profile) {
-      return { error: 'Application profile is required.' };
-    }
-
+    if (!session?.user) return { error: 'Not authenticated.' };
+    if (!profile) return { error: 'Application profile is required.' };
     if (!isProfileEmailVerified(profile)) {
-      return {
-        error: 'Email verification is required before setting a role.',
-      };
+      return { error: 'Email verification is required before setting a role.' };
     }
+
+    const allowedRoles: UserRole[] = ['renter', 'landlord', 'mover', 'real_estate', 'admin'];
+    if (!allowedRoles.includes(role)) return { error: 'Invalid role selected.' };
 
     try {
-      const result = await authGateway('set_role', {
-        role,
-      });
-
-      if (!result.success && !result.authenticated) {
-        return {
-          error: result.error ?? 'Unable to save your role.',
-        };
-      }
+      // Role selection is an authenticated application mutation, not an auth action.
+      // The browser sends only the HttpOnly cookies through protected-api.
+      await protectedFunctionPost<{ success?: boolean; authenticated?: boolean }>(
+        '/set-role',
+        { role },
+      );
 
       await refreshProfile();
-
       return { error: null };
     } catch (error) {
-      console.error('Set role gateway error:', error);
-
+      console.error('Set role protected-api error:', error);
       return {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to save your role.',
+        error: error instanceof Error ? error.message : 'Unable to save your role.',
       };
     }
   };
