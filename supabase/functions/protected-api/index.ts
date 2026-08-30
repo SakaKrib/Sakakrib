@@ -95,7 +95,19 @@ Deno.serve(async(req:Request)=>{
       return json(req,{success:true,authenticated:true,authorized:true,profile_id:a.user.id,role:updated.role},200,refreshHeaders);
     }
 
-    const target=normalize(pathname); if(!safe(target))return json(req,{error:'Unsupported protected API path.'},400,refreshHeaders); const authz=authorize(a.profile,target); if(!authz.ok)return json(req,{authenticated:true,authorized:false,role:a.profile.role,error:authz.error},authz.status,refreshHeaders);
+    const target=normalize(pathname); if(!safe(target))return json(req,{error:'Unsupported protected API path.'},400,refreshHeaders);
+    const role=(a.profile.role??'').trim().toLowerCase();
+    const publicReadWithoutRole = req.method === 'GET' && (
+      target === '/rest/v1/listings' ||
+      target === '/rest/v1/movers' ||
+      target === '/rest/v1/reviews' ||
+      (target === '/rest/v1/profiles' &&
+        url.searchParams.get('select') === 'id' &&
+        url.searchParams.get('role') === 'eq.landlord' &&
+        url.searchParams.get('landlord_application_status') === 'eq.approved')
+    );
+    const authz=publicReadWithoutRole || role ? authorize(a.profile,target) : {ok:true as const};
+    if(!authz.ok)return json(req,{authenticated:true,authorized:false,role:a.profile.role,error:authz.error},authz.status,refreshHeaders);
     const targetUrl=`${BASE}${target}${url.search}`; const body=req.method==='GET'||req.method==='HEAD'?undefined:await req.text(); const headers=new Headers(); headers.set('apikey',SUPABASE_ANON_KEY); headers.set('Authorization',`Bearer ${access}`); headers.set('Accept',req.headers.get('accept')??'application/json'); for(const name of ['content-type','prefer','range']){const v=req.headers.get(name);if(v)headers.set(name,v);} let response=await fetch(targetUrl,{method:req.method,headers,body});
     if(response.status===401&&cookies.sk_refresh&&refreshHeaders.length===0){const r=await refresh(cookies.sk_refresh);if(r){access=r.accessToken;refreshHeaders=authCookies(r.accessToken,r.refreshToken!);headers.set('Authorization',`Bearer ${access}`);response=await fetch(targetUrl,{method:req.method,headers,body});}}
     const rh=new Headers(cors(req));rh.set('Cache-Control','no-store');for(const n of ['content-type','content-range','location']){const v=response.headers.get(n);if(v)rh.set(n,v);}for(const [n,v] of refreshHeaders)rh.append(n,v);if(response.status===401)for(const [n,v] of clearCookies())rh.append(n,v); return new Response(await response.arrayBuffer(),{status:response.status,headers:rh});
