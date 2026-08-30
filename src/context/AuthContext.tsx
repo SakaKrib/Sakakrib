@@ -235,10 +235,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const result = await authGateway('verify_otp', { email: normalizedEmail, otp: normalizedOtp });
-      if (!result.success) return { error: result.error ?? 'Invalid or expired verification code.' };
+      if (!result.success || !result.authenticated || !result.user || !result.profile) {
+        return { error: result.error ?? 'Unable to establish your authenticated session after verification.' };
+      }
 
-      clearAuthState();
-      clearVerificationState();
+      // OTP verification now returns the authenticated server session as
+      // HttpOnly cookies. Hydrate the same AuthContext state used by login.
+      if (!applyGatewayAuth(result)) {
+        return { error: 'Email verification succeeded, but your authenticated profile could not be loaded.' };
+      }
+
       return { error: null };
     } catch (error) {
       console.error('Email OTP verification error:', error);
