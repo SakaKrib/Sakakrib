@@ -224,18 +224,11 @@ function TimeField({
         <input
           type="time"
           value={value}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setTimeout(() => setScheduleErrorSafe(), 0);
-          }}
+          onChange={(event) => onChange(event.target.value)}
           className="input-field w-full pl-10"
           required
         />
       </div>
     </div>
   );
-}
-
-function setScheduleErrorSafe() {
-  // The native time input handles the visual value; validation runs on submit.
 }
