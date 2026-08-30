@@ -39,6 +39,17 @@ export interface PMSUnit {
   payment_tracking_enabled?: boolean;
 }
 
+// Exact shape requested from property_units for rent-tracking state.
+// The protectedSupabase compatibility shim is generic, so this type
+// preserves the selected row shape through the cookie-based query.
+interface PropertyUnitRentTracking {
+  id: string;
+  rent_paid_in_advance: boolean;
+  rent_paid_through_month: string | null;
+  rent_due_day: number;
+  payment_tracking_enabled: boolean;
+}
+
 // Matches get_my_rent_summary()'s row shape exactly.
 export interface RentSummary {
   total_units: number;
@@ -104,7 +115,7 @@ export async function getMyPMSUnits(
   const unitIds = units.map((u) => u.unit_id);
 
   const { data: advanceRows, error: advanceError } = await supabase
-    .from('property_units')
+    .from<PropertyUnitRentTracking>('property_units')
     .select(
       'id, rent_paid_in_advance, rent_paid_through_month, rent_due_day, payment_tracking_enabled'
     )
@@ -178,7 +189,7 @@ export async function getUnitPaymentHistory(
   unitId: string
 ): Promise<RentPaymentRecord[]> {
   const { data, error } = await supabase
-    .from('rent_payments')
+    .from<RentPaymentRecord>('rent_payments')
     .select(
       'id, renter_assoc_id, unit_id, amount_kes, period_year, period_month, status, paid_at, payment_provider, payment_method'
     )
