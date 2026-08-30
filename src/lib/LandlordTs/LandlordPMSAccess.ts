@@ -7,19 +7,16 @@ export type PMSSubscriptionStatus =
 
 export type PMSPlanName = 'STARTER' | 'GROWTH' | 'PRO' | 'ENTERPRISE';
 
-// Matches the row shape returned by get_my_pms_subscription() exactly.
-// The RPC returns `subscription_id`, not `id` — do not rename this back.
 export interface PMSSubscription {
-  subscription_id: string;
-  plan_id: string;
-  plan_name: PMSPlanName;
-  // Maximum listings/units allowed by the subscription (subscription_plans.max_listings).
-  max_listings: number | null;
-  status: PMSSubscriptionStatus;
-  billing_cycle: 'MONTHLY' | 'ANNUAL';
-  current_period_end: string;
-  grace_period_end: string | null;
-  auto_renew: boolean;
+  subscription_id?: string;
+  plan_id?: string;
+  plan_name?: string | null;
+  max_listings?: number | null;
+  status?: string | null;
+  billing_cycle?: 'MONTHLY' | 'ANNUAL' | string | null;
+  current_period_end?: string | null;
+  grace_period_end?: string | null;
+  auto_renew?: boolean;
 }
 
 export function hasPMSAccess(
@@ -28,14 +25,18 @@ export function hasPMSAccess(
   if (!subscription) return false;
 
   const now = new Date();
+  const status = String(subscription.status ?? '').toUpperCase();
+  const currentPeriodEnd = subscription.current_period_end ?? null;
+  const gracePeriodEnd = subscription.grace_period_end ?? null;
 
-  if (subscription.status === 'ACTIVE') {
-    return new Date(subscription.current_period_end) > now;
+  if (status === 'ACTIVE') {
+    if (!currentPeriodEnd) return false;
+    return new Date(currentPeriodEnd) > now;
   }
 
-  if (subscription.status === 'GRACE_PERIOD') {
-    if (!subscription.grace_period_end) return false;
-    return new Date(subscription.grace_period_end) > now;
+  if (status === 'GRACE_PERIOD') {
+    if (!gracePeriodEnd) return false;
+    return new Date(gracePeriodEnd) > now;
   }
 
   return false;
@@ -48,30 +49,37 @@ export function getPMSAccessReason(
     return 'A PMS subscription is required to access property management.';
   }
 
-  if (subscription.status === 'PENDING_PAYMENT') {
+  const status = String(subscription.status ?? '').toUpperCase();
+  const currentPeriodEnd = subscription.current_period_end ?? null;
+  const gracePeriodEnd = subscription.grace_period_end ?? null;
+
+  if (status === 'PENDING_PAYMENT') {
     return 'Your PMS subscription is waiting for payment. Complete payment to activate property management.';
   }
 
-  if (subscription.status === 'ACTIVE') {
+  if (status === 'ACTIVE') {
+    if (!currentPeriodEnd) {
+      return 'Your PMS subscription is active.';
+    }
     const now = new Date();
-    if (new Date(subscription.current_period_end) <= now) {
+    if (new Date(currentPeriodEnd) <= now) {
       return 'Your PMS subscription has expired. Renew to continue managing your properties.';
     }
     return 'Your PMS subscription is active.';
   }
 
-  if (subscription.status === 'GRACE_PERIOD') {
-    if (subscription.grace_period_end && new Date(subscription.grace_period_end) <= new Date()) {
+  if (status === 'GRACE_PERIOD') {
+    if (gracePeriodEnd && new Date(gracePeriodEnd) <= new Date()) {
       return 'Your PMS grace period has ended. Renew your subscription to restore access.';
     }
     return 'Your PMS subscription is in the grace period. Renew before it ends to keep your properties active.';
   }
 
-  if (subscription.status === 'EXPIRED') {
+  if (status === 'EXPIRED') {
     return 'Your PMS subscription has expired. Renew your subscription to continue managing your properties.';
   }
 
-  if (subscription.status === 'CANCELLED') {
+  if (status === 'CANCELLED') {
     return 'Your PMS subscription has been cancelled. Subscribe again to continue using property management.';
   }
 

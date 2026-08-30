@@ -16,7 +16,7 @@ import {
   claimInvitation,
   getInvitationPreview,
   type InvitationPreview,
-} from '@/lib/LandlordTs/landlordInvitations';
+} from '@/lib/LandlordTs/Landlordinvitations';
 
 
 function formatKES(value: number) {
@@ -39,7 +39,7 @@ function formatKES(value: number) {
 
 export default function ClaimRentalPage({ token }: { token: string }) {
   const { profile, loading: authLoading } = useAuth();
-  const { navigate } = useNav();
+  const { navigate, setAuthModalOpen, setAuthMode } = useNav();
 
   const [preview, setPreview] = useState<InvitationPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
@@ -150,7 +150,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
           {profile && (
             <button
               type="button"
-              onClick={() => navigate('renter-home')}
+              onClick={() => navigate('dashboard')}
               className="btn-primary mt-6"
             >
               Go to My Rental
@@ -181,7 +181,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
           </p>
           <button
             type="button"
-            onClick={() => navigate('renter-home')}
+            onClick={() => navigate('dashboard')}
             className="btn-primary mt-6"
           >
             Go to My Rental
@@ -272,22 +272,20 @@ export default function ClaimRentalPage({ token }: { token: string }) {
             </p>
             <button
               type="button"
-              onClick={() =>
-                navigate('login', {
-                  returnTo: `#claim-rental/${token}`,
-                } as never)
-              }
+              onClick={() => {
+                setAuthMode('signin');
+                setAuthModalOpen(true);
+              }}
               className="btn-primary w-full"
             >
               Sign In
             </button>
             <button
               type="button"
-              onClick={() =>
-                navigate('signup', {
-                  returnTo: `#claim-rental/${token}`,
-                } as never)
-              }
+              onClick={() => {
+                setAuthMode('signup');
+                setAuthModalOpen(true);
+              }}
               className="btn-secondary w-full"
             >
               Create Account

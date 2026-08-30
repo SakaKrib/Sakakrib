@@ -14,24 +14,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNav } from '@/context/NavContext';
 import { cn, formatKES } from '@/lib/utils';
 
-import { renterApi } from '@/lib/Renter/renterApi';
-
-/* ============================================================
- * TYPES
- * ============================================================ */
-
-interface RentInvoice {
-  id: string;
-  renter_user_id: string | null;
-  invoice_number: string | null;
-  amount: number | null;
-  total_amount: number | null;
-  status: string | null;
-  due_date: string | null;
-  billing_period_start: string | null;
-  billing_period_end: string | null;
-  created_at: string | null;
-}
+import {
+  renterApi,
+  type RentInvoice,
+} from '@/lib/Renter/renterApi';
 
 /* ============================================================
  * HELPERS

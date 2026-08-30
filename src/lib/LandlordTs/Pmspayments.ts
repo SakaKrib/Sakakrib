@@ -1,4 +1,4 @@
-import { supabase } from './ Protectedsupabase';
+import { supabase } from './Protectedsupabase';
 
 /* ============================================================
  * PMS SUBSCRIPTION PAYMENTS - SHARED (LANDLORD + REAL ESTATE)

@@ -1,4 +1,4 @@
-import { supabase, getCurrentUserId } from './ Protectedsupabase';
+import { supabase, getCurrentUserId } from './Protectedsupabase';
 
 /* ============================================================
  * TYPES

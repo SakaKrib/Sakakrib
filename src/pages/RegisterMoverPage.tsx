@@ -24,7 +24,9 @@ import {
   MapPin,
 } from 'lucide-react';
 
-import GPSLocationInput from '@/components/Helpers/GPSLocationInput';
+import GPSLocationInput, {
+  type GPSLocationValue,
+} from '@/components/Helpers/GPSLocationInput';
 
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
@@ -83,12 +85,6 @@ interface ReferenceContact {
   name: string;
   phone: string;
   relationship: string;
-}
-
-interface GPSLocationValue {
-  latitude: number | null;
-  longitude: number | null;
-  location: string;
 }
 
 type EmailType =
@@ -1519,13 +1515,15 @@ export default function RegisterMoverPage() {
             </p>
 
             <GPSLocationInput
-              latitude={latitude}
-              longitude={longitude}
-              location={location}
-              onLocationChange={({
+              value={{
+                locationSearch: location,
+                latitude,
+                longitude,
+              }}
+              onChange={({
                 latitude: nextLatitude,
                 longitude: nextLongitude,
-                location: nextLocation,
+                locationSearch: nextLocation,
               }: GPSLocationValue) => {
                 setLatitude(nextLatitude);
                 setLongitude(nextLongitude);

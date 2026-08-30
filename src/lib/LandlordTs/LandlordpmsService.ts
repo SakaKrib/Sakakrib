@@ -1,7 +1,7 @@
 import {
   supabase,
   getCurrentUserId,
-} from "./ Protectedsupabase";
+} from "./Protectedsupabase";
 
 import {
   protectedFunctionPost,
@@ -1040,8 +1040,9 @@ export async function getPMSPlans(): Promise<
     );
   }
 
-  return (data ?? []).map(
-    (plan) => ({
+  const rows = (data ?? []) as Array<Record<string, any>>;
+
+  return rows.map((plan: Record<string, any>) => ({
       id: plan.id,
 
       name: plan.name,
@@ -1148,9 +1149,11 @@ export async function getMyLandlordListings(): Promise<
     );
   }
 
+  const rows = (data ?? []) as Array<Record<string, any>>;
+
   const listings =
-    (data ?? []).map(
-      (listing) => ({
+    rows.map(
+      (listing: Record<string, any>) => ({
         ...listing,
 
         price_kes:
@@ -1216,7 +1219,7 @@ export async function getMyLandlordListings(): Promise<
   const coverByListing =
     new Map<string, string>();
 
-  for (const item of media ?? []) {
+  for (const item of ((media ?? []) as Array<Record<string, any>>)) {
     if (
       item.url &&
       !coverByListing.has(
@@ -1383,8 +1386,9 @@ export async function getMyListingPayments(): Promise<
     );
   }
 
-  return (data ?? []).map(
-    (payment) => ({
+  const rows = (data ?? []) as Array<Record<string, any>>;
+
+  return rows.map((payment: Record<string, any>) => ({
       ...payment,
 
       amount_kes:
@@ -1408,7 +1412,7 @@ export async function getMyListingPayments(): Promise<
               payment.paypal_fx_rate
             ),
     })
-  );
+  ) as ListingPayment[];
 }
 
 /* ============================================================
@@ -1528,8 +1532,8 @@ export async function getMyPMSNotifications(): Promise<
   }
 
   const normal =
-    (userNotifications.data ?? []).map(
-      (notification) => ({
+    ((userNotifications.data ?? []) as Array<Record<string, any>>).map(
+      (notification: Record<string, any>) => ({
         id: notification.id,
 
         source: "USER" as const,
@@ -1560,8 +1564,8 @@ export async function getMyPMSNotifications(): Promise<
     );
 
   const pms =
-    (pmsNotifications.data ?? []).map(
-      (notification) => ({
+    ((pmsNotifications.data ?? []) as Array<Record<string, any>>).map(
+      (notification: Record<string, any>) => ({
         id: notification.id,
 
         source: "PMS" as const,
@@ -1742,8 +1746,9 @@ export async function getMySubscriptionInvoices(
     );
   }
 
-  return (data ?? []).map(
-    (invoice) => ({
+  const rows = (data ?? []) as Array<Record<string, any>>;
+
+  return rows.map((invoice: Record<string, any>) => ({
       ...invoice,
 
       amount_kes:
@@ -1759,7 +1764,7 @@ export async function getMySubscriptionInvoices(
               invoice.amount_usd
             ),
     })
-  );
+  ) as PMSSubscriptionInvoice[];
 }
 
 /* ============================================================
@@ -1815,8 +1820,9 @@ export async function getMyRentInvoices(): Promise<
     );
   }
 
-  return (data ?? []).map(
-    (invoice) => ({
+  const rows = (data ?? []) as Array<Record<string, any>>;
+
+  return rows.map((invoice: Record<string, any>) => ({
       ...invoice,
 
       amount_kes:
@@ -1824,7 +1830,7 @@ export async function getMyRentInvoices(): Promise<
           invoice.amount_kes
         ),
     })
-  );
+  ) as LandlordRentInvoice[];
 }
 
 /* ============================================================
@@ -1886,8 +1892,9 @@ export async function getMyRentPayments(): Promise<
     );
   }
 
-  return (data ?? []).map(
-    (payment) => ({
+  const rows = (data ?? []) as Array<Record<string, any>>;
+
+  return rows.map((payment: Record<string, any>) => ({
       ...payment,
 
       amount_kes:
@@ -1911,7 +1918,7 @@ export async function getMyRentPayments(): Promise<
               payment.paypal_fx_rate
             ),
     })
-  );
+  ) as LandlordRentPayment[];
 }
 
 /* ============================================================
@@ -1963,7 +1970,7 @@ export async function getMyPendingRentSubmissions(): Promise<
     );
   }
 
-  return data ?? [];
+  return ((data ?? []) as RentPaymentSubmission[]);
 }
 
 /* ============================================================

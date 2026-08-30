@@ -1,4 +1,4 @@
-import { supabase } from './ Protectedsupabase';
+import { supabase } from './Protectedsupabase';
 
 /* ============================================================
  * TYPES
@@ -114,12 +114,22 @@ export async function getMyPMSUnits(
   // does not return (see PMSUnit.rent_paid_in_advance comment).
   const unitIds = units.map((u) => u.unit_id);
 
-  const { data: advanceRows, error: advanceError } = await supabase
+  const advanceResult = await supabase
     .from<PropertyUnitRentTracking>('property_units')
     .select(
       'id, rent_paid_in_advance, rent_paid_through_month, rent_due_day, payment_tracking_enabled'
     )
     .in('id', unitIds);
+
+  const advanceError =
+    (advanceResult as { error?: { message: string } | null })
+      ?.error ?? null;
+
+  const advanceRows: PropertyUnitRentTracking[] = Array.isArray(
+    (advanceResult as { data?: unknown })?.data
+  )
+    ? ((advanceResult as { data?: unknown }).data as PropertyUnitRentTracking[])
+    : [];
 
   if (advanceError) {
     console.error(
@@ -130,7 +140,7 @@ export async function getMyPMSUnits(
   }
 
   const advanceById = new Map(
-    (advanceRows ?? []).map((row) => [row.id, row])
+    advanceRows.map((row) => [row.id, row])
   );
 
   return units.map((unit) => {

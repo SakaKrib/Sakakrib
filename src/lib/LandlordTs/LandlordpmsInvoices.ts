@@ -1,4 +1,4 @@
-import { supabase } from './ Protectedsupabase';
+import { supabase } from './Protectedsupabase';
 
 /* ============================================================
  * TYPES — verified live against create_rent_invoice,

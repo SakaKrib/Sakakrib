@@ -1,4 +1,9 @@
 import {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
   ArrowRight,
   Building2,
   CheckCircle2,
@@ -12,6 +17,10 @@ import {
   getPMSAccessReason,
   hasPMSAccess,
 } from '@/lib/LandlordTs/LandlordPMSAccess';
+import {
+  getMyPMSSubscription,
+  type PMSSubscription,
+} from '@/lib/LandlordTs/LandlordpmsService';
 
 
 // ============================================================
@@ -32,18 +41,50 @@ export default function PMSAccessGuard({
 }: PMSAccessGuardProps) {
   const {
     profile,
-    subscription,
     loading,
   } = useAuth();
 
   const { navigate } = useNav();
+  const [subscription, setSubscription] =
+    useState<PMSSubscription | null>(null);
+  const [loadingSubscription, setLoadingSubscription] =
+    useState(true);
+
+  useEffect(() => {
+    if (!profile || profile.role !== 'landlord') {
+      setSubscription(null);
+      setLoadingSubscription(false);
+      return;
+    }
+
+    let active = true;
+
+    (async () => {
+      try {
+        const nextSubscription =
+          await getMyPMSSubscription();
+
+        if (active) {
+          setSubscription(nextSubscription);
+        }
+      } finally {
+        if (active) {
+          setLoadingSubscription(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [profile]);
 
 
   // ==========================================================
   // AUTH LOADING
   // ==========================================================
 
-  if (loading) {
+  if (loading || loadingSubscription) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-sm text-gray-500 dark:text-gray-400">
