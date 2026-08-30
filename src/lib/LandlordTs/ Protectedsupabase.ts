@@ -9,24 +9,20 @@ import {
 /* ============================================================
  * COMPATIBILITY SHIM
  *
- * Replicates the small subset of the supabase-js query builder
- * actually used across this codebase's service files (.from().select()
- * .eq()/.in()/.order()/.limit()/.single()/.maybeSingle(), .insert(),
- * .update(), .delete(), and .rpc()) — implemented entirely on top of
- * protectedApi.ts's cookie-based transport (/rest/v1/... paths).
+ * This intentionally keeps the existing supabase-style API used by
+ * the landlord services. The transport is still the HttpOnly-cookie
+ * protectedApi transport; only the TypeScript boundary is made
+ * compatible with the existing call sites.
  *
- * NOT a full supabase-js reimplementation — only what this codebase's
- * service files call. If a file uses a query pattern not covered here
- * (e.g. .or(), .neq(), .gte()), extend this shim rather than adding a
- * second transport mechanism.
- *
- * ASSUMPTION, NOT VERIFIED: that protected-api's proxy returns raw
- * PostgREST response bodies unwrapped (a plain array for SELECT, the
- * function's own return value for RPC) — this matches protectedApi.ts's
- * own implementation (readJson() does no envelope unwrapping), but I
- * have not seen protected-api's actual source. If it wraps responses
- * differently, only the two `execute()`/`rpc()` blocks below need
- * adjusting — nothing else in any service file would need to change.
+ * IMPORTANT:
+ * - Existing exports are preserved exactly.
+ * - No landlord service/component needs to change.
+ * - The default generic is intentionally `any`, not `unknown`.
+ *   The old supabase-js client exposed structurally usable response
+ *   values at these call sites. Using `unknown` here causes a cascade
+ *   of errors such as `.map()`, `.rent_paid_in_advance`, `.id`, etc.
+ * - This is a compatibility layer, not a new application-wide type
+ *   model. Strongly typed callers can still supply their own generic.
  * ============================================================ */
 
 interface ShimResult<T> {
@@ -34,7 +30,7 @@ interface ShimResult<T> {
   error: { message: string } | null;
 }
 
-class QueryBuilder<T = unknown> {
+class QueryBuilder<T = any> {
   private table: string;
   private selectCols = '*';
   private filters: string[] = [];
@@ -42,7 +38,7 @@ class QueryBuilder<T = unknown> {
   private limitVal: number | null = null;
   private singleMode: 'none' | 'single' | 'maybeSingle' = 'none';
   private op: 'select' | 'insert' | 'update' | 'delete' = 'select';
-  private payload: unknown = null;
+  private payload: any = null;
 
   constructor(table: string) {
     this.table = table;
@@ -53,19 +49,26 @@ class QueryBuilder<T = unknown> {
     return this;
   }
 
-  eq(column: string, value: unknown) {
-    this.filters.push(`${column}=eq.${encodeURIComponent(String(value))}`);
+  eq(column: string, value: any) {
+    this.filters.push(
+      `${column}=eq.${encodeURIComponent(String(value))}`
+    );
     return this;
   }
 
-  in(column: string, values: unknown[]) {
-    const list = values.map((v) => encodeURIComponent(String(v))).join(',');
+  in(column: string, values: any[]) {
+    const list = values
+      .map((value) => encodeURIComponent(String(value)))
+      .join(',');
+
     this.filters.push(`${column}=in.(${list})`);
     return this;
   }
 
   order(column: string, opts?: { ascending?: boolean }) {
-    this.orderClauses.push(`${column}.${opts?.ascending === false ? 'desc' : 'asc'}`);
+    this.orderClauses.push(
+      `${column}.${opts?.ascending === false ? 'desc' : 'asc'}`
+    );
     return this;
   }
 
@@ -84,13 +87,13 @@ class QueryBuilder<T = unknown> {
     return this;
   }
 
-  insert(row: Record<string, unknown>) {
+  insert(row: Record<string, any>) {
     this.op = 'insert';
     this.payload = row;
     return this;
   }
 
-  update(row: Record<string, unknown>) {
+  update(row: Record<string, any>) {
     this.op = 'update';
     this.payload = row;
     return this;
@@ -130,25 +133,35 @@ class QueryBuilder<T = unknown> {
         : undefined;
 
     try {
-      let data: unknown;
+      let data: any;
 
       if (this.op === 'select') {
-        data = await protectedGet(path, { headers: singleHeaders });
+        data = await protectedGet<any>(path, {
+          headers: singleHeaders,
+        });
       } else if (this.op === 'insert') {
-        data = await protectedPost(path, this.payload, {
-          headers: { ...singleHeaders, Prefer: 'return=representation' },
+        data = await protectedPost<any>(path, this.payload, {
+          headers: {
+            ...singleHeaders,
+            Prefer: 'return=representation',
+          },
         });
       } else if (this.op === 'update') {
-        data = await protectedPatch(path, this.payload, {
-          headers: { ...singleHeaders, Prefer: 'return=representation' },
+        data = await protectedPatch<any>(path, this.payload, {
+          headers: {
+            ...singleHeaders,
+            Prefer: 'return=representation',
+          },
         });
       } else {
-        data = await protectedDelete(path);
+        data = await protectedDelete<any>(path);
       }
 
-      // Insert/update return arrays from PostgREST even for a single
-      // row unless the Accept header above requested an object — for
-      // insert/update we always want the row itself, not a 1-item array.
+      /*
+       * Preserve the old service behaviour:
+       * insert/update are normally used for one row in this codebase,
+       * so unwrap a one-item PostgREST representation when necessary.
+       */
       if (
         (this.op === 'insert' || this.op === 'update') &&
         Array.isArray(data)
@@ -156,66 +169,98 @@ class QueryBuilder<T = unknown> {
         data = data[0] ?? null;
       }
 
+      /*
+       * maybeSingle() must turn an empty array into null while keeping
+       * a returned object unchanged.
+       */
       if (this.singleMode === 'maybeSingle' && Array.isArray(data)) {
         data = data[0] ?? null;
       }
 
-      return { data: data as T, error: null };
+      return {
+        data: data as T,
+        error: null,
+      };
     } catch (err) {
       return {
         data: null,
         error: {
-          message: err instanceof Error ? err.message : 'Request failed',
+          message:
+            err instanceof Error
+              ? err.message
+              : 'Request failed',
         },
       };
     }
   }
 
-  // Thenable — lets callers `await supabase.from(...).select()...`
-  // exactly as they already do with supabase-js, no call-site changes.
+  // Thenable — preserves the existing `await supabase.from(...)...`
+  // call pattern without changing any service/component exports.
   then<TResult1 = ShimResult<T>, TResult2 = never>(
     onfulfilled?:
-      | ((value: ShimResult<T>) => TResult1 | PromiseLike<TResult1>)
+      | ((
+          value: ShimResult<T>
+        ) => TResult1 | PromiseLike<TResult1>)
       | null,
-    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    onrejected?:
+      | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
+      | null
   ): Promise<TResult1 | TResult2> {
     return this.execute().then(onfulfilled, onrejected);
   }
 }
 
-async function rpc<T = unknown>(
+async function rpc<T = any>(
   name: string,
-  params?: Record<string, unknown>
+  params?: Record<string, any>
 ): Promise<ShimResult<T>> {
   try {
-    const data = await protectedPost<T>(`/rest/v1/rpc/${name}`, params ?? {});
-    return { data, error: null };
+    const data = await protectedPost<T>(
+      `/rest/v1/rpc/${name}`,
+      params ?? {}
+    );
+
+    return {
+      data,
+      error: null,
+    };
   } catch (err) {
     return {
       data: null,
       error: {
-        message: err instanceof Error ? err.message : 'RPC request failed',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'RPC request failed',
       },
     };
   }
 }
 
+/*
+ * EXPORTS PRESERVED:
+ * `supabase` and `getCurrentUserId` remain the same exports.
+ */
 export const supabase = {
-  from: <T = unknown>(table: string) => new QueryBuilder<T>(table),
+  from: <T = any>(table: string) => new QueryBuilder<T>(table),
   rpc,
   functions: {
-    invoke: async <T = unknown>(
+    invoke: async <T = any>(
       functionName: string,
       options?: { body?: unknown }
     ): Promise<ShimResult<T>> => {
       try {
         const path = `/${functionName.replace(/^\/+/, '')}`;
+
         const data = await protectedFunctionPost<T>(
           path,
           options?.body ?? {}
         );
 
-        return { data, error: null };
+        return {
+          data,
+          error: null,
+        };
       } catch (err) {
         return {
           data: null,
@@ -235,22 +280,20 @@ export const supabase = {
  * CURRENT USER ID
  *
  * Under the HttpOnly-cookie model, supabase.auth.getUser() cannot
- * work client-side (no session object exists in JS at all). This
- * replaces it via get_my_profile() — a minimal new RPC (added this
- * session, SECURITY INVOKER, relies on the existing profiles RLS
- * `auth.uid() = id` policy — no elevated privilege) that returns the
- * caller's own row exactly like every other get_my_* RPC in this app.
- *
- * Throws the same "session expired" message callers already expect
- * from the old requireUserId() pattern, so call sites don't need to
- * change their error handling.
+ * work client-side because the session is not exposed to JavaScript.
+ * This keeps the existing getCurrentUserId() export and obtains the
+ * caller's ID through the existing RPC.
  * ============================================================ */
 
 export async function getCurrentUserId(): Promise<string> {
-  const { data, error } = await rpc<{ id: string } | null>('get_my_profile');
+  const { data, error } = await rpc<{ id: string } | null>(
+    'get_my_profile'
+  );
 
   if (error || !data?.id) {
-    throw new Error('Your session has expired. Please sign in again.');
+    throw new Error(
+      'Your session has expired. Please sign in again.'
+    );
   }
 
   return data.id;
