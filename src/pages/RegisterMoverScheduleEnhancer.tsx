@@ -28,6 +28,7 @@ export default function RegisterMoverScheduleEnhancer() {
   const [endTime, setEndTime] = useState(DEFAULT_END);
   const [target, setTarget] = useState<HTMLElement | null>(null);
   const [scheduleSaved, setScheduleSaved] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   const toggleDay = (day: Day) => {
     setWorkingDays((current) =>
@@ -36,6 +37,7 @@ export default function RegisterMoverScheduleEnhancer() {
         : [...current, day]
     );
     setScheduleSaved(false);
+    setScheduleError(null);
   };
 
   useEffect(() => {
@@ -47,9 +49,9 @@ export default function RegisterMoverScheduleEnhancer() {
       if (!container) {
         container = document.createElement('div');
         container.setAttribute('data-mover-schedule', 'true');
-        const submit = form.querySelector('button[type="submit"]');
-        if (submit?.parentElement) {
-          submit.parentElement.parentElement?.before(container);
+        const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+        if (submit) {
+          submit.before(container);
         } else {
           form.appendChild(container);
         }
@@ -65,6 +67,32 @@ export default function RegisterMoverScheduleEnhancer() {
 
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const form = document.querySelector('form');
+    if (!form) return;
+
+    const validateSchedule = (event: Event) => {
+      if (workingDays.length === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        setScheduleError('Select at least one working day before submitting.');
+        return;
+      }
+
+      if (!startTime || !endTime || endTime <= startTime) {
+        event.preventDefault();
+        event.stopPropagation();
+        setScheduleError('End time must be later than the start time.');
+        return;
+      }
+
+      setScheduleError(null);
+    };
+
+    form.addEventListener('submit', validateSchedule, true);
+    return () => form.removeEventListener('submit', validateSchedule, true);
+  }, [target, workingDays, startTime, endTime]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -155,21 +183,13 @@ export default function RegisterMoverScheduleEnhancer() {
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <TimeField
-              label="Start time"
-              value={startTime}
-              onChange={setStartTime}
-            />
-            <TimeField
-              label="End time"
-              value={endTime}
-              onChange={setEndTime}
-            />
+            <TimeField label="Start time" value={startTime} onChange={setStartTime} />
+            <TimeField label="End time" value={endTime} onChange={setEndTime} />
           </div>
 
-          {workingDays.length === 0 && (
-            <p className="mt-3 text-sm text-error-600">
-              Select at least one working day.
+          {scheduleError && (
+            <p className="mt-3 text-sm text-error-600 dark:text-error-400">
+              {scheduleError}
             </p>
           )}
         </section>,
@@ -204,11 +224,18 @@ function TimeField({
         <input
           type="time"
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setTimeout(() => setScheduleErrorSafe(), 0);
+          }}
           className="input-field w-full pl-10"
           required
         />
       </div>
     </div>
   );
+}
+
+function setScheduleErrorSafe() {
+  // The native time input handles the visual value; validation runs on submit.
 }
