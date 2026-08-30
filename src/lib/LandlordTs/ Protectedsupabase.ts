@@ -3,6 +3,7 @@ import {
   protectedGet,
   protectedPatch,
   protectedPost,
+  protectedFunctionPost,
 } from '@/lib/protectedApi';
 
 /* ============================================================
@@ -202,6 +203,32 @@ async function rpc<T = unknown>(
 export const supabase = {
   from: <T = unknown>(table: string) => new QueryBuilder<T>(table),
   rpc,
+  functions: {
+    invoke: async <T = unknown>(
+      functionName: string,
+      options?: { body?: unknown }
+    ): Promise<ShimResult<T>> => {
+      try {
+        const path = `/${functionName.replace(/^\/+/, '')}`;
+        const data = await protectedFunctionPost<T>(
+          path,
+          options?.body ?? {}
+        );
+
+        return { data, error: null };
+      } catch (err) {
+        return {
+          data: null,
+          error: {
+            message:
+              err instanceof Error
+                ? err.message
+                : 'Function request failed',
+          },
+        };
+      }
+    },
+  },
 };
 
 /* ============================================================
