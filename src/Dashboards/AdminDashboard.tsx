@@ -25,7 +25,7 @@ import {
 import openKycDocument from './openPrivateDocsHelper';
 
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { protectedGet, protectedPatch } from '@/lib/protectedApi';
 import { cn } from '@/lib/utils';
 
 // ============================================================
@@ -145,6 +145,18 @@ interface LandlordSubscription {
 
 interface UserWithSubscription extends AdminUser {
   subscription?: LandlordSubscription | null;
+}
+
+interface AdminDashboardResponse {
+  success: boolean;
+
+  users: AdminUser[];
+
+  subscriptions: LandlordSubscription[];
+
+  message?: string;
+
+  code?: string;
 }
 
 // ============================================================
@@ -340,99 +352,19 @@ export default function AdminDashboard() {
 
     try {
       const [
-        profileResponse,
-        subscriptionResponse,
+        profileRows,
+        subscriptionRows,
       ] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select(`
-            id,
-            email,
-            full_name,
-            first_name,
-            last_name,
-            middle_name,
-            role,
-            verification_status,
-            national_id,
-            phone,
-            profile_photo_url,
-            id_photo_url,
-            id_document_url,
-            id_document_type,
-            selfie_url,
-            city,
-            county,
-            is_agency,
-            free_listings_used,
-            created_at,
-            updated_at,
-            landlord_application_status,
-            mover_application_status,
-            email_verified,
-            role_selected_at,
-            kyc_completed
-          `)
-          .order('created_at', {
-            ascending: false,
-          }),
-
-        supabase
-          .from('landlord_subscriptions')
-          .select(`
-            id,
-            landlord_id,
-            plan_id,
-            billing_cycle,
-            status,
-            current_period_start,
-            current_period_end,
-            grace_period_end,
-            auto_renew,
-            created_at,
-            updated_at,
-            paypal_subscription_id,
-            paypal_plan_id,
-            paypal_status,
-            next_billing_at,
-            cancel_at_period_end,
-            cancelled_at,
-            billing_amount_kes,
-            billing_amount_usd,
-            billing_exchange_rate,
-            billing_exchange_rate_timestamp,
-            plan:subscription_plans (
-              id,
-              name,
-              audience,
-              max_listings,
-              max_units_per_listing,
-              monthly_price_kes,
-              annual_price_kes
-            )
-          `)
-          .order('created_at', {
-            ascending: false,
-          }),
+        protectedGet<AdminUser[]>(
+          `/rest/v1/profiles?select=id,email,full_name,first_name,last_name,middle_name,role,verification_status,national_id,phone,profile_photo_url,id_photo_url,id_document_url,id_document_type,selfie_url,city,county,is_agency,free_listings_used,created_at,updated_at,landlord_application_status,mover_application_status,email_verified,role_selected_at,kyc_completed&order=created_at.desc`
+        ),
+        protectedGet<LandlordSubscription[]>(
+          `/rest/v1/landlord_subscriptions?select=id,landlord_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&order=created_at.desc`
+        ),
       ]);
 
-      if (profileResponse.error) {
-        throw profileResponse.error;
-      }
-
-      if (subscriptionResponse.error) {
-        throw subscriptionResponse.error;
-      }
-
-      const profileRows =
-        (profileResponse.data || []) as AdminUser[];
-
-      const subscriptionRows =
-        (subscriptionResponse.data ||
-          []) as unknown as LandlordSubscription[];
-
-      setUsers(profileRows);
-      setSubscriptions(subscriptionRows);
+      setUsers(profileRows || []);
+      setSubscriptions(subscriptionRows || []);
     } catch (err) {
       setError(
         err instanceof Error
@@ -786,58 +718,50 @@ export default function AdminDashboard() {
         editForm.role.trim() ||
         editingUser.role;
 
-      const { error: updateError } =
-        await supabase
-          .from('profiles')
-          .update({
-            full_name:
-              editForm.full_name.trim() ||
-              null,
+      await protectedPatch(
+        `/rest/v1/profiles?id=eq.${encodeURIComponent(editingUser.id)}`,
+        {
+          full_name:
+            editForm.full_name.trim() ||
+            null,
 
-            email:
-              editForm.email.trim(),
+          email:
+            editForm.email.trim(),
 
-            phone:
-              editForm.phone.trim() ||
-              null,
+          phone:
+            editForm.phone.trim() ||
+            null,
 
-            city:
-              editForm.city.trim() ||
-              null,
+          city:
+            editForm.city.trim() ||
+            null,
 
-            county:
-              editForm.county.trim() ||
-              null,
+          county:
+            editForm.county.trim() ||
+            null,
 
-            role,
+          role,
 
-            verification_status:
-              editForm.verification_status ||
-              null,
+          verification_status:
+            editForm.verification_status ||
+            null,
 
-            landlord_application_status:
-              role === 'landlord'
-                ? editForm.landlord_application_status ||
-                  null
-                : null,
+          landlord_application_status:
+            role === 'landlord'
+              ? editForm.landlord_application_status ||
+                null
+              : null,
 
-            mover_application_status:
-              role === 'mover'
-                ? editForm.mover_application_status ||
-                  null
-                : null,
+          mover_application_status:
+            role === 'mover'
+              ? editForm.mover_application_status ||
+                null
+              : null,
 
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq(
-            'id',
-            editingUser.id
-          );
-
-      if (updateError) {
-        throw updateError;
-      }
+          updated_at:
+            new Date().toISOString(),
+        }
+      );
 
       setEditingUser(null);
 
@@ -880,14 +804,10 @@ export default function AdminDashboard() {
       );
     }
 
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update(update)
-      .eq('id', user.id);
-
-    if (updateError) {
-      throw updateError;
-    }
+    await protectedPatch(
+      `/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}`,
+      update
+    );
 
     await loadDashboard();
 
@@ -900,29 +820,6 @@ export default function AdminDashboard() {
         ? err.message
         : 'Failed to update application status.'
     );
-  }
-};
-
-
-const debugKycStorage = async () => {
-  console.log('========== KYC STORAGE DEBUG ==========');
-
-  const buckets = [
-    'id-documents',
-    'kyc-documents',
-  ];
-
-  for (const bucket of buckets) {
-    const { data, error } =
-      await supabase.storage
-        .from(bucket)
-        .list('f686516d-e028-4620-b822-756cc3c9e66a', {
-          limit: 100,
-        });
-
-    console.log(`BUCKET: ${bucket}`);
-    console.log('DATA:', data);
-    console.log('ERROR:', error);
   }
 };
 

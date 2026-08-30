@@ -22,12 +22,19 @@ import {
 
 import type { LucideIcon } from 'lucide-react';
 
-import { supabase } from '@/lib/supabase';
+
 import type {
   Profile,
   Mover,
   Subscription,
+  Listing,
+  ListingMedia,
 } from '@/lib/supabase';
+import {
+  protectedFunctionPost,
+  protectedGet,
+  protectedPatch,
+} from '@/lib/protectedApi';
 
 import { cn } from '@/lib/utils';
 
@@ -38,8 +45,10 @@ import { cn } from '@/lib/utils';
 type ReviewSection =
   | 'overview'
   | 'landlord-kyc'
-  | 'mover-kyc'
   | 'landlord-form'
+  | 'landlord-properties'
+  | 'landlord-subscription'
+  | 'mover-kyc'
   | 'mover-form';
 
 type ReviewStatus =
@@ -53,6 +62,88 @@ interface UserData extends Profile {
 
 interface MoverWithProfile extends Mover {
   profile?: Profile | null;
+}
+
+interface LandlordApplication {
+  id: string;
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  national_id: string | null;
+  city: string | null;
+  county: string | null;
+  is_agency: boolean | null;
+  id_document_url: string | null;
+  id_document_type: string | null;
+  landlord_application_status:
+    | 'not_requested'
+    | 'pending'
+    | 'approved'
+    | 'rejected'
+    | string
+    | null;
+  verification_status: string | null;
+  kyc_completed: boolean | null;
+  admin_review_note: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+type LandlordProperty = Listing & {
+  media?: ListingMedia[];
+};
+
+interface MoverApplication {
+  id: string;
+  applicant_id: string;
+  applicant_email: string | null;
+  applicant_name: string;
+  application_type: string;
+
+  driver_full_name: string;
+  national_id: string;
+  dl_number: string;
+  dl_photo_url: string | null;
+
+  vehicle_type: string;
+  number_plate: string;
+  capacity_details: string;
+
+  operating_city: string;
+  operating_county: string;
+  phone: string;
+
+  base_rate_kes: number | null;
+  rate_per_km_kes: number | null;
+
+  payment_channel: string;
+  payment_account: string;
+
+  insurance_policy_details: string;
+  vehicle_inspection_expiry: string | null;
+
+  liability_accepted: boolean;
+  terms_accepted: boolean;
+
+  reference_contacts: unknown[];
+
+  latitude: number | null;
+  longitude: number | null;
+  location: string | null;
+
+  status: 'pending' | 'approved' | 'rejected';
+
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+
+  submitted_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface AdminUserDetailsProps {
@@ -127,6 +218,43 @@ const MOVER_SELECT = `
   updated_at
 `;
 
+const LISTING_SELECT = `
+  id,
+  user_id,
+  title,
+  description,
+  city,
+  county,
+  price_kes,
+  listing_type,
+  deposit_required,
+  deposit_structure,
+  deposit_amount,
+  size,
+  beds,
+  baths,
+  contact_phone,
+  contact_email,
+  status,
+  approval_status,
+  is_approved,
+  is_published,
+  admin_reviewed_at,
+  admin_review_note,
+  is_property_management,
+  property_name,
+  property_type,
+  location_search,
+  latitude,
+  longitude,
+  booking_enabled,
+  payment_enabled,
+  ai_caption,
+  ai_caption_generated_at,
+  created_at,
+  updated_at
+`;
+
 /* ==================================================
    MAIN COMPONENT
 ================================================== */
@@ -142,8 +270,24 @@ export default function AdminUserDetails({
   const [selectedMover, setSelectedMover] =
     useState<MoverWithProfile | null>(null);
 
+  const [moverApplication, setMoverApplication] =
+    useState<MoverApplication | null>(null);
+
+  const [landlordApplication, setLandlordApplication] =
+    useState<LandlordApplication | null>(null);
+
+  const [properties, setProperties] = useState<LandlordProperty[]>([]);
+
+  const [loadingProperties, setLoadingProperties] = useState(false);
+
+  const [loadingLandlordApplication, setLoadingLandlordApplication] =
+    useState(false);
+
   const [section, setSection] =
     useState<ReviewSection>('overview');
+
+  const normalizedRole =
+    user ? String(user.role || '').toLowerCase() : '';
 
   const [loading, setLoading] = useState(true);
 
@@ -212,6 +356,20 @@ export default function AdminUserDetails({
     void loadMovers();
   }, [section, selectedMover, userId]);
 
+  useEffect(() => {
+    if (!userId || normalizedRole !== 'landlord') {
+      return;
+    }
+
+    if (section === 'landlord-form') {
+      void loadLandlordApplication();
+    }
+
+    if (section === 'landlord-properties') {
+      void loadLandlordProperties();
+    }
+  }, [section, normalizedRole, userId]);
+
   /* ==================================================
      LOAD USER
   ================================================== */
@@ -225,18 +383,11 @@ export default function AdminUserDetails({
     setError(null);
 
     try {
-      const {
-        data,
-        error: profileError,
-      } = await supabase
-        .from('profiles')
-        .select(PROFILE_SELECT)
-        .eq('id', userId)
-        .single();
+      const profileRows = await protectedGet<Profile[]>(
+        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(userId)}&limit=1`
+      );
 
-      if (profileError) {
-        throw profileError;
-      }
+      const data = profileRows?.[0] ?? null;
 
       if (!data) {
         throw new Error('User profile was not found.');
@@ -249,64 +400,15 @@ export default function AdminUserDetails({
       let subscription: Subscription | null = null;
 
       if (data.role === 'landlord') {
-        const {
-          data: subscriptionRow,
-          error: subscriptionError,
-        } = await supabase
-          .from('landlord_subscriptions')
-          .select(`
-            id,
-            landlord_id,
-            plan_id,
-            billing_cycle,
-            status,
-            current_period_start,
-            current_period_end,
-            grace_period_end,
-            auto_renew,
-            created_at,
-            updated_at,
-            paypal_subscription_id,
-            paypal_plan_id,
-            paypal_status,
-            next_billing_at,
-            cancel_at_period_end,
-            cancelled_at,
-            billing_amount_kes,
-            billing_amount_usd,
-            billing_exchange_rate,
-            billing_exchange_rate_timestamp,
-            plan:subscription_plans (
-              id,
-              name,
-              audience,
-              max_listings,
-              max_units_per_listing,
-              monthly_price_kes,
-              annual_price_kes
-            )
-          `)
-          .eq('landlord_id', userId)
-          .order('created_at', {
-            ascending: false,
-          })
-          .limit(1)
-          .maybeSingle();
+        const subscriptionRows = await protectedGet<Subscription[]>(
+          `/rest/v1/landlord_subscriptions?select=id,landlord_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&landlord_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=1`
+        );
 
-        if (subscriptionError) {
-          console.warn(
-            'Unable to load landlord subscription:',
-            subscriptionError.message
-          );
-        } else {
-          subscription =
-            (subscriptionRow as Subscription | null) ??
-            null;
-        }
+        subscription = subscriptionRows?.[0] ?? null;
       }
 
       setUser({
-        ...(data as Profile),
+        ...data,
         subscription,
       });
     } catch (err) {
@@ -322,6 +424,217 @@ export default function AdminUserDetails({
   };
 
   /* ==================================================
+     LOAD LANDLORD APPLICATION
+  ================================================== */
+
+  const loadLandlordApplication = async () => {
+    if (!userId || normalizedRole !== 'landlord') {
+      return;
+    }
+
+    setLoadingLandlordApplication(true);
+    setError(null);
+
+    try {
+      const profileRows = await protectedGet<Profile[]>(
+        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(userId)}&limit=1`
+      );
+
+      const data = profileRows?.[0] ?? null;
+
+      if (!data) {
+        setLandlordApplication(null);
+        return;
+      }
+
+      setLandlordApplication({
+        id: data.id,
+        user_id: data.id,
+        email: data.email ?? null,
+        full_name: data.full_name ?? null,
+        first_name: data.first_name ?? null,
+        middle_name: data.middle_name ?? null,
+        last_name: data.last_name ?? null,
+        phone: data.phone ?? null,
+        national_id: data.national_id ?? null,
+        city: data.city ?? null,
+        county: data.county ?? null,
+        is_agency: data.is_agency ?? null,
+        id_document_url: data.id_document_url ?? null,
+        id_document_type: data.id_document_type ?? null,
+        landlord_application_status:
+          data.landlord_application_status ?? null,
+        verification_status:
+          data.verification_status ?? null,
+        kyc_completed: data.kyc_completed ?? null,
+        admin_review_note: data.admin_review_note ?? null,
+        created_at: data.created_at ?? null,
+        updated_at: data.updated_at ?? null,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load landlord application.'
+      );
+      setLandlordApplication(null);
+    } finally {
+      setLoadingLandlordApplication(false);
+    }
+  };
+
+  /* ==================================================
+     LOAD LANDLORD PROPERTIES
+  ================================================== */
+
+  const loadLandlordProperties = async () => {
+    if (!userId || normalizedRole !== 'landlord') {
+      return;
+    }
+
+    setLoadingProperties(true);
+    setError(null);
+
+    try {
+      const rows = await protectedGet<Listing[]>(
+        `/rest/v1/listings?select=${LISTING_SELECT}&user_id=eq.${encodeURIComponent(userId)}&order=updated_at.desc`
+      );
+
+      const listingRows = rows || [];
+
+      const listingIds = listingRows.map(
+        (listing) => listing.id
+      );
+
+      let mediaRows: ListingMedia[] = [];
+
+      if (listingIds.length > 0) {
+        const mediaResponse = await protectedGet<ListingMedia[]>(
+          `/rest/v1/listing_media?select=id,listing_id,user_id,url,label,media_type,position,created_at&listing_id=in.(${listingIds.join(',')})&order=position.asc.nullsfirst=false&order=created_at.asc`
+        );
+        mediaRows = mediaResponse || [];
+      }
+
+      const mediaByListingId = new Map<string, ListingMedia[]>();
+      for (const media of mediaRows) {
+        if (!mediaByListingId.has(media.listing_id)) {
+          mediaByListingId.set(media.listing_id, []);
+        }
+        mediaByListingId.get(media.listing_id)!.push(media);
+      }
+
+      setProperties(
+        listingRows.map((listing) => ({
+          ...listing,
+          media: mediaByListingId.get(listing.id) || [],
+        }))
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load landlord properties.'
+      );
+      setProperties([]);
+    } finally {
+      setLoadingProperties(false);
+    }
+  };
+
+  /* ==================================================
+     HYDRATE MOVER APPLICATION
+  ================================================== */
+
+  const hydrateMoverApplication = (
+    mover: MoverWithProfile | null,
+    profile: Profile | null = null
+  ): MoverApplication | null => {
+    if (!mover) {
+      return null;
+    }
+
+    const fallbackProfile = mover.profile ?? profile;
+    const rawMover = mover as MoverWithProfile & {
+      rate_per_km_kes?: number | null;
+      insurance_policy_details?: string | null;
+      vehicle_inspection_expiry?: string | null;
+      terms_accepted?: boolean;
+      latitude?: number | null;
+      longitude?: number | null;
+      location?: string | null;
+      reviewed_by?: string | null;
+      reviewed_at?: string | null;
+      submitted_at?: string | null;
+    };
+
+    const status =
+      String(
+        (mover as MoverWithProfile & { approval_status?: string })
+          .approval_status || 'pending'
+      ).toLowerCase();
+
+    return {
+      id: mover.id,
+      applicant_id: mover.user_id,
+      applicant_email: fallbackProfile?.email ?? null,
+      applicant_name:
+        fallbackProfile?.full_name ||
+        mover.driver_full_name ||
+        'Applicant',
+      application_type: 'mover',
+      driver_full_name: mover.driver_full_name || '',
+      national_id: mover.national_id || '',
+      dl_number: mover.dl_number || '',
+      dl_photo_url: mover.dl_photo_url || null,
+      vehicle_type: mover.vehicle_type || '',
+      number_plate: mover.number_plate || '',
+      capacity_details: mover.capacity_details || '',
+      operating_city: mover.operating_city || '',
+      operating_county: mover.operating_county || '',
+      phone: mover.phone || '',
+      base_rate_kes:
+        typeof mover.base_rate_kes === 'number'
+          ? mover.base_rate_kes
+          : null,
+      rate_per_km_kes:
+        typeof rawMover.rate_per_km_kes === 'number'
+          ? rawMover.rate_per_km_kes
+          : null,
+      payment_channel: mover.payment_channel || '',
+      payment_account: mover.payment_account || '',
+      insurance_policy_details:
+        rawMover.insurance_policy_details || '',
+      vehicle_inspection_expiry:
+        rawMover.vehicle_inspection_expiry ?? null,
+      liability_accepted: Boolean(mover.liability_accepted),
+      terms_accepted: Boolean(rawMover.terms_accepted),
+      reference_contacts: Array.isArray(
+        mover.reference_contacts
+      )
+        ? mover.reference_contacts
+        : [],
+      latitude: rawMover.latitude ?? null,
+      longitude: rawMover.longitude ?? null,
+      location: rawMover.location ?? null,
+      status:
+        status === 'approved'
+          ? 'approved'
+          : status === 'rejected'
+            ? 'rejected'
+            : 'pending',
+      reviewed_by: rawMover.reviewed_by ?? null,
+      reviewed_at: rawMover.reviewed_at ?? null,
+      review_notes: fallbackProfile?.admin_review_note ?? null,
+      submitted_at:
+        rawMover.submitted_at ??
+        mover.created_at ??
+        new Date().toISOString(),
+      created_at: mover.created_at ?? new Date().toISOString(),
+      updated_at: mover.updated_at ?? new Date().toISOString(),
+    };
+  };
+
+  /* ==================================================
      LOAD MOVERS FOR CURRENT USER
   ================================================== */
 
@@ -334,25 +647,13 @@ export default function AdminUserDetails({
     setError(null);
 
     try {
-      const {
-        data: moverData,
-        error: moverError,
-      } = await supabase
-        .from('movers')
-        .select(MOVER_SELECT)
-        .eq('user_id', userId)
-        .order('created_at', {
-          ascending: false,
-        });
+      const moverRows = await protectedGet<Mover[]>(
+        `/rest/v1/movers?select=${MOVER_SELECT}&user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`
+      );
 
-      if (moverError) {
-        throw moverError;
-      }
+      const rows = moverRows || [];
 
-      const moverRows =
-        (moverData || []) as Mover[];
-
-      if (moverRows.length === 0) {
+      if (rows.length === 0) {
         setMovers([]);
         setSelectedMover(null);
         return;
@@ -360,7 +661,7 @@ export default function AdminUserDetails({
 
       const userIds = [
         ...new Set(
-          moverRows
+          rows
             .map((mover) => mover.user_id)
             .filter(Boolean)
         ),
@@ -369,24 +670,15 @@ export default function AdminUserDetails({
       let profiles: Profile[] = [];
 
       if (userIds.length > 0) {
-        const {
-          data: profileData,
-          error: profileError,
-        } = await supabase
-          .from('profiles')
-          .select(PROFILE_SELECT)
-          .in('id', userIds);
+        const profileRows = await protectedGet<Profile[]>(
+          `/rest/v1/profiles?select=${PROFILE_SELECT}&id=in.(${userIds.map((id) => encodeURIComponent(id)).join(',')})`
+        );
 
-        if (profileError) {
-          throw profileError;
-        }
-
-        profiles =
-          (profileData || []) as Profile[];
+        profiles = profileRows || [];
       }
 
       const combined: MoverWithProfile[] =
-        moverRows.map((mover) => ({
+        rows.map((mover) => ({
           ...mover,
           profile:
             profiles.find(
@@ -398,11 +690,17 @@ export default function AdminUserDetails({
       setMovers(combined);
 
       if (combined.length === 1) {
-        setSelectedMover(combined[0]);
+        const firstMover = combined[0];
+        setSelectedMover(firstMover);
+        setMoverApplication(
+          hydrateMoverApplication(firstMover, firstMover.profile)
+        );
 
         setAdminReviewNote(
-          combined[0].profile?.admin_review_note || ''
+          firstMover.profile?.admin_review_note || ''
         );
+      } else {
+        setMoverApplication(null);
       }
     } catch (err) {
       setError(
@@ -425,53 +723,36 @@ export default function AdminUserDetails({
     moverId: string
   ): Promise<MoverWithProfile | null> => {
     try {
-      const {
-        data,
-        error: moverError,
-      } = await supabase
-        .from('movers')
-        .select(MOVER_SELECT)
-        .eq('id', moverId)
-        .single();
+      const moverRows = await protectedGet<Mover[]>(
+        `/rest/v1/movers?select=${MOVER_SELECT}&id=eq.${encodeURIComponent(moverId)}&limit=1`
+      );
 
-      if (moverError || !data) {
-        console.error(
-          'Failed to reload mover:',
-          moverError
-        );
+      const mover = moverRows?.[0] ?? null;
 
+      if (!mover) {
         return null;
       }
-
-      const mover = data as Mover;
 
       let profile: Profile | null = null;
 
       if (mover.user_id) {
-        const {
-          data: profileData,
-          error: profileError,
-        } = await supabase
-          .from('profiles')
-          .select(PROFILE_SELECT)
-          .eq('id', mover.user_id)
-          .single();
+        const profileRows = await protectedGet<Profile[]>(
+          `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(mover.user_id)}&limit=1`
+        );
 
-        if (profileError) {
-          console.warn(
-            'Failed to reload mover profile:',
-            profileError.message
-          );
-        } else {
-          profile =
-            (profileData as Profile) || null;
-        }
+        profile = profileRows?.[0] ?? null;
       }
 
-      return {
+      const refreshedMover = {
         ...mover,
         profile,
       };
+
+      setMoverApplication(
+        hydrateMoverApplication(refreshedMover, profile)
+      );
+
+      return refreshedMover;
     } catch (err) {
       console.error(
         'Unexpected error loading mover:',
@@ -517,19 +798,13 @@ export default function AdminUserDetails({
          1. UPDATE MOVER APPLICATION
       ================================================== */
 
-      const {
-        error: moverError,
-      } = await supabase
-        .from('movers')
-        .update({
+      await protectedPatch(
+        `/rest/v1/movers?id=eq.${encodeURIComponent(mover.id)}`,
+        {
           approval_status: databaseStatus,
           updated_at: now,
-        })
-        .eq('id', mover.id);
-
-      if (moverError) {
-        throw moverError;
-      }
+        }
+      );
 
       /* ==================================================
          2. UPDATE PROFILE APPLICATION STATUS
@@ -565,16 +840,10 @@ export default function AdminUserDetails({
             break;
         }
 
-        const {
-          error: profileError,
-        } = await supabase
-          .from('profiles')
-          .update(profileUpdate)
-          .eq('id', mover.user_id);
-
-        if (profileError) {
-          throw profileError;
-        }
+        await protectedPatch(
+          `/rest/v1/profiles?id=eq.${encodeURIComponent(mover.user_id)}`,
+          profileUpdate
+        );
       }
 
       /* ==================================================
@@ -682,38 +951,18 @@ export default function AdminUserDetails({
          * application_declined
          * application_review
          */
-        const {
-          data: emailData,
-          error: emailError,
-        } = await supabase.functions.invoke(
-          'send-email',
-          {
-            body: {
+        try {
+          await protectedFunctionPost(
+            '/send-notification-emails',
+            {
               type: emailType,
-              to: recipientEmail,
-              payload: emailPayload,
-            },
-          }
-        );
-
-        if (emailError) {
+              application: emailPayload,
+            }
+          );
+        } catch (emailError) {
           console.error(
             'Application status updated but email failed:',
             emailError
-          );
-
-          setError(
-            `Application ${status}, but the notification email could not be sent.`
-          );
-        } else if (
-          emailData &&
-          typeof emailData === 'object' &&
-          'error' in emailData &&
-          emailData.error
-        ) {
-          console.error(
-            'Email function returned an error:',
-            emailData.error
           );
 
           setError(
@@ -791,6 +1040,9 @@ export default function AdminUserDetails({
     mover: MoverWithProfile
   ) => {
     setSelectedMover(mover);
+    setMoverApplication(
+      hydrateMoverApplication(mover, mover.profile)
+    );
 
     setAdminReviewNote(
       mover.profile?.admin_review_note || ''
@@ -1692,7 +1944,7 @@ export default function AdminUserDetails({
             Overview
           </button>
 
-          {user.role === 'landlord' && (
+          {normalizedRole === 'landlord' && (
             <>
               <button
                 type="button"
@@ -1721,12 +1973,42 @@ export default function AdminUserDetails({
                 )}
               >
                 <FileText className="h-4 w-4" />
-                Landlord Form
+                Landlord Registration
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSection('landlord-properties')
+                }
+                className={cn(
+                  'btn-secondary',
+                  section === 'landlord-properties' &&
+                    'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                )}
+              >
+                <Building2 className="h-4 w-4" />
+                Properties
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSection('landlord-subscription')
+                }
+                className={cn(
+                  'btn-secondary',
+                  section === 'landlord-subscription' &&
+                    'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                )}
+              >
+                <CreditCard className="h-4 w-4" />
+                Subscription
               </button>
             </>
           )}
 
-          {user.role === 'mover' && (
+          {normalizedRole === 'mover' && (
             <>
               <button
                 type="button"
@@ -1765,12 +2047,12 @@ export default function AdminUserDetails({
           <button
             type="button"
             onClick={() => {
-              if (user.role === 'landlord') {
+              if (normalizedRole === 'landlord') {
                 setSection('landlord-kyc');
                 return;
               }
 
-              if (user.role === 'mover') {
+              if (normalizedRole === 'mover') {
                 setSelectedMover(null);
                 setSection('mover-kyc');
                 return;
@@ -1998,8 +2280,26 @@ export default function AdminUserDetails({
       ================================================== */}
 
       {section === 'landlord-form' &&
-        user.role === 'landlord' && (
-          <LandlordForm user={user} />
+        normalizedRole === 'landlord' && (
+          <LandlordForm
+            user={user}
+            application={landlordApplication}
+          />
+        )}
+
+      {section === 'landlord-properties' &&
+        normalizedRole === 'landlord' && (
+          <LandlordPropertiesPanel
+            listings={properties}
+            loading={loadingProperties}
+          />
+        )}
+
+      {section === 'landlord-subscription' &&
+        normalizedRole === 'landlord' && (
+          <LandlordSubscriptionPanel
+            subscription={user.subscription}
+          />
         )}
 
       {/* ==================================================
@@ -2311,86 +2611,193 @@ function KycPanel({
 
 function LandlordForm({
   user,
+  application,
 }: {
   user: Profile;
+  application: LandlordApplication | null;
 }) {
+  const app = application ?? {
+    id: user.id,
+    user_id: user.id,
+    email: user.email ?? null,
+    full_name: user.full_name ?? null,
+    first_name: user.first_name ?? null,
+    middle_name: user.middle_name ?? null,
+    last_name: user.last_name ?? null,
+    phone: user.phone ?? null,
+    national_id: user.national_id ?? null,
+    city: user.city ?? null,
+    county: user.county ?? null,
+    is_agency: user.is_agency ?? null,
+    id_document_url: user.id_document_url ?? null,
+    id_document_type: user.id_document_type ?? null,
+    landlord_application_status:
+      user.landlord_application_status ?? null,
+    verification_status: user.verification_status ?? null,
+    kyc_completed: user.kyc_completed ?? null,
+    admin_review_note: user.admin_review_note ?? null,
+    created_at: user.created_at ?? null,
+    updated_at: user.updated_at ?? null,
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="card p-5">
+        <div className="mb-5 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-brand-600" />
+          <h2 className="font-bold text-gray-900 dark:text-white">
+            Landlord Registration
+          </h2>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Info label="Full Name" value={app.full_name ?? user.full_name} icon={User} />
+          <Info label="National ID" value={app.national_id ?? user.national_id} icon={CreditCard} />
+          <Info label="Phone" value={app.phone ?? user.phone} icon={Phone} />
+          <Info label="Email" value={app.email ?? user.email} icon={Mail} />
+          <Info label="City" value={app.city ?? user.city} icon={MapPin} />
+          <Info label="County" value={app.county ?? user.county} icon={MapPin} />
+          <Info label="Agency" value={app.is_agency ?? user.is_agency ? 'Yes' : 'No'} icon={Building2} />
+          <Info label="Application" value={app.landlord_application_status ?? user.landlord_application_status} icon={FileText} />
+          <Info label="Admin Review Note" value={app.admin_review_note ?? user.admin_review_note} icon={FileText} />
+          <Info label="Created" value={formatDate(app.created_at ?? user.created_at)} icon={CalendarDays} />
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-brand-600" />
+          <h3 className="font-bold text-gray-900 dark:text-white">
+            KYC Information
+          </h3>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Info label="KYC Completion" value={app.kyc_completed ? 'Completed' : 'Not completed'} icon={ShieldCheck} />
+          <Info label="Verification" value={app.verification_status ?? user.verification_status} icon={ShieldCheck} />
+          <Info label="ID Document Type" value={app.id_document_type ?? user.id_document_type} icon={FileText} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LandlordPropertiesPanel({
+  listings,
+  loading,
+}: {
+  listings: LandlordProperty[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="card p-10 text-center">
+        <RefreshCw className="mx-auto h-7 w-7 animate-spin text-brand-600" />
+        <p className="mt-3 text-sm text-gray-500">
+          Loading landlord properties...
+        </p>
+      </div>
+    );
+  }
+
+  if (listings.length === 0) {
+    return (
+      <div className="card p-10 text-center">
+        <Building2 className="mx-auto h-10 w-10 text-gray-300" />
+        <p className="mt-3 text-sm font-medium text-gray-600 dark:text-gray-300">
+          No properties/listings found for this landlord.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {listings.map((listing) => (
+        <div key={listing.id} className="card overflow-hidden">
+          <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {listing.title || 'Untitled listing'}
+                </h3>
+                <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
+                  {formatValue(listing.listing_type)}
+                </span>
+              </div>
+
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                {listing.description || 'No description provided.'}
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Info label="City" value={listing.city} icon={MapPin} />
+                <Info label="County" value={listing.county} icon={MapPin} />
+                <Info label="Price" value={listing.price_kes != null ? `KES ${Number(listing.price_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
+                <Info label="Beds" value={listing.beds} icon={Building2} />
+                <Info label="Baths" value={listing.baths} icon={Building2} />
+                <Info label="Size" value={listing.size} icon={Building2} />
+                <Info label="Status" value={listing.status} icon={FileText} />
+                <Info label="Created" value={formatDate(listing.created_at)} icon={CalendarDays} />
+              </div>
+            </div>
+
+            {listing.media && listing.media.length > 0 && (
+              <div className="w-full max-w-xs">
+                <img
+                  src={listing.media[0]?.url}
+                  alt={listing.title || 'Property image'}
+                  className="h-40 w-full rounded-xl object-cover"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LandlordSubscriptionPanel({
+  subscription,
+}: {
+  subscription: Subscription | null | undefined;
+}) {
+  if (!subscription) {
+    return (
+      <div className="card p-10 text-center">
+        <CreditCard className="mx-auto h-10 w-10 text-gray-300" />
+        <p className="mt-3 text-sm font-medium text-gray-600 dark:text-gray-300">
+          No active subscription found.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="card p-5">
-
       <div className="mb-5 flex items-center gap-2">
-
-        <FileText className="h-5 w-5 text-brand-600" />
-
+        <CreditCard className="h-5 w-5 text-brand-600" />
         <h2 className="font-bold text-gray-900 dark:text-white">
-          Landlord Registration
+          Landlord Subscription
         </h2>
-
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-
-        <Info
-          label="Full Name"
-          value={user.full_name}
-          icon={User}
-        />
-
-        <Info
-          label="National ID"
-          value={user.national_id}
-          icon={CreditCard}
-        />
-
-        <Info
-          label="Phone"
-          value={user.phone}
-          icon={Phone}
-        />
-
-        <Info
-          label="Email"
-          value={user.email}
-          icon={Mail}
-        />
-
-        <Info
-          label="City"
-          value={user.city}
-          icon={MapPin}
-        />
-
-        <Info
-          label="County"
-          value={user.county}
-          icon={MapPin}
-        />
-
-        <Info
-          label="Agency"
-          value={
-            user.is_agency
-              ? 'Yes'
-              : 'No'
-          }
-          icon={Building2}
-        />
-
-        <Info
-          label="Application"
-          value={
-            user.landlord_application_status
-          }
-          icon={FileText}
-        />
-
-        <Info
-          label="Admin Review Note"
-          value={
-            user.admin_review_note
-          }
-          icon={FileText}
-        />
-
+        <Info label="Plan" value={subscription.plan?.name ?? subscription.plan_id} icon={Building2} />
+        <Info label="Audience" value={subscription.plan?.audience} icon={Building2} />
+        <Info label="Billing Cycle" value={subscription.billing_cycle} icon={CalendarDays} />
+        <Info label="Status" value={subscription.status} icon={ShieldCheck} />
+        <Info label="Monthly Price" value={subscription.plan?.monthly_price_kes != null ? `KES ${Number(subscription.plan.monthly_price_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
+        <Info label="Annual Price" value={subscription.plan?.annual_price_kes != null ? `KES ${Number(subscription.plan.annual_price_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
+        <Info label="Billing Amount" value={subscription.billing_amount_kes != null ? `KES ${Number(subscription.billing_amount_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
+        <Info label="Current Period Start" value={formatDate(subscription.current_period_start)} icon={CalendarDays} />
+        <Info label="Current Period End" value={formatDate(subscription.current_period_end)} icon={CalendarDays} />
+        <Info label="Grace Period End" value={formatDate(subscription.grace_period_end)} icon={Clock} />
+        <Info label="Auto Renew" value={subscription.auto_renew ? 'Yes' : 'No'} icon={CheckCircle2} />
+        <Info label="Cancel at Period End" value={subscription.cancel_at_period_end ? 'Yes' : 'No'} icon={Clock} />
+        <Info label="Paypal Status" value={subscription.paypal_status} icon={CreditCard} />
+        <Info label="Next Billing" value={formatDate(subscription.next_billing_at)} icon={CalendarDays} />
       </div>
     </div>
   );
