@@ -1,4 +1,11 @@
-import { supabase, getCurrentUserId } from "./ Protectedsupabase";
+import {
+  supabase,
+  getCurrentUserId,
+} from "./ Protectedsupabase";
+
+import {
+  protectedFunctionPost,
+} from "@/lib/protectedApi";
 
 /* ============================================================
  * TYPES
@@ -21,8 +28,6 @@ export type PMSPlanName =
 
 /* ============================================================
  * SUBSCRIPTION
- *
- * Matches the live get_my_pms_subscription() RPC.
  * ============================================================ */
 
 export interface PMSSubscription {
@@ -53,10 +58,6 @@ export interface PMSSubscription {
 
 /* ============================================================
  * PLAN
- *
- * Live subscription_plans fields:
- *   max_listings
- *   max_units_per_listing
  * ============================================================ */
 
 export interface PMSPlan {
@@ -86,8 +87,6 @@ export interface PMSCapacity {
 
 /* ============================================================
  * PMS LISTING
- *
- * Matches get_my_pms_listings().
  * ============================================================ */
 
 export interface PMSListing {
@@ -108,8 +107,6 @@ export interface PMSListing {
 
 /* ============================================================
  * AVAILABLE PMS LISTING
- *
- * Matches get_my_available_pms_listings().
  * ============================================================ */
 
 export interface PMSAvailableListing {
@@ -125,8 +122,6 @@ export interface PMSAvailableListing {
 
 /* ============================================================
  * PMS UNIT
- *
- * Matches get_my_pms_units().
  * ============================================================ */
 
 export interface PMSUnit {
@@ -159,8 +154,6 @@ export interface PMSUnit {
 
 /* ============================================================
  * LANDLORD LISTING
- *
- * Based on the live listings table.
  * ============================================================ */
 
 export interface LandlordListing {
@@ -260,8 +253,6 @@ export interface ListingPayment {
 
 /* ============================================================
  * PAYMENT METHOD
- *
- * Matches get_my_landlord_payment_methods().
  * ============================================================ */
 
 export interface LandlordPaymentMethod {
@@ -289,8 +280,6 @@ export interface LandlordPaymentMethod {
 
 /* ============================================================
  * LANDLORD ENTITLEMENT
- *
- * Matches get_landlord_listing_entitlement().
  * ============================================================ */
 
 export interface LandlordListingEntitlement {
@@ -339,8 +328,6 @@ export interface LandlordListingEntitlement {
 
 /* ============================================================
  * SUBSCRIPTION ACCESS
- *
- * Matches get_my_subscription_access().
  * ============================================================ */
 
 export interface PMSSubscriptionAccess {
@@ -1197,11 +1184,6 @@ export async function getMyLandlordListings(): Promise<
       })
     ) as LandlordListing[];
 
-  /*
-   * Cover photos are stored in listing_media.
-   * We deliberately fetch them separately instead of assuming
-   * a PostgREST relationship name.
-   */
   if (listings.length === 0) {
     return listings;
   }
@@ -2111,8 +2093,6 @@ export function computeRentSummary(
 
 /* ============================================================
  * CREATE LANDLORD LISTING
- *
- * Uses the live create_landlord_listing() RPC.
  * ============================================================ */
 
 export interface CreateLandlordListingInput {
@@ -2258,8 +2238,6 @@ export async function createLandlordListing(
 
 /* ============================================================
  * LISTING PAYMENT INTENT
- *
- * Uses the live create_listing_payment_intent() RPC.
  * ============================================================ */
 
 export async function createListingPaymentIntent(
@@ -2311,83 +2289,45 @@ export interface PMSPaymentResponse {
 export async function initiatePMSPayment(
   request: PMSPaymentRequest
 ): Promise<PMSPaymentResponse> {
-  const {
-    data: {
-      session,
-    },
-  } =
-    await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    throw new Error(
-      "Your session has expired. Please sign in again."
-    );
-  }
-
-  const supabaseUrl =
-    import.meta.env
-      .VITE_SUPABASE_URL;
-
-  const anonKey =
-    import.meta.env
-      .VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !anonKey) {
-    throw new Error(
-      "Supabase configuration is missing."
-    );
-  }
-
-  const response =
-    await fetch(
-      `${supabaseUrl}/functions/v1/subscription-stk`,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-
-          Authorization:
-            `Bearer ${session.access_token}`,
-
-          apikey:
-            anonKey,
-        },
-
-        body: JSON.stringify({
+  try {
+    const data =
+      await protectedFunctionPost<PMSPaymentResponse>(
+        "/subscription-stk",
+        {
           plan_id:
             request.plan_id,
 
           billing_cycle:
             request.billing_cycle,
-        }),
-      }
+        }
+      );
+
+    if (!data) {
+      throw new Error(
+        "Invalid response from payment service."
+      );
+    }
+
+    if (!data.success) {
+      throw new Error(
+        data.error ||
+          "Unable to initiate M-Pesa payment."
+      );
+    }
+
+    return data;
+  } catch (error) {
+    console.error(
+      "PMS subscription payment request failed:",
+      error
     );
 
-  let data:
-    | PMSPaymentResponse;
-
-  try {
-    data =
-      (await response.json()) as PMSPaymentResponse;
-  } catch {
     throw new Error(
-      "Invalid response from payment service."
+      error instanceof Error
+        ? error.message
+        : "Unable to initiate M-Pesa payment."
     );
   }
-
-  if (
-    !response.ok ||
-    !data.success
-  ) {
-    throw new Error(
-      data.error ||
-        "Unable to initiate M-Pesa payment."
-    );
-  }
-
-  return data;
 }
 
 /* ============================================================
@@ -2399,10 +2339,6 @@ export async function loadPMSDashboardData(): Promise<
 > {
   await requireUserId();
 
-  /*
-   * Load the subscription first because its ID is required
-   * for some of the other dashboard operations.
-   */
   const [
     subscription,
     subscriptionAccess,

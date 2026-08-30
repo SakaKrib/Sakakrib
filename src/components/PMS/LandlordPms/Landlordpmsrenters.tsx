@@ -19,7 +19,7 @@ import {
   resendRenterInvitation,
   sendPaymentReminder,
   type CreatedInvitation,
-} from '@/lib/LandlordTs/landlordInvitations';
+} from '@/lib/LandlordTs/Landlordinvitations';
 
 import type { PMSUnit } from '@/lib/LandlordTs/Landlordpmsrent';
 
@@ -262,7 +262,7 @@ export default function LandlordPMSRenters({
   const [reminderId, setReminderId] = useState<string | null>(null);
   const [reminderResult, setReminderResult] = useState<{
     id: string;
-    result: import('@/lib/LandlordTs/landlordInvitations').PaymentReminderResult;
+    result: import('@/lib/LandlordTs/Landlordinvitations').PaymentReminderResult;
   } | null>(null);
 
   const activeRenters = units.filter((u) => u.assoc_status === 'ACTIVE');

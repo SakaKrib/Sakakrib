@@ -11,9 +11,9 @@ import {
   CheckCircle2,
   X,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 
-import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
 interface DocumentCaptureProps {
@@ -48,9 +48,10 @@ export default function DocumentCapture({
     useState<CaptureMode>('idle');
 
   const [previewUrl, setPreviewUrl] =
-    useState<string | null>(
-      currentUrl || null
-    );
+    useState<string | null>(null);
+
+  const [resolvingPreview, setResolvingPreview] =
+    useState(false);
 
   const [error, setError] =
     useState<string | null>(null);
@@ -94,6 +95,51 @@ export default function DocumentCapture({
 
   /*
   |--------------------------------------------------------------------------
+  | RESOLVE STORED PATH -> FRESH SIGNED URL
+  |
+  | Values persisted via onUploaded are durable storage paths, not
+  | URLs (see uploadFile below - this was previously the actual bug:
+  | a 1-hour signed URL was being persisted directly and went dead).
+  | When currentUrl comes back in as a bare path, resolve it here.
+  | Uses the same /storage/... convention as upload - not a
+  | /rest/v1/ path, so this deliberately does not go through
+  | protectedApi/protectedGet/protectedPost (those enforce the
+  | /rest/v1/ prefix).
+  |--------------------------------------------------------------------------
+  */
+
+  const resolveSignedUrl = useCallback(
+    async (path: string): Promise<string | null> => {
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/protected-api/storage/sign`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ bucket, path }),
+          }
+        );
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.url) {
+          return null;
+        }
+
+        return result.url as string;
+      } catch {
+        return null;
+      }
+    },
+    [bucket]
+  );
+
+  /*
+  |--------------------------------------------------------------------------
   | STOP CAMERA
   |--------------------------------------------------------------------------
   */
@@ -129,15 +175,43 @@ export default function DocumentCapture({
      * while the user is actively selecting/capturing
      * a new document.
      */
-    if (
-      mode === 'idle' &&
-      currentUrl !== undefined
-    ) {
-      setPreviewUrl(
-        currentUrl || null
-      );
+    if (mode !== 'idle' || currentUrl === undefined) {
+      return;
     }
-  }, [currentUrl, mode]);
+
+    if (!currentUrl) {
+      setPreviewUrl(null);
+      setResolvingPreview(false);
+      return;
+    }
+
+    // Already a displayable URL - either a signed URL passed in this
+    // session, or (backward compat) a full URL persisted before this
+    // fix. Nothing to resolve.
+    if (
+      currentUrl.startsWith('http://') ||
+      currentUrl.startsWith('https://')
+    ) {
+      setPreviewUrl(currentUrl);
+      setResolvingPreview(false);
+      return;
+    }
+
+    // Bare storage path - the normal case going forward. Resolve it
+    // to a fresh signed URL before displaying it.
+    let cancelled = false;
+    setResolvingPreview(true);
+
+    resolveSignedUrl(currentUrl).then((url) => {
+      if (cancelled) return;
+      setPreviewUrl(url);
+      setResolvingPreview(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUrl, mode, resolveSignedUrl]);
 
   /*
   |--------------------------------------------------------------------------
@@ -570,9 +644,11 @@ export default function DocumentCapture({
         result.url ||
         result.publicUrl;
 
-      if (!publicUrl) {
+      const storagePath = result.path;
+
+      if (!publicUrl || !storagePath) {
         throw new Error(
-          'The document was uploaded but its URL could not be generated.'
+          'The document was uploaded but its details could not be confirmed.'
         );
       }
 
@@ -582,10 +658,14 @@ export default function DocumentCapture({
       revokeObjectUrl();
 
       /*
-       * Tell the parent form about the
-       * persisted document.
+       * Tell the parent form about the persisted document. This is
+       * the durable storage PATH, not the signed URL - the signed
+       * URL expires in 1 hour and must never be what gets saved to
+       * a DB column. Parent forms should pass this same value back
+       * in as `currentUrl` on reload; this component resolves it to
+       * a fresh signed URL for display itself.
        */
-      onUploaded(publicUrl);
+      onUploaded(storagePath);
 
       setPreviewUrl(publicUrl);
       setCapturedBlob(null);
@@ -779,6 +859,24 @@ export default function DocumentCapture({
             {error}
           </p>
         )}
+      </div>
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | RESOLVING EXISTING DOCUMENT
+  |
+  | currentUrl was a stored path and resolveSignedUrl hasn't returned
+  | yet - show a lightweight loading state instead of nothing, rather
+  | than briefly rendering as if no document exists.
+  |--------------------------------------------------------------------------
+  */
+
+  if (mode === 'idle' && resolvingPreview) {
+    return (
+      <div className="flex items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-10 dark:border-brand-700 dark:bg-brand-900">
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
       </div>
     );
   }
