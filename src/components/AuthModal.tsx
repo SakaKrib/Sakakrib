@@ -708,7 +708,7 @@ export default function AuthModal() {
           {error && (
             <div
               role="alert"
-              className="mt-4 rounded-lg bg-error-50 px-4 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+              className="mt-4 rounded-lg bg-error-50 px-2 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
             >
               {error}
             </div>
@@ -717,7 +717,7 @@ export default function AuthModal() {
           {info && (
             <div
               role="status"
-              className="mt-4 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+              className="mt-4 rounded-lg bg-success-50 px-2 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
             >
               {info}
             </div>
@@ -994,7 +994,7 @@ export default function AuthModal() {
             {error && (
               <div
                 role="alert"
-                className="rounded-lg bg-error-50 px-4 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+                className="rounded-lg bg-error-50 px-2 py-2.5 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
               >
                 {error}
               </div>
@@ -1003,7 +1003,7 @@ export default function AuthModal() {
             {info && (
               <div
                 role="status"
-                className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+                className="rounded-lg bg-success-50 px-2 py-2.5 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
               >
                 {info}
               </div>

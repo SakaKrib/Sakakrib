@@ -1,1184 +1,354 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-
-/**
- * ============================================================
- * ENVIRONMENT
- * ============================================================
- */
-
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error('Supabase environment is not configured.');
-}
-
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('Supabase environment is not configured.');
+const BASE = SUPABASE_URL.replace(/\/+$/, '');
 const FUNCTION_NAME = 'protected-api';
-
-const FUNCTION_PREFIX = `/functions/v1/${FUNCTION_NAME}`;
-
-/**
- * Always remove trailing slashes.
- *
- * This prevents:
- *
- *   https://project.supabase.co//rest/v1/...
- *
- * which can cause PostgREST path errors.
- */
-const SUPABASE_BASE_URL = SUPABASE_URL.replace(/\/+$/, '');
-
-/**
- * ============================================================
- * SUPABASE CLIENT
- * ============================================================
- */
-
-const supabase = createClient(
-  SUPABASE_BASE_URL,
-  SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  },
-);
-
-/**
- * ============================================================
- * CORS
- * ============================================================
- */
-
-const allowedOrigin = (request: Request): string => {
-  const origin = request.headers.get('origin');
-  const configuredOrigin = Deno.env.get('APP_ORIGIN');
-
-  if (configuredOrigin && origin === configuredOrigin) {
-    return origin;
-  }
-
-  const developmentOrigins = new Set([
+const allowedOrigin = (req)=>{
+  const origin = req.headers.get('origin');
+  const configured = Deno.env.get('APP_ORIGIN');
+  if (configured && origin === configured) return origin;
+  const dev = new Set([
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
     'http://localhost:5176',
-
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'http://127.0.0.1:5175',
     'http://127.0.0.1:5176',
-
-    'http://100.109.224.0:5173',
+    'http://100.109.224.0:5174'
   ]);
-
-  if (origin && developmentOrigins.has(origin)) {
-    return origin;
-  }
-
-  return configuredOrigin ?? '';
+  return origin && dev.has(origin) ? origin : configured ?? '';
 };
-
-const corsHeaders = (
-  request: Request,
-): HeadersInit => {
-  const origin = allowedOrigin(request);
-
+const cors = (req)=>{
+  const origin = allowedOrigin(req);
   return {
-    ...(origin
-      ? {
-          'Access-Control-Allow-Origin': origin,
-        }
-      : {}),
-
+    ...origin ? {
+      'Access-Control-Allow-Origin': origin
+    } : {},
     'Access-Control-Allow-Credentials': 'true',
-
-    'Access-Control-Allow-Headers':
-      'authorization, x-client-info, apikey, content-type, x-http-method-override',
-
-    'Access-Control-Allow-Methods':
-      'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-
-    Vary: 'Origin',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-http-method-override',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    Vary: 'Origin'
   };
 };
-
-/**
- * ============================================================
- * JSON RESPONSE
- * ============================================================
- */
-
-const json = (
-  request: Request,
-  body: Record<string, unknown>,
-  status = 200,
-  extraHeaders: HeadersInit = [],
-): Response => {
-  const headers = new Headers(
-    corsHeaders(request),
-  );
-
-  headers.set(
-    'Content-Type',
-    'application/json',
-  );
-
-  headers.set(
-    'Cache-Control',
-    'no-store',
-  );
-
-  for (const [name, value] of extraHeaders) {
-    headers.append(name, value);
-  }
-
-  return new Response(
-    JSON.stringify(body),
-    {
-      status,
-      headers,
-    },
-  );
+const json = (req, body, status = 200, extra = [])=>{
+  const h = new Headers(cors(req));
+  h.set('Content-Type', 'application/json');
+  h.set('Cache-Control', 'no-store');
+  for (const [k, v] of extra)h.append(k, v);
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: h
+  });
 };
-
-/**
- * ============================================================
- * COOKIE HELPERS
- * ============================================================
- */
-
-const readCookies = (
-  request: Request,
-): Record<string, string> => {
-  const cookies: Record<string, string> = {};
-
-  const header =
-    request.headers.get('cookie') ?? '';
-
-  for (const part of header.split(';')) {
-    const index = part.indexOf('=');
-
-    if (index === -1) continue;
-
-    const name = part
-      .slice(0, index)
-      .trim();
-
-    if (!name) continue;
-
-    const rawValue = part
-      .slice(index + 1)
-      .trim();
-
+const readCookies = (req)=>{
+  const out = {};
+  const raw = req.headers.get('cookie') ?? '';
+  for (const part of raw.split(';')){
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    const n = part.slice(0, i).trim();
+    const v = part.slice(i + 1).trim();
+    if (!n) continue;
     try {
-      cookies[name] =
-        decodeURIComponent(rawValue);
-    } catch {
-      cookies[name] = rawValue;
+      out[n] = decodeURIComponent(v);
+    } catch  {
+      out[n] = v;
     }
   }
-
-  return cookies;
+  return out;
 };
-
 const cookieBase = [
   'Path=/',
   'HttpOnly',
   'Secure',
-  'SameSite=None',
+  'SameSite=None'
 ];
-
-const setAuthCookies = (
-  accessToken: string,
-  refreshToken: string,
-): HeadersInit => [
-  [
-    'Set-Cookie',
-    `sk_access=${encodeURIComponent(
-      accessToken,
-    )}; ${cookieBase.join(
-      '; ',
-    )}; Max-Age=3600`,
-  ],
-
-  [
-    'Set-Cookie',
-    `sk_refresh=${encodeURIComponent(
-      refreshToken,
-    )}; ${cookieBase.join(
-      '; ',
-    )}; Max-Age=2592000`,
-  ],
-];
-
-const clearAuthCookies =
-  (): HeadersInit => [
+const authCookies = (a, r)=>[
     [
       'Set-Cookie',
-      `sk_access=; ${cookieBase.join(
-        '; ',
-      )}; Max-Age=0`,
+      `sk_access=${encodeURIComponent(a)}; ${cookieBase.join('; ')}; Max-Age=3600`
     ],
-
     [
       'Set-Cookie',
-      `sk_refresh=; ${cookieBase.join(
-        '; ',
-      )}; Max-Age=0`,
-    ],
+      `sk_refresh=${encodeURIComponent(r)}; ${cookieBase.join('; ')}; Max-Age=2592000`
+    ]
   ];
-
-/**
- * ============================================================
- * PROTECTED PATH NORMALIZATION
- * ============================================================
- *
- * Browser sends:
- *
- *   /functions/v1/protected-api/rest/v1/platform_settings
- *
- * Edge Runtime may expose:
- *
- *   /functions/v1/protected-api/rest/v1/platform_settings
- *
- * or:
- *
- *   /protected-api/rest/v1/platform_settings
- *
- * or:
- *
- *   /rest/v1/platform_settings
- *
- * We only care about the actual PostgREST portion:
- *
- *   /rest/v1/...
- *
- * Everything before that is discarded.
- */
-
-const normalizeProtectedPath = (
-  pathname: string,
-): string => {
-  if (!pathname) {
-    return '';
-  }
-
-  let decodedPath: string;
-
-  try {
-    decodedPath =
-      decodeURIComponent(pathname);
-  } catch {
-    return '';
-  }
-
-  /**
-   * Find the first legitimate PostgREST
-   * segment.
-   */
-  const restIndex =
-    decodedPath.indexOf('/rest/v1/');
-
-  if (restIndex !== -1) {
-    return decodedPath.slice(restIndex);
-  }
-
-  /**
-   * Also support the exact root:
-   *
-   * /rest/v1
-   */
-  if (decodedPath === '/rest/v1') {
-    return '/rest/v1/';
-  }
-
-  /**
-   * If no PostgREST path exists,
-   * reject it.
-   */
-  return '';
-};
-
-/**
- * ============================================================
- * SAFE POSTGREST PATH
- * ============================================================
- */
-
-const isSafeRestPath = (
-  path: string,
-): boolean => {
-  if (!path) {
-    return false;
-  }
-
-  if (!path.startsWith('/rest/v1/')) {
-    return false;
-  }
-
-  /**
-   * Prevent absolute URLs.
-   */
-  if (path.includes('://')) {
-    return false;
-  }
-
-  /**
-   * Prevent protocol-relative URLs.
-   */
-  if (path.startsWith('//')) {
-    return false;
-  }
-
-  /**
-   * Prevent backslash path tricks.
-   */
-  if (path.includes('\\')) {
-    return false;
-  }
-
-  /**
-   * Prevent null-byte path tricks.
-   */
-  if (path.includes('\0')) {
-    return false;
-  }
-
-  return true;
-};
-
-/**
- * ============================================================
- * PROFILE
- * ============================================================
- */
-
-type Profile = {
-  id: string;
-
-  email: string | null;
-
-  role: string | null;
-
-  email_verified: boolean | null;
-
-  verification_status: string | null;
-
-  kyc_completed: boolean | null;
-
-  landlord_application_status: string | null;
-
-  real_estate_application_status: string | null;
-
-  mover_application_status: string | null;
-};
-
-/**
- * ============================================================
- * AUTHENTICATED USER
- * ============================================================
- */
-
-type Authenticated = {
-  user: {
-    id: string;
-    email: string | null;
-  };
-
-  accessToken: string;
-
-  refreshToken?: string;
-
-  profile: Profile;
-};
-
-/**
- * ============================================================
- * AUTHENTICATE ACCESS TOKEN
- * ============================================================
- */
-
-const authenticate = async (
-  accessToken: string,
-): Promise<Authenticated | null> => {
-  /**
-   * Validate the JWT against Supabase Auth.
-   */
-  const authClient = createClient(
-    SUPABASE_BASE_URL,
-    SUPABASE_ANON_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
+const clearCookies = ()=>[
+    [
+      'Set-Cookie',
+      `sk_access=; ${cookieBase.join('; ')}; Max-Age=0`
+    ],
+    [
+      'Set-Cookie',
+      `sk_refresh=; ${cookieBase.join('; ')}; Max-Age=0`
+    ]
+  ];
+const makeAuthClient = ()=>createClient(BASE, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
+const authenticate = async (token)=>{
+  const ac = makeAuthClient();
+  const { data, error } = await ac.auth.getUser(token);
+  if (error || !data.user) return null;
+  const uc = createClient(BASE, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
     },
-  );
-
-  const {
-    data,
-    error,
-  } = await authClient.auth.getUser(
-    accessToken,
-  );
-
-  if (error || !data.user) {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }
+  });
+  const { data: p, error: pe } = await uc.from('profiles').select('id,email,role,email_verified,verification_status,kyc_completed,landlord_application_status,real_estate_application_status,mover_application_status').eq('id', data.user.id).maybeSingle();
+  if (pe || !p) {
+    console.error('Profile authentication lookup failed:', pe);
     return null;
   }
-
-  /**
-   * Create a user-scoped client.
-   *
-   * This is important because RLS must see
-   * the authenticated user's JWT.
-   */
-  const userClient = createClient(
-    SUPABASE_BASE_URL,
-    SUPABASE_ANON_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-
-      global: {
-        headers: {
-          Authorization:
-            `Bearer ${accessToken}`,
-        },
-      },
-    },
-  );
-
-  /**
-   * Load the protected application profile.
-   */
-  const {
-    data: profile,
-    error: profileError,
-  } =
-    await userClient
-      .from('profiles')
-      .select(
-        [
-          'id',
-          'email',
-          'role',
-          'email_verified',
-          'verification_status',
-          'kyc_completed',
-          'landlord_application_status',
-          'real_estate_application_status',
-          'mover_application_status',
-        ].join(','),
-      )
-      .eq(
-        'id',
-        data.user.id,
-      )
-      .maybeSingle();
-
-  if (
-    profileError ||
-    !profile
-  ) {
-    console.error(
-      'Profile authentication lookup failed:',
-      profileError,
-    );
-
-    return null;
-  }
-
   return {
     user: {
       id: data.user.id,
-
-      email:
-        data.user.email ?? null,
+      email: data.user.email ?? null
     },
-
-    accessToken,
-
-    profile:
-      profile as Profile,
+    accessToken: token,
+    profile: p
   };
 };
-
-/**
- * ============================================================
- * REFRESH SESSION
- * ============================================================
- */
-
-const refreshFromCookie = async (
-  refreshToken: string,
-): Promise<Authenticated | null> => {
-  const {
-    data,
-    error,
-  } =
-    await supabase.auth.refreshSession({
-      refresh_token: refreshToken,
-    });
-
-  if (
-    error ||
-    !data.session ||
-    !data.user
-  ) {
-    return null;
-  }
-
-  const authenticated =
-    await authenticate(
-      data.session.access_token,
-    );
-
-  if (!authenticated) {
-    return null;
-  }
-
-  return {
-    ...authenticated,
-
-    refreshToken:
-      data.session.refresh_token,
+const refresh = async (token)=>{
+  const { data, error } = await makeAuthClient().auth.refreshSession({
+    refresh_token: token
+  });
+  if (error || !data.session || !data.user) return null;
+  const a = await authenticate(data.session.access_token);
+  return a ? {
+    ...a,
+    refreshToken: data.session.refresh_token
+  } : null;
+};
+const requiredRole = (path)=>path.startsWith('/rest/v1/landlord/') ? 'landlord' : path.startsWith('/rest/v1/real_estate/') ? 'real_estate' : path.startsWith('/rest/v1/renter/') ? 'renter' : null;
+const authorize = (p, path)=>{
+  if (p.email_verified !== true) return {
+    ok: false,
+    status: 403,
+    error: 'Email verification is required.'
   };
-};
-
-/**
- * ============================================================
- * ROLE AUTHORIZATION
- * ============================================================
- *
- * The browser never supplies the role.
- *
- * Role comes from the protected profiles
- * record associated with the authenticated
- * Supabase user.
- */
-
-const requiredRoleForPath = (
-  path: string,
-): string | null => {
-  if (
-    path.startsWith(
-      '/rest/v1/landlord/',
-    )
-  ) {
-    return 'landlord';
-  }
-
-  if (
-    path.startsWith(
-      '/rest/v1/real_estate/',
-    )
-  ) {
-    return 'real_estate';
-  }
-
-  if (
-    path.startsWith(
-      '/rest/v1/renter/',
-    )
-  ) {
-    return 'renter';
-  }
-
-  return null;
-};
-
-/**
- * ============================================================
- * AUTHORIZATION
- * ============================================================
- */
-
-const authorizeRoute = (
-  profile: Profile,
-  path: string,
-):
-  | {
-      ok: true;
-    }
-  | {
-      ok: false;
-      status: number;
-      error: string;
-    } => {
-  /**
-   * Account verification.
-   */
-  if (
-    profile.email_verified !== true
-  ) {
-    return {
-      ok: false,
-      status: 403,
-      error:
-        'Email verification is required.',
-    };
-  }
-
-  /**
-   * Application roles.
-   */
-  const role = (
-    profile.role ?? ''
-  )
-    .trim()
-    .toLowerCase();
-
-  const validRoles = new Set([
+  const role = (p.role ?? '').trim().toLowerCase();
+  if (!new Set([
     'landlord',
     'real_estate',
     'renter',
     'mover',
-    'admin',
-  ]);
-
-  if (!validRoles.has(role)) {
-    return {
-      ok: false,
-      status: 403,
-      error:
-        'Your account does not have a valid application role.',
-    };
-  }
-
-  /**
-   * Explicit route role.
-   */
-  const requiredRole =
-    requiredRoleForPath(path);
-
-  if (
-    requiredRole &&
-    role !== requiredRole
-  ) {
-    return {
-      ok: false,
-      status: 403,
-      error:
-        `This protected route requires the ${requiredRole} role.`,
-    };
-  }
-
+    'admin'
+  ]).has(role)) return {
+    ok: false,
+    status: 403,
+    error: 'Your account does not have a valid application role.'
+  };
+  const rr = requiredRole(path);
+  if (rr && role !== rr) return {
+    ok: false,
+    status: 403,
+    error: `This protected route requires the ${rr} role.`
+  };
   return {
-    ok: true,
+    ok: true
   };
 };
-
-/**
- * ============================================================
- * EDGE FUNCTION
- * ============================================================
- */
-
-Deno.serve(
-  async (request: Request) => {
-    /**
-     * --------------------------------------------------------
-     * CORS PREFLIGHT
-     * --------------------------------------------------------
-     */
-
-    if (
-      request.method === 'OPTIONS'
-    ) {
-      return new Response(null, {
-        status: 204,
-
-        headers:
-          corsHeaders(request),
+const normalize = (path)=>{
+  let p = '';
+  try {
+    p = decodeURIComponent(path);
+  } catch  {
+    return '';
+  }
+  const i = p.indexOf('/rest/v1/');
+  return i >= 0 ? p.slice(i) : p === '/rest/v1' ? '/rest/v1/' : '';
+};
+const safe = (p)=>p.startsWith('/rest/v1/') && !p.includes('://') && !p.startsWith('//') && !p.includes('\\') && !p.includes('\0');
+Deno.serve(async (req)=>{
+  if (req.method === 'OPTIONS') return new Response(null, {
+    status: 204,
+    headers: cors(req)
+  });
+  const origin = req.headers.get('origin'), configured = Deno.env.get('APP_ORIGIN');
+  if (configured && origin && origin !== configured) return json(req, {
+    error: 'Origin not allowed.'
+  }, 403);
+  try {
+    const cookies = readCookies(req);
+    let access = cookies.sk_access;
+    let refreshHeaders = [];
+    let a = access ? await authenticate(access) : null;
+    if (!a) {
+      if (!cookies.sk_refresh) return json(req, {
+        authenticated: false,
+        error: 'Authentication required.'
+      }, 401, clearCookies());
+      const r = await refresh(cookies.sk_refresh);
+      if (!r) return json(req, {
+        authenticated: false,
+        error: 'Authentication expired.'
+      }, 401, clearCookies());
+      access = r.accessToken;
+      a = r;
+      refreshHeaders = authCookies(r.accessToken, r.refreshToken);
+    }
+    const url = new URL(req.url);
+    const pathname = url.pathname;
+    // Dedicated protected storage upload. This intentionally does not use PostgREST.
+    const storagePrefix = `/functions/v1/${FUNCTION_NAME}/storage/upload`;
+    if (pathname === storagePrefix || pathname === `/${FUNCTION_NAME}/storage/upload` || pathname.endsWith('/storage/upload')) {
+      if (req.method !== 'POST') return json(req, {
+        error: 'Method not allowed.'
+      }, 405, refreshHeaders);
+      const authz = authorize(a.profile, '/rest/v1/storage/upload');
+      if (!authz.ok) return json(req, {
+        authenticated: true,
+        authorized: false,
+        error: authz.error
+      }, authz.status, refreshHeaders);
+      const form = await req.formData();
+      const file = form.get('file');
+      const bucket = form.get('bucket');
+      const path = form.get('path');
+      if (!(file instanceof File)) return json(req, {
+        error: 'file is required.'
+      }, 400, refreshHeaders);
+      if (typeof bucket !== 'string' || ![
+        'id-documents',
+        'licenses',
+        'kyc-documents'
+      ].includes(bucket)) return json(req, {
+        error: 'Invalid storage bucket.'
+      }, 400, refreshHeaders);
+      if (typeof path !== 'string' || !path) return json(req, {
+        error: 'path is required.'
+      }, 400, refreshHeaders);
+      const normalized = path.replace(/^\/+/, '');
+      const first = normalized.split('/')[0];
+      if (first !== a.user.id) return json(req, {
+        error: 'You may only upload documents to your own folder.'
+      }, 403, refreshHeaders);
+      if (normalized.includes('..') || normalized.includes('\\') || normalized.includes('\0')) return json(req, {
+        error: 'Invalid storage path.'
+      }, 400, refreshHeaders);
+      if (file.size > 10 * 1024 * 1024) return json(req, {
+        error: 'Image is too large. Maximum size is 10 MB.'
+      }, 413, refreshHeaders);
+      if (!file.type.startsWith('image/')) return json(req, {
+        error: 'Only image files are allowed.'
+      }, 415, refreshHeaders);
+      const storageClient = createClient(BASE, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${access}`
+          }
+        }
       });
+      const bytes = await file.arrayBuffer();
+      const { error: ue } = await storageClient.storage.from(bucket).upload(normalized, bytes, {
+        contentType: file.type || 'image/jpeg',
+        cacheControl: '3600',
+        upsert: false
+      });
+      if (ue) {
+        console.error('Storage upload failed:', ue);
+        return json(req, {
+          error: ue.message || 'Document upload failed.'
+        }, 400, refreshHeaders);
+      }
+      const { data: signed, error: se } = await storageClient.storage.from(bucket).createSignedUrl(normalized, 3600);
+      if (se || !signed?.signedUrl) {
+        console.error('Signed URL failed:', se);
+        return json(req, {
+          error: 'Document uploaded but a preview URL could not be generated.'
+        }, 500, refreshHeaders);
+      }
+      return json(req, {
+        ok: true,
+        bucket,
+        path: normalized,
+        url: signed.signedUrl,
+        publicUrl: signed.signedUrl
+      }, 200, refreshHeaders);
     }
-
-    /**
-     * --------------------------------------------------------
-     * ORIGIN CHECK
-     * --------------------------------------------------------
-     */
-
-    const origin =
-      request.headers.get(
-        'origin',
-      );
-
-    const configuredOrigin =
-      Deno.env.get(
-        'APP_ORIGIN',
-      );
-
-    if (
-      configuredOrigin &&
-      origin &&
-      origin !== configuredOrigin
-    ) {
-      return json(
-        request,
-        {
-          error:
-            'Origin not allowed.',
-        },
-        403,
-      );
+    const target = normalize(pathname);
+    if (!safe(target)) return json(req, {
+      error: 'Unsupported protected API path.'
+    }, 400, refreshHeaders);
+    const authz = authorize(a.profile, target);
+    if (!authz.ok) return json(req, {
+      authenticated: true,
+      authorized: false,
+      role: a.profile.role,
+      error: authz.error
+    }, authz.status, refreshHeaders);
+    const targetUrl = `${BASE}${target}${url.search}`;
+    const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text();
+    const headers = new Headers();
+    headers.set('apikey', SUPABASE_ANON_KEY);
+    headers.set('Authorization', `Bearer ${access}`);
+    headers.set('Accept', req.headers.get('accept') ?? 'application/json');
+    for (const name of [
+      'content-type',
+      'prefer',
+      'range'
+    ]){
+      const v = req.headers.get(name);
+      if (v) headers.set(name, v);
     }
-
-    try {
-      /**
-       * ------------------------------------------------------
-       * READ AUTH COOKIES
-       * ------------------------------------------------------
-       */
-
-      const cookies =
-        readCookies(request);
-
-      let accessToken =
-        cookies.sk_access;
-
-      let refreshHeaders:
-        HeadersInit = [];
-
-      /**
-       * ------------------------------------------------------
-       * AUTHENTICATE ACCESS TOKEN
-       * ------------------------------------------------------
-       */
-
-      let authenticated =
-        accessToken
-          ? await authenticate(
-              accessToken,
-            )
-          : null;
-
-      /**
-       * ------------------------------------------------------
-       * REFRESH IF NECESSARY
-       * ------------------------------------------------------
-       */
-
-      if (!authenticated) {
-        const refreshToken =
-          cookies.sk_refresh;
-
-        if (!refreshToken) {
-          return json(
-            request,
-            {
-              authenticated:
-                false,
-
-              error:
-                'Authentication required.',
-            },
-            401,
-            clearAuthCookies(),
-          );
-        }
-
-        const refreshed =
-          await refreshFromCookie(
-            refreshToken,
-          );
-
-        if (!refreshed) {
-          return json(
-            request,
-            {
-              authenticated:
-                false,
-
-              error:
-                'Authentication expired.',
-            },
-            401,
-            clearAuthCookies(),
-          );
-        }
-
-        accessToken =
-          refreshed.accessToken;
-
-        authenticated =
-          refreshed;
-
-        refreshHeaders =
-          setAuthCookies(
-            refreshed.accessToken,
-            refreshed.refreshToken!,
-          );
+    let response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body
+    });
+    if (response.status === 401 && cookies.sk_refresh && refreshHeaders.length === 0) {
+      const r = await refresh(cookies.sk_refresh);
+      if (r) {
+        access = r.accessToken;
+        refreshHeaders = authCookies(r.accessToken, r.refreshToken);
+        headers.set('Authorization', `Bearer ${access}`);
+        response = await fetch(targetUrl, {
+          method: req.method,
+          headers,
+          body
+        });
       }
-
-      /**
-       * ------------------------------------------------------
-       * EXTRACT POSTGREST PATH
-       * ------------------------------------------------------
-       */
-
-      const requestUrl =
-        new URL(request.url);
-
-      const targetPath =
-        normalizeProtectedPath(
-          requestUrl.pathname,
-        );
-
-      /**
-       * IMPORTANT:
-       *
-       * Log the actual path used for debugging.
-       */
-      console.log(
-        'protected-api request:',
-        {
-          originalPath:
-            requestUrl.pathname,
-
-          normalizedPath:
-            targetPath,
-        },
-      );
-
-      /**
-       * ------------------------------------------------------
-       * VALIDATE PATH
-       * ------------------------------------------------------
-       */
-
-      if (
-        !isSafeRestPath(
-          targetPath,
-        )
-      ) {
-        return json(
-          request,
-          {
-            error:
-              'Unsupported protected API path.',
-          },
-          400,
-        );
-      }
-
-      /**
-       * ------------------------------------------------------
-       * ROLE / ACCOUNT AUTHORIZATION
-       * ------------------------------------------------------
-       */
-
-      const authorization =
-        authorizeRoute(
-          authenticated.profile,
-          targetPath,
-        );
-
-      if (!authorization.ok) {
-        return json(
-          request,
-          {
-            authenticated: true,
-
-            authorized: false,
-
-            role:
-              authenticated
-                .profile.role,
-
-            error:
-              authorization.error,
-          },
-          authorization.status,
-          refreshHeaders,
-        );
-      }
-
-      /**
-       * ------------------------------------------------------
-       * BUILD POSTGREST URL
-       * ------------------------------------------------------
-       *
-       * SUPABASE_BASE_URL has already had all trailing
-       * slashes removed.
-       *
-       * targetPath always starts with /rest/v1/
-       *
-       * Therefore this ALWAYS becomes:
-       *
-       * https://project.supabase.co/rest/v1/...
-       */
-
-      const targetUrl =
-        `${SUPABASE_BASE_URL}${targetPath}${requestUrl.search}`;
-
-      console.log(
-        'protected-api target:',
-        targetUrl,
-      );
-
-      /**
-       * ------------------------------------------------------
-       * REQUEST BODY
-       * ------------------------------------------------------
-       */
-
-      const body =
-        request.method === 'GET' ||
-        request.method === 'HEAD'
-          ? undefined
-          : await request.text();
-
-      /**
-       * ------------------------------------------------------
-       * POSTGREST HEADERS
-       * ------------------------------------------------------
-       */
-
-      const headers =
-        new Headers();
-
-      /**
-       * Required by Supabase REST.
-       */
-      headers.set(
-        'apikey',
-        SUPABASE_ANON_KEY,
-      );
-
-      /**
-       * User JWT.
-       *
-       * This is what makes PostgREST/RLS operate
-       * as the authenticated Supabase user.
-       */
-      headers.set(
-        'Authorization',
-        `Bearer ${accessToken}`,
-      );
-
-      headers.set(
-        'Accept',
-        request.headers.get(
-          'accept',
-        ) ??
-          'application/json',
-      );
-
-      const contentType =
-        request.headers.get(
-          'content-type',
-        );
-
-      if (contentType) {
-        headers.set(
-          'Content-Type',
-          contentType,
-        );
-      }
-
-      const prefer =
-        request.headers.get(
-          'prefer',
-        );
-
-      if (prefer) {
-        headers.set(
-          'Prefer',
-          prefer,
-        );
-      }
-
-      const range =
-        request.headers.get(
-          'range',
-        );
-
-      if (range) {
-        headers.set(
-          'Range',
-          range,
-        );
-      }
-
-      /**
-       * ------------------------------------------------------
-       * FORWARD TO POSTGREST
-       * ------------------------------------------------------
-       */
-
-      let postgrestResponse =
-        await fetch(
-          targetUrl,
-          {
-            method:
-              request.method,
-
-            headers,
-
-            body,
-          },
-        );
-
-      /**
-       * ------------------------------------------------------
-       * ONE-TIME TOKEN REFRESH
-       * ------------------------------------------------------
-       *
-       * The token can expire between:
-       *
-       *   auth.getUser()
-       *
-       * and:
-       *
-       *   PostgREST
-       *
-       * Refresh once and retry.
-       */
-
-      if (
-        postgrestResponse.status ===
-          401 &&
-        cookies.sk_refresh &&
-        refreshHeaders.length === 0
-      ) {
-        const refreshed =
-          await refreshFromCookie(
-            cookies.sk_refresh,
-          );
-
-        if (refreshed) {
-          accessToken =
-            refreshed.accessToken;
-
-          refreshHeaders =
-            setAuthCookies(
-              refreshed.accessToken,
-              refreshed.refreshToken!,
-            );
-
-          headers.set(
-            'Authorization',
-            `Bearer ${accessToken}`,
-          );
-
-          postgrestResponse =
-            await fetch(
-              targetUrl,
-              {
-                method:
-                  request.method,
-
-                headers,
-
-                body,
-              },
-            );
-        }
-      }
-
-      /**
-       * ------------------------------------------------------
-       * RESPONSE
-       * ------------------------------------------------------
-       */
-
-      const responseHeaders =
-        new Headers(
-          corsHeaders(request),
-        );
-
-      responseHeaders.set(
-        'Cache-Control',
-        'no-store',
-      );
-
-      for (const headerName of [
-        'content-type',
-        'content-range',
-        'location',
-      ]) {
-        const value =
-          postgrestResponse.headers.get(
-            headerName,
-          );
-
-        if (value) {
-          responseHeaders.set(
-            headerName,
-            value,
-          );
-        }
-      }
-
-      /**
-       * Send refreshed cookies
-       * back to browser.
-       */
-      for (
-        const [
-          name,
-          value,
-        ] of refreshHeaders
-      ) {
-        responseHeaders.append(
-          name,
-          value,
-        );
-      }
-
-      /**
-       * Clear invalid authentication
-       * cookies after a final 401.
-       */
-      if (
-        postgrestResponse.status ===
-        401
-      ) {
-        for (
-          const [
-            name,
-            value,
-          ] of clearAuthCookies()
-        ) {
-          responseHeaders.append(
-            name,
-            value,
-          );
-        }
-      }
-
-      return new Response(
-        await postgrestResponse.arrayBuffer(),
-        {
-          status:
-            postgrestResponse.status,
-
-          headers:
-            responseHeaders,
-        },
-      );
-    } catch (error) {
-      console.error(
-        'protected-api error:',
-        error,
-      );
-
-      return json(
-        request,
-        {
-          error:
-            'Protected API request failed.',
-        },
-        500,
-      );
     }
-  },
-);
+    const rh = new Headers(cors(req));
+    rh.set('Cache-Control', 'no-store');
+    for (const n of [
+      'content-type',
+      'content-range',
+      'location'
+    ]){
+      const v = response.headers.get(n);
+      if (v) rh.set(n, v);
+    }
+    for (const [n, v] of refreshHeaders)rh.append(n, v);
+    if (response.status === 401) for (const [n, v] of clearCookies())rh.append(n, v);
+    return new Response(await response.arrayBuffer(), {
+      status: response.status,
+      headers: rh
+    });
+  } catch (error) {
+    console.error('protected-api error:', error);
+    return json(req, {
+      error: error instanceof Error ? error.message : 'Protected API request failed.'
+    }, 500);
+  }
+});

@@ -132,14 +132,28 @@ export default function RoleSelectionModal() {
       <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" />
 
       <div
-        className="relative w-full max-w-2xl animate-scale-in rounded-2xl bg-white shadow-2xl dark:bg-brand-900"
+        className={cn(
+          'relative w-full max-w-2xl animate-scale-in rounded-2xl bg-white shadow-2xl dark:bg-brand-900',
+
+          /*
+           * MOBILE ONLY:
+           * Keep the modal inside the viewport and allow the
+           * role list to scroll instead of pushing the footer
+           * below the screen.
+           *
+           * Desktop remains unchanged.
+           */
+          'max-h-[calc(100dvh-2rem)] overflow-hidden',
+
+          'sm:max-h-none sm:overflow-visible'
+        )}
         role="dialog"
         aria-modal="true"
         aria-labelledby="role-selection-title"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-brand-800">
-          <div>
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-brand-800">
+          <div className="min-w-0 pr-3">
             <h2
               id="role-selection-title"
               className="text-xl font-bold text-gray-900 dark:text-white"
@@ -154,7 +168,7 @@ export default function RoleSelectionModal() {
           </div>
 
           <div
-            className="rounded-full border border-gray-200 p-2 text-gray-300 dark:border-brand-800 dark:text-brand-700"
+            className="shrink-0 rounded-full border border-gray-200 p-2 text-gray-300 dark:border-brand-800 dark:text-brand-700"
             aria-hidden="true"
           >
             <X className="h-5 w-5" />
@@ -162,7 +176,23 @@ export default function RoleSelectionModal() {
         </div>
 
         {/* Role Options */}
-        <div className="space-y-3 p-6">
+        <div
+          className={cn(
+            'space-y-3 p-6',
+
+            /*
+             * MOBILE ONLY:
+             * The options become the scrollable area.
+             */
+            'max-h-[calc(90dvh-12rem)] overflow-y-auto overscroll-contain',
+
+            /*
+             * Desktop:
+             * Restore the original unrestricted layout.
+             */
+            'sm:max-h-none sm:overflow-visible'
+          )}
+        >
           {ROLES.map((role) => {
             const isSelected = selectedRole === role.value;
 
@@ -192,7 +222,7 @@ export default function RoleSelectionModal() {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white">
                     {role.label}
                   </h3>
@@ -231,7 +261,7 @@ export default function RoleSelectionModal() {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 px-6 py-4 dark:border-brand-800">
+        <div className="shrink-0 border-t border-gray-200 px-6 py-4 dark:border-brand-800">
           <div className="flex items-center justify-between gap-4">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               © Copyright Saka Krib. All Rights Reserved.
@@ -241,7 +271,7 @@ export default function RoleSelectionModal() {
               type="button"
               onClick={handleConfirm}
               disabled={!selectedRole || loading}
-              className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'Saving...' : 'Continue'}
             </button>

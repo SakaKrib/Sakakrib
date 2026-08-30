@@ -7,7 +7,7 @@ export default function SecurityBanner() {
 
   return (
     <div className="relative bg-gradient-to-r from-error-600 to-error-700 text-white">
-      <div className="mx-auto max-w-7xl px-4 py-2.5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-2 py-2.5 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <ShieldAlert className="h-5 w-5 shrink-0 animate-pulse" />
           <p className="text-xs font-medium leading-snug sm:text-sm">

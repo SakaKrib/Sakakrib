@@ -61,7 +61,7 @@ export default function ProfilePage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <p className="text-gray-500 dark:text-gray-400">
           Please sign in to view your profile.
         </p>
@@ -473,7 +473,7 @@ export default function ProfilePage() {
    */
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-2xl px-2 py-8 sm:px-6">
 
       {/* Header */}
 
@@ -813,7 +813,7 @@ export default function ProfilePage() {
         {error && (
           <div
             role="alert"
-            className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+            className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
           >
             {error}
           </div>
@@ -826,7 +826,7 @@ export default function ProfilePage() {
         {success && (
           <div
             role="status"
-            className="rounded-lg bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+            className="rounded-lg bg-success-50 px-2 py-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
           >
             Profile saved successfully!
           </div>

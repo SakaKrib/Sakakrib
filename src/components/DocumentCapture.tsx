@@ -1,151 +1,720 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, Camera, CheckCircle2, X, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+} from 'react';
+
+import {
+  Upload,
+  Camera,
+  CheckCircle2,
+  X,
+  RefreshCw,
+} from 'lucide-react';
+
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
 interface DocumentCaptureProps {
-  bucket: 'id-documents' | 'licenses' | 'kyc-documents';
+  bucket:
+    | 'id-documents'
+    | 'licenses'
+    | 'kyc-documents';
+
   userId: string;
+
   label: string;
+
   onUploaded: (url: string) => void;
+
   currentUrl?: string;
 }
 
-export default function DocumentCapture({ bucket, userId, label, onUploaded, currentUrl }: DocumentCaptureProps) {
-  const [mode, setMode] = useState<'idle' | 'uploading' | 'camera' | 'preview'>('idle');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(currentUrl || null);
-  const [error, setError] = useState<string | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+type CaptureMode =
+  | 'idle'
+  | 'uploading'
+  | 'camera'
+  | 'preview';
+
+export default function DocumentCapture({
+  bucket,
+  userId,
+  label,
+  onUploaded,
+  currentUrl,
+}: DocumentCaptureProps) {
+  const [mode, setMode] =
+    useState<CaptureMode>('idle');
+
+  const [previewUrl, setPreviewUrl] =
+    useState<string | null>(
+      currentUrl || null
+    );
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const [cameraActive, setCameraActive] =
+    useState(false);
+
+  const [capturedBlob, setCapturedBlob] =
+    useState<Blob | null>(null);
+
+  const videoRef =
+    useRef<HTMLVideoElement>(null);
+
+  const canvasRef =
+    useRef<HTMLCanvasElement>(null);
+
+  const streamRef =
+    useRef<MediaStream | null>(null);
+
+  const fileInputRef =
+    useRef<HTMLInputElement>(null);
+
+  const objectUrlRef =
+    useRef<string | null>(null);
+
+  /*
+  |--------------------------------------------------------------------------
+  | CLEAN UP OBJECT URL
+  |--------------------------------------------------------------------------
+  */
+
+  const revokeObjectUrl = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(
+        objectUrlRef.current
+      );
+
+      objectUrlRef.current = null;
+    }
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | STOP CAMERA
+  |--------------------------------------------------------------------------
+  */
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current
+        .getTracks()
+        .forEach((track) => {
+          track.stop();
+        });
+
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
+    }
+
+    setCameraActive(false);
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | SYNC CURRENT URL
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    /*
+     * Do not replace a local preview with currentUrl
+     * while the user is actively selecting/capturing
+     * a new document.
+     */
+    if (
+      mode === 'idle' &&
+      currentUrl !== undefined
+    ) {
+      setPreviewUrl(
+        currentUrl || null
+      );
+    }
+  }, [currentUrl, mode]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | COMPONENT CLEANUP
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
     return () => {
       stopCamera();
+      revokeObjectUrl();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    stopCamera,
+    revokeObjectUrl,
+  ]);
 
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setCameraActive(false);
-  }, []);
+  /*
+  |--------------------------------------------------------------------------
+  | START CAMERA
+  |--------------------------------------------------------------------------
+  */
 
   const startCamera = async () => {
     setError(null);
+
+    /*
+     * Always stop an old stream first.
+     */
+    stopCamera();
+
+    if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      setError(
+        'Camera access is not supported on this device. Please upload an image instead.'
+      );
+
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: false,
-      });
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: {
+              ideal: 'environment',
+            },
+          },
+          audio: false,
+        });
+
       streamRef.current = stream;
+
       setCameraActive(true);
       setMode('camera');
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play().catch(() => {});
+
+      /*
+       * Give React time to render the video element.
+       */
+      requestAnimationFrame(() => {
+        const video =
+          videoRef.current;
+
+        if (!video) {
+          stopCamera();
+          setMode('idle');
+
+          setError(
+            'Unable to initialize the camera preview.'
+          );
+
+          return;
         }
-      }, 100);
-    } catch {
-      setError('Could not access camera. Use upload instead.');
-      setCameraActive(false);
+
+        video.srcObject = stream;
+
+        video
+          .play()
+          .catch(() => {
+            /*
+             * Some mobile browsers delay playback
+             * until the user interacts with the
+             * camera preview.
+             */
+          });
+      });
+    } catch (cameraError) {
+      console.error(
+        'Camera access failed:',
+        cameraError
+      );
+
+      stopCamera();
+
+      setMode('idle');
+
+      setError(
+        'Could not access the camera. Please allow camera permission or use Upload File instead.'
+      );
     }
   };
 
+  /*
+  |--------------------------------------------------------------------------
+  | CAPTURE PHOTO
+  |--------------------------------------------------------------------------
+  */
+
   const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob((blob) => {
-      if (blob) {
+    const video =
+      videoRef.current;
+
+    const canvas =
+      canvasRef.current;
+
+    if (!video || !canvas) {
+      setError(
+        'Camera is not ready yet. Please try again.'
+      );
+
+      return;
+    }
+
+    /*
+     * Make sure the camera has actually
+     * produced video dimensions.
+     */
+    if (
+      video.readyState <
+        HTMLMediaElement.HAVE_CURRENT_DATA ||
+      video.videoWidth <= 0 ||
+      video.videoHeight <= 0
+    ) {
+      setError(
+        'Camera is still initializing. Please wait a moment and try again.'
+      );
+
+      return;
+    }
+
+    canvas.width =
+      video.videoWidth;
+
+    canvas.height =
+      video.videoHeight;
+
+    const context =
+      canvas.getContext('2d');
+
+    if (!context) {
+      setError(
+        'Unable to capture the photo.'
+      );
+
+      return;
+    }
+
+    context.drawImage(
+      video,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setError(
+            'Unable to create the captured image.'
+          );
+
+          return;
+        }
+
+        /*
+         * Remove any previous temporary preview URL.
+         */
+        revokeObjectUrl();
+
+        const objectUrl =
+          URL.createObjectURL(blob);
+
+        objectUrlRef.current =
+          objectUrl;
+
         setCapturedBlob(blob);
-        setPreviewUrl(URL.createObjectURL(blob));
+        setPreviewUrl(objectUrl);
+
+        /*
+         * Stop camera immediately after
+         * successfully capturing the image.
+         */
+        stopCamera();
+
         setMode('preview');
-      }
-    }, 'image/jpeg', 0.9);
-    stopCamera();
+        setError(null);
+      },
+      'image/jpeg',
+      0.9
+    );
   };
 
-  const handleFileSelect = (file: File) => {
+  /*
+  |--------------------------------------------------------------------------
+  | FILE SELECTION
+  |--------------------------------------------------------------------------
+  */
+
+  const handleFileSelect = (
+    file: File
+  ) => {
     setError(null);
-    setPreviewUrl(URL.createObjectURL(file));
+
+    /*
+     * Only accept actual image files.
+     */
+    if (!file.type.startsWith('image/')) {
+      setError(
+        'Please select an image file.'
+      );
+
+      return;
+    }
+
+    /*
+     * Optional client-side size protection.
+     *
+     * 10 MB is large enough for normal phone
+     * document photos while preventing accidental
+     * huge files.
+     */
+    const maxSize =
+      10 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      setError(
+        'Image is too large. Please choose an image smaller than 10 MB.'
+      );
+
+      return;
+    }
+
+    /*
+     * Release previous temporary object URL.
+     */
+    revokeObjectUrl();
+
+    const objectUrl =
+      URL.createObjectURL(file);
+
+    objectUrlRef.current =
+      objectUrl;
+
+    setPreviewUrl(objectUrl);
     setCapturedBlob(file);
     setMode('preview');
   };
 
-  const uploadFile = async (file: File | Blob) => {
+  /*
+  |--------------------------------------------------------------------------
+  | FILE INPUT CHANGE
+  |--------------------------------------------------------------------------
+  */
+
+  const handleFileInputChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    /*
+     * Reset the input value immediately.
+     *
+     * This allows the user to select the same
+     * file again after removing/replacing it.
+     */
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    handleFileSelect(file);
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | OPEN FILE PICKER
+  |--------------------------------------------------------------------------
+  */
+
+  const openFilePicker = () => {
+    setError(null);
+
+    /*
+     * IMPORTANT:
+     *
+     * This is deliberately the ONLY action performed
+     * by the Upload File button.
+     *
+     * There is NO `capture="environment"` on the
+     * input, so mobile browsers show the normal
+     * image/file picker instead of forcing camera
+     * capture.
+     */
+    fileInputRef.current?.click();
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | UPLOAD
+  |--------------------------------------------------------------------------
+  */
+
+  const uploadFile = async (
+    file: File | Blob
+  ) => {
     setMode('uploading');
     setError(null);
+
     try {
-      const ext = file instanceof File ? file.name.split('.').pop() : 'jpg';
-      const fileName = `${userId}/${label.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from(bucket)
-        .upload(fileName, file);
-      if (uploadError) {
-        if (uploadError.message.includes('not found') || uploadError.message.includes('bucket')) {
-          throw new Error('Storage not configured. Please contact support.');
+      /*
+       * Determine extension.
+       */
+      let extension = 'jpg';
+
+      if (file instanceof File) {
+        const originalExtension =
+          file.name
+            .split('.')
+            .pop()
+            ?.toLowerCase();
+
+        if (
+          originalExtension &&
+          /^[a-z0-9]+$/.test(
+            originalExtension
+          )
+        ) {
+          extension =
+            originalExtension;
         }
-        throw uploadError;
       }
-      const { data: { publicUrl } } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(fileName);
+
+      /*
+       * Normalize label.
+       */
+      const safeLabel =
+        label
+          .trim()
+          .toLowerCase()
+          .replace(
+            /[^a-z0-9]+/g,
+            '-'
+          )
+          .replace(
+            /^-+|-+$/g,
+            ''
+          ) || 'document';
+
+      /*
+       * Unique storage path.
+       *
+       * userId/
+       *   document-label-timestamp-random.ext
+       */
+      const randomPart =
+        Math.random()
+          .toString(36)
+          .slice(2, 10);
+
+      const fileName =
+        `${userId}/${safeLabel}-${Date.now()}-${randomPart}.${extension}`;
+
+      /*
+       * Upload through the protected API.
+       *
+       * The browser no longer performs a direct
+       * Supabase Storage upload.
+       */
+      const formData =
+        new FormData();
+
+      formData.append(
+        'file',
+        file,
+        fileName
+      );
+
+      formData.append(
+        'bucket',
+        bucket
+      );
+
+      formData.append(
+        'path',
+        fileName
+      );
+
+      const response =
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/protected-api/storage/upload`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              apikey:
+                import.meta.env
+                  .VITE_SUPABASE_ANON_KEY,
+            },
+            body: formData,
+          }
+        );
+
+      const result =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            result?.message ||
+            'Document upload failed.'
+        );
+      }
+
+      const publicUrl =
+        result.url ||
+        result.publicUrl;
+
+      if (!publicUrl) {
+        throw new Error(
+          'The document was uploaded but its URL could not be generated.'
+        );
+      }
+
+      /*
+       * Remove temporary local preview.
+       */
+      revokeObjectUrl();
+
+      /*
+       * Tell the parent form about the
+       * persisted document.
+       */
       onUploaded(publicUrl);
+
       setPreviewUrl(publicUrl);
+      setCapturedBlob(null);
       setMode('idle');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed.');
+      setError(null);
+    } catch (uploadError) {
+      console.error(
+        'Document upload failed:',
+        uploadError
+      );
+
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : 'Upload failed. Please try again.'
+      );
+
+      /*
+       * Keep the preview so the user can
+       * retry without selecting/capturing
+       * the document again.
+       */
       setMode('preview');
     }
   };
 
+  /*
+  |--------------------------------------------------------------------------
+  | RESET
+  |--------------------------------------------------------------------------
+  */
+
   const reset = () => {
+    stopCamera();
+    revokeObjectUrl();
+
     setPreviewUrl(null);
     setCapturedBlob(null);
     setError(null);
     setMode('idle');
+
+    /*
+     * Clear the persisted parent value.
+     */
     onUploaded('');
   };
+
+  /*
+  |--------------------------------------------------------------------------
+  | CAMERA CANCEL
+  |--------------------------------------------------------------------------
+  */
+
+  const cancelCamera = () => {
+    stopCamera();
+    setMode('idle');
+    setError(null);
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | UPLOADING
+  |--------------------------------------------------------------------------
+  */
 
   if (mode === 'uploading') {
     return (
       <div className="flex h-40 flex-col items-center justify-center rounded-xl border-2 border-brand-300 bg-brand-50 dark:border-brand-600 dark:bg-brand-800/30">
         <RefreshCw className="h-8 w-8 animate-spin text-brand-500" />
-        <p className="mt-2 text-sm font-medium text-brand-600 dark:text-brand-400">Uploading {label}...</p>
+
+        <p className="mt-2 text-sm font-medium text-brand-600 dark:text-brand-400">
+          Uploading {label}...
+        </p>
       </div>
     );
   }
 
-  if (mode === 'camera' && cameraActive) {
+  /*
+  |--------------------------------------------------------------------------
+  | CAMERA
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    mode === 'camera' &&
+    cameraActive
+  ) {
     return (
       <div className="overflow-hidden rounded-xl border-2 border-brand-300 dark:border-brand-600">
         <div className="relative bg-black">
-          <video ref={videoRef} className="h-48 w-full object-cover" playsInline muted />
+          <video
+            ref={videoRef}
+            className="h-64 w-full object-cover sm:h-80"
+            playsInline
+            muted
+            autoPlay
+          />
+
           <button
-            onClick={() => { stopCamera(); setMode('idle'); }}
-            className="absolute right-2 top-2 rounded-full bg-error-600 p-1.5 text-white"
+            type="button"
+            onClick={cancelCamera}
+            aria-label="Close camera"
+            className="absolute right-2 top-2 rounded-full bg-error-600 p-2 text-white shadow-lg"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex items-center justify-center gap-3 bg-white p-3 dark:bg-brand-900">
-          <button onClick={capturePhoto} className="btn-primary">
-            <Camera className="h-4 w-4" /> Capture Photo
+
+        {error && (
+          <p className="bg-error-50 px-3 py-2 text-center text-xs text-error-600 dark:bg-error-900/20 dark:text-error-400">
+            {error}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-2 bg-white p-3 dark:bg-brand-900 sm:flex-row sm:items-center sm:justify-center">
+          <button
+            type="button"
+            onClick={capturePhoto}
+            className="btn-primary inline-flex items-center justify-center gap-2"
+          >
+            <Camera className="h-4 w-4" />
+            Capture Photo
           </button>
-          <button onClick={() => { stopCamera(); setMode('idle'); }} className="btn-secondary">
+
+          <button
+            type="button"
+            onClick={cancelCamera}
+            className="btn-secondary inline-flex items-center justify-center gap-2"
+          >
             Cancel
           </button>
         </div>
@@ -153,84 +722,208 @@ export default function DocumentCapture({ bucket, userId, label, onUploaded, cur
     );
   }
 
-  if (mode === 'preview' && previewUrl) {
+  /*
+  |--------------------------------------------------------------------------
+  | PREVIEW BEFORE SAVE
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    mode === 'preview' &&
+    previewUrl
+  ) {
     return (
       <div className="rounded-xl border-2 border-success-300 dark:border-success-600">
-        <div className="relative">
-          <img src={previewUrl} alt={label} className="h-40 w-full rounded-t-xl object-cover" />
-          <button onClick={reset} className="absolute right-2 top-2 rounded-full bg-error-600 p-1.5 text-white">
+        <div className="relative bg-gray-100 dark:bg-brand-900">
+          <img
+            src={previewUrl}
+            alt={label}
+            className="h-48 w-full rounded-t-xl object-contain"
+          />
+
+          <button
+            type="button"
+            onClick={reset}
+            aria-label={`Remove ${label}`}
+            className="absolute right-2 top-2 rounded-full bg-error-600 p-1.5 text-white shadow-md"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex items-center justify-between bg-success-50 px-3 py-2 dark:bg-success-900/20">
+
+        <div className="flex flex-col gap-2 bg-success-50 px-3 py-3 dark:bg-success-900/20 sm:flex-row sm:items-center sm:justify-between">
           <p className="flex items-center gap-1.5 text-sm font-medium text-success-700 dark:text-success-400">
-            <CheckCircle2 className="h-4 w-4" /> Ready to upload
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+
+            Ready to upload
           </p>
+
           <button
-            onClick={() => capturedBlob && uploadFile(capturedBlob)}
-            className="btn-primary text-xs"
+            type="button"
+            onClick={() => {
+              if (capturedBlob) {
+                void uploadFile(
+                  capturedBlob
+                );
+              }
+            }}
+            disabled={!capturedBlob}
+            className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-50"
           >
             Save {label}
           </button>
         </div>
+
         {error && (
-          <p className="px-3 py-1.5 text-xs text-error-600 dark:text-error-400">{error}</p>
+          <p className="px-3 py-2 text-xs text-error-600 dark:text-error-400">
+            {error}
+          </p>
         )}
       </div>
     );
   }
 
-  if (previewUrl && mode === 'idle') {
+  /*
+  |--------------------------------------------------------------------------
+  | ALREADY UPLOADED
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    previewUrl &&
+    mode === 'idle'
+  ) {
     return (
       <div className="rounded-xl border-2 border-success-300 dark:border-success-600">
-        <div className="relative">
-          <img src={previewUrl} alt={label} className="h-40 w-full rounded-t-xl object-cover" />
-          <button onClick={reset} className="absolute right-2 top-2 rounded-full bg-error-600 p-1.5 text-white">
+        <div className="relative bg-gray-100 dark:bg-brand-900">
+          <img
+            src={previewUrl}
+            alt={label}
+            className="h-48 w-full rounded-t-xl object-contain"
+          />
+
+          <button
+            type="button"
+            onClick={reset}
+            aria-label={`Remove ${label}`}
+            className="absolute right-2 top-2 rounded-full bg-error-600 p-1.5 text-white shadow-md"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex items-center justify-center gap-2 bg-success-50 px-3 py-2 dark:bg-success-900/20">
+
+        <div className="flex items-center justify-center gap-2 bg-success-50 px-3 py-3 dark:bg-success-900/20">
           <CheckCircle2 className="h-4 w-4 text-success-600" />
-          <p className="text-sm font-medium text-success-700 dark:text-success-400">{label} uploaded</p>
+
+          <p className="text-sm font-medium text-success-700 dark:text-success-400">
+            {label} uploaded
+          </p>
         </div>
       </div>
     );
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | INITIAL CAPTURE UI
+  |--------------------------------------------------------------------------
+  */
+
   return (
     <div className="rounded-xl border-2 border-dashed border-gray-300 p-4 dark:border-brand-700">
-      <p className="mb-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mb-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">
+        {label}
+      </p>
+
       <div className="flex flex-col gap-2 sm:flex-row">
+        {/*
+         * IMPORTANT:
+         *
+         * This button MUST be type="button".
+         *
+         * Without it, because DocumentCapture is inside
+         * RegisterMoverPage's <form>, mobile browsers can
+         * submit the entire form after opening the picker.
+         */}
         <button
-          onClick={() => fileInputRef.current?.click()}
-          className={cn('flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-4 transition-colors hover:border-brand-400 hover:bg-brand-50 dark:border-brand-700 dark:hover:border-brand-500 dark:hover:bg-brand-800/30')}
+          type="button"
+          onClick={openFilePicker}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-4 transition-colors',
+            'hover:border-brand-400 hover:bg-brand-50',
+            'dark:border-brand-700 dark:hover:border-brand-500 dark:hover:bg-brand-800/30'
+          )}
         >
           <Upload className="h-6 w-6 text-gray-400" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Upload File</span>
+
+          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Upload File
+          </span>
+
+          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+            Choose from device
+          </span>
         </button>
+
+        {/*
+         * Camera is completely separate from file upload.
+         */}
         <button
-          onClick={startCamera}
-          className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-4 transition-colors hover:border-brand-400 hover:bg-brand-50 dark:border-brand-700 dark:hover:border-brand-500 dark:hover:bg-brand-800/30"
+          type="button"
+          onClick={() => {
+            void startCamera();
+          }}
+          className={cn(
+            'flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-4 transition-colors',
+            'hover:border-brand-400 hover:bg-brand-50',
+            'dark:border-brand-700 dark:hover:border-brand-500 dark:hover:bg-brand-800/30'
+          )}
         >
           <Camera className="h-6 w-6 text-gray-400" />
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Take Photo</span>
+
+          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Take Photo
+          </span>
+
+          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+            Use camera
+          </span>
         </button>
       </div>
+
       {error && (
-        <p className="mt-2 text-center text-xs text-error-600 dark:text-error-400">{error}</p>
+        <p className="mt-2 text-center text-xs text-error-600 dark:text-error-400">
+          {error}
+        </p>
       )}
+
+      {/*
+       * IMPORTANT:
+       *
+       * There is intentionally NO:
+       *
+       * capture="environment"
+       *
+       * here.
+       *
+       * That attribute can cause mobile browsers to
+       * turn the file picker into a camera action.
+       *
+       * "Upload File" should mean gallery/files.
+       * "Take Photo" should mean camera.
+       */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFileSelect(file);
-        }}
+        onChange={handleFileInputChange}
       />
-      <canvas ref={canvasRef} className="hidden" />
+
+      <canvas
+        ref={canvasRef}
+        className="hidden"
+      />
     </div>
   );
-}
+};

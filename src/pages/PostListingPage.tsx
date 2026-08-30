@@ -1491,7 +1491,7 @@ export default function PostListingPage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <p className="text-gray-500 dark:text-gray-400">
           Please sign in to post a listing.
         </p>
@@ -1501,7 +1501,7 @@ export default function PostListingPage() {
 
   if (!listingRole) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <p className="text-gray-500 dark:text-gray-400">
           Only landlord and real estate accounts can post listings.
         </p>
@@ -1522,7 +1522,7 @@ export default function PostListingPage() {
 
   if (profile.verification_status !== 'verified') {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
 
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-warning-100 dark:bg-warning-900/30">
@@ -2377,7 +2377,7 @@ export default function PostListingPage() {
 
   if (success) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12">
+      <div className="mx-auto max-w-2xl px-2 py-12">
 
         <div className="card p-8 text-center animate-scale-in">
 
@@ -2395,13 +2395,13 @@ export default function PostListingPage() {
             to renters and buyers.
           </p>
 
-          <div className="mt-4 rounded-lg bg-success-50 px-4 py-3 dark:bg-success-900/20">
+          <div className="mt-4 rounded-lg bg-success-50 px-2 py-3 dark:bg-success-900/20">
             <p className="text-sm font-medium text-success-700 dark:text-success-400">
               Your listing has been submitted successfully.
             </p>
           </div>
 
-          <div className="mt-3 rounded-lg bg-brand-50 px-4 py-3 dark:bg-brand-900/20">
+          <div className="mt-3 rounded-lg bg-brand-50 px-2 py-3 dark:bg-brand-900/20">
             <p className="text-sm font-medium text-brand-700 dark:text-brand-300">
               Approval Status: Pending Review
             </p>

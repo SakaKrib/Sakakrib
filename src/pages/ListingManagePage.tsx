@@ -1640,7 +1640,7 @@ export default function ListingManagePage() {
 
   if (loading) {
     return (
-      <div className="card mx-auto flex min-h-[60vh] max-w-7xl items-center justify-center px-4 py-4 text-center sm:px-6 lg:px-8">
+      <div className="card mx-auto flex min-h-[60vh] max-w-7xl items-center justify-center px-2 py-4 text-center sm:px-6 lg:px-8">
         <div className="flex items-center gap-3 text-gray-600 dark:text-gray-300">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>
@@ -1657,7 +1657,7 @@ export default function ListingManagePage() {
 
   if (!selectedListingManageId) {
     return (
-      <div className="card mx-auto max-w-7xl overflow-hidden px-4 py-8 sm:px-6 lg:px-8">
+      <div className="card mx-auto max-w-7xl overflow-hidden px-2 py-8 sm:px-6 lg:px-8">
         <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <button
             type="button"
@@ -1711,7 +1711,7 @@ export default function ListingManagePage() {
   // ==========================================================
 
   return (
-    <div className="card mx-auto max-w-7xl overflow-hidden px-4 py-4 sm:px-6 lg:px-8">
+    <div className="card mx-auto max-w-7xl overflow-hidden px-2 py-4 sm:px-6 lg:px-8">
       {/* HEADER */}
 
       <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
@@ -2384,7 +2384,7 @@ export default function ListingManagePage() {
                             suggestion
                           )
                         }
-                        className="block w-full border-b border-gray-100 px-4 py-3 text-left text-sm transition hover:bg-brand-50 dark:border-brand-800 dark:hover:bg-brand-800"
+                        className="block w-full border-b border-gray-100 px-2 py-3 text-left text-sm transition hover:bg-brand-50 dark:border-brand-800 dark:hover:bg-brand-800"
                       >
                         <div className="flex items-start gap-2">
                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />

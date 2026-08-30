@@ -305,7 +305,7 @@ export default function RenterInvoicesPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto flex min-h-[400px] max-w-7xl items-center justify-center px-4">
+      <div className="mx-auto flex min-h-[400px] max-w-7xl items-center justify-center px-2">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-brand-500" />
 
@@ -322,7 +322,7 @@ export default function RenterInvoicesPage() {
    * ============================================================ */
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8">
 
       {/* ======================================================
           HEADER
@@ -376,7 +376,7 @@ export default function RenterInvoicesPage() {
       ====================================================== */}
 
       {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-400">
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-error-200 bg-error-50 px-2 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-400">
 
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 

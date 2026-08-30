@@ -539,7 +539,7 @@ export default function PropertyListingForm({
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-5xl px-2 py-8 sm:px-6 lg:px-8">
 
         {/* =====================================================
             PAGE HEADER
@@ -886,7 +886,7 @@ export default function PropertyListingForm({
                                     []
                                   );
                                 }}
-                                className="flex w-full items-start gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50 dark:hover:bg-brand-800"
+                                className="flex w-full items-start gap-3 px-2 py-3 text-left text-sm hover:bg-gray-50 dark:hover:bg-brand-800"
                               >
 
                                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
@@ -3073,7 +3073,7 @@ export default function PropertyListingForm({
 
                         <span
                             className={cn(
-                            'rounded-full px-4 py-2 text-xs font-medium',
+                            'rounded-full px-2 py-2 text-xs font-medium',
                             bookingEnabled
                                 ? 'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-300'
                                 : 'bg-gray-200 text-gray-500 dark:bg-brand-700 dark:text-gray-400'
@@ -3084,7 +3084,7 @@ export default function PropertyListingForm({
 
                         <span
                             className={cn(
-                            'rounded-full px-4 py-2 text-xs font-medium',
+                            'rounded-full px-2 py-2 text-xs font-medium',
                             paymentEnabled
                                 ? 'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-300'
                                 : 'bg-gray-200 text-gray-500 dark:bg-brand-700 dark:text-gray-400'
@@ -3374,7 +3374,7 @@ export default function PropertyListingForm({
                     </div>
 
                     {paymentCompleted ? (
-                      <div className="flex items-center gap-2 rounded-lg bg-success-50 px-4 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400">
+                      <div className="flex items-center gap-2 rounded-lg bg-success-50 px-2 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400">
                         <CheckCircle2 className="h-4 w-4" />
                         Payment confirmed. You can now publish your listing.
                       </div>
@@ -3451,7 +3451,7 @@ export default function PropertyListingForm({
 
                 {error && (
 
-                  <div className="mt-6 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+                  <div className="mt-6 rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
                     {error}
                   </div>
 

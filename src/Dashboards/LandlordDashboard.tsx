@@ -52,9 +52,10 @@ import type {
 } from '@/lib/supabase';
 import {cn} from "@/lib/utils"
 
-import type { ListingEntitlement } from '@/lib/ListingEntitlement';
-
-
+import {
+  fetchListingEntitlement,
+  type ListingEntitlement,
+} from '@/lib/ListingEntitlement';
 /* =========================================================
    TYPES
 ========================================================= */
@@ -577,23 +578,10 @@ export default function LandlordDashboard({
       setError(null);
 
       try {
-        const entitlementResponse =
-          await protectedPost<ListingEntitlement>(
-            '/rest/v1/rpc/get_landlord_listing_entitlement',
-            {
-              p_landlord_id: profile.id,
-            }
-          );
-
-        const entitlement = Array.isArray(entitlementResponse)
-          ? entitlementResponse[0]
-          : entitlementResponse;
-
-        if (!entitlement) {
-          throw new Error(
-            'Unable to determine your listing entitlement.'
-          );
-        }
+       const entitlement = await fetchListingEntitlement(
+          'landlord',
+          profile.id
+        );
 
         setListingEntitlement(entitlement);
 
@@ -824,6 +812,18 @@ const activeSubscription = useMemo(() => {
 
 const hasActiveSubscription =
   Boolean(activeSubscription);
+
+  const listingFeeKes =
+  listingEntitlement?.individualListingPriceKes ?? null;
+
+const freeListingLimit =
+  listingEntitlement?.free_limit ?? null;
+
+const freeListingsUsed =
+  listingEntitlement?.free_listings_used ?? null;
+
+const freeListingsRemaining =
+  listingEntitlement?.free_listings_remaining ?? null;
 
 
 
@@ -1441,7 +1441,7 @@ const pmsBenefits = [
       emptyDescription: string
     ) => (
       <div className="card overflow-hidden mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-2 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <button
@@ -1868,7 +1868,7 @@ const pmsBenefits = [
           ================================================= */}
 
           {profileImageFile && (
-            <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/20">
+            <div className="rounded-xl border border-brand-200 bg-brand-50 px-2 py-3 dark:border-brand-700 dark:bg-brand-900/20">
 
               <div className="flex items-center gap-3">
 
@@ -2098,7 +2098,7 @@ const pmsBenefits = [
           {error && (
             <div
               role="alert"
-              className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+              className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
             >
               {error}
             </div>
@@ -2111,7 +2111,7 @@ const pmsBenefits = [
           {success && (
             <div
               role="status"
-              className="rounded-lg bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+              className="rounded-lg bg-success-50 px-2 py-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
             >
               Profile and profile photo saved successfully!
             </div>
@@ -2525,7 +2525,7 @@ const pmsBenefits = [
       <>
         {/* PROFILE CARD */}
         <div className="card mb-6 overflow-hidden max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
-          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-2.5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-2 py-2.5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
             <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
               <Home className="h-4 w-4" />
               Landlord Profile
@@ -3248,7 +3248,7 @@ const pmsBenefits = [
 
       {/* ERROR */}
       {error && (
-        <div className="mb-6 flex items-start justify-between gap-3 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+        <div className="mb-6 flex items-start justify-between gap-3 rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 

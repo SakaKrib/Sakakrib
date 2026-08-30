@@ -102,7 +102,7 @@ export default function RealEstatePMSAccessGuard({
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20">
+      <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
 
           <ShieldCheck className="mx-auto h-10 w-10 text-brand-600" />
@@ -136,7 +136,7 @@ export default function RealEstatePMSAccessGuard({
 
   if (profile.role !== 'real_estate') {
     return (
-      <div className="mx-auto max-w-md px-4 py-20">
+      <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
 
           <Building2 className="mx-auto h-10 w-10 text-brand-600" />
@@ -181,7 +181,7 @@ export default function RealEstatePMSAccessGuard({
 
   if (error) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
       </div>
     );
@@ -201,7 +201,7 @@ export default function RealEstatePMSAccessGuard({
 
   if (!hasAccess) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16">
+      <div className="mx-auto max-w-lg px-2 py-16">
         <div className="card p-8 text-center">
 
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-900/30">

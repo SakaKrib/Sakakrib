@@ -225,7 +225,7 @@ export default function LandlordPMSPaymentConfirmations({
                       type="button"
                       onClick={() => handleReject(item.id)}
                       disabled={processingId === item.id}
-                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-error-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-error-700 disabled:opacity-50"
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-error-600 px-2 py-2.5 text-sm font-semibold text-white hover:bg-error-700 disabled:opacity-50"
                     >
                       {processingId === item.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -242,7 +242,7 @@ export default function LandlordPMSPaymentConfirmations({
                     type="button"
                     onClick={() => setRejectingId(item.id)}
                     disabled={processingId === item.id}
-                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-brand-700 dark:hover:bg-error-900/20"
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-2 py-2.5 text-sm font-semibold text-error-600 hover:bg-error-50 disabled:opacity-50 dark:border-brand-700 dark:hover:bg-error-900/20"
                   >
                     <XCircle className="h-4 w-4" />
                     Reject Payment

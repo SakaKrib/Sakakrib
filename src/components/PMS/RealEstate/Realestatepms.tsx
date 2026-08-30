@@ -469,7 +469,7 @@ function ListingPreview({
         <button
           type="button"
           onClick={onViewAll}
-          className="w-full rounded-lg border border-dashed px-4 py-3 text-sm font-semibold text-brand-600 transition hover:bg-brand-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-800"
+          className="w-full rounded-lg border border-dashed px-2 py-3 text-sm font-semibold text-brand-600 transition hover:bg-brand-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-800"
         >
           View all {listings.length} listings
         </button>
@@ -853,7 +853,7 @@ export default function RealEstatePMS({
 
   if (error) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-10">
+      <div className="mx-auto max-w-4xl px-2 py-10">
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
 
@@ -869,7 +869,7 @@ export default function RealEstatePMS({
             <button
               type="button"
               onClick={() => void loadDashboard(true)}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-2 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               <RefreshCw className="h-4 w-4" />
               Try again
@@ -887,7 +887,7 @@ export default function RealEstatePMS({
    * ========================================================== */
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-6xl px-2 py-6 sm:px-6 lg:px-8">
       {/* ======================================================
           HEADER
          ====================================================== */}
@@ -931,7 +931,7 @@ export default function RealEstatePMS({
             <button
               type="button"
               onClick={onCreateListing}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-2 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               <Plus className="h-4 w-4" />
               Add listing
@@ -951,7 +951,7 @@ export default function RealEstatePMS({
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              className={`inline-flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
+              className={`inline-flex items-center gap-2 border-b-2 px-2 py-3 text-sm font-semibold transition ${
                 tab === key
                   ? 'border-brand-600 text-brand-700 dark:text-brand-300'
                   : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
@@ -1103,7 +1103,7 @@ export default function RealEstatePMS({
               <button
                 type="button"
                 onClick={onCreateListing}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-2 py-2 text-sm font-semibold text-white hover:bg-brand-700"
               >
                 <Plus className="h-4 w-4" />
                 Add listing

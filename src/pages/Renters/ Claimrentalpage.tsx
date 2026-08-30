@@ -106,7 +106,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
 
   if (previewError || !preview) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <AlertCircle className="mx-auto h-10 w-10 text-error-600" />
           <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
@@ -122,7 +122,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
 
   if (preview.invitation_status === 'EXPIRED') {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <Clock3 className="mx-auto h-10 w-10 text-warning-600" />
           <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
@@ -138,7 +138,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
 
   if (preview.invitation_status === 'ACTIVE' && !claimed) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <CheckCircle2 className="mx-auto h-10 w-10 text-success-600" />
           <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
@@ -167,7 +167,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
 
   if (claimed) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success-50 dark:bg-success-900/30">
             <CheckCircle2 className="h-7 w-7 text-success-600" />
@@ -196,7 +196,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
   // ==========================================================
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-16">
+    <div className="mx-auto max-w-lg px-2 py-16">
       <div className="card p-8 text-center">
 
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-900/30">

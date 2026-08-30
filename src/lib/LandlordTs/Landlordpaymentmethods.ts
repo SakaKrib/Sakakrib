@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase, getCurrentUserId } from './ Protectedsupabase';
 
 /* ============================================================
  * TYPES
@@ -84,18 +84,12 @@ export async function getMyLandlordPaymentMethods(): Promise<
 export async function createLandlordPaymentMethod(
   input: NewPaymentMethodInput
 ): Promise<LandlordPaymentMethod> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error('Not authenticated.');
-  }
+  const userId = await getCurrentUserId();
 
   const row =
     input.provider === 'PAYPAL'
       ? {
-          landlord_id: user.id,
+          landlord_id: userId,
           provider: 'PAYPAL' as const,
           display_name: input.display_name ?? null,
           paypal_email: input.paypal_email,
@@ -106,7 +100,7 @@ export async function createLandlordPaymentMethod(
         }
       : input.mpesa_method === 'PAYBILL'
         ? {
-            landlord_id: user.id,
+            landlord_id: userId,
             provider: 'MPESA' as const,
             mpesa_method: 'PAYBILL' as const,
             display_name: input.display_name ?? null,
@@ -116,7 +110,7 @@ export async function createLandlordPaymentMethod(
             paypal_email: null,
           }
         : {
-            landlord_id: user.id,
+            landlord_id: userId,
             provider: 'MPESA' as const,
             mpesa_method: 'TILL' as const,
             display_name: input.display_name ?? null,

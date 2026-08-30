@@ -109,7 +109,7 @@ export default function MoverDetailPage() {
 
   if (bookingSuccess) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12">
+      <div className="mx-auto max-w-2xl px-2 py-12">
         <div className="card p-8 text-center animate-scale-in">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30">
             <CheckCircle2 className="h-10 w-10 text-success-600 dark:text-success-400" />
@@ -146,7 +146,7 @@ export default function MoverDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-4xl px-2 py-8 sm:px-6">
       <button onClick={() => navigate('movers')} className="mb-4 flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-brand-600 dark:text-gray-400">
         <ArrowLeft className="h-4 w-4" /> Back to Movers
       </button>
@@ -206,7 +206,7 @@ export default function MoverDetailPage() {
       </div>
 
       {/* Commission Info */}
-      <div className="mt-4 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-800/30">
+      <div className="mt-4 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-2 py-3 dark:border-brand-700 dark:bg-brand-800/30">
         <Percent className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
         <p className="text-sm text-brand-700 dark:text-brand-300">
           A <span className="font-semibold">{COMMISSION_RATE * 100}% platform commission</span> is automatically added to your booking total.
@@ -294,7 +294,7 @@ export default function MoverDetailPage() {
           )}
 
           {error && (
-            <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>
+            <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>
           )}
 
           <button type="submit" disabled={submitting} className="btn-primary w-full">

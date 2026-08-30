@@ -1,4 +1,4 @@
-import { supabase } from "../../lib/supabase";
+import { supabase, getCurrentUserId } from "./ Protectedsupabase";
 
 /* ============================================================
  * TYPES
@@ -684,18 +684,7 @@ async function rpc<T>(
  * ============================================================ */
 
 async function requireUserId(): Promise<string> {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    throw new Error(
-      "Your session has expired. Please sign in again."
-    );
-  }
-
-  return user.id;
+  return getCurrentUserId();
 }
 
 /* ============================================================

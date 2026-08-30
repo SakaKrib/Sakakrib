@@ -29,10 +29,10 @@
     @apply inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-[0.98] dark:border-brand-700 dark:bg-brand-900 dark:text-gray-200 dark:hover:bg-brand-800;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-800;
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-2 py-2 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-800;
   }
   .input-field {
-    @apply w-full rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-btnblue-500 focus:ring-2 focus:ring-btnblue-500/20 focus:outline-none dark:border-brand-700 dark:bg-brand-900 dark:text-gray-100 dark:placeholder-gray-500;
+    @apply w-full rounded-full border border-gray-300 bg-white px-2 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition-all focus:border-btnblue-500 focus:ring-2 focus:ring-btnblue-500/20 focus:outline-none dark:border-brand-700 dark:bg-brand-900 dark:text-gray-100 dark:placeholder-gray-500;
   }
   .card {
     @apply rounded-xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-900;

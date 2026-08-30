@@ -199,7 +199,7 @@ function normalizeEntitlement(
     requiresSubscription: Boolean(raw.requires_subscription),
     requiresIndividualPayment: Boolean(raw.requires_individual_payment),
 
-    free_limit: normalizeNumber(raw.free_limit, 3),
+    free_limit: normalizeNumber(raw.free_limit),
     free_listings_used: normalizeNumber(raw.free_listings_used),
     free_listings_remaining: normalizeNumber(raw.free_listings_remaining),
 
@@ -215,8 +215,7 @@ function normalizeEntitlement(
 
     individualPaidListings: normalizeNumber(raw.individual_paid_listings),
     individualListingPriceKes: normalizeNumber(
-      raw.individual_listing_price_kes,
-      1000
+      raw.individual_listing_price_kes
     ),
 
     // PMS access belongs to landlord entitlement - real-estate

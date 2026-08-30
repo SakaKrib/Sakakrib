@@ -162,7 +162,7 @@ export default function KycVerifyPage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12">
+      <div className="mx-auto max-w-2xl px-2 py-12">
         <div className="card p-8 text-center">
           <p className="text-gray-500 dark:text-gray-400">
             Please sign in to continue with identity
@@ -531,7 +531,7 @@ export default function KycVerifyPage() {
    */
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-3xl px-2 py-8 sm:px-6">
 
       {/* Header */}
 
@@ -823,7 +823,7 @@ export default function KycVerifyPage() {
 
           {error && (
             <div
-              className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-400"
+              className="rounded-xl border border-error-200 bg-error-50 px-2 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-400"
               role="alert"
             >
               {error}

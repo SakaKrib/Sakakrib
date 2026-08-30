@@ -247,7 +247,7 @@ export default function PMSUnitSelector({
                     onClick={() =>
                       handleAdd(listing.id)
                     }
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gray-900 px-2 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isAdding ? (
                       <>

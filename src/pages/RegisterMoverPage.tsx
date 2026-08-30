@@ -1,4 +1,11 @@
-import { useState } from 'react';
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+} from 'react';
+
+import "@/pages/calendarIndex.css";
+
 import {
   Truck,
   User,
@@ -14,14 +21,20 @@ import {
   ShieldAlert,
   Mail,
   ArrowRight,
+  MapPin,
 } from 'lucide-react';
+
+import GPSLocationInput from '@/components/Helpers/GPSLocationInput';
 
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import TermsGate from '@/components/TermsGate';
 import DocumentCapture from '@/components/DocumentCapture';
+import DatePicker from 'react-datepicker';
 
-import { supabase } from '@/lib/supabase';
+import "react-datepicker/dist/react-datepicker.css";
+
+import { protectedPost } from '@/lib/protectedApi';
 
 import {
   VEHICLE_TYPES,
@@ -32,6 +45,12 @@ import {
   validatePhone,
   COMMISSION_RATE,
 } from '@/lib/utils';
+
+/*
+|--------------------------------------------------------------------------
+| PAYMENT CHANNELS
+|--------------------------------------------------------------------------
+*/
 
 const PAYMENT_CHANNELS = [
   {
@@ -55,70 +74,185 @@ const PAYMENT_CHANNELS = [
 type PaymentChannel =
   (typeof PAYMENT_CHANNELS)[number]['value'];
 
+type VehicleType =
+  | 'pickup'
+  | 'lorry'
+  | 'trailer';
+
 interface ReferenceContact {
   name: string;
   phone: string;
   relationship: string;
 }
 
+interface GPSLocationValue {
+  latitude: number | null;
+  longitude: number | null;
+  location: string;
+}
+
 type EmailType =
   | 'mover_application_submitted'
   | 'mover_admin_notification';
 
+/*
+|--------------------------------------------------------------------------
+| EMAIL FUNCTION
+|--------------------------------------------------------------------------
+*/
+
+async function sendRegistrationEmail(
+  type: EmailType,
+  applicationData: Record<string, unknown>
+): Promise<boolean> {
+  const supabaseUrl =
+    import.meta.env.VITE_SUPABASE_URL as
+      | string
+      | undefined;
+
+  const supabaseAnonKey =
+    import.meta.env.VITE_SUPABASE_ANON_KEY as
+      | string
+      | undefined;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error(
+      'Supabase environment variables are missing.'
+    );
+
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/send-notification-emails`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: supabaseAnonKey,
+        },
+        body: JSON.stringify({
+          type,
+          application: applicationData,
+        }),
+      }
+    );
+
+    const data =
+      await response.json().catch(() => null);
+
+    if (!response.ok || data?.error) {
+      console.error(
+        `Failed to send ${type} email:`,
+        data
+      );
+
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(
+      `Failed to request ${type} email:`,
+      error
+    );
+
+    return false;
+  }
+}
+
+/*
+|--------------------------------------------------------------------------
+| PAGE
+|--------------------------------------------------------------------------
+*/
+
 export default function RegisterMoverPage() {
-  const { profile, refreshProfile } = useAuth();
-  const { navigate, setAuthModalOpen, setRoleModalOpen  } = useNav();
+  const {
+    profile,
+    refreshProfile,
+  } = useAuth();
 
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
+  const {
+    navigate,
+    setAuthModalOpen,
+    setRoleModalOpen,
+  } = useNav();
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  /*
+  |--------------------------------------------------------------------------
+  | FORM STATE
+  |--------------------------------------------------------------------------
+  */
 
-  const [firstName, setFirstName] = useState(
-    profile?.first_name || ''
-  );
+  const [termsAccepted, setTermsAccepted] =
+    useState(false);
 
-  const [middleName, setMiddleName] = useState(
-    profile?.middle_name || ''
-  );
+  const [submitting, setSubmitting] =
+    useState(false);
 
-  const [lastName, setLastName] = useState(
-    profile?.last_name || ''
-  );
+  const [error, setError] =
+    useState<string | null>(null);
 
-  const [nationalId, setNationalId] = useState(
-    profile?.national_id || ''
-  );
+  const [success, setSuccess] =
+    useState(false);
 
-  const [dlNumber, setDlNumber] = useState(
-    profile?.dl_number || ''
-  );
+  const [emailStatus, setEmailStatus] =
+    useState<
+      'pending' | 'sent' | 'failed'
+    >('pending');
 
-  const [dlPhotoUrl, setDlPhotoUrl] = useState('');
+  const [firstName, setFirstName] =
+    useState('');
 
-  const [vehicleType, setVehicleType] = useState<
-    'pickup' | 'lorry' | 'trailer'
-  >('pickup');
+  const [middleName, setMiddleName] =
+    useState('');
 
-  const [capacity, setCapacity] = useState('');
-  const [numberPlate, setNumberPlate] = useState('');
-  const [city, setCity] = useState('');
-  const [county, setCounty] = useState('');
+  const [lastName, setLastName] =
+    useState('');
 
-  const [phone, setPhone] = useState(
-    profile?.phone || ''
-  );
+  const [nationalId, setNationalId] =
+    useState('');
+
+  const [dlNumber, setDlNumber] =
+    useState('');
+
+  const [dlPhotoUrl, setDlPhotoUrl] =
+    useState('');
+
+  const [vehicleType, setVehicleType] =
+    useState<VehicleType>('pickup');
+
+  const [capacity, setCapacity] =
+    useState('');
+
+  const [numberPlate, setNumberPlate] =
+    useState('');
+
+  const [city, setCity] =
+    useState('');
+
+  const [county, setCounty] =
+    useState('');
+
+  const [phone, setPhone] =
+    useState('');
 
   const [paymentChannel, setPaymentChannel] =
-    useState<PaymentChannel>('mpesa_send_money');
+    useState<PaymentChannel>(
+      'mpesa_send_money'
+    );
 
   const [paymentAccount, setPaymentAccount] =
     useState('');
 
-  const [baseRate, setBaseRate] = useState('');
-  const [ratePerKm, setRatePerKm] = useState('');
+  const [baseRate, setBaseRate] =
+    useState('');
+
+  const [ratePerKm, setRatePerKm] =
+    useState('');
 
   const [insuranceDetails, setInsuranceDetails] =
     useState('');
@@ -126,34 +260,77 @@ export default function RegisterMoverPage() {
   const [inspectionExpiry, setInspectionExpiry] =
     useState('');
 
+  /*
+  |--------------------------------------------------------------------------
+  | GPS LOCATION STATE
+  |--------------------------------------------------------------------------
+  */
+
+  const [latitude, setLatitude] =
+    useState<number | null>(null);
+
+  const [longitude, setLongitude] =
+    useState<number | null>(null);
+
+  const [location, setLocation] =
+    useState('');
+
   const [liabilityAccepted, setLiabilityAccepted] =
     useState(false);
 
-  const [termsChecked, setTermsChecked] =
-    useState(false);
-
-  const [references, setReferences] = useState<
-    ReferenceContact[]
-  >([
-    {
-      name: '',
-      phone: '',
-      relationship: '',
-    },
-  ]);
+  const [references, setReferences] =
+    useState<ReferenceContact[]>([
+      {
+        name: '',
+        phone: '',
+        relationship: '',
+      },
+    ]);
 
   const [refError, setRefError] =
     useState<string | null>(null);
 
   /*
-  * ------------------------------------------------------
-  * NO PROFILE
-  * ------------------------------------------------------
+  |--------------------------------------------------------------------------
+  | PREFILL PROFILE DATA
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    setFirstName(
+      profile.first_name ?? ''
+    );
+
+    setMiddleName(
+      profile.middle_name ?? ''
+    );
+
+    setLastName(
+      profile.last_name ?? ''
+    );
+
+    setNationalId(
+      profile.national_id ?? ''
+    );
+
+    setPhone(
+      profile.phone ?? ''
+    );
+  }, [profile]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | NO PROFILE
+  |--------------------------------------------------------------------------
   */
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <Truck className="mx-auto h-10 w-10 text-brand-600" />
 
@@ -162,12 +339,15 @@ export default function RegisterMoverPage() {
           </h2>
 
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            Please sign in to continue with mover registration.
+            Please sign in to continue with mover
+            registration.
           </p>
 
           <button
             type="button"
-            onClick={() => setAuthModalOpen(true)}
+            onClick={() =>
+              setAuthModalOpen(true)
+            }
             className="btn-primary mt-6"
           >
             Sign In
@@ -178,13 +358,14 @@ export default function RegisterMoverPage() {
   }
 
   /*
-  * ------------------------------------------------------
-  * MOVER APPLICATION — APPROVED
-  * ------------------------------------------------------
+  |--------------------------------------------------------------------------
+  | ALREADY APPROVED
+  |--------------------------------------------------------------------------
   */
 
   if (
-    profile.mover_application_status === 'approved'
+    profile.mover_application_status ===
+    'approved'
   ) {
     return (
       <StatusCard
@@ -192,94 +373,71 @@ export default function RegisterMoverPage() {
         title="Mover application approved"
         message="Your mover application has been approved. You can now manage your moving services from your dashboard."
         actionLabel="Open Dashboard"
-        onAction={() => navigate('dashboard')}
+        onAction={() =>
+          navigate('dashboard')
+        }
       />
     );
   }
 
   /*
-  * ------------------------------------------------------
-  * MOVER APPLICATION — PENDING
-  * ------------------------------------------------------
+  |--------------------------------------------------------------------------
+  | ALREADY PENDING
+  |--------------------------------------------------------------------------
   */
 
   if (
-    profile.mover_application_status === 'pending'
+    profile.mover_application_status ===
+    'pending'
   ) {
     return (
       <StatusCard
         icon="pending"
         title="Mover application pending"
-        message="Your mover application has been submitted and is currently waiting for administrator verification. You cannot submit another application while this request is being reviewed."
+        message="Your mover application has already been submitted and is waiting for administrator verification. You cannot submit another application while this request is being reviewed."
       />
     );
   }
 
   /*
-  * ------------------------------------------------------
-  * MOVER — KYC INCOMPLETE
-  * ------------------------------------------------------
+  |--------------------------------------------------------------------------
+  | ROLE SELECTION
+  |--------------------------------------------------------------------------
   */
 
-  if (
-    profile.role === 'mover' &&
-    profile.kyc_completed === false
-  ) {
-    return (
-      <StatusCard
-        icon="warning"
-        title="Complete your identity verification"
-        message="Your identity verification has not been completed. Please complete KYC before continuing with mover registration."
-        actionLabel="Complete KYC"
-        onAction={() => navigate('kyc-verify')}
-      />
-    );
-  }
-
-  /*
-  * ------------------------------------------------------
-  * RENTER — ROLE SELECTION REQUIRED
-  * ------------------------------------------------------
-  */
-
-  if (profile.role === 'renter') {
+  if (profile.role === null) {
     return (
       <StatusCard
         icon="warning"
         title="Choose your professional role"
-        message="Before becoming a mover, please confirm your professional role."
+        message="Please select your account role before registering as a mover."
         actionLabel="Choose Role"
-        onAction={() => setRoleModalOpen(true)}
+        onAction={() =>
+          setRoleModalOpen(true)
+        }
       />
     );
   }
 
-  /*
-  * ------------------------------------------------------
-  * UNSUPPORTED ROLE
-  * ------------------------------------------------------
-  */
-
-  if (
-    profile.role !== null &&
-    profile.role !== 'mover'
-  ) {
+  if (profile.role !== 'renter') {
     return (
       <StatusCard
         icon="blocked"
         title="Mover registration unavailable"
-        message="Your current account role does not allow mover registration."
+        message="Mover registration is available from a renter account. Your current account role cannot submit a mover application."
         actionLabel="Home"
-        onAction={() => navigate('home')}
+        onAction={() =>
+          navigate('home')
+        }
       />
     );
   }
 
   /*
-   * ------------------------------------------------------
-   * REFERENCES
-   * ------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | REFERENCES
+  |--------------------------------------------------------------------------
+  */
 
   const updateReference = (
     index: number,
@@ -287,8 +445,8 @@ export default function RegisterMoverPage() {
     value: string
   ) => {
     setReferences((items) =>
-      items.map((item, i) =>
-        i === index
+      items.map((item, itemIndex) =>
+        itemIndex === index
           ? {
               ...item,
               [field]: value,
@@ -309,68 +467,38 @@ export default function RegisterMoverPage() {
         relationship: '',
       },
     ]);
+
+    setRefError(null);
   };
 
-  const removeReference = (index: number) => {
+  const removeReference = (
+    index: number
+  ) => {
     setReferences((items) =>
-      items.filter((_, i) => i !== index)
+      items.filter(
+        (_, itemIndex) =>
+          itemIndex !== index
+      )
     );
+
+    setRefError(null);
   };
 
   const validateReferences =
     (): ReferenceContact[] | null => {
-      const valid = references.filter(
-        (reference) =>
-          reference.name.trim() ||
-          reference.phone.trim() ||
-          reference.relationship.trim()
-      );
-
-      for (const reference of valid) {
-        if (
-          !reference.name.trim() ||
-          !reference.phone.trim() ||
-          !reference.relationship.trim()
-        ) {
-          setRefError(
-            'All reference fields (name, phone, relationship) are required.'
-          );
-
-          return null;
-        }
-
-        if (reference.name.trim().length < 2) {
-          setRefError(
-            'Reference names must be at least 2 characters.'
-          );
-
-          return null;
-        }
-      }
-
-      const names = valid.map((reference) =>
-        reference.name.trim().toLowerCase()
-      );
-
-      if (new Set(names).size !== names.length) {
-        setRefError(
-          'Duplicate reference names are not allowed.'
+      const valid = references
+        .map((reference) => ({
+          name: reference.name.trim(),
+          phone: reference.phone.trim(),
+          relationship:
+            reference.relationship.trim(),
+        }))
+        .filter(
+          (reference) =>
+            reference.name ||
+            reference.phone ||
+            reference.relationship
         );
-
-        return null;
-      }
-
-      const phones = valid.map((reference) =>
-        reference.phone.trim()
-      );
-
-      if (new Set(phones).size !== phones.length) {
-        setRefError(
-          'Duplicate reference phone numbers are not allowed.'
-        );
-
-        return null;
-      }
 
       if (valid.length === 0) {
         setRefError(
@@ -380,512 +508,692 @@ export default function RegisterMoverPage() {
         return null;
       }
 
+      for (const reference of valid) {
+        if (
+          !reference.name ||
+          !reference.phone ||
+          !reference.relationship
+        ) {
+          setRefError(
+            'All reference fields (name, phone, relationship) are required.'
+          );
+
+          return null;
+        }
+
+        if (
+          reference.name.length < 2
+        ) {
+          setRefError(
+            'Reference names must be at least 2 characters.'
+          );
+
+          return null;
+        }
+
+        if (
+          !validatePhone(reference.phone)
+        ) {
+          setRefError(
+            'Please enter a valid Kenyan phone number for every reference.'
+          );
+
+          return null;
+        }
+      }
+
+      const names = valid.map(
+        (reference) =>
+          reference.name.toLowerCase()
+      );
+
+      if (
+        new Set(names).size !==
+        names.length
+      ) {
+        setRefError(
+          'Duplicate reference names are not allowed.'
+        );
+
+        return null;
+      }
+
+      const phones = valid.map(
+        (reference) =>
+          reference.phone.replace(
+            /\s+/g,
+            ''
+          )
+      );
+
+      if (
+        new Set(phones).size !==
+        phones.length
+      ) {
+        setRefError(
+          'Duplicate reference phone numbers are not allowed.'
+        );
+
+        return null;
+      }
+
       return valid;
     };
 
   /*
-   * ------------------------------------------------------
-   * SEND EMAIL
-   * ------------------------------------------------------
-   *
-   * React does not contain SMTP credentials.
-   * This invokes the Supabase Edge Function responsible
-   * for sending the HTML email.
-   */
+  |--------------------------------------------------------------------------
+  | SUBMIT
+  |--------------------------------------------------------------------------
+  */
 
-  const sendRegistrationEmail = async (
-    type: EmailType,
-    applicationData: Record<string, unknown>
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>
   ) => {
-    try {
-      setSendingEmail(true);
+    event.preventDefault();
+    event.stopPropagation();
 
-      const { data, error: emailError } =
-        await supabase.functions.invoke(
-          'send-notification-emails',
-          {
-            body: {
-              type,
-              application: applicationData,
-            },
-          }
-        );
+    if (submitting) {
+      return;
+    }
 
-      if (emailError) {
-        console.error(
-          'Registration email failed:',
-          emailError
-        );
+    setError(null);
+    setRefError(null);
 
-        return false;
-      }
-
-      if (data?.error) {
-        console.error(
-          'Registration email failed:',
-          data.error
-        );
-
-        return false;
-      }
-
-      return true;
-    } catch (emailError) {
-      console.error(
-        'Registration email request failed:',
-        emailError
+    if (!profile) {
+      setError(
+        'Please sign in to continue.'
       );
 
-      return false;
-    } finally {
-      setSendingEmail(false);
+      return;
     }
-  };
 
-  /*
-   * ------------------------------------------------------
-   * SUBMIT
-   * ------------------------------------------------------
-   */
+    if (profile.role !== 'renter') {
+      setError(
+        'Only renter accounts can submit a mover application.'
+      );
 
-    const handleSubmit = async (
-      event: React.FormEvent
-    ) => {
-      event.preventDefault();
+      return;
+    }
 
-      setError(null);
+    /*
+    |--------------------------------------------------------------------------
+    | PERSONAL DETAILS
+    |--------------------------------------------------------------------------
+    */
 
-      if (!profile) {
-        setError('Please sign in to continue.');
-        return;
-      }
+    const trimmedFirstName =
+      firstName.trim();
+
+    const trimmedMiddleName =
+      middleName.trim();
+
+    const trimmedLastName =
+      lastName.trim();
+
+    const trimmedNationalId =
+      nationalId.trim();
+
+    const trimmedDlNumber =
+      dlNumber.trim();
+
+    const trimmedPhone =
+      phone.trim();
+
+    if (
+      !trimmedFirstName ||
+      !trimmedLastName
+    ) {
+      setError(
+        'First name and last name are required.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | NATIONAL ID
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !validateNationalID(
+        trimmedNationalId
+      )
+    ) {
+      setError(
+        'National ID must be 7-8 digits.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DRIVING LICENSE
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !validateDL(
+        trimmedDlNumber
+      )
+    ) {
+      setError(
+        'Please enter a valid driving license number.'
+      );
+
+      return;
+    }
+
+    const trimmedDlPhotoPath =
+      dlPhotoUrl.trim();
+
+    if (!trimmedDlPhotoPath) {
+      setError(
+        'Please take or upload your driving license photo.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PHONE
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      !validatePhone(trimmedPhone)
+    ) {
+      setError(
+        'Please enter a valid Kenyan phone number.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | VEHICLE
+    |--------------------------------------------------------------------------
+    */
+
+    const trimmedNumberPlate =
+      numberPlate
+        .trim()
+        .toUpperCase();
+
+    const trimmedCapacity =
+      capacity.trim();
+
+    if (
+      !trimmedNumberPlate ||
+      !city ||
+      !county ||
+      !trimmedCapacity
+    ) {
+      setError(
+        'Complete your vehicle and operating details.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GPS LOCATION VALIDATION
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+      latitude === null ||
+      longitude === null
+    ) {
+      setError(
+        'Please capture your current GPS location before submitting your mover registration.'
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90
+    ) {
+      setError(
+        'The captured latitude is invalid.'
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      setError(
+        'The captured longitude is invalid.'
+      );
+
+      return;
+    }
+
+    const trimmedLocation =
+      location.trim();
+
+    if (!trimmedLocation) {
+      setError(
+        'Please provide the location returned by GPS.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | RATES
+    |--------------------------------------------------------------------------
+    */
+
+    const parsedBaseRate =
+      baseRate.trim()
+        ? Number(baseRate)
+        : 0;
+
+    const parsedRatePerKm =
+      ratePerKm.trim()
+        ? Number(ratePerKm)
+        : 0;
+
+    if (
+      !Number.isFinite(parsedBaseRate) ||
+      parsedBaseRate < 0
+    ) {
+      setError(
+        'Base rate must be a valid non-negative amount.'
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(parsedRatePerKm) ||
+      parsedRatePerKm < 0
+    ) {
+      setError(
+        'Rate per kilometer must be a valid non-negative amount.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAYOUT
+    |--------------------------------------------------------------------------
+    */
+
+    const trimmedPaymentAccount =
+      paymentAccount.trim();
+
+    if (!trimmedPaymentAccount) {
+      setError(
+        'Add the mobile money account used for payouts.'
+      );
+
+      return;
+    }
+
+    if (
+      !validatePhone(
+        trimmedPaymentAccount
+      )
+    ) {
+      setError(
+        'Please enter a valid Kenyan payout phone number.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | INSURANCE
+    |--------------------------------------------------------------------------
+    */
+
+    const trimmedInsuranceDetails =
+      insuranceDetails.trim();
+
+    if (!trimmedInsuranceDetails) {
+      setError(
+        'Insurance policy details are required.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | INSPECTION
+    |--------------------------------------------------------------------------
+    */
+
+    if (!inspectionExpiry) {
+      setError(
+        'Vehicle inspection expiration date is required.'
+      );
+
+      return;
+    }
+
+    const inspectionDate =
+      new Date(
+        `${inspectionExpiry}T00:00:00`
+      );
+
+    if (
+      Number.isNaN(
+        inspectionDate.getTime()
+      )
+    ) {
+      setError(
+        'Please provide a valid vehicle inspection expiration date.'
+      );
+
+      return;
+    }
+
+    const today =
+      new Date();
+
+    today.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    if (inspectionDate < today) {
+      setError(
+        'Vehicle inspection must not already be expired.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | LIABILITY
+    |--------------------------------------------------------------------------
+    */
+
+    if (!liabilityAccepted) {
+      setError(
+        'You must accept full liability for goods in transit.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | TERMS
+    |--------------------------------------------------------------------------
+    */
+
+    if (!termsAccepted) {
+      setError(
+        'You must accept the Terms and Conditions.'
+      );
+
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | REFERENCES
+    |--------------------------------------------------------------------------
+    */
+
+    const validReferences =
+      validateReferences();
+
+    if (!validReferences) {
+      return;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SUBMISSION
+    |--------------------------------------------------------------------------
+    */
+
+    setSubmitting(true);
+
+    try {
+      const fullName = [
+        trimmedFirstName,
+        trimmedMiddleName,
+        trimmedLastName,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
       /*
-      * ------------------------------------------------------
-      * PERSONAL DETAILS
-      * ------------------------------------------------------
+      |--------------------------------------------------------------------------
+      | APPLICATION PAYLOAD
+      |--------------------------------------------------------------------------
       */
 
-      const trimmedFirstName = firstName.trim();
-      const trimmedMiddleName = middleName.trim();
-      const trimmedLastName = lastName.trim();
-      const trimmedNationalId = nationalId.trim();
-      const trimmedDlNumber = dlNumber.trim();
-      const trimmedPhone = phone.trim();
+      const application = {
+        driver_full_name:
+          fullName,
 
-      if (!trimmedFirstName || !trimmedLastName) {
-        setError(
-          'First name and last name are required.'
-        );
-        return;
-      }
+        national_id:
+          trimmedNationalId,
+
+        dl_number:
+          trimmedDlNumber,
+
+        dl_photo_url:
+          trimmedDlPhotoPath,
+
+        vehicle_type:
+          vehicleType,
+
+        number_plate:
+          trimmedNumberPlate,
+
+        operating_city:
+          city,
+
+        operating_county:
+          county,
+
+        phone:
+          trimmedPhone,
+
+        base_rate_kes:
+          parsedBaseRate,
+
+        rate_per_km_kes:
+          parsedRatePerKm,
+
+        capacity_details:
+          trimmedCapacity,
+
+        payment_channel:
+          paymentChannel,
+
+        payment_account:
+          trimmedPaymentAccount,
+
+        liability_accepted:
+          true,
+
+        insurance_policy_details:
+          trimmedInsuranceDetails,
+
+        vehicle_inspection_expiry:
+          inspectionExpiry,
+
+        terms_accepted:
+          true,
+
+        reference_contacts:
+          validReferences,
+
+        /*
+        |--------------------------------------------------------------------------
+        | GPS DATA
+        |--------------------------------------------------------------------------
+        */
+
+        latitude,
+
+        longitude,
+
+        location:
+
+          trimmedLocation,
+
+        /*
+        |--------------------------------------------------------------------------
+        | NOTIFICATION METADATA
+        |--------------------------------------------------------------------------
+        */
+
+        applicant_name:
+          fullName,
+
+        applicant_email:
+          profile.email,
+
+        application_type:
+          'mover',
+
+        submitted_at:
+          new Date().toISOString(),
+      };
 
       /*
-      * ------------------------------------------------------
-      * NATIONAL ID
-      * ------------------------------------------------------
+      |--------------------------------------------------------------------------
+      | DATABASE SUBMISSION
+      |--------------------------------------------------------------------------
       */
 
-      if (!validateNationalID(trimmedNationalId)) {
-        setError(
-          'National ID must be 7-8 digits.'
-        );
-        return;
-      }
+      await protectedPost<unknown>(
+        '/rest/v1/rpc/submit_mover_application',
+        {
+          p_application:
+            application,
+        }
+      );
 
       /*
-      * ------------------------------------------------------
-      * DRIVING LICENSE
-      * ------------------------------------------------------
-      *
-      * DocumentCapture must have already uploaded the file
-      * into Supabase Storage and returned the persisted
-      * storage path/reference.
+      |--------------------------------------------------------------------------
+      | REFRESH PROFILE
+      |--------------------------------------------------------------------------
       */
-
-      if (!validateDL(trimmedDlNumber)) {
-        setError(
-          'Please enter a valid driving license number.'
-        );
-        return;
-      }
-
-      const trimmedDlPhotoPath =
-        dlPhotoUrl?.trim() || '';
-
-      if (!trimmedDlPhotoPath) {
-        setError(
-          'Please upload your driving license photo.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * PHONE
-      * ------------------------------------------------------
-      */
-
-      if (!validatePhone(trimmedPhone)) {
-        setError(
-          'Please enter a valid Kenyan phone number.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * VEHICLE INFORMATION
-      * ------------------------------------------------------
-      */
-
-      const trimmedNumberPlate =
-        numberPlate.trim().toUpperCase();
-
-      const trimmedCapacity =
-        capacity.trim();
-
-      if (
-        !trimmedNumberPlate ||
-        !city ||
-        !county ||
-        !trimmedCapacity
-      ) {
-        setError(
-          'Complete your vehicle and operating details.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * PAYOUT
-      * ------------------------------------------------------
-      */
-
-      const trimmedPaymentAccount =
-        paymentAccount.trim();
-
-      if (!trimmedPaymentAccount) {
-        setError(
-          'Add the mobile money account used for payouts.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * INSURANCE
-      * ------------------------------------------------------
-      */
-
-      const trimmedInsuranceDetails =
-        insuranceDetails.trim();
-
-      if (!trimmedInsuranceDetails) {
-        setError(
-          'Insurance policy details are required.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * INSPECTION
-      * ------------------------------------------------------
-      */
-
-      if (!inspectionExpiry) {
-        setError(
-          'Vehicle inspection expiration date is required.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * LIABILITY
-      * ------------------------------------------------------
-      */
-
-      if (!liabilityAccepted) {
-        setError(
-          'You must accept full liability for goods in transit.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * TERMS
-      * ------------------------------------------------------
-      */
-
-      if (!termsChecked) {
-        setError(
-          'You must accept the Terms and Conditions.'
-        );
-        return;
-      }
-
-      /*
-      * ------------------------------------------------------
-      * REFERENCES
-      * ------------------------------------------------------
-      */
-
-      const validReferences =
-        validateReferences();
-
-      if (!validReferences) {
-        return;
-      }
-
-      setSubmitting(true);
 
       try {
-        /*
-        * ----------------------------------------------------
-        * VERIFY AUTH SESSION
-        * ----------------------------------------------------
-        */
-
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError) {
-          throw new Error(
-            'Unable to verify your login session.'
-          );
-        }
-
-        if (!user) {
-          throw new Error(
-            'Your login session has expired. Please sign in again.'
-          );
-        }
-
-        /*
-        * Make sure the profile being modified belongs to
-        * the authenticated account.
-        */
-
-        if (user.id !== profile.id) {
-          throw new Error(
-            'Your account session does not match your profile.'
-          );
-        }
-
-        /*
-        * ----------------------------------------------------
-        * BUILD FULL NAME
-        * ----------------------------------------------------
-        */
-
-        const fullName = [
-          trimmedFirstName,
-          trimmedMiddleName,
-          trimmedLastName,
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        /*
-        * ----------------------------------------------------
-        * BUILD APPLICATION
-        * ----------------------------------------------------
-        *
-        * IMPORTANT:
-        *
-        * dl_photo_url contains the persisted Storage
-        * reference returned by DocumentCapture.
-        *
-        * We intentionally store the Storage path/reference,
-        * not a temporary browser File object.
-        */
-
-        const application = {
-          driver_full_name: fullName,
-
-          national_id:
-            trimmedNationalId,
-
-          dl_number:
-            trimmedDlNumber,
-
-          dl_photo_url:
-            trimmedDlPhotoPath,
-
-          vehicle_type:
-            vehicleType,
-
-          number_plate:
-            trimmedNumberPlate,
-
-          operating_city:
-            city,
-
-          operating_county:
-            county,
-
-          phone:
-            trimmedPhone,
-
-          base_rate_kes:
-            baseRate
-              ? Number(baseRate)
-              : 0,
-
-          rate_per_km_kes:
-            ratePerKm
-              ? Number(ratePerKm)
-              : 0,
-
-          capacity_details:
-            trimmedCapacity,
-
-          payment_channel:
-            paymentChannel,
-
-          payment_account:
-            trimmedPaymentAccount,
-
-          liability_accepted:
-            liabilityAccepted,
-
-          insurance_policy_details:
-            trimmedInsuranceDetails,
-
-          vehicle_inspection_expiry:
-            inspectionExpiry,
-
-          terms_accepted:
-            termsChecked,
-
-          reference_contacts:
-            validReferences,
-
-          applicant_id:
-            user.id,
-
-          applicant_email:
-            profile.email || '',
-
-          applicant_name:
-            fullName,
-
-          application_type:
-            'mover',
-
-          submitted_at:
-            new Date().toISOString(),
-        };
-
-        /*
-        * ----------------------------------------------------
-        * SAVE APPLICATION
-        * ----------------------------------------------------
-        */
-
-        const {
-          data: submissionResult,
-          error: moverError,
-        } = await supabase.rpc(
-          'submit_mover_application',
-          {
-            p_application:
-              application,
-          }
-        );
-
-        if (moverError) {
-          console.error(
-            'Mover registration RPC failed:',
-            moverError
-          );
-
-          throw new Error(
-            'We could not save your mover registration. Please try again.'
-          );
-        }
-
-        /*
-        * The RPC should return a successful result.
-        * We don't depend on the exact shape here because
-        * existing versions of the RPC may return different
-        * values.
-        */
-
-        console.log(
-          'Mover application submitted:',
-          submissionResult
-        );
-
-        /*
-        * ----------------------------------------------------
-        * REFRESH PROFILE
-        * ----------------------------------------------------
-        */
-
         await refreshProfile();
+      } catch (profileError) {
+        console.error(
+          'Profile refresh after mover submission failed:',
+          profileError
+        );
+      }
 
-        /*
-        * ----------------------------------------------------
-        * EMAIL APPLICANT
-        * ----------------------------------------------------
-        */
+      /*
+      |--------------------------------------------------------------------------
+      | EMAILS
+      |--------------------------------------------------------------------------
+      */
 
+      const applicantEmailSent =
         await sendRegistrationEmail(
           'mover_application_submitted',
           application
         );
 
-        /*
-        * ----------------------------------------------------
-        * EMAIL ADMIN
-        * ----------------------------------------------------
-        */
-
+      const adminEmailSent =
         await sendRegistrationEmail(
           'mover_admin_notification',
           application
         );
 
-        /*
-        * ----------------------------------------------------
-        * SUCCESS
-        * ----------------------------------------------------
-        */
+      setEmailStatus(
+        applicantEmailSent &&
+          adminEmailSent
+          ? 'sent'
+          : 'failed'
+      );
 
-        setSuccess(true);
+      setSuccess(true);
+    } catch (submissionError) {
+      console.error(
+        'Mover submission failed:',
+        submissionError
+      );
 
-      } catch (submissionError) {
-        console.error(
-          'Mover submission failed:',
-          submissionError
-        );
+      const protectedError =
+        submissionError as {
+          message?: string;
+          status?: number;
+          code?: string;
+        };
 
+      if (
+        protectedError.status ===
+        401
+      ) {
         setError(
-          submissionError instanceof Error
-            ? submissionError.message
-            : 'Something went wrong while submitting your mover registration. Please try again.'
+          'Your login session has expired. Please sign in again.'
         );
-      } finally {
-        setSubmitting(false);
+
+        return;
       }
-    };
+
+      if (
+        protectedError.status ===
+        403
+      ) {
+        setError(
+          'You are not authorized to submit a mover application.'
+        );
+
+        return;
+      }
+
+      const message =
+        protectedError.message?.trim();
+
+      if (message) {
+        setError(message);
+      } else {
+        setError(
+          'Something went wrong while submitting your mover registration. Please try again.'
+        );
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   /*
-   * ------------------------------------------------------
-   * SUCCESS SCREEN
-   * ------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | SUCCESS
+  |--------------------------------------------------------------------------
+  */
 
   if (success) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12">
+      <div className="mx-auto max-w-2xl px-2 py-12">
         <div className="card animate-scale-in p-8 text-center">
 
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30">
@@ -897,34 +1205,60 @@ export default function RegisterMoverPage() {
           </h2>
 
           <p className="mt-2 text-gray-500 dark:text-gray-400">
-            Your mover application has been successfully
-            submitted and is now waiting for administrator
-            approval.
+            Your mover application has been
+            successfully submitted and is now
+            waiting for administrator approval.
           </p>
 
-          <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 text-left dark:border-brand-700 dark:bg-brand-900/20">
-            <div className="flex gap-3">
-              <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+          {emailStatus === 'sent' && (
+            <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 text-left dark:border-brand-700 dark:bg-brand-900/20">
+              <div className="flex gap-3">
+                <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
 
-              <div>
-                <p className="font-semibold text-brand-900 dark:text-brand-200">
-                  Confirmation email sent
-                </p>
+                <div>
+                  <p className="font-semibold text-brand-900 dark:text-brand-200">
+                    Confirmation emails sent
+                  </p>
 
-                <p className="mt-1 text-sm text-brand-700 dark:text-brand-300">
-                  We have sent a confirmation to your
-                  registered email address. Our
-                  administration team has also been
-                  notified to review your application.
-                </p>
+                  <p className="mt-1 text-sm text-brand-700 dark:text-brand-300">
+                    A confirmation was sent to
+                    your registered email address
+                    and the administration team was
+                    notified.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {emailStatus === 'failed' && (
+            <div className="mt-5 rounded-xl border border-warning-200 bg-warning-50 p-4 text-left dark:border-warning-800 dark:bg-warning-900/20">
+              <div className="flex gap-3">
+                <Mail className="mt-0.5 h-5 w-5 shrink-0 text-warning-600" />
+
+                <div>
+                  <p className="font-semibold text-warning-900 dark:text-warning-200">
+                    Application submitted
+                  </p>
+
+                  <p className="mt-1 text-sm text-warning-700 dark:text-warning-300">
+                    Your application was saved
+                    successfully. We could not confirm
+                    delivery of one or more notification
+                    emails, but this does not affect
+                    your application.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={() => navigate('movers')}
+              onClick={() =>
+                navigate('movers')
+              }
               className="btn-primary"
             >
               View Movers
@@ -932,7 +1266,9 @@ export default function RegisterMoverPage() {
 
             <button
               type="button"
-              onClick={() => navigate('dashboard')}
+              onClick={() =>
+                navigate('dashboard')
+              }
               className="btn-secondary"
             >
               Go to Dashboard
@@ -944,18 +1280,15 @@ export default function RegisterMoverPage() {
   }
 
   /*
-   * ------------------------------------------------------
-   * REGISTRATION FORM
-   * ------------------------------------------------------
-   */
+  |--------------------------------------------------------------------------
+  | FORM
+  |--------------------------------------------------------------------------
+  */
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-
-      {/* Header */}
+    <div className="mx-auto max-w-3xl px-2 py-8 sm:px-6">
 
       <div className="mb-6 flex items-center gap-3">
-
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-100 dark:bg-accent-900/30">
           <Truck className="h-6 w-6 text-accent-600" />
         </div>
@@ -967,42 +1300,40 @@ export default function RegisterMoverPage() {
 
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Register your moving service, vehicle
-            capacity, compliance information and payout
-            details.
+            capacity, compliance information and
+            payout details.
           </p>
         </div>
       </div>
 
-      {/* Commission information */}
-
-      <div className="mb-6 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-800/30">
-
+      <div className="mb-6 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-2 py-3 dark:border-brand-700 dark:bg-brand-800/30">
         <Percent className="h-5 w-5 shrink-0 text-brand-600" />
 
         <p className="text-sm text-brand-700 dark:text-brand-300">
           <span className="font-semibold">
             {COMMISSION_RATE * 100}% platform fee:
           </span>{' '}
-          payouts release through the platform escrow
-          workflow.
+          payouts release through the platform
+          escrow workflow.
         </p>
       </div>
 
       <TermsGate
         context="mover"
-        onAccept={() => setTermsAccepted(true)}
+        onAccept={() => {
+          setTermsAccepted(true);
+          setError(null);
+        }}
       >
         <form
           onSubmit={handleSubmit}
+          noValidate
           className="space-y-6"
         >
 
-          {/* =================================================
-              PERSONAL DETAILS
-          ================================================= */}
+          {/* PERSONAL DETAILS */}
 
           <section className="card p-6">
-
             <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
               <User className="h-5 w-5 text-brand-600" />
               Personal details
@@ -1044,6 +1375,7 @@ export default function RegisterMoverPage() {
                 onChange={setNationalId}
                 required
                 icon={IdCard}
+                inputMode="numeric"
               />
 
               <Field
@@ -1057,12 +1389,9 @@ export default function RegisterMoverPage() {
             </div>
           </section>
 
-          {/* =================================================
-              DRIVING LICENSE
-          ================================================= */}
+          {/* DRIVING LICENSE */}
 
           <section className="card p-6">
-
             <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
               <CreditCard className="h-5 w-5 text-brand-600" />
               Driving license evidence
@@ -1073,17 +1402,20 @@ export default function RegisterMoverPage() {
               userId={profile.id}
               label="Driving license photo"
               currentUrl={dlPhotoUrl}
-              onUploaded={setDlPhotoUrl}
+              onUploaded={(
+                storagePath: string
+              ) => {
+                setError(null);
+                setDlPhotoUrl(
+                  storagePath
+                );
+              }}
             />
-
           </section>
 
-          {/* =================================================
-              VEHICLE
-          ================================================= */}
+          {/* VEHICLE */}
 
           <section className="card p-6">
-
             <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
               <Truck className="h-5 w-5 text-brand-600" />
               Vehicle and service capacity
@@ -1091,30 +1423,21 @@ export default function RegisterMoverPage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Vehicle Type
-                </label>
-
-                <select
-                  value={vehicleType}
-                  onChange={(event) =>
-                    setVehicleType(
-                      event.target.value as typeof vehicleType
-                    )
-                  }
-                  className="input-field"
-                >
-                  {VEHICLE_TYPES.map((item) => (
-                    <option
-                      key={item.value}
-                      value={item.value}
-                    >
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SelectField
+                label="Vehicle Type"
+                value={vehicleType}
+                onChange={(value) =>
+                  setVehicleType(
+                    value as VehicleType
+                  )
+                }
+                options={VEHICLE_TYPES.map(
+                  (item) => ({
+                    value: item.value,
+                    label: item.label,
+                  })
+                )}
+              />
 
               <Field
                 label="Capacity details"
@@ -1132,67 +1455,41 @@ export default function RegisterMoverPage() {
                 placeholder="KDA 123A"
               />
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Operating City
-                </label>
+              <SelectField
+                label="Operating City"
+                value={city}
+                onChange={setCity}
+                placeholder="Select city..."
+                options={KENYAN_CITIES.map(
+                  (item) => ({
+                    value: item,
+                    label: item,
+                  })
+                )}
+                required
+              />
 
-                <select
-                  value={city}
-                  onChange={(event) =>
-                    setCity(event.target.value)
-                  }
-                  className="input-field"
-                  required
-                >
-                  <option value="">
-                    Select city...
-                  </option>
-
-                  {KENYAN_CITIES.map((item) => (
-                    <option
-                      key={item}
-                      value={item}
-                    >
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  County
-                </label>
-
-                <select
-                  value={county}
-                  onChange={(event) =>
-                    setCounty(event.target.value)
-                  }
-                  className="input-field"
-                  required
-                >
-                  <option value="">
-                    Select county...
-                  </option>
-
-                  {KENYAN_COUNTIES.map((item) => (
-                    <option
-                      key={item}
-                      value={item}
-                    >
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SelectField
+                label="County"
+                value={county}
+                onChange={setCounty}
+                placeholder="Select county..."
+                options={KENYAN_COUNTIES.map(
+                  (item) => ({
+                    value: item,
+                    label: item,
+                  })
+                )}
+                required
+              />
 
               <Field
                 label="Base Rate (KES)"
                 value={baseRate}
                 onChange={setBaseRate}
                 type="number"
+                min={0}
+                step="0.01"
               />
 
               <Field
@@ -1200,17 +1497,92 @@ export default function RegisterMoverPage() {
                 value={ratePerKm}
                 onChange={setRatePerKm}
                 type="number"
+                min={0}
+                step="0.01"
               />
 
             </div>
           </section>
 
-          {/* =================================================
-              COMPLIANCE
-          ================================================= */}
+          {/* GPS LOCATION */}
 
           <section className="card p-6">
+            <h3 className="mb-2 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
+              <MapPin className="h-5 w-5 text-brand-600" />
+              Current GPS location
+            </h3>
 
+            <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+              Capture your current operating location.
+              This helps customers and administrators
+              identify where your moving service is based.
+            </p>
+
+            <GPSLocationInput
+              latitude={latitude}
+              longitude={longitude}
+              location={location}
+              onLocationChange={({
+                latitude: nextLatitude,
+                longitude: nextLongitude,
+                location: nextLocation,
+              }: GPSLocationValue) => {
+                setLatitude(nextLatitude);
+                setLongitude(nextLongitude);
+                setLocation(nextLocation);
+                setError(null);
+              }}
+            />
+
+            {(latitude !== null ||
+              longitude !== null ||
+              location) && (
+              <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-700 dark:bg-brand-900/20">
+                <div className="grid gap-3 sm:grid-cols-3">
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Latitude
+                    </p>
+
+                    <p className="mt-1 font-mono text-sm text-gray-900 dark:text-white">
+                      {latitude !== null
+                        ? latitude.toFixed(7)
+                        : 'Not captured'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Longitude
+                    </p>
+
+                    <p className="mt-1 font-mono text-sm text-gray-900 dark:text-white">
+                      {longitude !== null
+                        ? longitude.toFixed(7)
+                        : 'Not captured'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Location
+                    </p>
+
+                    <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                      {location ||
+                        'Not resolved'}
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* COMPLIANCE */}
+
+          <section className="card p-6">
             <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
               <ShieldAlert className="h-5 w-5 text-brand-600" />
               Compliance and policy
@@ -1236,42 +1608,70 @@ export default function RegisterMoverPage() {
                 </label>
 
                 <div className="relative">
+                  <Calendar className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
-                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-
-                  <input
-                    type="date"
-                    value={inspectionExpiry}
-                    onChange={(event) =>
-                      setInspectionExpiry(
-                        event.target.value
-                      )
+                  <DatePicker
+                    selected={
+                      inspectionExpiry
+                        ? new Date(
+                            `${inspectionExpiry}T00:00:00`
+                          )
+                        : null
                     }
-                    className="input-field pl-10"
+                    onChange={(
+                      date: Date | null
+                    ) => {
+                      if (!date) {
+                        setInspectionExpiry('');
+                        return;
+                      }
+
+                      const year =
+                        date.getFullYear();
+
+                      const month =
+                        String(
+                          date.getMonth() + 1
+                        ).padStart(2, '0');
+
+                      const day =
+                        String(
+                          date.getDate()
+                        ).padStart(2, '0');
+
+                      setInspectionExpiry(
+                        `${year}-${month}-${day}`
+                      );
+                    }}
+                    minDate={new Date()}
+                    dateFormat="MMMM d, yyyy"
+                    placeholderText="Select expiry date"
+                    className="input-field w-full border border-brand-200 bg-brand-50 p-4 text-left dark:border-brand-700 dark:bg-brand-900/20"
+                    wrapperClassName="w-full"
+                    showPopperArrow={false}
+                    showMonthDropdown
+                    showYearDropdown
+                    dropdownMode="select"
                     required
                   />
-
                 </div>
               </div>
 
             </div>
           </section>
 
-          {/* =================================================
-              REFERENCES
-          ================================================= */}
+          {/* REFERENCES */}
 
           <section className="card p-6">
-
             <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
               <Users className="h-5 w-5 text-brand-600" />
               Representative references
             </h3>
 
             <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-              Add people we can contact if you are
-              unavailable. Duplicate names or phone
-              numbers are not allowed.
+              Add people we can contact if you
+              are unavailable. Duplicate names or
+              phone numbers are not allowed.
             </p>
 
             {references.map(
@@ -1280,7 +1680,6 @@ export default function RegisterMoverPage() {
                   key={index}
                   className="mb-3 grid gap-3 rounded-lg bg-gray-50 p-3 dark:bg-brand-800/30 sm:grid-cols-4"
                 >
-
                   <input
                     className="input-field"
                     placeholder="Full name"
@@ -1310,7 +1709,9 @@ export default function RegisterMoverPage() {
                   <input
                     className="input-field"
                     placeholder="Relationship"
-                    value={reference.relationship}
+                    value={
+                      reference.relationship
+                    }
                     onChange={(event) =>
                       updateReference(
                         index,
@@ -1324,14 +1725,15 @@ export default function RegisterMoverPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        removeReference(index)
+                        removeReference(
+                          index
+                        )
                       }
                       className="btn-ghost text-sm text-error-600"
                     >
                       Remove
                     </button>
                   )}
-
                 </div>
               )
             )}
@@ -1349,15 +1751,11 @@ export default function RegisterMoverPage() {
             >
               Add another reference
             </button>
-
           </section>
 
-          {/* =================================================
-              PAYOUT
-          ================================================= */}
+          {/* PAYOUT */}
 
           <section className="card p-6">
-
             <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
               <Wallet className="h-5 w-5 text-brand-600" />
               Payout method
@@ -1365,32 +1763,21 @@ export default function RegisterMoverPage() {
 
             <div className="grid gap-4 sm:grid-cols-2">
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Payment Channel
-                </label>
-
-                <select
-                  value={paymentChannel}
-                  onChange={(event) =>
-                    setPaymentChannel(
-                      event.target.value as PaymentChannel
-                    )
-                  }
-                  className="input-field"
-                >
-                  {PAYMENT_CHANNELS.map(
-                    (item) => (
-                      <option
-                        key={item.value}
-                        value={item.value}
-                      >
-                        {item.label}
-                      </option>
-                    )
-                  )}
-                </select>
-              </div>
+              <SelectField
+                label="Payment Channel"
+                value={paymentChannel}
+                onChange={(value) =>
+                  setPaymentChannel(
+                    value as PaymentChannel
+                  )
+                }
+                options={PAYMENT_CHANNELS.map(
+                  (item) => ({
+                    value: item.value,
+                    label: item.label,
+                  })
+                )}
+              />
 
               <Field
                 label="Mobile money number / account"
@@ -1403,29 +1790,28 @@ export default function RegisterMoverPage() {
             </div>
           </section>
 
-          {/* =================================================
-              LIABILITY + TERMS
-          ================================================= */}
+          {/* LIABILITY + TERMS */}
 
           <section className="card space-y-4 p-6">
 
-            <label className="flex items-start gap-3 rounded-lg border border-error-200 bg-error-50 p-4 dark:border-error-800 dark:bg-error-900/20">
+            <label className="flex items-start gap-3 rounded-lg border border-error-200 bg-error-100 p-4 dark:border-error-800 dark:bg-error-900/20">
 
               <input
                 type="checkbox"
                 checked={liabilityAccepted}
-                onChange={(event) =>
+                onChange={(event) => {
                   setLiabilityAccepted(
                     event.target.checked
-                  )
-                }
+                  );
+                  setError(null);
+                }}
                 className="mt-1 h-5 w-5 rounded text-brand-600"
               />
 
-              <span className="text-sm text-error-800 dark:text-error-300">
+              <span className="text-sm text-error-800 dark:text-red-400">
                 I accept full financial and legal
-                liability for loss, theft, or damage to
-                goods while they are in my care and
+                liability for loss, theft, or damage
+                to goods while they are in my care and
                 transit.
               </span>
 
@@ -1435,58 +1821,55 @@ export default function RegisterMoverPage() {
 
               <input
                 type="checkbox"
-                checked={termsChecked}
-                onChange={(event) =>
-                  setTermsChecked(
+                checked={termsAccepted}
+                onChange={(event) => {
+                  setTermsAccepted(
                     event.target.checked
-                  )
-                }
+                  );
+                  setError(null);
+                }}
                 className="mt-1 h-5 w-5 rounded text-brand-600"
-                required
               />
 
               <span className="text-sm text-gray-700 dark:text-gray-300">
-                I have read and agree to the Saka Krib
-                Mover Terms and Conditions, including
-                platform commission rates, service
-                guidelines, compliance requirements and
-                liability obligations.
+                I have read and agree to the Saka
+                Krib Mover Terms and Conditions,
+                including platform commission rates,
+                service guidelines, compliance
+                requirements and liability obligations.
               </span>
 
             </label>
 
           </section>
 
-          {/* =================================================
-              ERROR
-          ================================================= */}
+          {/* ERROR */}
 
           {error && (
-            <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+            >
               {error}
             </div>
           )}
 
-          {/* =================================================
-              SUBMIT
-          ================================================= */}
+          {/* SUBMIT */}
 
           <button
             type="submit"
             disabled={
               !termsAccepted ||
-              !termsChecked ||
+              !liabilityAccepted ||
               submitting
             }
-            className="btn-primary flex w-full items-center justify-center gap-2"
+            className="btn-primary flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-
-                {sendingEmail
-                  ? 'Sending confirmation...'
-                  : 'Submitting registration...'}
+                Submitting registration...
               </>
             ) : (
               <>
@@ -1545,8 +1928,7 @@ function StatusCard({
       : 'text-brand-600';
 
   return (
-    <div className="mx-auto max-w-md px-4 py-20">
-
+    <div className="mx-auto max-w-md px-2 py-20">
       <div className="card p-8 text-center">
 
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-900/30">
@@ -1581,6 +1963,72 @@ function StatusCard({
 
 /*
 |--------------------------------------------------------------------------
+| SELECT FIELD
+|--------------------------------------------------------------------------
+*/
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{
+    value: string;
+    label: string;
+  }>;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+
+      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+        {label}
+
+        {required && (
+          <span className="text-error-500">
+            {' '}
+            *
+          </span>
+        )}
+      </label>
+
+      <select
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        className="input-field"
+        required={required}
+      >
+        {placeholder && (
+          <option value="">
+            {placeholder}
+          </option>
+        )}
+
+        {options.map((option) => (
+          <option
+            key={option.value}
+            value={option.value}
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+
+    </div>
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
 | FIELD
 |--------------------------------------------------------------------------
 */
@@ -1593,6 +2041,9 @@ function Field({
   placeholder,
   type = 'text',
   icon: Icon,
+  inputMode,
+  min,
+  step,
 }: {
   label: string;
   value: string;
@@ -1601,6 +2052,17 @@ function Field({
   placeholder?: string;
   type?: string;
   icon?: typeof IdCard;
+  inputMode?:
+    | 'none'
+    | 'text'
+    | 'decimal'
+    | 'numeric'
+    | 'tel'
+    | 'search'
+    | 'email'
+    | 'url';
+  min?: number;
+  step?: string;
 }) {
   return (
     <div>
@@ -1626,18 +2088,18 @@ function Field({
           type={type}
           value={value}
           onChange={(event) =>
-            onChange(event.target.value)
+            onChange(
+              event.target.value
+            )
           }
           placeholder={placeholder}
           className={`input-field ${
             Icon ? 'pl-10' : ''
           }`}
           required={required}
-          min={
-            type === 'number'
-              ? 0
-              : undefined
-          }
+          inputMode={inputMode}
+          min={min}
+          step={step}
         />
 
       </div>

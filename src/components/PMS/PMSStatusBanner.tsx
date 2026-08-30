@@ -102,7 +102,7 @@ export default function PMSStatusBanner({
             <button
               type="button"
               onClick={onRenew}
-              className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+              className="mt-3 rounded-lg bg-amber-600 px-2 py-2 text-sm font-medium text-white hover:bg-amber-700"
             >
               Complete payment
             </button>
@@ -166,7 +166,7 @@ export default function PMSStatusBanner({
             <button
               type="button"
               onClick={onRenew}
-              className="mt-4 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
+              className="mt-4 rounded-lg bg-orange-600 px-2 py-2 text-sm font-medium text-white hover:bg-orange-700"
             >
               Renew with M-Pesa
             </button>
@@ -201,7 +201,7 @@ export default function PMSStatusBanner({
             <button
               type="button"
               onClick={onRenew}
-              className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              className="mt-4 rounded-lg bg-red-600 px-2 py-2 text-sm font-medium text-white hover:bg-red-700"
             >
               Reactivate PMS
             </button>
@@ -230,7 +230,7 @@ export default function PMSStatusBanner({
             <button
               type="button"
               onClick={onRenew}
-              className="mt-4 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              className="mt-4 rounded-lg bg-gray-900 px-2 py-2 text-sm font-medium text-white hover:bg-gray-800"
             >
               Subscribe again
             </button>

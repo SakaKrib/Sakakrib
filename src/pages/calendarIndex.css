@@ -1,0 +1,120 @@
+/* ============================================================
+   REACT DATEPICKER - SAKA THEME
+   ============================================================ */
+
+.react-datepicker {
+  @apply border-brand-200 bg-brand-50 text-gray-900 shadow-lg;
+}
+
+.react-datepicker__header {
+  @apply border-b border-brand-200 bg-brand-100;
+}
+
+/* Month / year dropdown header */
+.react-datepicker__current-month {
+  @apply text-brand-900;
+}
+
+.react-datepicker__month-select,
+.react-datepicker__year-select {
+  @apply rounded-md border border-brand-300 bg-brand-50 px-2 py-1 text-sm font-medium text-brand-900 outline-none;
+}
+
+.react-datepicker__month-select:focus,
+.react-datepicker__year-select:focus {
+  @apply border-brand-500 ring-2 ring-brand-500/20;
+}
+
+/* Calendar weekday names */
+.react-datepicker__day-name {
+  @apply text-brand-700;
+}
+
+/* Calendar days */
+.react-datepicker__day {
+  @apply text-gray-700;
+}
+
+.react-datepicker__day:hover {
+  @apply bg-brand-200 text-brand-900;
+}
+
+/* Selected date */
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  @apply bg-brand-600 text-white;
+}
+
+.react-datepicker__day--selected:hover {
+  @apply bg-brand-700 text-white;
+}
+
+/* Today */
+.react-datepicker__day--today {
+  @apply font-bold text-brand-600;
+}
+
+/* Disabled dates */
+.react-datepicker__day--disabled {
+  @apply text-gray-300;
+}
+
+/* Navigation arrows */
+.react-datepicker__navigation-icon::before {
+  @apply border-brand-600;
+}
+
+/* Popper */
+.react-datepicker-popper {
+  @apply z-50;
+}
+
+/* ============================================================
+   DARK MODE
+   ============================================================ */
+
+.dark .react-datepicker {
+  @apply border-brand-700 bg-brand-900 text-gray-100;
+}
+
+.dark .react-datepicker__header {
+  @apply border-b border-brand-700 bg-brand-800;
+}
+
+.dark .react-datepicker__current-month {
+  @apply text-white;
+}
+
+.dark .react-datepicker__month-select,
+.dark .react-datepicker__year-select {
+  @apply border-brand-600 bg-brand-900 text-white;
+}
+
+.dark .react-datepicker__day-name {
+  @apply text-brand-300;
+}
+
+.dark .react-datepicker__day {
+  @apply text-gray-200;
+}
+
+.dark .react-datepicker__day:hover {
+  @apply bg-brand-700 text-white;
+}
+
+.dark .react-datepicker__day--selected,
+.dark .react-datepicker__day--keyboard-selected {
+  @apply bg-brand-600 text-white;
+}
+
+.dark .react-datepicker__day--today {
+  @apply text-brand-400;
+}
+
+.dark .react-datepicker__day--disabled {
+  @apply text-gray-600;
+}
+
+.dark .react-datepicker__navigation-icon::before {
+  @apply border-brand-300;
+}

@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
+
 import { twMerge } from 'tailwind-merge';
 
 import {
@@ -51,6 +52,7 @@ export function formatKES(
 
 export function timeAgo(dateString: string): string {
   const date = new Date(dateString);
+
   const now = new Date();
 
   const seconds = Math.floor(
@@ -270,7 +272,9 @@ export const HOUSE_SIZES = [
  */
 
 export let COMMISSION_RATE = 0;
+
 export let LISTING_FEE_KES = 0;
+
 export let FREE_LISTING_LIMIT = 0;
 
 // ============================================================
@@ -294,6 +298,7 @@ export interface PlatformSettings {
  *
  * Database remains the source of truth.
  */
+
 export async function getPlatformSettings(): Promise<PlatformSettings> {
   const data = await protectedGet<PlatformSettings[]>(
     '/rest/v1/platform_settings' +
@@ -309,22 +314,41 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     );
   }
 
+  const moverCommissionRate = Number(
+    row.mover_commission_rate,
+  );
+
+  const moverOperationalMarkupRate = Number(
+    row.mover_operational_markup_rate,
+  );
+
+  if (!Number.isFinite(moverCommissionRate)) {
+    throw new Error(
+      'Platform settings: mover_commission_rate is invalid.',
+    );
+  }
+
+  if (!Number.isFinite(moverOperationalMarkupRate)) {
+    throw new Error(
+      'Platform settings: mover_operational_markup_rate is invalid.',
+    );
+  }
+
   return {
     id: Boolean(row.id),
 
-    mover_commission_rate: Number(
-      row.mover_commission_rate ?? 0,
-    ),
+    mover_commission_rate:
+      moverCommissionRate,
 
-    mover_operational_markup_rate: Number(
-      row.mover_operational_markup_rate ?? 0,
-    ),
+    mover_operational_markup_rate:
+      moverOperationalMarkupRate,
 
     created_at: row.created_at,
 
     updated_at: row.updated_at,
   };
 }
+
 
 // ============================================================
 // RAW ENTITLEMENT RESPONSE
@@ -337,6 +361,7 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
  * can return numeric values as strings depending on the column
  * and RPC response.
  */
+
 type RawListingEntitlement = {
   landlord_id?: unknown;
 
@@ -393,6 +418,41 @@ type RawListingEntitlement = {
 // NORMALIZATION HELPERS
 // ============================================================
 
+function normalizeBoolean(
+  value: unknown,
+  fallback = false,
+): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === 'true' || normalized === 't') {
+      return true;
+    }
+
+    if (normalized === 'false' || normalized === 'f') {
+      return false;
+    }
+
+    if (normalized === '1') {
+      return true;
+    }
+
+    if (normalized === '0') {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
 function normalizeSubscriptionStatus(
   value: unknown,
 ): ListingEntitlement['subscriptionStatus'] {
@@ -411,6 +471,7 @@ function normalizeSubscriptionStatus(
       return 'expired';
 
     case 'none':
+
     default:
       return 'none';
   }
@@ -467,6 +528,7 @@ function numberValue(
  * The two role-specific RPCs return the same entitlement
  * structure. Only the role changes.
  */
+
 function normalizeListingEntitlement(
   raw: RawListingEntitlement,
   role: ListingRole,
@@ -474,19 +536,19 @@ function normalizeListingEntitlement(
   return {
     role,
 
-    canStartListing: Boolean(
+    canStartListing: normalizeBoolean(
       raw.can_start_listing,
     ),
 
-    canCreate: Boolean(
+    canCreate: normalizeBoolean(
       raw.can_create,
     ),
 
-    requiresSubscription: Boolean(
+    requiresSubscription: normalizeBoolean(
       raw.requires_subscription,
     ),
 
-    requiresIndividualPayment: Boolean(
+    requiresIndividualPayment: normalizeBoolean(
       raw.requires_individual_payment,
     ),
 
@@ -538,11 +600,11 @@ function normalizeListingEntitlement(
         1000,
       ),
 
-    pmsAccess: Boolean(
+    pmsAccess: normalizeBoolean(
       raw.pms_access,
     ),
 
-    upgradeAvailable: Boolean(
+    upgradeAvailable: normalizeBoolean(
       raw.upgrade_available,
     ),
 
@@ -583,7 +645,12 @@ export async function getLandlordListingEntitlement(
     );
   }
 
-  if (raw.authorized_landlord === false) {
+  if (
+    normalizeBoolean(
+      raw.authorized_landlord,
+      true,
+    ) === false
+  ) {
     throw new Error(
       typeof raw.reason === 'string'
         ? raw.reason
@@ -628,7 +695,12 @@ export async function getRealEstateListingEntitlement(
     );
   }
 
-  if (raw.authorized_real_estate === false) {
+  if (
+    normalizeBoolean(
+      raw.authorized_real_estate,
+      true,
+    ) === false
+  ) {
     throw new Error(
       typeof raw.reason === 'string'
         ? raw.reason
@@ -656,8 +728,14 @@ export async function getListingEntitlement(
     );
   }
 
-  return getRealEstateListingEntitlement(
-    userId,
+  if (role === 'real_estate') {
+    return getRealEstateListingEntitlement(
+      userId,
+    );
+  }
+
+  throw new Error(
+    `Unsupported listing role: ${String(role)}`,
   );
 }
 
@@ -674,13 +752,24 @@ export async function getListingEntitlement(
  * This prevents a real-estate account from accidentally
  * receiving landlord entitlement information.
  */
+
 export async function loadPlatformConfiguration(
   role: ListingRole,
   userId?: string,
 ): Promise<{
   platformSettings: PlatformSettings;
+
   listingEntitlement: ListingEntitlement | null;
 }> {
+  if (
+    role !== 'landlord' &&
+    role !== 'real_estate'
+  ) {
+    throw new Error(
+      `Invalid listing role: ${String(role)}`,
+    );
+  }
+
   const platformSettings =
     await getPlatformSettings();
 
@@ -704,6 +793,19 @@ export async function loadPlatformConfiguration(
     LISTING_FEE_KES =
       listingEntitlement.individualListingPriceKes;
   }
+
+  console.log('CONFIG DEBUG', {
+    role,
+    userId,
+    platformSettings,
+    listingEntitlement,
+    commissionRateFromSettings:
+      platformSettings?.mover_commission_rate,
+    individualListingPriceKes:
+      listingEntitlement?.individualListingPriceKes,
+    freeLimit:
+      listingEntitlement?.free_limit,
+  });
 
   return {
     platformSettings,
@@ -750,6 +852,7 @@ type RawMoverQuote = Partial<MoverQuote> & {
  *
  * Calculation is performed by the database RPC.
  */
+
 export async function getMoverQuote(
   moverId: string,
   distanceKm: number,
@@ -965,4 +1068,4 @@ export function isMoverAvailable(
   return {
     valid: true,
   };
-}
+};

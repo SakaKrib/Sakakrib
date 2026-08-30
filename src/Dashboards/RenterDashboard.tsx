@@ -155,7 +155,7 @@ export default function RenterDashboard() {
 
   if (authLoading || loading) {
     return (
-      <div className="mx-auto flex min-h-[400px] max-w-7xl items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-[400px] max-w-7xl items-center justify-center px-2 py-8 sm:px-6 lg:px-8">
         <div className="text-center">
           <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand-500" />
           <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
@@ -171,7 +171,7 @@ export default function RenterDashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-medium text-brand-600 dark:text-brand-400">
@@ -229,7 +229,7 @@ export default function RenterDashboard() {
       </div>
 
       {error && (
-        <div className="mb-6 flex items-start justify-between gap-3 rounded-xl bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+        <div className="mb-6 flex items-start justify-between gap-3 rounded-xl bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -264,20 +264,10 @@ export default function RenterDashboard() {
                 }
               : null,
             unit: data.unit
-              ? {
-                  id: data.unit.id,
-                  unit_number: data.unit.unit_number,
-                  name: data.unit.unit_type,
-                  monthly_rent: data.unit.rent,
-                }
+              ? data.unit
               : null,
             association: data.association
-              ? {
-                  status: data.association.status,
-                  rent_amount: data.association.rent_amount,
-                  lease_start_date: data.association.lease_start,
-                  lease_end_date: data.association.lease_end,
-                }
+              ? data.association
               : null,
           }}
           onViewProperty={(propertyId) =>

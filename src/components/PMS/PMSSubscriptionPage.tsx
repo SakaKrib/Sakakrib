@@ -1674,7 +1674,7 @@ const realEstatePlanSelector =
     return (
       <section className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="card overflow-hidden border-red-200 dark:border-red-900">
-          <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+          <div className="border-b border-red-200 bg-red-50 px-2 py-3 dark:border-red-900 dark:bg-red-950/30">
             <p className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
               <AlertCircle className="h-4 w-4" />
               PMS Subscription Error
@@ -1762,7 +1762,7 @@ const realEstatePlanSelector =
         </div>
 
         <div className="card overflow-hidden">
-          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-2 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
             <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
               <Crown className="h-4 w-4" />
 
@@ -1877,7 +1877,7 @@ const realEstatePlanSelector =
 
       {actionError && (
         <div className="card mb-6 overflow-hidden border-red-200 dark:border-red-900">
-          <div className="border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+          <div className="border-b border-red-200 bg-red-50 px-2 py-3 dark:border-red-900 dark:bg-red-950/30">
             <p className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
               <AlertCircle className="h-4 w-4" />
 
@@ -1944,7 +1944,7 @@ const realEstatePlanSelector =
       {/* CURRENT SUBSCRIPTION */}
 
       <div className="card mb-6 overflow-hidden">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-2 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
             <Crown className="h-4 w-4" />
 
@@ -2209,7 +2209,7 @@ const realEstatePlanSelector =
       {/* USAGE */}
 
       <div className="card mb-6 overflow-hidden">
-        <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+        <div className="border-b border-gray-200 px-2 py-3 dark:border-gray-800">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -2331,7 +2331,7 @@ const realEstatePlanSelector =
             {/* MANAGED PROPERTIES */}
 
             <div className="card mb-6 overflow-hidden">
-              <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+              <div className="border-b border-gray-200 px-2 py-3 dark:border-gray-800">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -2399,7 +2399,7 @@ const realEstatePlanSelector =
             {/* AVAILABLE PROPERTIES */}
 
             <div className="card mb-6 overflow-hidden">
-              <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+              <div className="border-b border-gray-200 px-2 py-3 dark:border-gray-800">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">
                   Add Properties to PMS
                 </h2>
@@ -2480,7 +2480,7 @@ const realEstatePlanSelector =
       {role ===
         "real_estate" && (
         <div className="card mb-6 overflow-hidden">
-          <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+          <div className="border-b border-gray-200 px-2 py-3 dark:border-gray-800">
             <p className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
               <Building2 className="h-4 w-4 text-brand-600" />
 
@@ -2579,7 +2579,7 @@ function StatusNotice({
       className={`card mb-6 overflow-hidden ${styles.wrapper}`}
     >
       <div
-        className={`border-b px-4 py-3 ${styles.header}`}
+        className={`border-b px-2 py-3 ${styles.header}`}
       >
         <p
           className={`flex items-center gap-2 text-sm font-semibold ${styles.text}`}

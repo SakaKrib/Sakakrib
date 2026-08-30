@@ -202,7 +202,7 @@ export default function PMSSubscriptionCard({
           <button
             type="button"
             onClick={onUpgrade}
-            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800"
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-2 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800"
           >
             <CreditCard className="h-4 w-4" />
 

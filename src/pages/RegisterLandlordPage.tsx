@@ -86,7 +86,7 @@ export default function RegisterLandlordPage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <Building2 className="mx-auto h-10 w-10 text-brand-600" />
 
@@ -686,7 +686,7 @@ export default function RegisterLandlordPage() {
 
   if (success) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12">
+      <div className="mx-auto max-w-2xl px-2 py-12">
 
         <div className="card animate-scale-in p-8 text-center">
 
@@ -794,7 +794,7 @@ export default function RegisterLandlordPage() {
    */
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-3xl px-2 py-8 sm:px-6">
 
       {/* Header */}
 
@@ -1006,7 +1006,7 @@ export default function RegisterLandlordPage() {
           {error && (
             <div
               role="alert"
-              className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+              className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
             >
               {error}
             </div>
@@ -1094,7 +1094,7 @@ function StatusCard({
       : 'text-brand-600';
 
   return (
-    <div className="mx-auto max-w-md px-4 py-20">
+    <div className="mx-auto max-w-md px-2 py-20">
 
       <div className="card p-8 text-center">
 

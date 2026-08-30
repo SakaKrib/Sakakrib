@@ -581,7 +581,7 @@ export default function MoverTrackingPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto flex min-h-[500px] max-w-7xl items-center justify-center px-4">
+      <div className="mx-auto flex min-h-[500px] max-w-7xl items-center justify-center px-2">
         <div className="text-center">
           <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand-500" />
 
@@ -599,7 +599,7 @@ export default function MoverTrackingPage() {
 
   if (error || !booking) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8">
         <div className="rounded-2xl border border-error-200 bg-error-50 p-6 dark:border-error-800 dark:bg-error-900/20">
           <div className="flex items-start gap-3">
             <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-error-600" />
@@ -635,7 +635,7 @@ export default function MoverTrackingPage() {
    * ========================================================== */
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8">
 
       {/* ======================================================
           HEADER

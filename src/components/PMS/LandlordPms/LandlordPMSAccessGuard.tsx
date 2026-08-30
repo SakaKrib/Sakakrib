@@ -60,7 +60,7 @@ export default function PMSAccessGuard({
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20">
+      <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
 
           <ShieldCheck className="mx-auto h-10 w-10 text-brand-600" />
@@ -94,7 +94,7 @@ export default function PMSAccessGuard({
 
   if (profile.role !== 'landlord') {
     return (
-      <div className="mx-auto max-w-md px-4 py-20">
+      <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
 
           <Building2 className="mx-auto h-10 w-10 text-brand-600" />
@@ -137,7 +137,7 @@ export default function PMSAccessGuard({
 
   if (!hasAccess) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16">
+      <div className="mx-auto max-w-lg px-2 py-16">
         <div className="card p-8 text-center">
 
           {/* Icon */}

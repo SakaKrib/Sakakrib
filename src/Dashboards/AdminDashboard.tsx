@@ -973,7 +973,7 @@ const debugKycStorage = async () => {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-20 text-center">
+      <div className="mx-auto max-w-5xl px-2 py-20 text-center">
         <p className="text-gray-500 dark:text-gray-400">
           Please sign in to continue.
         </p>
@@ -983,7 +983,7 @@ const debugKycStorage = async () => {
 
   if (!isAdmin) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-20 text-center">
+      <div className="mx-auto max-w-5xl px-2 py-20 text-center">
         <div className="card p-8">
           <ShieldCheck className="mx-auto h-12 w-12 text-error-500" />
 
@@ -1054,7 +1054,7 @@ const debugKycStorage = async () => {
   // ============================================================
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
 
       {/* ======================================================
           HEADER
@@ -1095,7 +1095,7 @@ const debugKycStorage = async () => {
       ====================================================== */}
 
       <div className="card mb-6 overflow-hidden">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-2.5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-2 py-2.5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300">
             <ShieldCheck className="h-4 w-4" />
             Administrator Profile
@@ -1168,7 +1168,7 @@ const debugKycStorage = async () => {
       ====================================================== */}
 
       {error && (
-        <div className="mb-6 flex items-start justify-between gap-3 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+        <div className="mb-6 flex items-start justify-between gap-3 rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
           <span>{error}</span>
 
           <button
@@ -2202,7 +2202,7 @@ const debugKycStorage = async () => {
                         'rejected'
                       )
                     }
-                    className="inline-flex w-fit items-center gap-1 rounded-full border border-error-200 bg-error-50 px-4 py-2.5 text-sm font-semibold text-error-700 transition-colors hover:bg-error-100 dark:border-error-900/50 dark:bg-error-900/20 dark:text-error-400"
+                    className="inline-flex w-fit items-center gap-1 rounded-full border border-error-200 bg-error-50 px-2 py-2.5 text-sm font-semibold text-error-700 transition-colors hover:bg-error-100 dark:border-error-900/50 dark:bg-error-900/20 dark:text-error-400"
                   >
                     <UserX className="h-4 w-4" />
                     Reject

@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import type { Listing } from '@/lib/supabase';
+import { protectedGet } from '@/lib/protectedApi';
 
 export default function HomePage() {
   const { navigate, setAuthModalOpen, setRoleModalOpen } = useNav();
@@ -18,143 +19,129 @@ export default function HomePage() {
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
 
 
+
+  // ============================================================
+  // HOMEPAGE DATA
+  // ============================================================
+
   useEffect(() => {
     let mounted = true;
 
-    const fetchStats = async () => {
-      const [
-        listingCount,
-        landlordCount,
-        moverCount,
-        reviewCount,
-      ] = await Promise.all([
-        supabase
-          .from('listings')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_published', true)
-          .eq('is_approved', true),
+    const fetchHomepageData = async () => {
+      try {
+        const [
+          listings,
+          landlords,
+          movers,
+          reviews,
+        ] = await Promise.all([
+          protectedGet<{ id: string }[]>(
+            '/rest/v1/listings?select=id&is_published=eq.true&is_approved=eq.true'
+          ),
 
-        supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('role', 'landlord')
-          .eq('kyc_completed', true)
-          .eq('verification_status', 'verified')
-          .eq('landlord_application_status', 'approved'),
+          protectedGet<{ id: string }[]>(
+            '/rest/v1/profiles?select=id&role=eq.landlord&landlord_application_status=eq.approved'
+          ),
 
-        supabase
-          .from('movers')
-          .select('*', { count: 'exact', head: true })
-          .eq('approval_status', 'approved')
-          .eq('is_available', true),
+          protectedGet<{ id: string }[]>(
+            '/rest/v1/movers?select=id&approval_status=eq.approved&is_available=eq.true'
+          ),
 
-        supabase
-          .from('reviews')
-          .select('*', { count: 'exact', head: true }),
-      ]);
+          protectedGet<{ id: string }[]>(
+            '/rest/v1/reviews?select=id'
+          ),
+        ]);
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (listingCount.error) {
-        console.error('Listing stats:', listingCount.error);
+        setStats({
+          listings: listings?.length ?? 0,
+          landlords: landlords?.length ?? 0,
+          movers: movers?.length ?? 0,
+          reviews: reviews?.length ?? 0,
+        });
+      } catch (err) {
+        if (!mounted) return;
+
+        console.error(
+          'Homepage stats:',
+          err
+        );
       }
-
-      if (landlordCount.error) {
-        console.error('Landlord stats:', landlordCount.error);
-      }
-
-      if (moverCount.error) {
-        console.error('Mover stats:', moverCount.error);
-      }
-
-      if (reviewCount.error) {
-        console.error('Review stats:', reviewCount.error);
-      }
-
-      setStats({
-        listings: listingCount.count ?? 0,
-        landlords: landlordCount.count ?? 0,
-        movers: moverCount.count ?? 0,
-        reviews: reviewCount.count ?? 0,
-      });
     };
 
-    fetchStats();
-
-    const channel = supabase
-      .channel('homepage-metrics')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'listings',
-        },
-        fetchStats
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profiles',
-        },
-        fetchStats
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'movers',
-        },
-        fetchStats
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'reviews',
-        },
-        fetchStats
-      )
-      .subscribe();
+    fetchHomepageData();
 
     return () => {
       mounted = false;
-      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [session]);
+
+  // ============================================================
+  // FEATURED LISTINGS
+  // ============================================================
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data } = await supabase
-        .from('listings')
-        .select('*')
-        .eq('is_published', true)
-        .order('created_at', { ascending: false })
-        .limit(12);
-      if (data) {
-        setFeatured(data as Listing[]);
-        if (data.length > 0) {
-          const ids = data.map((l) => l.id);
-          const { data: media } = await supabase
-            .from('listing_media')
-            .select('listing_id, url')
-            .in('listing_id', ids)
-            .eq('media_type', 'photo')
-            .order('position');
-          if (media) {
-            const map: Record<string, string> = {};
-            media.forEach((m) => { if (!map[m.listing_id]) map[m.listing_id] = m.url; });
-            setMediaMap(map);
-          }
+    let mounted = true;
+
+    const fetchFeaturedListings = async () => {
+      try {
+        const listings =
+          await protectedGet<Listing[]>(
+            '/rest/v1/listings?select=*&is_published=eq.true&is_approved=eq.true&order=created_at.desc&limit=12'
+          );
+
+        if (!mounted) return;
+
+        if (!listings || listings.length === 0) {
+          setFeatured([]);
+          setMediaMap({});
+          return;
         }
+
+        setFeatured(listings);
+
+        const ids = listings.map(
+          (listing) => listing.id
+        );
+
+        const media =
+          await protectedGet<
+            {
+              listing_id: string;
+              url: string;
+            }[]
+          >(
+            `/rest/v1/listing_media?select=listing_id,url&listing_id=in.(${ids.join(',')})&media_type=eq.photo&order=position.asc`
+          );
+
+        if (!mounted) return;
+
+        const map: Record<string, string> = {};
+
+        media?.forEach((item) => {
+          if (!map[item.listing_id]) {
+            map[item.listing_id] = item.url;
+          }
+        });
+
+        setMediaMap(map);
+      } catch (err) {
+        if (!mounted) return;
+
+        console.error(
+          'Featured listings:',
+          err
+        );
       }
     };
-    fetchData();
-  }, []);
+
+    fetchFeaturedListings();
+
+    return () => {
+      mounted = false;
+    };
+  }, [session]);
 
   const handleSearch = () => navigate('listings');
 
@@ -163,13 +150,13 @@ export default function HomePage() {
 
       {/* Error Message */}
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-2 py-3 rounded relative" role="alert">
           <span className="block sm:inline">{error}</span>
         </div>
       )}
       {/* Compact Hero Strip */}
       <section className="border-b border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-900">
-        <div className="mx-auto max-w-7xl lg:px-4 py-4 p-1 lg:px-8 w-full">
+        <div className="mx-auto max-w-7xl lg:px-2 py-4 p-1 lg:px-8 w-full">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">
@@ -215,7 +202,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
 
       {/* Role Quick Access Bar */}
       <section className="border-b border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-900">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
           <div className="flex gap-2 overflow-x-auto py-2.5">
             {[
               { icon: Home, label: 'Browse Homes', view: 'listings' as const, color: 'text-btnblue-500' },
@@ -372,7 +359,7 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
 
       {/* Stats Bar */}
       <section className="border-y border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-900">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-4 py-6 sm:grid-cols-4">
             {[
               {

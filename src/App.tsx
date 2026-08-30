@@ -57,10 +57,10 @@ function AppContent() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-x-fixed">
+    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-hidden ">
       <SecurityBanner />
       <Header />
-      <main className="flex-1 pb-20 md:pb-0">
+      <main className="flex-1 pb-20 md:pb-0 ">
         {renderView()}
       </main>
       <Footer />

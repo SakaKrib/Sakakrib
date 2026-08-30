@@ -312,7 +312,7 @@ export default function MoverBookingDetailPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto flex min-h-[500px] max-w-7xl items-center justify-center px-4">
+      <div className="mx-auto flex min-h-[500px] max-w-7xl items-center justify-center px-2">
         <div className="text-center">
           <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand-500" />
           <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
@@ -325,7 +325,7 @@ export default function MoverBookingDetailPage() {
 
   if (error || !data?.booking) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="rounded-2xl border border-error-200 bg-error-50 p-6 dark:border-error-800 dark:bg-error-900/20">
           <div className="flex items-start gap-3">
             <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-error-600" />
@@ -353,7 +353,7 @@ export default function MoverBookingDetailPage() {
   const { booking, renter, mover, schedule } = data;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8">
       <header className="mb-6">
         <button
           type="button"
@@ -699,7 +699,7 @@ export default function MoverBookingDetailPage() {
                     setActionError(null);
                     setDecision('cancel');
                   }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-error-200 px-4 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-50 dark:border-error-800 dark:text-error-400 dark:hover:bg-error-900/20"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-error-200 px-2 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-50 dark:border-error-800 dark:text-error-400 dark:hover:bg-error-900/20"
                 >
                   <XCircle className="h-4 w-4" />
                   Decline request
@@ -776,7 +776,7 @@ export default function MoverBookingDetailPage() {
                     ? 'Tell the renter why you cannot take this job.'
                     : 'What do you need to clarify about the route, timing or request?'
                 }
-                className="mt-5 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-brand-900 dark:text-white"
+                className="mt-5 w-full rounded-xl border border-gray-300 bg-white px-2 py-3 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-brand-900 dark:text-white"
               />
             )}
 
@@ -804,7 +804,7 @@ export default function MoverBookingDetailPage() {
                 disabled={actionLoading}
                 onClick={() => void handleDecision()}
                 className={cn(
-                  'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white',
+                  'inline-flex items-center justify-center gap-2 rounded-xl px-2 py-2.5 text-sm font-semibold text-white',
                   decision === 'cancel'
                     ? 'bg-error-600 hover:bg-error-700'
                     : 'bg-brand-600 hover:bg-brand-700'

@@ -877,7 +877,7 @@ export default function AdminUserDetails({
 
   if (loading) {
     return (
-      <div className="mx-auto flex min-h-[500px] max-w-7xl items-center justify-center px-4">
+      <div className="mx-auto flex min-h-[500px] max-w-7xl items-center justify-center px-2">
         <div className="text-center">
           <RefreshCw className="mx-auto h-8 w-8 animate-spin text-brand-600" />
 
@@ -895,7 +895,7 @@ export default function AdminUserDetails({
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div className="mx-auto max-w-7xl px-2 py-8">
         <button
           type="button"
           onClick={handleBack}
@@ -940,7 +940,7 @@ export default function AdminUserDetails({
       getStatus(selectedMover);
 
     return (
-      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] px-2 py-6 sm:px-6 lg:px-8">
 
         {/* Back */}
         <div className="mb-5">
@@ -1445,7 +1445,7 @@ export default function AdminUserDetails({
             rows={4}
             maxLength={2000}
             placeholder="Optional reason, feedback, or review message..."
-            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-brand-800 dark:bg-brand-950 dark:text-white"
+            className="w-full rounded-xl border border-gray-200 bg-white px-2 py-3 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-brand-800 dark:bg-brand-950 dark:text-white"
           />
 
           <div className="mt-2 flex justify-end">
@@ -1555,7 +1555,7 @@ export default function AdminUserDetails({
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+          <div className="mt-4 rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
             {error}
           </div>
         )}
@@ -1568,7 +1568,7 @@ export default function AdminUserDetails({
   ================================================== */
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8">
 
       {/* Back */}
       <button
@@ -1582,7 +1582,7 @@ export default function AdminUserDetails({
 
       {/* Error */}
       {error && (
-        <div className="mb-5 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+        <div className="mb-5 rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
           {error}
         </div>
       )}

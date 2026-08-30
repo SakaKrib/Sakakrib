@@ -477,7 +477,7 @@ export default function ListingDetailPage({
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-2 py-8 sm:px-6 lg:px-8">
         <div className="card flex min-h-[500px] items-center justify-center">
           <div className="text-center">
             <Loader2 className="mx-auto h-9 w-9 animate-spin text-brand-600" />
@@ -497,7 +497,7 @@ export default function ListingDetailPage({
 
   if (!listing) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-2 py-8 sm:px-6 lg:px-8">
         <button
           type="button"
           onClick={handleBack}
@@ -567,7 +567,7 @@ export default function ListingDetailPage({
   ========================================================== */
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-6xl px-2 py-6 sm:px-6 lg:px-8">
 
       {/* ======================================================
           TOP NAVIGATION
@@ -616,7 +616,7 @@ export default function ListingDetailPage({
       ====================================================== */}
 
       {error && (
-        <div className="mb-5 flex items-start gap-2 rounded-xl bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+        <div className="mb-5 flex items-start gap-2 rounded-xl bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>

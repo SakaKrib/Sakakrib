@@ -223,13 +223,13 @@ export default function ListingPaymentModal({
               </div>
 
               {error && (
-                <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+                <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
                   {error}
                 </div>
               )}
 
               {paymentCompleted ? (
-                <div className="flex items-center gap-2 rounded-lg bg-success-50 px-4 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400">
+                <div className="flex items-center gap-2 rounded-lg bg-success-50 px-2 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400">
                   <CheckCircle2 className="h-4 w-4" />
                   Payment confirmed. Your listing can now continue to submission.
                 </div>
@@ -314,7 +314,7 @@ export default function ListingPaymentModal({
               )}
 
               {subscriptionPlansError && (
-                <div className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
+                <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
                   {subscriptionPlansError}
                 </div>
               )}

@@ -12,7 +12,6 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { supabase } from '@/lib/supabase';
 import RealEstateDashboard from './Realestatedashboard';
 
 import { protectedGet } from '@/lib/protectedApi';
@@ -20,8 +19,8 @@ import {
   formatKES,
   cn,
   getPlatformSettings,
-  ListingEntitlement,
 } from '@/lib/utils';
+import { fetchListingEntitlement, type ListingEntitlement } from '@/lib/ListingEntitlement';
 
 import type {
   UserRole,
@@ -92,77 +91,167 @@ export default function DashboardPage() {
    * ============================================================
    */
 
-  useEffect(() => {
-    if (!profile) {
-      return;
-    }
+    useEffect(() => {
+      if (!profile) {
+        return;
+      }
 
-    let cancelled = false;
+      let cancelled = false;
 
-    const fetchData = async () => {
-      try {
+      const fetchData = async () => {
         setConfigurationLoading(true);
 
-        const [
-          listingResponse,
-          moverResponse,
-          bookingResponse,
-          reviewResponse,
-          platformSettingsResponse,
-          listingEntitlementResponse,
-        ] = await Promise.all([
-          protectedGet<Listing[]>(
-            '/rest/v1/listings?select=*&order=created_at.desc'
-          ),
-          protectedGet<Mover | null>(
-            '/rest/v1/movers?select=*&limit=1'
-          ).then((rows) => (Array.isArray(rows) ? rows[0] ?? null : rows)),
-          protectedGet<(Booking & { mover?: Mover })[]>(
-            '/rest/v1/bookings?select=*,mover:movers(*)&order=created_at.desc'
-          ),
-          protectedGet<Review[]>(
-            '/rest/v1/reviews?select=*&order=created_at.desc'
-          ),
-          getPlatformSettings(),
-          protectedGet<ListingEntitlement>(
-            '/rest/v1/landlord/listing-entitlement'
-          ),
-        ]);
+        try {
+          const isListingRole =
+            profile.role === 'landlord' 
 
-        if (cancelled) {
-          return;
-        }
+          /*
+          * Fetch normal dashboard data independently.
+          * A failure in one area must not erase valid
+          * configuration returned by another area.
+          */
+          const [
+            listingResponse,
+            moverResponse,
+            bookingResponse,
+            reviewResponse,
+          ] = await Promise.all([
+            protectedGet<Listing[]>(
+              '/rest/v1/listings?select=*&order=created_at.desc'
+            ),
 
-        setListings(listingResponse as Listing[]);
-        setMoverProfile(moverResponse as Mover | null);
-        setBookings(
-          bookingResponse as (
-            Booking & {
-              mover?: Mover;
+            protectedGet<Mover | null>(
+              '/rest/v1/movers?select=*&limit=1'
+            ).then((rows) =>
+              Array.isArray(rows)
+                ? rows[0] ?? null
+                : rows
+            ),
+
+            protectedGet<(Booking & { mover?: Mover })[]>(
+              '/rest/v1/bookings?select=*,mover:movers(*)&order=created_at.desc'
+            ),
+
+            protectedGet<Review[]>(
+              '/rest/v1/reviews?select=*&order=created_at.desc'
+            ),
+          ]);
+
+          if (cancelled) {
+            return;
+          }
+
+          setListings(
+            Array.isArray(listingResponse)
+              ? listingResponse
+              : []
+          );
+
+          setMoverProfile(
+            moverResponse as Mover | null
+          );
+
+          setBookings(
+            Array.isArray(bookingResponse)
+              ? bookingResponse
+              : []
+          );
+
+          setReviews(
+            Array.isArray(reviewResponse)
+              ? reviewResponse
+              : []
+          );
+
+          /*
+          * ========================================================
+          * PLATFORM SETTINGS
+          * ========================================================
+          *
+          * Keep this independent from listing entitlement.
+          */
+          try {
+            const settings = await getPlatformSettings();
+
+            if (!cancelled) {
+              setPlatformSettings(settings);
             }
-          )[]
-        );
-        setReviews(reviewResponse as Review[]);
-        setPlatformSettings(platformSettingsResponse);
-        setListingEntitlement(listingEntitlementResponse);
-      } catch (error) {
-        console.error(
-          'Failed to load dashboard data:',
-          error
-        );
-      } finally {
-        if (!cancelled) {
-          setConfigurationLoading(false);
+          } catch (error) {
+            console.error(
+              'Failed to load platform settings:',
+              error
+            );
+
+            if (!cancelled) {
+              setPlatformSettings(null);
+            }
+          }
+
+          /*
+          * ========================================================
+          * LISTING ENTITLEMENT
+          * ========================================================
+          *
+          * Landlord:
+          *   get_landlord_listing_entitlement()
+          *
+          * Real estate:
+          *   get_real_estate_listing_entitlement()
+          *
+          * These remain completely separate.
+          */
+          if (isListingRole) {
+            try {
+              const entitlement =
+                await fetchListingEntitlement(
+                  profile.role as
+                    | 'landlord'
+                    | 'real_estate',
+                  profile.id
+                );
+
+              console.log(
+                '[Dashboard] Listing entitlement:',
+                entitlement
+              );
+
+              if (!cancelled) {
+                setListingEntitlement(entitlement);
+              }
+            } catch (error) {
+              console.error(
+                'Failed to load listing entitlement:',
+                error
+              );
+
+              if (!cancelled) {
+                setListingEntitlement(null);
+              }
+            }
+          } else {
+            if (!cancelled) {
+              setListingEntitlement(null);
+            }
+          }
+        } catch (error) {
+          console.error(
+            'Failed to load dashboard data:',
+            error
+          );
+        } finally {
+          if (!cancelled) {
+            setConfigurationLoading(false);
+          }
         }
-      }
-    };
+      };
 
-    fetchData();
+      void fetchData();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [profile]);
+      return () => {
+        cancelled = true;
+      };
+    }, [profile]);
+
 
   /*
    * ============================================================
@@ -172,7 +261,7 @@ export default function DashboardPage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <p className="text-gray-500 dark:text-gray-400">
           Please sign in to access your dashboard.
         </p>
@@ -188,7 +277,7 @@ export default function DashboardPage() {
 
   if (!profile.kyc_completed && !isAdmin) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20">
+      <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-50 dark:bg-warning-900/30">
             <ShieldCheck className="h-7 w-7 text-warning-600 dark:text-warning-400" />
@@ -227,7 +316,7 @@ export default function DashboardPage() {
     'pending'
   ) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20">
+      <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-50 dark:bg-warning-900/30">
             <Clock className="h-7 w-7 text-warning-600 dark:text-warning-400" />
@@ -325,26 +414,16 @@ export default function DashboardPage() {
    *   -> listing entitlement.free_limit
    */
 
-  const COMMISSION_RATE =
-    platformSettings !== null
-      ? Number(
-          platformSettings.mover_commission_rate
-        )
-      : null;
+ const COMMISSION_RATE =
+  platformSettings?.mover_commission_rate != null
+    ? Number(platformSettings.mover_commission_rate)
+    : null;
 
-  const LISTING_FEE_KES =
-    listingEntitlement !== null
-      ? Number(
-          listingEntitlement.individual_listing_price_kes
-        )
-      : null;
+const LISTING_FEE_KES =
+  listingEntitlement?.individualListingPriceKes ?? null;
 
-  const FREE_LISTING_LIMIT =
-    listingEntitlement !== null
-      ? Number(
-          listingEntitlement.free_limit
-        )
-      : null;
+const FREE_LISTING_LIMIT =
+  listingEntitlement?.free_limit ?? null;
 
   /*
    * Additional authoritative configuration.
@@ -378,7 +457,7 @@ export default function DashboardPage() {
    */
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
       <div className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
           <LayoutDashboard className="h-6 w-6 text-brand-600" />

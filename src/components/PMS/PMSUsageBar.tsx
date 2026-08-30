@@ -169,7 +169,7 @@ export default function PMSUsageBar({
       )}
 
       {isUnlimited && (
-        <div className="mt-5 rounded-lg bg-gray-50 px-4 py-3">
+        <div className="mt-5 rounded-lg bg-gray-50 px-2 py-3">
           <p className="text-sm text-gray-600">
             Your current plan supports unlimited
             properties.

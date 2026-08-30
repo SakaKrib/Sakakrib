@@ -345,7 +345,7 @@ export default function LandlordPMS() {
 
   if (error && !data) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <div className="card p-8">
           <XCircle className="mx-auto h-10 w-10 text-error-600" />
 
@@ -377,7 +377,7 @@ export default function LandlordPMS() {
     hasUsableSubscription(data.subscription);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
 
       {/* ======================================================
           HEADER
@@ -478,7 +478,7 @@ export default function LandlordPMS() {
                 type="button"
                 disabled={restricted}
                 onClick={() => goTo(key)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-brand-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-brand-700 dark:bg-brand-900 dark:text-gray-300"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm font-medium text-gray-700 transition hover:border-brand-400 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-brand-700 dark:bg-brand-900 dark:text-gray-300"
               >
                 <Icon className="h-4 w-4" />
                 {label}
@@ -1381,7 +1381,7 @@ function UnitsView({
                   onClick={() =>
                     onOpenUnit(unit.unit_id)
                   }
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 dark:border-brand-700 dark:text-gray-300"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-2 py-2 text-sm font-medium text-gray-700 hover:border-brand-400 hover:text-brand-600 dark:border-brand-700 dark:text-gray-300"
                 >
                   <Eye className="h-4 w-4" />
                   View details

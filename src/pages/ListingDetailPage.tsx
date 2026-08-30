@@ -88,7 +88,7 @@ export default function ListingDetailPage() {
   const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-5xl px-2 py-8 sm:px-6">
       <button onClick={() => navigate('listings')} className="mb-4 flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-brand-600 dark:text-gray-400">
         <ArrowLeft className="h-4 w-4" /> Back to Listings
       </button>
@@ -297,12 +297,12 @@ export default function ListingDetailPage() {
             ) : (
               <div className="mt-4 space-y-3">
                 {listing.contact_phone && (
-                  <a href={`tel:${listing.contact_phone}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-3 text-sm dark:bg-brand-800/50">
+                  <a href={`tel:${listing.contact_phone}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50">
                     <Phone className="h-4 w-4 text-brand-600" /> {listing.contact_phone}
                   </a>
                 )}
                 {listing.contact_email && (
-                  <a href={`mailto:${listing.contact_email}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-3 text-sm dark:bg-brand-800/50">
+                  <a href={`mailto:${listing.contact_email}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50">
                     <Mail className="h-4 w-4 text-brand-600" /> {listing.contact_email}
                   </a>
                 )}
@@ -316,7 +316,7 @@ export default function ListingDetailPage() {
                           href={socialLink.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-3 text-sm dark:bg-brand-800/50"
+                          className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"
                         >
                           <Link2 className="h-4 w-4 text-brand-600" /> {socialLink.platform}
                         </a>
@@ -324,7 +324,7 @@ export default function ListingDetailPage() {
                     })}
                   </div>
                 )}
-                <div className="rounded-lg bg-warning-50 px-4 py-3 dark:bg-warning-900/20">
+                <div className="rounded-lg bg-warning-50 px-2 py-3 dark:bg-warning-900/20">
                   <p className="text-xs font-medium text-warning-700 dark:text-warning-400">
                     SECURITY NOTICE: Make all payments through Saka Krib. Off-platform payments are not tracked.
                   </p>

@@ -86,7 +86,7 @@ export default function PMSDashboard() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md px-4 py-20 text-center">
+      <div className="mx-auto max-w-md px-2 py-20 text-center">
         <p className="text-gray-500 dark:text-gray-400">
           Please sign in to access property management.
         </p>
@@ -103,7 +103,7 @@ export default function PMSDashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-20 text-center">
+    <div className="mx-auto max-w-md px-2 py-20 text-center">
       <div className="card p-8">
         <Building2 className="mx-auto h-10 w-10 text-brand-600" />
 

@@ -585,7 +585,7 @@ export default function EmailOtpVerification({
 
           {error && (
             <div
-              className="rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
+              className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400"
               role="alert"
             >
               {error}
@@ -598,7 +598,7 @@ export default function EmailOtpVerification({
 
           {info && (
             <div
-              className="rounded-lg bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
+              className="rounded-lg bg-success-50 px-2 py-3 text-sm text-success-700 dark:bg-success-900/20 dark:text-success-400"
               role="status"
             >
               {info}
@@ -621,7 +621,7 @@ export default function EmailOtpVerification({
           ================================================== */}
 
           {verified && (
-            <div className="rounded-lg bg-success-50 px-4 py-3 dark:bg-success-900/20">
+            <div className="rounded-lg bg-success-50 px-2 py-3 dark:bg-success-900/20">
 
               <div className="flex items-center justify-center gap-2 text-sm font-semibold text-success-600 dark:text-success-400">
                 <CheckCircle2 className="h-5 w-5" />
