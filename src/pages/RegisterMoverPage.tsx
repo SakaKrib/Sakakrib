@@ -45,6 +45,9 @@ import {
   validateNationalID,
   validateDL,
   validatePhone,
+  validateKenyanMobilePhone,
+  validateMpesaPaybill,
+  validateMpesaTill,
   COMMISSION_RATE,
 } from '@/lib/utils';
 
@@ -837,22 +840,57 @@ export default function RegisterMoverPage() {
 
     if (!trimmedPaymentAccount) {
       setError(
-        'Add the mobile money account used for payouts.'
+        'Add the payout account used for receiving payments.'
       );
-
       return;
     }
 
-    if (
-      !validatePhone(
-        trimmedPaymentAccount
-      )
-    ) {
-      setError(
-        'Please enter a valid Kenyan payout phone number.'
-      );
+    switch (paymentChannel) {
+      case 'mpesa_send_money':
+      case 'airtel_money':
+        if (
+          !validateKenyanMobilePhone(
+            trimmedPaymentAccount
+          )
+        ) {
+          setError(
+            'Please enter a valid Kenyan mobile money phone number.'
+          );
+          return;
+        }
+        break;
 
-      return;
+      case 'mpesa_paybill':
+        if (
+          !validateMpesaPaybill(
+            trimmedPaymentAccount
+          )
+        ) {
+          setError(
+            'Please enter a valid M-Pesa Paybill number.'
+          );
+          return;
+        }
+        break;
+
+      case 'mpesa_lipa_na_mpesa':
+        if (
+          !validateMpesaTill(
+            trimmedPaymentAccount
+          )
+        ) {
+          setError(
+            'Please enter a valid M-Pesa Till/Business number.'
+          );
+          return;
+        }
+        break;
+
+      default:
+        setError(
+          'Unsupported payment channel.'
+        );
+        return;
     }
 
     /*

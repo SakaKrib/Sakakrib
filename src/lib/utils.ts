@@ -145,6 +145,36 @@ export function validateEmail(email: string): boolean {
   );
 }
 
+export function validateKenyanMobilePhone(
+  phone: string
+): boolean {
+  const cleaned = phone
+    .trim()
+    .replace(/\s/g, '');
+
+  return /^(?:\+254|0)?[17]\d{8}$/.test(cleaned);
+}
+
+export function validateMpesaPaybill(
+  paybill: string
+): boolean {
+  const cleaned = paybill
+    .trim()
+    .replace(/\s/g, '');
+
+  return /^\d{5,6}$/.test(cleaned);
+}
+
+export function validateMpesaTill(
+  till: string
+): boolean {
+  const cleaned = till
+    .trim()
+    .replace(/\s/g, '');
+
+  return /^\d{5,8}$/.test(cleaned);
+}
+
 // ============================================================
 // LOCATION DATA
 // ============================================================
