@@ -21,12 +21,13 @@ import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
 import RenterDashboard from '@/Dashboards/RenterDashboard';
+import AdminUserDetails from '@/pages/AdminUserDetails';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
 
 function AppContent() {
-  const { view } = useNav();
+  const { view, selectedAdminUserId } = useNav();
   const { profile } = useAuth();
 
   const renderView = () => {
@@ -44,6 +45,15 @@ function AppContent() {
       case 'register-mover': return <RegisterMoverPage />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
+      case 'admin-user-details':
+        return profile?.is_admin === true || profile?.role === 'admin'
+          ? selectedAdminUserId
+            ? <AdminUserDetails
+                userId={selectedAdminUserId}
+                onBack={() => window.history.back()}
+              />
+            : <DashboardPage />
+          : <DashboardPage />;
       case 'dashboard':
         return profile?.role === 'renter'
           ? <RenterDashboard />
@@ -57,10 +67,10 @@ function AppContent() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-brand-950 overflow-hidden ">
+    <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950">
       <SecurityBanner />
       <Header />
-      <main className="flex-1 pb-20 md:pb-0 ">
+      <main className="flex-1 pb-20 md:pb-0">
         {renderView()}
       </main>
       <Footer />
