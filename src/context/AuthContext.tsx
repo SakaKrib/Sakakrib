@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { supabase, type Profile, type UserRole } from '@/lib/supabase';
+import type { Profile, UserRole } from '@/lib/supabase';
 import { authGateway } from '@/lib/authGateway';
-
 
 interface RegistrationEmailApplication {
   email: string;
@@ -53,33 +52,61 @@ const toAuthSession = (user: { id: string; email?: string | null; user_metadata?
   },
 });
 
+/**
+ * Send an application notification without creating or using a
+ * browser Supabase Auth client.
+ *
+ * This Edge Function is intentionally public (verify_jwt=false).
+ * It receives only the notification payload. No Supabase Auth
+ * access token or refresh token is read, stored, or attached here.
+ */
 const sendRegistrationEmail = async (
   type: 'otp_verification' | 'sign_in_notification' | 'sign_up_welcome',
   application: RegistrationEmailApplication,
 ): Promise<void> => {
-  const { data, error } = await supabase.functions.invoke('send-notification-emails', {
-    body: { type, application },
-  });
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-  if (error) {
-    let message = error.message || 'Email delivery failed.';
-    const context = (error as { context?: Response }).context;
-    if (context) {
-      try {
-        const body = await context.json();
-        if (body && typeof body === 'object') {
-          if (typeof (body as { error?: unknown }).error === 'string') message = (body as { error: string }).error;
-          else if (typeof (body as { message?: unknown }).message === 'string') message = (body as { message: string }).message;
-        }
-      } catch {
-        // Preserve the original error message.
-      }
-    }
+  if (!baseUrl) {
+    throw new Error('VITE_SUPABASE_URL is not configured.');
+  }
+
+  if (!publishableKey) {
+    throw new Error('VITE_SUPABASE_ANON_KEY is not configured.');
+  }
+
+  const response = await fetch(
+    `${baseUrl.replace(/\/+$/, '')}/functions/v1/send-notification-emails`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: publishableKey,
+      },
+      body: JSON.stringify({ type, application }),
+    },
+  );
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const message =
+      typeof body.error === 'string'
+        ? body.error
+        : typeof body.message === 'string'
+          ? body.message
+          : 'Email delivery failed.';
+
     throw new Error(message);
   }
 
-  if (data && typeof data === 'object' && 'success' in data && data.success === false) {
-    throw new Error('error' in data && typeof data.error === 'string' ? data.error : 'Email delivery failed.');
+  if (body.success === false) {
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : 'Email delivery failed.',
+    );
   }
 };
 
@@ -125,8 +152,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  // The browser no longer asks Supabase for a session. The HttpOnly cookie is
-  // resolved by auth-gateway and only safe user/profile data returns to React.
+  // The browser no longer asks Supabase Auth for a session.
+  // The HttpOnly cookie is resolved by auth-gateway and only safe
+  // user/profile data returns to React.
   useEffect(() => {
     let mounted = true;
 
@@ -245,21 +273,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     requireEmailVerification(normalizedEmail);
 
     try {
-      const { data, error } = await supabase.functions.invoke('send-notification-emails', {
-        body: {
-          type: 'otp_verification',
-          application: {
-            email: normalizedEmail,
-            applicant_email: normalizedEmail,
-            purpose: 'verify your Saka Krib account',
-          },
-        },
+      await sendRegistrationEmail('otp_verification', {
+        email: normalizedEmail,
+        applicant_email: normalizedEmail,
+        purpose: 'verify your Saka Krib account',
       });
-
-      if (error) throw new Error(error.message || 'Unable to send a new verification code.');
-      if (data && typeof data === 'object' && 'success' in data && data.success === false) {
-        throw new Error('error' in data && typeof data.error === 'string' ? data.error : 'Unable to send a new verification code.');
-      }
       return { error: null };
     } catch (error) {
       console.error('OTP resend error:', error);
@@ -329,7 +347,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-
   const refreshProfile = async (): Promise<void> => {
     if (!session?.user) {
       clearAuthState();
@@ -398,7 +415,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
   };
-
 
   return (
     <AuthContext.Provider
