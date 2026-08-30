@@ -16,7 +16,7 @@ import MoverBookingDetailPage from '@/pages/MoverBookingDetailPage';
 import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
 import PostListingPage from '@/pages/PostListingPage';
-import RegisterMoverPage from '@/pages/RegisterMoverPage';
+import RegisterMoverScheduleEnhancer from '@/pages/RegisterMoverScheduleEnhancer';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
@@ -42,7 +42,7 @@ function AppContent() {
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
-      case 'register-mover': return <RegisterMoverPage />;
+      case 'register-mover': return <RegisterMoverScheduleEnhancer />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
       case 'admin-user-details':
