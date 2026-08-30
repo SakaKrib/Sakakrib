@@ -2,11 +2,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('Supabase environment is not configured.');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 });
+
+const adminSupabase = SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    })
+  : null;
 
 const allowedOrigin = (request: Request): string => {
   const origin = request.headers.get('origin');
@@ -17,7 +24,7 @@ const allowedOrigin = (request: Request): string => {
     origin === 'http://localhost:5173' ||
     origin === 'http://127.0.0.1:5174' ||
     origin === 'http://100.109.224.0:5174' ||
-    origin === 'http://100.109.224.0:5173' 
+    origin === 'http://100.109.224.0:5173'
   ) {
     return origin;
   }
@@ -86,9 +93,22 @@ const authenticatedResponse = async (request: Request, accessToken: string) => {
   if (error || !data.user) return json(request, { authenticated: false }, 401);
   const profile = await getProfile(accessToken, data.user.id);
   if (!profile || profile.email_verified !== true) {
-    return json(request, { authenticated: false, requiresEmailVerification: true, email: profile?.email ?? data.user.email ?? null }, 403, clearAuthCookies());
+    return json(
+      request,
+      {
+        authenticated: false,
+        requiresEmailVerification: true,
+        email: profile?.email ?? data.user.email ?? null,
+      },
+      403,
+      clearAuthCookies(),
+    );
   }
-  return json(request, { authenticated: true, user: { id: data.user.id, email: data.user.email ?? null }, profile });
+  return json(request, {
+    authenticated: true,
+    user: { id: data.user.id, email: data.user.email ?? null },
+    profile,
+  });
 };
 
 const refreshFromCookie = async (request: Request, refreshToken: string) => {
@@ -99,18 +119,63 @@ const refreshFromCookie = async (request: Request, refreshToken: string) => {
 
   const profile = await getProfile(data.session.access_token, data.user.id);
   if (!profile || profile.email_verified !== true) {
-    return json(request, {
-      authenticated: false,
-      requiresEmailVerification: true,
-      email: profile?.email ?? data.user.email ?? null,
-    }, 403, clearAuthCookies());
+    return json(
+      request,
+      {
+        authenticated: false,
+        requiresEmailVerification: true,
+        email: profile?.email ?? data.user.email ?? null,
+      },
+      403,
+      clearAuthCookies(),
+    );
   }
 
-  return json(request, {
-    authenticated: true,
-    user: { id: data.user.id, email: data.user.email ?? null },
-    profile,
-  }, 200, setAuthCookies(data.session.access_token, data.session.refresh_token));
+  return json(
+    request,
+    {
+      authenticated: true,
+      user: { id: data.user.id, email: data.user.email ?? null },
+      profile,
+    },
+    200,
+    setAuthCookies(data.session.access_token, data.session.refresh_token),
+  );
+};
+
+/**
+ * After the application's custom signup OTP is verified, create a normal
+ * Supabase Auth session server-side and immediately move it into HttpOnly
+ * cookies. The browser never receives the access or refresh token.
+ *
+ * We intentionally use the service-role client only for generating a
+ * one-time magic-link token. The returned token hash is immediately
+ * exchanged server-side with verifyOtp(), producing the normal user session.
+ */
+const establishVerifiedSession = async (email: string) => {
+  if (!adminSupabase) {
+    throw new Error('Server authentication configuration is incomplete.');
+  }
+
+  const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+  });
+
+  if (linkError || !linkData?.properties?.hashed_token) {
+    throw new Error(linkError?.message ?? 'Unable to establish the authenticated session.');
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: 'email',
+  });
+
+  if (sessionError || !sessionData.session || !sessionData.user) {
+    throw new Error(sessionError?.message ?? 'Unable to establish the authenticated session.');
+  }
+
+  return sessionData;
 };
 
 Deno.serve(async (request) => {
@@ -196,11 +261,31 @@ Deno.serve(async (request) => {
       const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
       const otp = typeof payload.otp === 'string' ? payload.otp.replace(/\D/g, '') : '';
       if (!email || otp.length !== 6) return json(request, { error: 'A valid email and 6-digit verification code are required.' }, 400);
+
       const { data, error } = await supabase.rpc('verify_signup_otp', { p_email: email, p_otp: otp });
       if (error) return json(request, { error: error.message || 'Invalid or expired verification code.' }, 400);
       const result = data as { success?: boolean; error?: string; profile_id?: string } | null;
       if (!result?.success) return json(request, { error: result?.error || 'Invalid or expired verification code.' }, 400);
-      return json(request, { success: true, profile_id: result.profile_id ?? null, email });
+
+      const sessionData = await establishVerifiedSession(email);
+      const profile = await getProfile(sessionData.session.access_token, sessionData.user.id);
+
+      if (!profile || profile.email_verified !== true) {
+        await supabase.auth.signOut(sessionData.session.access_token).catch(() => undefined);
+        return json(request, { error: 'Email verification succeeded, but the authenticated profile could not be established.' }, 500, clearAuthCookies());
+      }
+
+      return json(
+        request,
+        {
+          success: true,
+          authenticated: true,
+          user: { id: sessionData.user.id, email: sessionData.user.email ?? email },
+          profile,
+        },
+        200,
+        setAuthCookies(sessionData.session.access_token, sessionData.session.refresh_token),
+      );
     }
 
     if (action === 'logout') {
@@ -212,6 +297,6 @@ Deno.serve(async (request) => {
     return json(request, { error: 'Unsupported auth action.' }, 400);
   } catch (error) {
     console.error('auth-gateway error:', error);
-    return json(request, { error: 'Authentication service error.' }, 500);
+    return json(request, { error: error instanceof Error ? error.message : 'Authentication service error.' }, 500);
   }
 });
