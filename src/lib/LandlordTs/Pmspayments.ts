@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from './ Protectedsupabase';
 
 /* ============================================================
  * PMS SUBSCRIPTION PAYMENTS - SHARED (LANDLORD + REAL ESTATE)
@@ -47,41 +47,37 @@ async function authedFetch<T>(
   functionSlug: string,
   body: Record<string, unknown>
 ): Promise<T> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { data, error } = await supabase.functions.invoke<T>(
+    functionSlug,
+    {
+      body,
+    }
+  );
 
-  if (!session?.access_token) {
-    throw new Error('Your session has expired. Please sign in again.');
+  if (error) {
+    throw new Error(
+      error.message ||
+        'Unable to initiate payment.'
+    );
   }
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Supabase configuration is missing.');
+  if (!data) {
+    throw new Error(
+      'Invalid response from payment service.'
+    );
   }
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/${functionSlug}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: anonKey,
-    },
-    body: JSON.stringify(body),
-  });
+  const responseData =
+    data as T & {
+      success?: boolean;
+      error?: string;
+    };
 
-  let data: T & { success?: boolean; error?: string };
-
-  try {
-    data = (await response.json()) as T & { success?: boolean; error?: string };
-  } catch {
-    throw new Error('Invalid response from payment service.');
-  }
-
-  if (!response.ok || data.success === false) {
-    throw new Error(data.error || 'Unable to initiate payment.');
+  if (responseData.success === false) {
+    throw new Error(
+      responseData.error ||
+        'Unable to initiate payment.'
+    );
   }
 
   return data;
@@ -97,7 +93,9 @@ export async function initiateMpesaSubscriptionCheckout(
   billingCycle: PMSBillingCycle
 ): Promise<PMSMpesaCheckoutResponse> {
   const functionSlug =
-    audience === 'REAL_ESTATE' ? 'real-estate-subscription-stk' : 'subscription-stk';
+    audience === 'REAL_ESTATE'
+      ? 'real-estate-subscription-stk'
+      : 'subscription-stk';
 
   return authedFetch<PMSMpesaCheckoutResponse>(functionSlug, {
     plan_id: planId,
@@ -113,10 +111,13 @@ export async function initiatePayPalSubscriptionCheckout(
   planId: string,
   billingCycle: PMSBillingCycle
 ): Promise<PMSPayPalCheckoutResponse> {
-  return authedFetch<PMSPayPalCheckoutResponse>('paypal-create-subscription', {
-    plan_id: planId,
-    billing_cycle: billingCycle,
-  });
+  return authedFetch<PMSPayPalCheckoutResponse>(
+    'paypal-create-subscription',
+    {
+      plan_id: planId,
+      billing_cycle: billingCycle,
+    }
+  );
 }
 
 /* ============================================================
@@ -132,20 +133,33 @@ export type PMSInvoiceStatus = 'PENDING' | 'PAID' | 'FAILED';
 
 export async function pollMpesaInvoiceStatus(
   invoiceId: string,
-  { maxAttempts = 40, intervalMs = 3000 }: { maxAttempts?: number; intervalMs?: number } = {}
+  {
+    maxAttempts = 40,
+    intervalMs = 3000,
+  }: { maxAttempts?: number; intervalMs?: number } = {}
 ): Promise<PMSInvoiceStatus> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (
+    let attempt = 0;
+    attempt < maxAttempts;
+    attempt++
+  ) {
     const { data, error } = await supabase
       .from('subscription_invoices')
       .select('status')
       .eq('id', invoiceId)
       .maybeSingle();
 
-    if (!error && data?.status && data.status !== 'PENDING') {
+    if (
+      !error &&
+      data?.status &&
+      data.status !== 'PENDING'
+    ) {
       return data.status as PMSInvoiceStatus;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await new Promise((resolve) =>
+      setTimeout(resolve, intervalMs)
+    );
   }
 
   return 'PENDING';
