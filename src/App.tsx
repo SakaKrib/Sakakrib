@@ -21,7 +21,7 @@ import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
 import RenterDashboard from '@/Dashboards/RenterDashboard';
-import AdminUserDetails from '@/pages/AdminUserDetails';
+import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
@@ -48,7 +48,7 @@ function AppContent() {
       case 'admin-user-details':
         return profile?.is_admin === true || profile?.role === 'admin'
           ? selectedAdminUserId
-            ? <AdminUserDetails
+            ? <AdminUserDetailsRoute
                 userId={selectedAdminUserId}
                 onBack={() => window.history.back()}
               />
