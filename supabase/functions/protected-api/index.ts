@@ -11,7 +11,7 @@ const allowedOrigin = (req: Request) => {
   const origin = req.headers.get('origin');
   const configured = Deno.env.get('APP_ORIGIN');
   if (configured && origin === configured) return origin;
-  const dev = new Set(['http://localhost:5173','http://localhost:5174','http://localhost:5175','http://localhost:5176','http://127.0.0.1:5173','http://127.0.0.1:5174','http://127.0.0.1:5175','http://127.0.0.1:5176','http://100.109.224.0:5174', 'http://100.109.224.0:5173']);
+  const dev = new Set(['http://localhost:5173','http://localhost:5174','http://localhost:5175','http://localhost:5176','http://127.0.0.1:5173','http://127.0.0.1:5174','http://127.0.0.1:5175','http://127.0.0.1:5176','http://100.109.224.0:5174','http://100.109.224.0:5173']);
   return origin && dev.has(origin) ? origin : (configured ?? '');
 };
 const cors = (req: Request): HeadersInit => {
@@ -56,7 +56,6 @@ Deno.serve(async(req:Request)=>{
     const url=new URL(req.url);
     const pathname=url.pathname;
 
-    // Protected proxy for user-authenticated Edge Function calls.
     const subscriptionStkPrefix=`/functions/v1/${FUNCTION_NAME}/subscription-stk`;
     if(pathname===subscriptionStkPrefix || pathname===`/${FUNCTION_NAME}/subscription-stk` || pathname.endsWith('/subscription-stk')){
       if(req.method!=='POST') return json(req,{error:'Method not allowed.'},405,refreshHeaders);
@@ -65,7 +64,6 @@ Deno.serve(async(req:Request)=>{
       const targetUrl=`${BASE}/functions/v1/subscription-stk`; const response=await fetch(targetUrl,{method:'POST',headers,body}); const rh=new Headers(cors(req)); rh.set('Cache-Control','no-store'); const contentType=response.headers.get('content-type'); if(contentType)rh.set('content-type',contentType); for(const [n,v] of refreshHeaders)rh.append(n,v); return new Response(await response.arrayBuffer(),{status:response.status,headers:rh});
     }
 
-    // Dedicated protected storage upload.
     const storagePrefix=`/functions/v1/${FUNCTION_NAME}/storage/upload`;
     if(pathname===storagePrefix || pathname===`/${FUNCTION_NAME}/storage/upload` || pathname.endsWith('/storage/upload')){
       if(req.method!=='POST') return json(req,{error:'Method not allowed.'},405,refreshHeaders);
@@ -76,7 +74,6 @@ Deno.serve(async(req:Request)=>{
       const storageClient=createClient(BASE,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{headers:{Authorization:`Bearer ${access}`}}}); const bytes=await file.arrayBuffer(); const {error:ue}=await storageClient.storage.from(bucket).upload(normalized,bytes,{contentType:file.type||'image/jpeg',cacheControl:'3600',upsert:false}); if(ue){console.error('Storage upload failed:',ue);return json(req,{error:ue.message||'Document upload failed.'},400,refreshHeaders);} const {data:signed,error:se}=await storageClient.storage.from(bucket).createSignedUrl(normalized,3600); if(se||!signed?.signedUrl){console.error('Signed URL failed:',se);return json(req,{error:'Document uploaded but a preview URL could not be generated.'},500,refreshHeaders);} return json(req,{ok:true,bucket,path:normalized,url:signed.signedUrl,publicUrl:signed.signedUrl},200,refreshHeaders);
     }
 
-    // Resolve an already-uploaded document's durable storage path back into a fresh signed URL for display.
     const signPrefix=`/functions/v1/${FUNCTION_NAME}/storage/sign`;
     if(pathname===signPrefix || pathname===`/${FUNCTION_NAME}/storage/sign` || pathname.endsWith('/storage/sign')){
       if(req.method!=='POST') return json(req,{error:'Method not allowed.'},405,refreshHeaders); const authz=authorize(a.profile,'/rest/v1/storage/sign'); if(!authz.ok)return json(req,{authenticated:true,authorized:false,error:authz.error},authz.status,refreshHeaders); const body=await req.json().catch(()=>null); const bucket=body?.bucket; const path=body?.path;
@@ -84,9 +81,6 @@ Deno.serve(async(req:Request)=>{
       const storageClient=createClient(BASE,SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{headers:{Authorization:`Bearer ${access}`}}}); const {data:signed,error:se}=await storageClient.storage.from(bucket).createSignedUrl(normalized,3600); if(se||!signed?.signedUrl){console.error('Signed URL failed:',se);return json(req,{error:'Unable to generate a preview URL.'},500,refreshHeaders);} return json(req,{ok:true,bucket,path:normalized,url:signed.signedUrl},200,refreshHeaders);
     }
 
-    // Dedicated role-selection endpoint. This runs before generic role authorization
-    // because a verified user is allowed to have no role yet. It can modify ONLY the
-    // authenticated user's role, never an arbitrary profile or any other profile field.
     const rolePrefix=`/functions/v1/${FUNCTION_NAME}/set-role`;
     if(pathname===rolePrefix || pathname===`/${FUNCTION_NAME}/set-role` || pathname.endsWith('/set-role')){
       if(req.method!=='POST') return json(req,{error:'Method not allowed.'},405,refreshHeaders);
