@@ -67,7 +67,10 @@ const sendRegistrationEmail = async (
     `${baseUrl.replace(/\/+$/, '')}/functions/v1/send-notification-emails`,
     {
       method: 'POST',
-      credentials: 'include',
+      // This email function is intentionally public (verify_jwt=false) and
+      // does not need the application's HttpOnly authentication cookies.
+      // Sending credentials with the function's wildcard CORS response causes
+      // browsers to reject the request before a response can be read.
       headers: {
         'Content-Type': 'application/json',
         apikey: publishableKey,
