@@ -81,19 +81,11 @@ export const protectedApi = async <T = unknown>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> => {
-  // ----------------------------------------------------------
-  // Only allow PostgREST paths.
-  // ----------------------------------------------------------
-
   if (!path.startsWith('/rest/v1/')) {
     throw new Error(
       'Protected API paths must target /rest/v1/.'
     );
   }
-
-  // ----------------------------------------------------------
-  // Headers
-  // ----------------------------------------------------------
 
   const headers = new Headers(init.headers);
 
@@ -113,34 +105,19 @@ export const protectedApi = async <T = unknown>(
     );
   }
 
-  // ----------------------------------------------------------
-  // Request
-  // ----------------------------------------------------------
-
   const response = await fetch(
     `${getFunctionUrl()}${path}`,
     {
       ...init,
-
-      // HttpOnly cookies
       credentials: 'include',
-
       headers,
     }
   );
-
-  // ----------------------------------------------------------
-  // Parse exactly once.
-  // ----------------------------------------------------------
 
   const body =
     await readJson<T | ProtectedApiErrorBody>(
       response
     );
-
-  // ----------------------------------------------------------
-  // HTTP ERROR
-  // ----------------------------------------------------------
 
   if (!response.ok) {
     const errorBody =
@@ -158,26 +135,82 @@ export const protectedApi = async <T = unknown>(
 
     error.status =
       response.status;
-
     error.authenticated =
       errorBody?.authenticated;
-
     error.authorized =
       errorBody?.authorized;
 
     throw error;
   }
 
-  // ----------------------------------------------------------
-  // SUCCESS
-  //
-  // The Edge Function forwards the PostgREST JSON body.
-  //
-  // Therefore the generic T represents the actual JSON
-  // returned by PostgREST.
-  // ----------------------------------------------------------
-
   return body as T;
+};
+
+// ============================================================
+// EDGE FUNCTION PROXY
+//
+// User-authenticated Edge Functions must not be called directly
+// from the browser when the application uses HttpOnly cookies.
+// This helper calls the protected-api proxy, which authenticates
+// the browser cookie and forwards a short-lived user JWT to the
+// target function server-side.
+// ============================================================
+
+export const protectedFunctionPost = async <
+  T = unknown
+>(
+  functionPath: string,
+  body: unknown
+): Promise<T> => {
+  if (!functionPath.startsWith('/')) {
+    throw new Error(
+      'Protected function paths must start with /. '
+    );
+  }
+
+  const response = await fetch(
+    `${getFunctionUrl()}${functionPath}`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        apikey: getPublishableKey(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  const data =
+    await readJson<T | ProtectedApiErrorBody>(
+      response
+    );
+
+  if (!response.ok) {
+    const errorBody =
+      data as ProtectedApiErrorBody | null;
+
+    const message =
+      errorBody?.error ??
+      errorBody?.message ??
+      `Protected function request failed (${response.status}).`;
+
+    const error =
+      new Error(
+        message
+      ) as ProtectedApiException;
+
+    error.status =
+      response.status;
+    error.authenticated =
+      errorBody?.authenticated;
+    error.authorized =
+      errorBody?.authorized;
+
+    throw error;
+  }
+
+  return data as T;
 };
 
 // ============================================================
