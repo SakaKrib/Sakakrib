@@ -1,19 +1,15 @@
-import { supabase } from '@/lib/supabase';
+import {
+  protectedGet,
+  protectedPatch,
+} from '@/lib/protectedApi';
 
 /* ============================================================
  * TYPES
  *
- * Matches the live user_notifications table exactly (verified
- * against project zrhvapntshgmhynqtbma). RLS: select/update
- * permitted only where user_id = auth.uid() - no RPC wrapper
- * needed, same pattern as landlord_payment_methods.
- *
- * Real rows land here today via on_subscription_payment_success_
- * notifications, a trigger on subscription_invoices that fires for
- * BOTH landlord_subscription_id and real_estate_subscription_id
- * invoices (verified: queue_subscription_payment_notifications
- * branches on whichever FK is set). This is a genuinely populated
- * table, not an empty placeholder.
+ * This service uses the application's HttpOnly-cookie transport
+ * exclusively. It does not use the browser Supabase Auth session.
+ * The protected-api Edge Function carries the authenticated user
+ * context to PostgREST, where RLS scopes notifications to the user.
  * ============================================================ */
 
 export interface UserNotification {
@@ -26,30 +22,58 @@ export interface UserNotification {
   created_at: string;
 }
 
+interface UserNotificationRow {
+  id: string;
+  notification_type: string;
+  title: string;
+  message: string;
+  data: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 export async function getMyNotifications(
   limit = 20
 ): Promise<UserNotification[]> {
-  const { data, error } = await supabase
-    .from('user_notifications')
-    .select('id, notification_type, title, message, data, read_at, created_at')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.floor(limit))
+    : 20;
 
-  if (error) {
-    throw new Error(error.message || 'Unable to load notifications.');
-  }
+  const data = await protectedGet<UserNotificationRow[]>(
+    `/rest/v1/user_notifications?select=id,notification_type,title,message,data,read_at,created_at&order=created_at.desc&limit=${safeLimit}`
+  );
 
-  return (data ?? []) as UserNotification[];
+  return Array.isArray(data)
+    ? data.map(
+        (notification: UserNotificationRow): UserNotification => ({
+          id: notification.id,
+          notification_type: notification.notification_type,
+          title: notification.title,
+          message: notification.message,
+          data: notification.data,
+          read_at: notification.read_at,
+          created_at: notification.created_at,
+        })
+      )
+    : [];
 }
 
-export async function markNotificationRead(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('user_notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('id', id)
-    .is('read_at', null);
-
-  if (error) {
-    throw new Error(error.message || 'Unable to update notification.');
+export async function markNotificationRead(
+  id: string
+): Promise<void> {
+  if (!id) {
+    throw new Error('Notification ID is required.');
   }
+
+  await protectedPatch(
+    `/rest/v1/user_notifications?id=eq.${encodeURIComponent(id)}&read_at=is.null`,
+    {
+      read_at: new Date().toISOString(),
+    },
+    {
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    }
+  );
 }
