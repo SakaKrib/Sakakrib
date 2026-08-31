@@ -39,6 +39,10 @@ export type AppView =
 
 export type AuthMode = 'signin' | 'signup' | 'forgot';
 
+export interface MovingRequestContext {
+  listingId: string | null;
+}
+
 interface NavContextValue {
   view: AppView;
   selectedListingId: string | null;
@@ -47,6 +51,9 @@ interface NavContextValue {
   selectedChatMoverId: string | null;
   selectedMoverBookingId: string | null;
   selectedAdminUserId: string | null;
+  movingRequestContext: MovingRequestContext | null;
+  beginMovingRequest: (context: MovingRequestContext) => void;
+  clearMovingRequest: () => void;
   navigate: (view: AppView, id?: string) => void;
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
@@ -78,6 +85,7 @@ export function NavProvider({ children }: { children: ReactNode }) {
   const [selectedChatMoverId, setSelectedChatMoverId] = useState<string | null>(null);
   const [selectedMoverBookingId, setSelectedMoverBookingId] = useState<string | null>(null);
   const [selectedAdminUserId, setSelectedAdminUserId] = useState<string | null>(null);
+  const [movingRequestContext, setMovingRequestContext] = useState<MovingRequestContext | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('signin');
   const [roleModalOpen, setRoleModalOpen] = useState(false);
@@ -91,6 +99,12 @@ export function NavProvider({ children }: { children: ReactNode }) {
     setSelectedMoverBookingId(null);
     setSelectedAdminUserId(null);
   };
+
+  const beginMovingRequest = (context: MovingRequestContext) => {
+    setMovingRequestContext({ listingId: context.listingId ?? null });
+  };
+
+  const clearMovingRequest = () => setMovingRequestContext(null);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -160,6 +174,9 @@ export function NavProvider({ children }: { children: ReactNode }) {
       selectedChatMoverId,
       selectedMoverBookingId,
       selectedAdminUserId,
+      movingRequestContext,
+      beginMovingRequest,
+      clearMovingRequest,
       navigate,
       authModalOpen,
       setAuthModalOpen,
