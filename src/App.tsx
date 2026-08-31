@@ -25,6 +25,7 @@ import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
+import RegisterMoverPage from './pages/RegisterMoverPage';
 
 function AppContent() {
   const { view, selectedAdminUserId } = useNav();
@@ -42,7 +43,7 @@ function AppContent() {
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
-      case 'register-mover': return <RegisterMoverScheduleEnhancer />;
+      case 'register-mover': return <RegisterMoverPage />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
       case 'admin-user-details':

@@ -22,7 +22,11 @@ import {
   Mail,
   ArrowRight,
   MapPin,
+  Clock3,
+  Check,
+  CalendarDays
 } from 'lucide-react';
+
 
 import GPSLocationInput, {
   type GPSLocationValue,
@@ -48,7 +52,7 @@ import {
   validateKenyanMobilePhone,
   validateMpesaPaybill,
   validateMpesaTill,
-  COMMISSION_RATE,
+  getPlatformSettings
 } from '@/lib/utils';
 
 /*
@@ -103,6 +107,22 @@ type EmailType =
   | 'mover_application_submitted'
   | 'mover_admin_notification';
 
+
+   const DAYS = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ] as const;
+
+  type Day = (typeof DAYS)[number];
+
+  const DEFAULT_DAYS: Day[] = [...DAYS];
+  const DEFAULT_START = '08:00';
+  const DEFAULT_END = '18:00';  
 /*
 |--------------------------------------------------------------------------
 | EMAIL FUNCTION
@@ -268,6 +288,18 @@ export default function RegisterMoverPage() {
   const [inspectionExpiry, setInspectionExpiry] =
     useState('');
 
+  const [workingDays, setWorkingDays] =
+    useState<Day[]>(DEFAULT_DAYS);
+
+  const [startTime, setStartTime] =
+    useState(DEFAULT_START);
+
+  const [endTime, setEndTime] =
+    useState(DEFAULT_END);  
+
+  const [scheduleError, setScheduleError] =
+    useState<string | null>(null);
+
   /*
   |--------------------------------------------------------------------------
   | GPS LOCATION STATE
@@ -297,6 +329,11 @@ export default function RegisterMoverPage() {
 
   const [refError, setRefError] =
     useState<string | null>(null);
+
+  const [platformSettings, setPlatformSettings] =
+    useState<
+      Awaited<ReturnType<typeof getPlatformSettings>> | null
+    >(null);  
 
   /*
   |--------------------------------------------------------------------------
@@ -329,6 +366,49 @@ export default function RegisterMoverPage() {
       profile.phone ?? ''
     );
   }, [profile]);
+
+
+
+    /*
+      |--------------------------------------------------------------------------
+      | LOAD PLATFORM SETTINGS
+      |--------------------------------------------------------------------------
+      */
+
+      useEffect(() => {
+        let mounted = true;
+
+        const loadPlatformSettings = async () => {
+          try {
+            const settings =
+              await getPlatformSettings();
+
+            if (mounted) {
+              setPlatformSettings(settings);
+            }
+          } catch (settingsError) {
+            console.error(
+              'Failed to load platform settings:',
+              settingsError
+            );
+
+            if (mounted) {
+              setPlatformSettings(null);
+            }
+          }
+        };
+
+        loadPlatformSettings();
+
+        return () => {
+          mounted = false;
+        };
+      }, []);
+
+      const COMMISSION_RATE =
+        platformSettings?.mover_commission_rate != null
+          ? Number(platformSettings.mover_commission_rate) * 100
+          : null;
 
   /*
   |--------------------------------------------------------------------------
@@ -431,7 +511,7 @@ export default function RegisterMoverPage() {
     );
   }
 
-  if (profile.role !== 'renter') {
+  if (profile.role !== 'renter' && profile.role !== 'mover') {
     return (
       <StatusCard
         icon="blocked"
@@ -1013,6 +1093,36 @@ export default function RegisterMoverPage() {
       return;
     }
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | WORKING SCHEDULE
+    |--------------------------------------------------------------------------
+    */
+
+    if (workingDays.length === 0) {
+      setScheduleError(
+        'Select at least one working day before submitting.'
+      );
+      return;
+    }
+
+    if (!startTime || !endTime) {
+      setScheduleError(
+        'Start time and end time are required.'
+      );
+      return;
+    }
+
+    if (endTime <= startTime) {
+      setScheduleError(
+        'End time must be later than the start time.'
+      );
+      return;
+    }
+
+    setScheduleError(null);
+
     /*
     |--------------------------------------------------------------------------
     | SUBMISSION
@@ -1107,6 +1217,22 @@ export default function RegisterMoverPage() {
         location:
 
           trimmedLocation,
+
+
+         /*
+        |--------------------------------------------------------------------------
+        | WORKING SCHEDULE
+        |--------------------------------------------------------------------------
+        */
+
+        working_days:
+          workingDays,
+
+        start_time:
+          startTime,
+
+        end_time:
+          endTime,  
 
         /*
         |--------------------------------------------------------------------------
@@ -1436,7 +1562,7 @@ export default function RegisterMoverPage() {
 
         <p className="text-sm text-brand-700 dark:text-brand-300">
           <span className="font-semibold">
-            {COMMISSION_RATE * 100}% platform fee:
+            {COMMISSION_RATE}% platform fee:
           </span>{' '}
           payouts release through the platform
           escrow workflow.
@@ -1706,6 +1832,131 @@ export default function RegisterMoverPage() {
               </div>
             )}
           </section>
+
+
+          {/* WORKING SCHEDULE */}
+
+          <section className="card p-6">
+            <h3 className="mb-2 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
+              <CalendarDays className="h-5 w-5 text-brand-600" />
+              Working days and hours
+            </h3>
+
+            <p className="mb-5 text-sm text-gray-500 dark:text-gray-400">
+              Select the days and hours when customers can request your
+              moving service.
+            </p>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Working days
+                <span className="text-error-500"> *</span>
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                {DAYS.map((day) => {
+                  const selected =
+                    workingDays.includes(day);
+
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setWorkingDays((current) =>
+                          current.includes(day)
+                            ? current.filter(
+                                (item) => item !== day
+                              )
+                            : [...current, day]
+                        );
+
+                        setScheduleError(null);
+                        setError(null);
+                      }}
+                      className={
+                        `flex min-h-11 items-center justify-center gap-1.5 border px-3 py-2 text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-brand-500/40 btn-secondary ` +
+                        (selected
+                          ? 'border-brand-600 bg-brand-600 text-white shadow-sm dark:border-brand-500 bg-brand-50 '
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-brand-300 hover:bg-brand-50 dark:border-brand-700 dark:bg-brand-900/20 dark:text-gray-200 dark:hover:border-brand-500 dark:hover:bg-brand-800/40')
+                      }
+                    >
+                      {selected && (
+                        <Check
+                          className="h-4 w-4"
+                          strokeWidth={2.5}
+                        />
+                      )}
+
+                      <span>
+                        {day.slice(0, 3)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Start time
+                  <span className="text-error-500"> *</span>
+                </label>
+
+                <div className="relative">
+                  <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600" />
+
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(event) => {
+                      setStartTime(
+                        event.target.value
+                      );
+                      setScheduleError(null);
+                      setError(null);
+                    }}
+                    className="input-field w-full pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  End time
+                  <span className="text-error-500"> *</span>
+                </label>
+
+                <div className="relative">
+                  <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-600" />
+
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(event) => {
+                      setEndTime(
+                        event.target.value
+                      );
+                      setScheduleError(null);
+                      setError(null);
+                    }}
+                    className="input-field w-full pl-10"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            {scheduleError && (
+              <p className="mt-3 text-sm text-error-600 dark:text-error-400">
+                {scheduleError}
+              </p>
+            )}
+          </section>
+
 
           {/* COMPLIANCE */}
 

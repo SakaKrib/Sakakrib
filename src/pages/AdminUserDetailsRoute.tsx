@@ -106,11 +106,11 @@ export default function AdminUserDetailsRoute({
                   Application Status
                 </p>
                 <div className="mt-2 flex items-center gap-2">
-                  {normalize(profile.landlord_application_status) === 'approved' ? (
+                  {normalize(profile?.landlord_application_status) === 'approved' ? (
                     <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
                       <CheckCircle2 className="h-3 w-3" /> Approved
                     </span>
-                  ) : normalize(profile.landlord_application_status) === 'rejected' ? (
+                  ) : normalize(profile?.landlord_application_status) === 'rejected' ? (
                     <span className="badge bg-error-50 text-error-700 dark:bg-error-900/30 dark:text-error-400">
                       <XCircle className="h-3 w-3" /> Rejected
                     </span>

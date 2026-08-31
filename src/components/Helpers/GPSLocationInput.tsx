@@ -78,6 +78,9 @@ export default function GPSLocationInput({
   const [searching, setSearching] =
     useState(false);
 
+  const [gpsError, setGpsError] =
+    useState<string | null>(null);
+
   const searchTimeoutRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -150,6 +153,8 @@ export default function GPSLocationInput({
                 headers: {
                   Accept:
                     'application/json',
+                  'Accept-Language':
+                    'en',
                 },
                 signal:
                   controller.signal,
@@ -202,6 +207,8 @@ export default function GPSLocationInput({
   const handleInputChange = (
     searchValue: string
   ) => {
+    setGpsError(null);
+
     updateLocation({
       locationSearch: searchValue,
       latitude: null,
@@ -231,6 +238,8 @@ export default function GPSLocationInput({
       return;
     }
 
+    setGpsError(null);
+
     updateLocation({
       locationSearch:
         location.display_name,
@@ -247,10 +256,52 @@ export default function GPSLocationInput({
 
   const handleUseCurrentLocation =
     () => {
-      if (!navigator.geolocation) {
+      setGpsError(null);
+
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.geolocation
+      ) {
+        setGpsError(
+          'Location services are not available in this browser. Please use a browser that supports GPS location.'
+        );
+
         return;
       }
 
+      /*
+       * Browser geolocation requires a secure context.
+       *
+       * localhost is normally considered secure for
+       * development, but an HTTP LAN/Tailscale address
+       * generally is not.
+       */
+      if (
+        typeof window !== 'undefined' &&
+        !window.isSecureContext
+      ) {
+        setGpsError(
+          'GPS location requires a secure connection (HTTPS). Please open Saka Krib using HTTPS or localhost.'
+        );
+
+        return;
+      }
+
+      /*
+       * Cancel any pending location search before
+       * requesting the device location.
+       */
+      if (searchTimeoutRef.current) {
+        clearTimeout(
+          searchTimeoutRef.current
+        );
+        searchTimeoutRef.current = null;
+      }
+
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+
+      setSearching(false);
       setUsingGPS(true);
       setLocationSuggestions([]);
 
@@ -262,17 +313,42 @@ export default function GPSLocationInput({
           const longitude =
             position.coords.longitude;
 
+          /*
+           * Validate coordinates returned by
+           * the browser before using them.
+           */
+          if (
+            !Number.isFinite(latitude) ||
+            latitude < -90 ||
+            latitude > 90 ||
+            !Number.isFinite(longitude) ||
+            longitude < -180 ||
+            longitude > 180
+          ) {
+            setGpsError(
+              'Your device returned an invalid GPS location. Please try again.'
+            );
+
+            setUsingGPS(false);
+            return;
+          }
+
+          /*
+           * Store coordinates immediately.
+           *
+           * This means GPS registration can still work
+           * even when reverse geocoding fails.
+           */
+          updateLocation({
+            latitude,
+            longitude,
+          });
+
           try {
             /*
-             * Store coordinates immediately.
-             * Even if reverse geocoding fails,
-             * the GPS coordinates remain available.
+             * Reverse geocode the coordinates so the
+             * human-readable location is also populated.
              */
-            updateLocation({
-              latitude,
-              longitude,
-            });
-
             const response =
               await fetch(
                 `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
@@ -284,6 +360,8 @@ export default function GPSLocationInput({
                   headers: {
                     Accept:
                       'application/json',
+                    'Accept-Language':
+                      'en',
                   },
                 }
               );
@@ -298,9 +376,15 @@ export default function GPSLocationInput({
               await response.json();
 
             const detectedLocation =
-              data?.display_name ||
-              '';
+              typeof data?.display_name ===
+              'string'
+                ? data.display_name
+                : '';
 
+            /*
+             * Update the human-readable location
+             * while preserving the GPS coordinates.
+             */
             updateLocation({
               locationSearch:
                 detectedLocation,
@@ -308,27 +392,35 @@ export default function GPSLocationInput({
               longitude,
             });
 
-            setLocationSuggestions([
-              {
-                display_name:
-                  detectedLocation,
+            /*
+             * Show the detected location as a
+             * selectable result.
+             */
+            if (detectedLocation) {
+              setLocationSuggestions([
+                {
+                  display_name:
+                    detectedLocation,
 
-                lat:
-                  String(latitude),
+                  lat:
+                    String(latitude),
 
-                lon:
-                  String(longitude),
+                  lon:
+                    String(longitude),
 
-                place_id:
-                  data?.place_id,
+                  place_id:
+                    data?.place_id,
 
-                type:
-                  data?.type,
+                  type:
+                    data?.type,
 
-                address:
-                  data?.address,
-              },
-            ]);
+                  address:
+                    data?.address,
+                },
+              ]);
+            }
+
+            setGpsError(null);
           } catch (err) {
             console.error(
               'GPS reverse geocoding failed:',
@@ -336,10 +428,17 @@ export default function GPSLocationInput({
             );
 
             /*
-             * Coordinates are intentionally
-             * preserved even when the address
-             * lookup fails.
+             * IMPORTANT:
+             *
+             * GPS coordinates were already saved above.
+             *
+             * Reverse geocoding failure should NOT
+             * invalidate the GPS location.
              */
+            setGpsError(
+              'Your GPS location was captured, but we could not determine the address. You can continue using the captured coordinates.'
+            );
+
             updateLocation({
               latitude,
               longitude,
@@ -355,12 +454,39 @@ export default function GPSLocationInput({
             geoError
           );
 
+          let message =
+            'Unable to get your current location. Please try again.';
+
+          switch (
+            geoError.code
+          ) {
+            case geoError.PERMISSION_DENIED:
+              message =
+                'Location permission was denied. Please allow location access for this site in your browser settings and try again.';
+              break;
+
+            case geoError.POSITION_UNAVAILABLE:
+              message =
+                'Your current location could not be determined. Please make sure GPS/location services are enabled on your device and try again.';
+              break;
+
+            case geoError.TIMEOUT:
+              message =
+                'The request for your current location timed out. Please try again.';
+              break;
+
+            default:
+              message =
+                'Unable to get your current location. Please try again.';
+          }
+
+          setGpsError(message);
           setUsingGPS(false);
         },
 
         {
           enableHighAccuracy: true,
-          timeout: 15000,
+          timeout: 30000,
           maximumAge: 0,
         }
       );
@@ -487,6 +613,20 @@ export default function GPSLocationInput({
       </button>
 
       {/* ======================================================
+          GPS ERROR
+      ====================================================== */}
+
+      {gpsError && (
+        <p
+          className="mt-2 text-sm text-error-600 dark:text-error-400"
+          role="alert"
+          aria-live="polite"
+        >
+          {gpsError}
+        </p>
+      )}
+
+      {/* ======================================================
           COORDINATES
       ====================================================== */}
 
@@ -512,4 +652,4 @@ export default function GPSLocationInput({
       )}
     </div>
   );
-}
+};

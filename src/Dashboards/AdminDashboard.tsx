@@ -854,7 +854,7 @@ export default function AdminDashboard() {
                       ← Dashboard
                     </button>
                     <h2 className="text-xl font-bold capitalize text-gray-900 dark:text-white">
-                      {section.replaceAll('_', ' ')}
+                      {section.replace(/_/g, ' ')}
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       {displayedUsers.length} record{displayedUsers.length === 1 ? '' : 's'}
@@ -932,7 +932,7 @@ export default function AdminDashboard() {
 
                         <td className="px-5 py-4">
                           <span className="badge bg-brand-50 capitalize text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                            {String(user.role).replaceAll('_', ' ')}
+                            {String(user.role).replace(/_/g, ' ')}
                           </span>
                         </td>
 

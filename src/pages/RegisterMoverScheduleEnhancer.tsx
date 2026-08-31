@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, Clock3, CalendarDays } from 'lucide-react';
 import { protectedGet, protectedPatch } from '@/lib/protectedApi';
 import { useAuth } from '@/context/AuthContext';
-import RegisterMoverPage from './RegisterMoverPage';
+
 
 const DAYS = [
   'Monday',
@@ -197,12 +197,12 @@ export default function RegisterMoverScheduleEnhancer() {
       )
     : null;
 
-  return (
-    <>
-      <RegisterMoverPage />
-      {schedulePanel}
-    </>
-  );
+  // return (
+  //   // <>
+  //   //   <RegisterMoverPage />
+  //   //   {schedulePanel}
+  //   // </>
+  // );
 }
 
 function TimeField({
