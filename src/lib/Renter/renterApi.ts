@@ -25,10 +25,44 @@ export interface RentPaymentSubmission {
 export interface Booking {
   id: string; renter_id: string; mover_id: string; listing_id: string | null; pickup_address: string; dropoff_address: string;
   moving_date: string; booking_amount: number; commission_amount: number; total_amount: number; status: string; payment_status: string;
-  payment_method: string | null; tracking_number: string | null; last_known_latitude: number | null; last_known_longitude: number | null;
-  last_location_at: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; started_at: string | null;
-  completed_at: string | null; cancelled_at: string | null; created_at: string | null; updated_at: string | null;
+  payment_method: string | null; distance_km: number | null; rate_per_km_kes: number | null; base_rate_kes: number | null;
+  pickup_latitude: number | null; pickup_longitude: number | null; dropoff_latitude: number | null; dropoff_longitude: number | null;
+  requested_at: string | null; request_expires_at: string | null; confirmed_at: string | null;
+  tracking_number: string | null; last_known_latitude: number | null; last_known_longitude: number | null; last_location_at: string | null;
+  scheduled_start_at: string | null; scheduled_end_at: string | null; started_at: string | null;
+  renter_confirmed_delivery_at: string | null; mover_confirmed_delivery_at: string | null; contact_released_at: string | null;
+  dispute_status: string | null; completed_at: string | null; cancelled_at: string | null;
+  cancellation_reason: string | null; cancellation_details: string | null; created_at: string | null; updated_at: string | null;
 }
+
+export interface RequestMoverBookingInput {
+  moverId: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  pickupLatitude: number;
+  pickupLongitude: number;
+  dropoffLatitude: number;
+  dropoffLongitude: number;
+  distanceKm: number;
+  listingId?: string | null;
+}
+
+export interface RequestMoverBookingResponse {
+  booking_id: string;
+  conversation_id: string;
+  status: 'pending' | string;
+  request_expires_at: string;
+  quote: {
+    base_rate_kes?: number;
+    rate_per_km_kes?: number;
+    distance_km?: number;
+    platform_fee_kes?: number;
+    renter_total_kes?: number;
+    mover_net_kes?: number;
+    [key: string]: unknown;
+  };
+}
+
 export interface RenterDashboardResponse { association: RenterAssociation | null; unit: RenterUnit | null; property: RenterProperty | null; invoices: RentInvoice[]; bookings: Booking[]; }
 export interface RenterCalendarResponse { invoices: RentInvoice[]; bookings: Booking[]; }
 export interface RenterNotificationsResponse { notifications: Array<{ id: string; renter_user_id: string; renter_assoc_id: string | null; landlord_id: string | null; notification_type: string; title: string; body: string; action_type: string | null; action_payload: Record<string, unknown>; read_at: string | null; created_at: string; }>; }
@@ -37,7 +71,7 @@ export interface MoverScheduleAvailability { booking_id: string; mover_id: strin
 
 const encode = (value: string) => encodeURIComponent(value);
 const invoiceSelect = 'id,invoice_number,landlord_id,renter_user_id,renter_assoc_id,listing_id,unit_id,billing_period_start,billing_period_end,due_date,amount_kes,currency,status,payment_method_id,payment_destination_snapshot,paid_at,confirmed_by,confirmed_at,created_at,updated_at';
-const bookingSelect = 'id,renter_id,mover_id,listing_id,pickup_address,dropoff_address,moving_date,booking_amount,commission_amount,total_amount,status,payment_status,payment_method,tracking_number,last_known_latitude,last_known_longitude,last_location_at,scheduled_start_at,scheduled_end_at,started_at,completed_at,cancelled_at,created_at,updated_at';
+const bookingSelect = 'id,renter_id,mover_id,listing_id,pickup_address,dropoff_address,moving_date,booking_amount,commission_amount,total_amount,status,payment_status,payment_method,distance_km,rate_per_km_kes,base_rate_kes,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,requested_at,request_expires_at,confirmed_at,tracking_number,last_known_latitude,last_known_longitude,last_location_at,scheduled_start_at,scheduled_end_at,started_at,renter_confirmed_delivery_at,mover_confirmed_delivery_at,contact_released_at,dispute_status,completed_at,cancelled_at,cancellation_reason,cancellation_details,created_at,updated_at';
 const mapInvoice = (invoice: RentInvoice): RentInvoice => ({ ...invoice, amount: invoice.amount_kes, total_amount: invoice.amount_kes });
 
 export const renterApi = {
@@ -102,6 +136,33 @@ export const renterApi = {
     const booking = bookings?.[0];
     if (!booking) throw new Error('Booking not found.');
     return booking;
+  },
+
+  requestMoverBooking: async (input: RequestMoverBookingInput): Promise<RequestMoverBookingResponse> => {
+    const pickupAddress = input.pickupAddress.trim();
+    const dropoffAddress = input.dropoffAddress.trim();
+    if (!input.moverId) throw new Error('Mover is required.');
+    if (!pickupAddress) throw new Error('Pickup address is required.');
+    if (!dropoffAddress) throw new Error('Drop-off address is required.');
+    if (!Number.isFinite(input.pickupLatitude) || !Number.isFinite(input.pickupLongitude) || !Number.isFinite(input.dropoffLatitude) || !Number.isFinite(input.dropoffLongitude)) {
+      throw new Error('Please select valid pickup and drop-off locations.');
+    }
+    if (!Number.isFinite(input.distanceKm) || input.distanceKm < 0) throw new Error('Invalid route distance.');
+
+    const result = await protectedPost<RequestMoverBookingResponse>('/rest/v1/rpc/request_mover_booking', {
+      p_mover_id: input.moverId,
+      p_pickup_address: pickupAddress,
+      p_dropoff_address: dropoffAddress,
+      p_pickup_latitude: input.pickupLatitude,
+      p_pickup_longitude: input.pickupLongitude,
+      p_dropoff_latitude: input.dropoffLatitude,
+      p_dropoff_longitude: input.dropoffLongitude,
+      p_distance_km: input.distanceKm,
+      p_listing_id: input.listingId ?? null,
+    });
+
+    if (!result?.booking_id) throw new Error('The mover request was not created.');
+    return result;
   },
 
   getCalendar: async (userId?: string): Promise<RenterCalendarResponse> => {
