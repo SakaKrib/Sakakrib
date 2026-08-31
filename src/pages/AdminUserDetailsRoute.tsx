@@ -14,7 +14,7 @@ interface AdminApprovalProfile {
   id: string;
   role: string | null;
   is_agency: boolean | null;
-  real_estate_application_status: string | null;
+  landlord_application_status: string | null;
 }
 
 type Status = 'pending' | 'approved' | 'rejected';
@@ -36,7 +36,7 @@ export default function AdminUserDetailsRoute({
   const load = async () => {
     try {
       const rows = await protectedGet<AdminApprovalProfile[]>(
-        `/rest/v1/profiles?select=id,role,is_agency,real_estate_application_status&id=eq.${encodeURIComponent(userId)}&limit=1`
+        `/rest/v1/profiles?select=id,role,is_agency,landlord_application_status&id=eq.${encodeURIComponent(userId)}&limit=1`
       );
       setProfile(rows?.[0] ?? null);
     } catch (err) {
@@ -61,7 +61,7 @@ export default function AdminUserDetailsRoute({
       await protectedPatch(
         `/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}`,
         {
-          real_estate_application_status: status,
+          landlord_application_status: status,
           verification_status:
             status === 'approved'
               ? 'verified'
@@ -75,7 +75,7 @@ export default function AdminUserDetailsRoute({
 
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update real-estate approval.');
+      setError(err instanceof Error ? err.message : 'Failed to update application approval.');
     } finally {
       setSaving(false);
     }
@@ -91,10 +91,10 @@ export default function AdminUserDetailsRoute({
                 <Building2 className="h-5 w-5 text-accent-600" />
                 <div>
                   <h2 className="font-bold text-gray-900 dark:text-white">
-                    Real Estate Approval
+                    Real Estate Application
                   </h2>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Review and manage this real-estate application.
+                    Uses the same landlord application and KYC flow; the role is real estate.
                   </p>
                 </div>
               </div>
@@ -106,11 +106,11 @@ export default function AdminUserDetailsRoute({
                   Application Status
                 </p>
                 <div className="mt-2 flex items-center gap-2">
-                  {normalize(profile?.real_estate_application_status) === 'approved' ? (
+                  {normalize(profile.landlord_application_status) === 'approved' ? (
                     <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
                       <CheckCircle2 className="h-3 w-3" /> Approved
                     </span>
-                  ) : normalize(profile?.real_estate_application_status) === 'rejected' ? (
+                  ) : normalize(profile.landlord_application_status) === 'rejected' ? (
                     <span className="badge bg-error-50 text-error-700 dark:bg-error-900/30 dark:text-error-400">
                       <XCircle className="h-3 w-3" /> Rejected
                     </span>
