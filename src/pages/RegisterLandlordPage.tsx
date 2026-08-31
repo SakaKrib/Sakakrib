@@ -18,8 +18,11 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import TermsGate from '@/components/TermsGate';
 import DocumentCapture from '@/components/DocumentCapture';
-
-import { supabase } from '@/lib/supabase';
+import {
+  protectedPatch,
+  protectedPost,
+  protectedFunctionPost,
+} from '@/lib/protectedApi';
 
 import {
   validateEmail,
@@ -73,10 +76,9 @@ export default function RegisterLandlordPage() {
       'national_id'
     );
 
-  const [documentUrl, setDocumentUrl] =
-    useState(
-      profile?.id_document_url || ''
-    );
+  const [documentUrl, setDocumentUrl] = useState(
+    profile?.id_document_url?.trim() || ''
+  );
 
   /*
    * ------------------------------------------------------
@@ -248,56 +250,35 @@ export default function RegisterLandlordPage() {
    * The application has already been saved successfully.
    */
 
-  const sendRegistrationEmail = async (
+  async function sendRegistrationEmail(
     type: EmailType,
     applicationData: Record<string, unknown>
-  ) => {
+  ): Promise<boolean> {
     try {
-      setSendingEmail(true);
-
-      const {
-        data,
-        error: emailError,
-      } = await supabase.functions.invoke(
-        'send-notification-emails',
+      await protectedFunctionPost(
+        '/send-notification-emails',
         {
-          body: {
-            type,
-            application: applicationData,
-          },
+          type,
+          application: applicationData,
         }
       );
 
-      if (emailError) {
-        console.error(
-          'Landlord registration email failed:',
-          emailError
-        );
-
-        return false;
-      }
-
-      if (data?.error) {
-        console.error(
-          'Landlord registration email failed:',
-          data.error
-        );
-
-        return false;
-      }
-
       return true;
-    } catch (emailError) {
+    } catch (error) {
       console.error(
-        'Landlord registration email request failed:',
-        emailError
+        `Failed to request ${type} email:`,
+        error
       );
 
       return false;
-    } finally {
-      setSendingEmail(false);
     }
-  };
+  }
+
+
+  const effectiveDocumentUrl =
+    documentUrl.trim() ||
+    profile.id_document_url?.trim() ||
+    '';
 
   /*
    * ------------------------------------------------------
@@ -368,7 +349,7 @@ export default function RegisterLandlordPage() {
     nationalId.trim();
 
   const trimmedDocumentUrl =
-    documentUrl.trim();
+  effectiveDocumentUrl;
 
   /*
    * --------------------------------------------------
@@ -486,181 +467,217 @@ export default function RegisterLandlordPage() {
       .filter(Boolean)
       .join(' ');
 
-    /*
-     * --------------------------------------------------
-     * SAVE IDENTITY DOCUMENT TO PROFILES FIRST
-     * --------------------------------------------------
-     *
-     * DocumentCapture uploads the actual image to
-     * Supabase Storage and gives us documentUrl.
-     *
-     * Here we persist that Storage path/reference
-     * against the authenticated user's profile.
-     */
+      /*
+      * --------------------------------------------------
+      * SAVE IDENTITY DOCUMENT TO PROFILES FIRST
+      * --------------------------------------------------
+      *
+      * DocumentCapture uploads the actual image to
+      * Supabase Storage and gives us documentUrl.
+      *
+      * The profile update itself must go through the
+      * protected-api proxy so the browser never performs
+      * a direct authenticated Supabase database mutation.
+      */
 
-    const {
-      error: documentSaveError,
-    } = await supabase
-      .from('profiles')
-      .update({
-        id_document_url:
-          trimmedDocumentUrl,
+      try {
+        await protectedPatch(
+          `/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}`,
+          {
+            id_document_url:
+              trimmedDocumentUrl,
 
-        id_document_type:
-          documentType,
-      })
-      .eq(
-        'id',
-        profile.id
-      );
+            id_document_type:
+              documentType,
+          }
+        );
+      } catch (documentSaveError) {
+        console.error(
+          'Identity document database save failed:',
+          documentSaveError
+        );
 
-    if (documentSaveError) {
-      console.error(
-        'Identity document database save failed:',
-        documentSaveError
-      );
+        setError(
+          'We could not save your identity document. Please try again.'
+        );
 
-      setError(
-        'We could not save your identity document. Please try again.'
-      );
+        return;
+      }
 
-      return;
-    }
+      /*
+      * --------------------------------------------------
+      * BUILD APPLICATION
+      * --------------------------------------------------
+      */
 
-    /*
-     * --------------------------------------------------
-     * BUILD APPLICATION
-     * --------------------------------------------------
-     */
+      const application = {
+        applicant_id:
+          profile.id,
 
-    const application = {
-      applicant_id:
-        profile.id,
-
-      applicant_email:
-        trimmedEmail,
-
-      applicant_name:
-        fullName,
-
-      first_name:
-        trimmedFirstName,
-
-      middle_name:
-        trimmedMiddleName,
-
-      last_name:
-        trimmedLastName,
-
-      phone:
-        trimmedPhone,
-
-      national_id:
-        trimmedNationalId,
-
-      document_type:
-        documentType,
-
-      document_url:
-        trimmedDocumentUrl,
-
-      application_type:
-        'landlord',
-
-      submitted_at:
-        new Date().toISOString(),
-    };
-
-    /*
-     * --------------------------------------------------
-     * SAVE LANDLORD APPLICATION
-     * --------------------------------------------------
-     */
-
-    const {
-      error: landlordError,
-    } = await supabase.rpc(
-      'submit_landlord_application',
-      {
-        p_first_name:
-          trimmedFirstName,
-
-        p_middle_name:
-          trimmedMiddleName,
-
-        p_last_name:
-          trimmedLastName,
-
-        p_email:
+        applicant_email:
           trimmedEmail,
 
-        p_phone:
+        applicant_name:
+          fullName,
+
+        first_name:
+          trimmedFirstName,
+
+        middle_name:
+          trimmedMiddleName,
+
+        last_name:
+          trimmedLastName,
+
+        phone:
           trimmedPhone,
 
-        p_national_id:
+        national_id:
           trimmedNationalId,
 
-        p_document_type:
+        document_type:
           documentType,
 
-        p_document_url:
+        document_url:
           trimmedDocumentUrl,
+
+        application_type:
+          'landlord',
+
+        submitted_at:
+          new Date().toISOString(),
+      };
+
+      /*
+      * --------------------------------------------------
+      * SAVE LANDLORD APPLICATION
+      * --------------------------------------------------
+      *
+      * submit_landlord_application is an authenticated
+      * database RPC, so call it through protected-api.
+      */
+
+      let landlordResult:
+        | {
+            success?: boolean;
+            code?: string;
+            message?: string;
+          }
+        | null = null;
+
+      try {
+        landlordResult =
+          await protectedPost(
+            '/rest/v1/rpc/submit_landlord_application',
+            {
+              p_first_name:
+                trimmedFirstName,
+
+              p_middle_name:
+                trimmedMiddleName,
+
+              p_last_name:
+                trimmedLastName,
+
+              p_email:
+                trimmedEmail,
+
+              p_phone:
+                trimmedPhone,
+
+              p_national_id:
+                trimmedNationalId,
+
+              p_document_type:
+                documentType,
+
+              p_document_url:
+                trimmedDocumentUrl,
+            }
+          );
+      } catch (landlordSubmissionError) {
+        console.error(
+          'Landlord registration failed:',
+          landlordSubmissionError
+        );
+
+        setError(
+          landlordSubmissionError instanceof Error
+            ? landlordSubmissionError.message
+            : 'We could not save your landlord registration. Please try again.'
+        );
+
+        return;
       }
-    );
 
-    if (landlordError) {
-      console.error(
-        'Landlord registration failed:',
-        landlordError
+      /*
+      * --------------------------------------------------
+      * HANDLE RPC BUSINESS-LOGIC FAILURE
+      * --------------------------------------------------
+      */
+
+      if (
+        landlordResult &&
+        typeof landlordResult === 'object' &&
+        'success' in landlordResult &&
+        landlordResult.success === false
+      ) {
+        setError(
+          landlordResult.message ||
+            'We could not save your landlord registration. Please try again.'
+        );
+
+        return;
+      }
+
+      /*
+      * --------------------------------------------------
+      * REFRESH PROFILE
+      * --------------------------------------------------
+      */
+
+      try {
+        await refreshProfile();
+      } catch (profileRefreshError) {
+        console.error(
+          'Profile refresh after landlord submission failed:',
+          profileRefreshError
+        );
+      }
+
+      /*
+      * --------------------------------------------------
+      * EMAIL APPLICANT
+      * --------------------------------------------------
+      *
+      * Email failure does NOT invalidate the saved
+      * application.
+      */
+
+      await sendRegistrationEmail(
+        'landlord_application_submitted',
+        application
       );
 
-      setError(
-        'We could not save your landlord registration. Please try again.'
+      /*
+      * --------------------------------------------------
+      * EMAIL ADMIN
+      * --------------------------------------------------
+      */
+
+      await sendRegistrationEmail(
+        'landlord_admin_notification',
+        application
       );
 
-      return;
-    }
+      /*
+      * --------------------------------------------------
+      * SUCCESS
+      * --------------------------------------------------
+      */
 
-    /*
-     * --------------------------------------------------
-     * REFRESH PROFILE
-     * --------------------------------------------------
-     */
+      setSuccess(true);
 
-    await refreshProfile();
-
-    /*
-     * --------------------------------------------------
-     * EMAIL APPLICANT
-     * --------------------------------------------------
-     *
-     * Email failure does not invalidate the saved
-     * application.
-     */
-
-    await sendRegistrationEmail(
-      'landlord_application_submitted',
-      application
-    );
-
-    /*
-     * --------------------------------------------------
-     * EMAIL ADMIN
-     * --------------------------------------------------
-     */
-
-    await sendRegistrationEmail(
-      'landlord_admin_notification',
-      application
-    );
-
-    /*
-     * --------------------------------------------------
-     * SUCCESS
-     * --------------------------------------------------
-     */
-
-    setSuccess(true);
 
   } catch (submissionError) {
     console.error(
@@ -918,41 +935,49 @@ export default function RegisterLandlordPage() {
             </h3>
 
             <div className="mb-4 grid grid-cols-2 gap-2">
-
               <button
                 type="button"
-                onClick={() =>
-                  setDocumentType(
-                    'national_id'
-                  )
-                }
-                className={`btn-secondary ${
-                  documentType ===
-                  'national_id'
-                    ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300'
-                    : ''
+                onClick={() => {
+                  setDocumentType('national_id');
+                  setError(null);
+                }}
+                aria-pressed={documentType === 'national_id'}
+                className={`btn-secondary transition-all ${
+                  documentType === 'national_id'
+                    ? '!border-2 !border-brand-600 !bg-brand-100 !text-brand-800 shadow-sm dark:!border-brand-400 dark:!bg-brand-900/40 dark:!text-brand-200'
+                    : 'border-gray-300 bg-white text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
                 }`}
               >
-                National ID
+                <span className="flex items-center justify-center gap-2">
+                  {documentType === 'national_id' && (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+
+                  National ID
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() =>
-                  setDocumentType(
-                    'passport'
-                  )
-                }
-                className={`btn-secondary ${
-                  documentType ===
-                  'passport'
-                    ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300'
-                    : ''
+                onClick={() => {
+                  setDocumentType('passport');
+                  setError(null);
+                }}
+                aria-pressed={documentType === 'passport'}
+                className={`btn-secondary transition-all ${
+                  documentType === 'passport'
+                    ? '!border-2 !border-brand-600 !bg-brand-100 !text-brand-800 shadow-sm dark:!border-brand-400 dark:!bg-brand-900/40 dark:!text-brand-200'
+                    : 'border-gray-300 bg-white text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300'
                 }`}
               >
-                Passport
-              </button>
+                <span className="flex items-center justify-center gap-2">
+                  {documentType === 'passport' && (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
 
+                  Passport
+                </span>
+              </button>
             </div>
 
             <DocumentCapture

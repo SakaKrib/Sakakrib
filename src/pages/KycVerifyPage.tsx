@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+
 import {
   ShieldCheck,
   IdCard,
@@ -11,13 +12,26 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+
 import {
   useNav,
   type AppView,
 } from '@/context/NavContext';
-import { supabase } from '@/lib/supabase';
-import { validateNationalID, cn } from '@/lib/utils';
+
+import {
+  validateNationalID,
+  cn,
+} from '@/lib/utils';
+
 import TermsGate from '@/components/TermsGate';
+
+import {
+  protectedPatch,
+} from '@/lib/protectedApi';
+
+// ============================================================
+// TYPES
+// ============================================================
 
 type KycStep = 'idle' | 'uploading';
 
@@ -30,16 +44,21 @@ type UserRole =
   | null
   | undefined;
 
-/*
-|--------------------------------------------------------------------------
-| ROLE → REGISTRATION ROUTE
-|--------------------------------------------------------------------------
-|
-| KYC is only responsible for identity verification.
-| Once submitted, the user is sent to the registration form
-| associated with their account role.
-|
-*/
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const KYC_BUCKET = 'kyc-documents';
+
+const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+];
+
+// ============================================================
+// ROLE → REGISTRATION ROUTE
+// ============================================================
 
 function getRegistrationRoute(
   role: UserRole
@@ -56,11 +75,9 @@ function getRegistrationRoute(
   }
 }
 
-/*
-|--------------------------------------------------------------------------
-| ROLE LABEL
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// ROLE LABEL
+// ============================================================
 
 function getRoleLabel(
   role: UserRole
@@ -80,52 +97,80 @@ function getRoleLabel(
   }
 }
 
-/*
-|--------------------------------------------------------------------------
-| KYC VERIFY PAGE
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// ERROR MESSAGE
+// ============================================================
+
+function getErrorMessage(
+  error: unknown,
+  fallback: string
+): string {
+  if (
+    error instanceof Error &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
+// ============================================================
+// KYC VERIFY PAGE
+// ============================================================
 
 export default function KycVerifyPage() {
-  const { profile, refreshProfile } = useAuth();
-  const { navigate } = useNav();
+  const {
+    profile,
+    refreshProfile,
+  } = useAuth();
 
-  const [termsAccepted, setTermsAccepted] =
-    useState(false);
+  const {
+    navigate,
+  } = useNav();
 
-  const [fullName, setFullName] = useState(
+  const [
+    termsAccepted,
+    setTermsAccepted,
+  ] = useState(false);
+
+  const [
+    fullName,
+    setFullName,
+  ] = useState(
     profile?.full_name || ''
   );
 
-  const [nationalId, setNationalId] = useState(
+  const [
+    nationalId,
+    setNationalId,
+  ] = useState(
     profile?.national_id || ''
   );
 
-  const [idPhotoPath, setIdPhotoPath] =
-    useState('');
+  const [
+    idPhotoPath,
+    setIdPhotoPath,
+  ] = useState('');
 
-  const [selfiePath, setSelfiePath] =
-    useState('');
+  const [
+    selfiePath,
+    setSelfiePath,
+  ] = useState('');
 
-  const [step, setStep] =
-    useState<KycStep>('idle');
+  const [
+    step,
+    setStep,
+  ] = useState<KycStep>('idle');
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    error,
+    setError,
+  ] = useState<string | null>(null);
 
-
-
-      /*
-   * ------------------------------------------------------
-   * REDIRECT AFTER EXISTING KYC STATUS
-   * ------------------------------------------------------
-   *
-   * If the user already submitted KYC, there is no reason
-   * to show the KYC form again.
-   *
-   * They should continue to their role-specific registration.
-   *
-   */
+  // ==========================================================
+  // REDIRECT AFTER COMPLETED KYC
+  // ==========================================================
 
   useEffect(() => {
     if (!profile) {
@@ -135,8 +180,10 @@ export default function KycVerifyPage() {
     const shouldContinue =
       profile.kyc_completed === true &&
       (
-        profile.verification_status === 'pending_verification' ||
-        profile.verification_status === 'verified'
+        profile.verification_status ===
+          'pending_verification' ||
+        profile.verification_status ===
+          'verified'
       );
 
     if (!shouldContinue) {
@@ -144,7 +191,9 @@ export default function KycVerifyPage() {
     }
 
     const registrationRoute =
-      getRegistrationRoute(profile.role);
+      getRegistrationRoute(
+        profile.role
+      );
 
     if (registrationRoute) {
       navigate(registrationRoute);
@@ -154,11 +203,27 @@ export default function KycVerifyPage() {
     navigate('home');
   }, [profile, navigate]);
 
-  /*
-   * ------------------------------------------------------
-   * NO PROFILE
-   * ------------------------------------------------------
-   */
+  // ==========================================================
+  // KEEP FORM VALUES IN SYNC WITH PROFILE
+  // ==========================================================
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    setFullName(
+      profile.full_name || ''
+    );
+
+    setNationalId(
+      profile.national_id || ''
+    );
+  }, [profile]);
+
+  // ==========================================================
+  // NO PROFILE
+  // ==========================================================
 
   if (!profile) {
     return (
@@ -175,13 +240,19 @@ export default function KycVerifyPage() {
 
   const role = profile.role;
 
-
-
-  /*
-   * ------------------------------------------------------
-   * FILE UPLOAD
-   * ------------------------------------------------------
-   */
+  // ==========================================================
+  // FILE UPLOAD
+  //
+  // Browser
+  //    ↓
+  // protected-api /storage/upload
+  //    ↓
+  // authenticated server-side Supabase client
+  //    ↓
+  // kyc-documents
+  //
+  // No Supabase client is used by this component.
+  // ==========================================================
 
   const handleFileUpload = async (
     file: File,
@@ -194,30 +265,34 @@ export default function KycVerifyPage() {
     setError(null);
 
     try {
-      /*
-       * Basic client-side validation.
-       */
+      // ------------------------------------------------------
+      // CLIENT-SIDE VALIDATION
+      // ------------------------------------------------------
 
-      const allowedTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/webp',
-      ];
-
-      if (!allowedTypes.includes(file.type)) {
+      if (
+        !ALLOWED_IMAGE_TYPES.includes(
+          file.type
+        )
+      ) {
         setError(
           'Please upload a JPG, PNG, or WebP image.'
         );
-
         return;
       }
 
-      /*
-       * Keep the KYC documents private.
-       *
-       * We store the storage path in the profile,
-       * not a public URL.
-       */
+      if (
+        file.size >
+        10 * 1024 * 1024
+      ) {
+        setError(
+          'Image is too large. Maximum size is 10 MB.'
+        );
+        return;
+      }
+
+      // ------------------------------------------------------
+      // CANONICAL STORAGE PATH
+      // ------------------------------------------------------
 
       const extension =
         file.name
@@ -228,27 +303,157 @@ export default function KycVerifyPage() {
       const filePath =
         `${profile.id}/${type}-${Date.now()}.${extension}`;
 
-      const {
-        error: uploadError,
-      } = await supabase.storage
-        .from('kyc-documents')
-        .upload(
-          filePath,
-          file,
+      // ------------------------------------------------------
+      // MULTIPART REQUEST
+      //
+      // The existing protected-api endpoint supports
+      // multipart/form-data for /storage/upload.
+      //
+      // We intentionally do not use:
+      //
+      //   supabase.storage.from(...).upload(...)
+      //
+      // ------------------------------------------------------
+
+      const formData =
+        new FormData();
+
+      formData.append(
+        'file',
+        file,
+        file.name
+      );
+
+      formData.append(
+        'bucket',
+        KYC_BUCKET
+      );
+
+      formData.append(
+        'path',
+        filePath
+      );
+
+      // ------------------------------------------------------
+      // Resolve protected-api URL.
+      //
+      // This is NOT direct Supabase persistence.
+      //
+      // The request is going to:
+      //
+      // /functions/v1/protected-api/storage/upload
+      //
+      // and protected-api authenticates using the HttpOnly
+      // sk_access / sk_refresh cookies.
+      // ------------------------------------------------------
+
+      const baseUrl =
+        import.meta.env
+          .VITE_SUPABASE_URL as
+          | string
+          | undefined;
+
+      const publishableKey =
+        import.meta.env
+          .VITE_SUPABASE_ANON_KEY as
+          | string
+          | undefined;
+
+      if (!baseUrl) {
+        throw new Error(
+          'The secure upload service is not configured. Please contact support.'
+        );
+      }
+
+      if (!publishableKey) {
+        throw new Error(
+          'The secure API key is not configured. Please contact support.'
+        );
+      }
+
+      const protectedApiUrl =
+        `${baseUrl.replace(/\/+$/, '')}/functions/v1/protected-api`;
+
+      const response =
+        await fetch(
+          `${protectedApiUrl}/storage/upload`,
           {
-            upsert: false,
-            contentType: file.type,
+            method: 'POST',
+
+            credentials: 'include',
+
+            headers: {
+              Accept:
+                'application/json',
+
+              apikey:
+                publishableKey,
+            },
+
+            body: formData,
           }
         );
 
-      if (uploadError) {
-        throw uploadError;
+      // ------------------------------------------------------
+      // HANDLE RESPONSE
+      // ------------------------------------------------------
+
+      if (!response.ok) {
+        let message =
+          'Unable to upload the document. Please try again.';
+
+        try {
+          const data =
+            await response.json();
+
+          if (
+            data &&
+            typeof data.error ===
+              'string' &&
+            data.error.trim()
+          ) {
+            message =
+              data.error;
+          } else if (
+            data &&
+            typeof data.message ===
+              'string' &&
+            data.message.trim()
+          ) {
+            message =
+              data.message;
+          }
+        } catch {
+          // Keep fallback.
+        }
+
+        throw new Error(message);
       }
 
+      const result =
+        await response.json();
+
+      // ------------------------------------------------------
+      // STORE ONLY THE PRIVATE STORAGE PATH
+      //
+      // Never persist the temporary signed URL.
+      // ------------------------------------------------------
+
+      const uploadedPath =
+        typeof result?.path ===
+          'string' &&
+        result.path.trim()
+          ? result.path
+          : filePath;
+
       if (type === 'id') {
-        setIdPhotoPath(filePath);
+        setIdPhotoPath(
+          uploadedPath
+        );
       } else {
-        setSelfiePath(filePath);
+        setSelfiePath(
+          uploadedPath
+        );
       }
     } catch (err) {
       console.error(
@@ -257,20 +462,246 @@ export default function KycVerifyPage() {
       );
 
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to upload the document. Please try again.'
+        getErrorMessage(
+          err,
+          'Unable to upload the document. Please try again.'
+        )
       );
     }
   };
 
-  /*
-   * ------------------------------------------------------
-   * SUBMIT KYC
-   * ------------------------------------------------------
-   */
+  // ==========================================================
+  // VERIFY STORAGE OBJECT
+  //
+  // Browser
+  //    ↓
+  // protected-api /storage/sign
+  //    ↓
+  // authenticated server-side storage client
+  //    ↓
+  // temporary signed URL
+  // ==========================================================
 
-    const handleSubmit = async (
+  const verifyStorageObject =
+    async (
+      path: string,
+      label: string
+    ) => {
+      const baseUrl =
+        import.meta.env
+          .VITE_SUPABASE_URL as
+          | string
+          | undefined;
+
+      const publishableKey =
+        import.meta.env
+          .VITE_SUPABASE_ANON_KEY as
+          | string
+          | undefined;
+
+      if (!baseUrl) {
+        throw new Error(
+          'The secure document verification service is not configured.'
+        );
+      }
+
+      if (!publishableKey) {
+        throw new Error(
+          'The secure API key is not configured.'
+        );
+      }
+
+      const protectedApiUrl =
+        `${baseUrl.replace(/\/+$/, '')}/functions/v1/protected-api`;
+
+      const response =
+        await fetch(
+          `${protectedApiUrl}/storage/sign`,
+          {
+            method: 'POST',
+
+            credentials: 'include',
+
+            headers: {
+              Accept:
+                'application/json',
+
+              'Content-Type':
+                'application/json',
+
+              apikey:
+                publishableKey,
+            },
+
+            body: JSON.stringify({
+              bucket:
+                KYC_BUCKET,
+
+              path,
+            }),
+          }
+        );
+
+      if (!response.ok) {
+        let message =
+          `The uploaded ${label} could not be verified.`;
+
+        try {
+          const data =
+            await response.json();
+
+          if (
+            data &&
+            typeof data.error ===
+              'string' &&
+            data.error.trim()
+          ) {
+            message =
+              data.error;
+          } else if (
+            data &&
+            typeof data.message ===
+              'string' &&
+            data.message.trim()
+          ) {
+            message =
+              data.message;
+          }
+        } catch {
+          // Keep fallback.
+        }
+
+        throw new Error(message);
+      }
+
+      const result =
+        await response.json();
+
+      if (
+        !result ||
+        typeof result.url !==
+          'string' ||
+        !result.url.trim()
+      ) {
+        throw new Error(
+          `The uploaded ${label} could not be verified in secure storage. Please upload it again.`
+        );
+      }
+
+      // ------------------------------------------------------
+      // Temporary signed URL is used only to confirm that
+      // the object exists.
+      // ------------------------------------------------------
+
+      let verificationResponse:
+        Response;
+
+      try {
+        verificationResponse =
+          await fetch(
+            result.url,
+            {
+              method: 'HEAD',
+              cache: 'no-store',
+            }
+          );
+      } catch {
+        verificationResponse =
+          await fetch(
+            result.url,
+            {
+              method: 'GET',
+              cache: 'no-store',
+            }
+          );
+      }
+
+      if (
+        !verificationResponse.ok
+      ) {
+        throw new Error(
+          `The uploaded ${label} could not be verified in secure storage. Please upload it again.`
+        );
+      }
+    };
+
+  // ==========================================================
+  // SAVE KYC PROFILE
+  //
+  // THIS IS THE IMPORTANT PART.
+  //
+  // The browser does NOT call:
+  //
+  //   supabase.from('profiles').update(...)
+  //
+  // It does NOT call:
+  //
+  //   /functions/v1/create-kyc
+  //
+  // It does NOT call:
+  //
+  //   protectedFunctionPost('/create-kyc')
+  //
+  // Instead:
+  //
+  // Browser
+  //    ↓
+  // protectedPatch()
+  //    ↓
+  // protected-api
+  //    ↓
+  // HttpOnly sk_access / sk_refresh
+  //    ↓
+  // authenticated JWT
+  //    ↓
+  // PostgREST
+  //    ↓
+  // profiles
+  //
+  // ==========================================================
+
+  const saveKycProfile =
+    async (
+      values: {
+        full_name: string;
+        national_id: string;
+        id_photo_url: string;
+        selfie_url: string;
+        kyc_completed: boolean;
+        verification_status:
+          | 'pending_verification';
+      }
+    ) => {
+      const path =
+        `/rest/v1/profiles?id=eq.${encodeURIComponent(
+          profile.id
+        )}`;
+
+      await protectedPatch(
+        path,
+        values
+      );
+    };
+
+  // ==========================================================
+  // SUBMIT KYC
+  //
+  // kyc_completed becomes TRUE ONLY HERE.
+  //
+  // Uploading files does NOT set it.
+  // Typing information does NOT set it.
+  // Opening this page does NOT set it.
+  //
+  // Only clicking the submit button and successfully
+  // completing this operation sets:
+  //
+  //   kyc_completed = true
+  //   verification_status = pending_verification
+  //
+  // ==========================================================
+
+  const handleSubmit =
+    async (
       e: React.FormEvent
     ) => {
       e.preventDefault();
@@ -281,14 +712,15 @@ export default function KycVerifyPage() {
 
       setError(null);
 
-      const trimmedName = fullName.trim();
-      const trimmedNationalId = nationalId.trim();
+      const trimmedName =
+        fullName.trim();
 
-      /*
-      * ------------------------------------------------------
-      * VALIDATION
-      * ------------------------------------------------------
-      */
+      const trimmedNationalId =
+        nationalId.trim();
+
+      // ------------------------------------------------------
+      // VALIDATION
+      // ------------------------------------------------------
 
       if (!trimmedName) {
         setError(
@@ -297,7 +729,11 @@ export default function KycVerifyPage() {
         return;
       }
 
-      if (!validateNationalID(trimmedNationalId)) {
+      if (
+        !validateNationalID(
+          trimmedNationalId
+        )
+      ) {
         setError(
           'National ID must contain 7-8 digits.'
         );
@@ -325,14 +761,14 @@ export default function KycVerifyPage() {
         return;
       }
 
-      /*
-      * ------------------------------------------------------
-      * ROLE / REGISTRATION ROUTE
-      * ------------------------------------------------------
-      */
+      // ------------------------------------------------------
+      // ROLE / REGISTRATION ROUTE
+      // ------------------------------------------------------
 
       const registrationRoute =
-        getRegistrationRoute(profile.role);
+        getRegistrationRoute(
+          profile.role
+        );
 
       if (!registrationRoute) {
         setError(
@@ -343,57 +779,10 @@ export default function KycVerifyPage() {
 
       setStep('uploading');
 
-      /*
-      * These paths were created by handleFileUpload().
-      *
-      * They are PRIVATE storage paths, NOT public URLs.
-      *
-      * Example:
-      *
-      *   user-id/id-123456789.jpg
-      *   user-id/selfie-123456789.jpg
-      */
-
-      const uploadedPaths = [
-        idPhotoPath,
-        selfiePath,
-      ];
-
       try {
-        /*
-        * ------------------------------------------------------
-        * VERIFY THE ACTUAL FILES EXIST IN STORAGE
-        * ------------------------------------------------------
-        *
-        * This prevents us from saving a path into profiles
-        * when the corresponding Storage object does not exist.
-        *
-        * We intentionally use download() here because the
-        * kyc-documents bucket is PRIVATE.
-        */
-
-        const verifyStorageObject = async (
-          path: string,
-          label: string
-        ) => {
-          const {
-            data,
-            error,
-          } = await supabase.storage
-            .from('kyc-documents')
-            .download(path);
-
-          if (error || !data) {
-            console.error(
-              `KYC ${label} Storage verification failed:`,
-              error
-            );
-
-            throw new Error(
-              `The uploaded ${label} could not be verified in secure storage. Please upload it again.`
-            );
-          }
-        };
+        // ----------------------------------------------------
+        // VERIFY PRIVATE STORAGE OBJECTS
+        // ----------------------------------------------------
 
         await verifyStorageObject(
           idPhotoPath,
@@ -405,130 +794,93 @@ export default function KycVerifyPage() {
           'selfie'
         );
 
-        /*
-        * ------------------------------------------------------
-        * SAVE KYC INFORMATION
-        * ------------------------------------------------------
-        *
-        * Store the PRIVATE STORAGE PATHS.
-        *
-        * Do NOT generate public URLs for KYC documents.
-        */
+        // ----------------------------------------------------
+        // SAVE COMPLETE KYC STATE
+        //
+        // THIS IS THE ONLY PLACE WHERE kyc_completed
+        // IS CHANGED TO TRUE.
+        //
+        // verification_status moves from:
+        //
+        //   unverified
+        //
+        // to:
+        //
+        //   pending_verification
+        //
+        // Admin can subsequently move it to:
+        //
+        //   verified
+        //
+        // or:
+        //
+        //   rejected
+        // ----------------------------------------------------
 
-        const {
-          error: updateError,
-        } = await supabase
-          .from('profiles')
-          .update({
-            full_name: trimmedName,
+        await saveKycProfile({
+          full_name:
+            trimmedName,
 
-            national_id: trimmedNationalId,
+          national_id:
+            trimmedNationalId,
 
-            kyc_completed: true,
+          id_photo_url:
+            idPhotoPath,
 
-            id_photo_url: idPhotoPath,
+          selfie_url:
+            selfiePath,
 
-            selfie_url: selfiePath,
+          kyc_completed:
+            true,
 
-          })
-          .eq(
-            'id',
-            profile.id
-          );
+          verification_status:
+            'pending_verification',
+        });
 
-        if (updateError) {
-          throw updateError;
-        }
-
-        /*
-        * ------------------------------------------------------
-        * REFRESH PROFILE
-        * ------------------------------------------------------
-        */
+        // ----------------------------------------------------
+        // REFRESH AUTH PROFILE
+        //
+        // This makes the frontend receive:
+        //
+        //   kyc_completed = true
+        //   verification_status = pending_verification
+        //
+        // from the database.
+        // ----------------------------------------------------
 
         await refreshProfile();
 
-        /*
-        * ------------------------------------------------------
-        * SUCCESS
-        * ------------------------------------------------------
-        *
-        * At this point:
-        *
-        * 1. National ID exists in kyc-documents
-        * 2. Selfie exists in kyc-documents
-        * 3. profiles.id_photo_url contains the ID storage path
-        * 4. profiles.selfie_url contains the selfie storage path
-        * 5. KYC is marked complete
-        * 6. Verification is pending administrator verification
-        */
+        // ----------------------------------------------------
+        // SUCCESS
+        // ----------------------------------------------------
 
         navigate(
           registrationRoute
         );
-
       } catch (err) {
         console.error(
           'KYC submission failed:',
           err
         );
 
-        /*
-        * ------------------------------------------------------
-        * CLEANUP
-        * ------------------------------------------------------
-        *
-        * If the database update failed after the files had
-        * already been uploaded, remove those newly uploaded
-        * objects so we don't leave orphaned KYC documents.
-        *
-        * Cleanup errors are logged but do not replace the
-        * original submission error.
-        */
-
-        try {
-          const {
-            error: cleanupError,
-          } = await supabase.storage
-            .from('kyc-documents')
-            .remove(uploadedPaths);
-
-          if (cleanupError) {
-            console.warn(
-              'KYC Storage cleanup failed:',
-              cleanupError
-            );
-          }
-        } catch (cleanupErr) {
-          console.warn(
-            'KYC Storage cleanup threw an error:',
-            cleanupErr
-          );
-        }
-
-        /*
-        * Reset local paths because the uploaded files were
-        * removed during cleanup.
-        */
-
-        setIdPhotoPath('');
-        setSelfiePath('');
+        // ----------------------------------------------------
+        // DO NOT directly manipulate Supabase Storage here.
+        // ----------------------------------------------------
 
         setError(
-          err instanceof Error
-            ? err.message
-            : 'Unable to submit your verification. Please try again.'
+          getErrorMessage(
+            err,
+            'Unable to submit your verification. Please try again.'
+          )
         );
 
         setStep('idle');
       }
     };
 
-  /*
-   * ------------------------------------------------------
-   * FORM
-   * ------------------------------------------------------
-   */
+  // ==========================================================
+  // FORM
+  // ==========================================================
 
   return (
     <div className="mx-auto max-w-3xl px-2 py-8 sm:px-6">
@@ -560,13 +912,11 @@ export default function KycVerifyPage() {
       {/* Information Notice */}
 
       <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-900/30">
-
         <div className="flex gap-3">
 
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
 
           <div>
-
             <h3 className="text-sm font-semibold text-brand-900 dark:text-brand-200">
               Why do we need this?
             </h3>
@@ -577,11 +927,9 @@ export default function KycVerifyPage() {
               that your account belongs to a legitimate
               individual.
             </p>
-
           </div>
 
         </div>
-
       </div>
 
       <TermsGate
@@ -594,26 +942,20 @@ export default function KycVerifyPage() {
           setTermsAccepted(true)
         }
       >
-
         <form
           onSubmit={handleSubmit}
           className="space-y-6"
         >
 
-          {/* =================================================
-              PERSONAL INFORMATION
-          ================================================= */}
+          {/* PERSONAL INFORMATION */}
 
           <div className="card p-6">
 
             <div className="mb-5">
 
               <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-
                 <UserCheck className="h-5 w-5 text-brand-600" />
-
                 Personal Information
-
               </h3>
 
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -698,20 +1040,15 @@ export default function KycVerifyPage() {
 
           </div>
 
-          {/* =================================================
-              IDENTITY DOCUMENTS
-          ================================================= */}
+          {/* IDENTITY DOCUMENTS */}
 
           <div className="card p-6">
 
             <div className="mb-5">
 
               <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">
-
                 <Fingerprint className="h-5 w-5 text-brand-600" />
-
                 Identity Documents
-
               </h3>
 
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -787,9 +1124,7 @@ export default function KycVerifyPage() {
 
           </div>
 
-          {/* =================================================
-              WHAT HAPPENS NEXT
-          ================================================= */}
+          {/* WHAT HAPPENS NEXT */}
 
           <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-900/20">
 
@@ -817,9 +1152,7 @@ export default function KycVerifyPage() {
 
           </div>
 
-          {/* =================================================
-              ERROR
-          ================================================= */}
+          {/* ERROR */}
 
           {error && (
             <div
@@ -830,9 +1163,7 @@ export default function KycVerifyPage() {
             </div>
           )}
 
-          {/* =================================================
-              SUBMIT
-          ================================================= */}
+          {/* SUBMIT */}
 
           <button
             type="submit"
@@ -846,13 +1177,11 @@ export default function KycVerifyPage() {
             {step === 'uploading' ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-
                 Submitting verification...
               </>
             ) : (
               <>
                 <ShieldCheck className="h-4 w-4" />
-
                 Continue to Registration
               </>
             )}
@@ -860,7 +1189,6 @@ export default function KycVerifyPage() {
           </button>
 
         </form>
-
       </TermsGate>
 
       <p className="mt-8 text-center text-xs text-gray-400">
@@ -871,18 +1199,21 @@ export default function KycVerifyPage() {
   );
 }
 
-
-/* -------------------------------------------------------------------------- */
-/* Upload Box                                                                  */
-/* -------------------------------------------------------------------------- */
+// ============================================================
+// UPLOAD BOX
+// ============================================================
 
 function UploadBox({
   onUpload,
   uploaded,
   label,
 }: {
-  onUpload: (file: File) => void;
+  onUpload: (
+    file: File
+  ) => void;
+
   uploaded: boolean;
+
   label: string;
 }) {
   const inputRef =
@@ -897,6 +1228,7 @@ function UploadBox({
       className={cn(
         'flex h-40 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all',
         'focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2',
+
         uploaded
           ? 'border-success-400 bg-success-50 hover:border-success-500 dark:border-success-600 dark:bg-success-900/20'
           : 'border-gray-300 bg-gray-50 hover:border-brand-400 hover:bg-brand-50/50 dark:border-brand-700 dark:bg-brand-800/20 dark:hover:border-brand-500'
@@ -952,4 +1284,4 @@ function UploadBox({
 
     </button>
   );
-}
+};

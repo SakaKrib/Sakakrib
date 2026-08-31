@@ -40,7 +40,7 @@ import DatePicker from 'react-datepicker';
 
 import "react-datepicker/dist/react-datepicker.css";
 
-import { protectedPost } from '@/lib/protectedApi';
+import { protectedPost, protectedFunctionPost } from '@/lib/protectedApi';
 
 import {
   VEHICLE_TYPES,
@@ -128,57 +128,18 @@ type EmailType =
 | EMAIL FUNCTION
 |--------------------------------------------------------------------------
 */
-
 async function sendRegistrationEmail(
   type: EmailType,
   applicationData: Record<string, unknown>
 ): Promise<boolean> {
-  const supabaseUrl =
-    import.meta.env.VITE_SUPABASE_URL as
-      | string
-      | undefined;
-
-  const supabaseAnonKey =
-    import.meta.env.VITE_SUPABASE_ANON_KEY as
-      | string
-      | undefined;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error(
-      'Supabase environment variables are missing.'
-    );
-
-    return false;
-  }
-
   try {
-    const response = await fetch(
-      `${supabaseUrl}/functions/v1/send-notification-emails`,
+    await protectedFunctionPost(
+      '/send-notification-emails',
       {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: supabaseAnonKey,
-        },
-        body: JSON.stringify({
-          type,
-          application: applicationData,
-        }),
+        type,
+        application: applicationData,
       }
     );
-
-    const data =
-      await response.json().catch(() => null);
-
-    if (!response.ok || data?.error) {
-      console.error(
-        `Failed to send ${type} email:`,
-        data
-      );
-
-      return false;
-    }
 
     return true;
   } catch (error) {
@@ -190,7 +151,6 @@ async function sendRegistrationEmail(
     return false;
   }
 }
-
 /*
 |--------------------------------------------------------------------------
 | PAGE
@@ -699,9 +659,12 @@ export default function RegisterMoverPage() {
       return;
     }
 
-    if (profile.role !== 'renter') {
+    if (
+      profile.role !== 'renter' &&
+      profile.role !== 'mover'
+    ) {
       setError(
-        'Only renter accounts can submit a mover application.'
+        'Only renter or mover accounts can submit a mover application.'
       );
 
       return;
@@ -1100,21 +1063,27 @@ export default function RegisterMoverPage() {
     |--------------------------------------------------------------------------
     */
 
-    if (workingDays.length === 0) {
+    const submittedWorkingDays: Day[] = [...workingDays];
+
+    const submittedStartTime = startTime.trim();
+
+    const submittedEndTime = endTime.trim();
+
+    if (submittedWorkingDays.length === 0) {
       setScheduleError(
         'Select at least one working day before submitting.'
       );
       return;
     }
 
-    if (!startTime || !endTime) {
+    if (!submittedStartTime || !submittedEndTime) {
       setScheduleError(
         'Start time and end time are required.'
       );
       return;
     }
 
-    if (endTime <= startTime) {
+    if (submittedEndTime <= submittedStartTime) {
       setScheduleError(
         'End time must be later than the start time.'
       );
@@ -1226,13 +1195,13 @@ export default function RegisterMoverPage() {
         */
 
         working_days:
-          workingDays,
+          submittedWorkingDays,
 
         start_time:
-          startTime,
+          submittedStartTime,
 
         end_time:
-          endTime,  
+          submittedEndTime, 
 
         /*
         |--------------------------------------------------------------------------
@@ -1258,6 +1227,20 @@ export default function RegisterMoverPage() {
       | DATABASE SUBMISSION
       |--------------------------------------------------------------------------
       */
+
+      console.log(
+        '[MOVER APPLICATION] FINAL SCHEDULE SUBMISSION',
+        {
+          working_days: submittedWorkingDays,
+          start_time: submittedStartTime,
+          end_time: submittedEndTime,
+        }
+      );
+
+      console.log(
+        '[MOVER APPLICATION] FULL PAYLOAD',
+        application
+      );
 
       const submissionResult =
         await protectedPost<MoverApplicationResponse>(
@@ -2107,7 +2090,7 @@ export default function RegisterMoverPage() {
                           index
                         )
                       }
-                      className="btn-ghost text-sm text-error-600"
+                      className="btn-ghost text-sm text-error-600 ring-[.5px] ring-red-500"
                     >
                       Remove
                     </button>
