@@ -40,7 +40,6 @@ export interface Booking {
   contact_released_at: string | null; dispute_status: string | null; completed_at: string | null; cancelled_at: string | null;
   cancellation_reason: string | null; cancellation_details: string | null; created_at: string | null; updated_at: string | null;
 }
-
 export interface RequestMoverBookingInput {
   moverId: string; pickupAddress: string; dropoffAddress: string; pickupLatitude: number; pickupLongitude: number;
   dropoffLatitude: number; dropoffLongitude: number; distanceKm: number; listingId?: string | null;
@@ -48,6 +47,11 @@ export interface RequestMoverBookingInput {
 export interface RequestMoverBookingResponse {
   booking_id: string; conversation_id: string; status: 'pending' | string; request_expires_at: string;
   quote: { base_rate_kes?: number; rate_per_km_kes?: number; distance_km?: number; platform_fee_kes?: number; renter_total_kes?: number; mover_net_kes?: number; [key: string]: unknown; };
+}
+export interface MoverQuoteResponse {
+  moverId: string; distanceKm: number; baseRateKes: number; ratePerKmKes: number;
+  moverChargeKes: number; operationalMarkupRate: number; operationalMarkupKes: number;
+  commissionRate: number; commissionKes: number; renterTotalKes: number; netMoverPayableKes: number; currency: string;
 }
 export interface RenterDashboardResponse { association: RenterAssociation | null; unit: RenterUnit | null; property: RenterProperty | null; invoices: RentInvoice[]; bookings: Booking[]; }
 export interface RenterCalendarResponse { invoices: RentInvoice[]; bookings: Booking[]; }
@@ -114,6 +118,14 @@ export const renterApi = {
     const booking = bookings?.[0];
     if (!booking) throw new Error('Booking not found.');
     return booking;
+  },
+  getMoverQuote: async (moverId: string, distanceKm: number): Promise<MoverQuoteResponse> => {
+    if (!moverId) throw new Error('Mover is required.');
+    if (!Number.isFinite(distanceKm) || distanceKm < 0) throw new Error('Invalid route distance.');
+    return protectedPost<MoverQuoteResponse>('/rest/v1/rpc/get_mover_quote', {
+      p_mover_id: moverId,
+      p_distance_km: distanceKm,
+    });
   },
   requestMoverBooking: async (input: RequestMoverBookingInput): Promise<RequestMoverBookingResponse> => {
     const pickupAddress = input.pickupAddress.trim();
