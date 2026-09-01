@@ -1,6 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -9,6 +8,7 @@ from apps.accounts.models import Profile
 
 from .domain_bookings import Booking, ChatMessage, MovingCancellationEvent
 from .domain_platform import Mover, NotificationEmail, UserNotification
+from .domain_property import PlatformSettings
 
 TWOPLACES = Decimal("0.01")
 
@@ -29,8 +29,11 @@ def _conversation(a, b):
     return f"{values[0]}__{values[1]}"
 
 
-def _commission_rate():
-    return Decimal(str(getattr(settings, "MOVER_COMMISSION_RATE", "0.20")))
+def _platform_settings():
+    settings_row = PlatformSettings.objects.filter(pk=True).first()
+    if settings_row is None:
+        raise ValidationError("Platform settings are not configured")
+    return settings_row
 
 
 def calculate_mover_quote(*, mover_id, distance_km):
@@ -40,10 +43,13 @@ def calculate_mover_quote(*, mover_id, distance_km):
     mover = Mover.objects.filter(pk=mover_id, approval_status="approved", is_available=True).first()
     if mover is None:
         raise ValidationError("Mover is not approved, unavailable, or does not exist")
+    platform = _platform_settings()
     base = _money(mover.base_rate_kes)
     rate = _money(mover.rate_per_km_kes)
-    total = _money(base + rate * distance)
-    fee = _money(total * _commission_rate())
+    mover_charge = _money(base + rate * distance)
+    markup = _money(mover_charge * platform.mover_operational_markup_rate)
+    total = _money(mover_charge + markup)
+    fee = _money(mover_charge * platform.mover_commission_rate)
     return {
         "mover_id": str(mover.id),
         "distance_km": round(float(distance), 2),
@@ -51,7 +57,7 @@ def calculate_mover_quote(*, mover_id, distance_km):
         "rate_per_km_kes": rate,
         "renter_total_kes": total,
         "platform_fee_kes": fee,
-        "platform_commission_rate": _commission_rate(),
+        "platform_commission_rate": platform.mover_commission_rate,
         "mover_net_kes": _money(total - fee),
     }
 
@@ -161,19 +167,14 @@ def respond_to_mover_booking(*, mover_user_id, booking_id, decision, reason=None
         booking.updated_at = now
         booking.save(update_fields=["status", "confirmed_at", "updated_at"])
         content = "The mover has accepted your request. Please select a moving date and time."
-        UserNotification.objects.create(
-            user_id=booking.renter_id, notification_type="MOVER_CONFIRMED",
-            title="Mover confirmed your request",
-            message="Your selected mover accepted the request. Choose a date and time in chat.",
-            data={"booking_id": str(booking.id)},
-        )
+        UserNotification.objects.create(user_id=booking.renter_id, notification_type="MOVER_CONFIRMED",
+            title="Mover confirmed your request", message="Your selected mover accepted the request. Choose a date and time in chat.",
+            data={"booking_id": str(booking.id)})
     elif decision == "not_sure":
         content = f"The mover is not sure about this request yet: {reason}"
-        UserNotification.objects.create(
-            user_id=booking.renter_id, notification_type="MOVER_NOT_SURE",
+        UserNotification.objects.create(user_id=booking.renter_id, notification_type="MOVER_NOT_SURE",
             title="Mover is not sure", message="The mover needs more discussion before confirming.",
-            data={"booking_id": str(booking.id), "reason": str(reason)},
-        )
+            data={"booking_id": str(booking.id), "reason": str(reason)})
     else:
         booking.status = "cancelled"
         booking.cancelled_at = now
@@ -181,22 +182,16 @@ def respond_to_mover_booking(*, mover_user_id, booking_id, decision, reason=None
         booking.cancellation_details = str(reason)[:2000]
         booking.updated_at = now
         booking.save(update_fields=["status", "cancelled_at", "cancellation_reason", "cancellation_details", "updated_at"])
-        MovingCancellationEvent.objects.create(
-            booking_id=booking.id, cancelled_by=mover_user_id,
-            reason_code="MOVER_CANCELLED", reason_text=str(reason),
-        )
+        MovingCancellationEvent.objects.create(booking_id=booking.id, cancelled_by=mover_user_id,
+            reason_code="MOVER_CANCELLED", reason_text=str(reason))
         content = f"The mover cancelled the request: {reason}"
-        UserNotification.objects.create(
-            user_id=booking.renter_id, notification_type="MOVER_CANCELLED",
+        UserNotification.objects.create(user_id=booking.renter_id, notification_type="MOVER_CANCELLED",
             title="Mover cancelled the request", message="The mover cancelled your moving request.",
-            data={"booking_id": str(booking.id), "reason": str(reason)},
-        )
-    ChatMessage.objects.create(
-        conversation_id=conversation, sender_id=mover_user_id, receiver_id=booking.renter_id,
-        content=content, message_type="booking_response",
+            data={"booking_id": str(booking.id), "reason": str(reason)})
+    ChatMessage.objects.create(conversation_id=conversation, sender_id=mover_user_id,
+        receiver_id=booking.renter_id, content=content, message_type="booking_response",
         event_data={"booking_id": str(booking.id), "decision": decision,
-                    **({"reason": str(reason)} if reason else {})},
-    )
+                    **({"reason": str(reason)} if reason else {})})
     return {"booking_id": str(booking.id), "decision": decision, "status": booking.status}
 
 
@@ -234,7 +229,6 @@ def cancel_moving_booking(*, user_id, booking_id, reason_code, reason_text=""):
     booking.cancellation_details = str(reason_text)[:2000]
     booking.updated_at = now
     booking.save(update_fields=["status", "cancelled_at", "cancellation_reason", "cancellation_details", "updated_at"])
-    MovingCancellationEvent.objects.create(
-        booking_id=booking.id, cancelled_by=user_id, reason_code=reason_code, reason_text=reason_text,
-    )
+    MovingCancellationEvent.objects.create(booking_id=booking.id, cancelled_by=user_id,
+        reason_code=reason_code, reason_text=reason_text)
     return {"booking_id": str(booking.id), "status": "cancelled", "cancelled_by": actor}
