@@ -168,6 +168,12 @@ class RentReminderSetting(models.Model):
 
     class Meta:
         db_table = 'rent_reminder_settings'
+        constraints = [
+            models.UniqueConstraint(
+                fields=('renter_assoc_id',),
+                name='rent_reminder_settings_renter_assoc_id_key',
+            ),
+        ]
 
 
 class RentReminder(models.Model):
@@ -190,3 +196,21 @@ class RentReminder(models.Model):
 
     class Meta:
         db_table = 'rent_reminders'
+        constraints = [
+            models.UniqueConstraint(
+                fields=(
+                    'renter_assoc_id',
+                    'payment_period_year',
+                    'payment_period_month',
+                    'offset_days',
+                    'channel',
+                ),
+                name='rent_reminders_renter_assoc_period_offset_channel_key',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=('scheduled_for', 'status'),
+                name='idx_rent_reminders_due_schedule',
+            ),
+        ]
