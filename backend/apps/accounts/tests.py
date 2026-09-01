@@ -1,3 +1,5 @@
+import re
+
 from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -48,9 +50,10 @@ class AuthenticationApiTests(TestCase):
         self.assertEqual(signup.status_code, 201)
 
         user = Profile.objects.get(email='verify@example.com')
-        # The test mail contains the generated six-digit code.
         body = mail.outbox[-1].body
-        otp = next(part for part in body.split() if part.isdigit() and len(part) == 6)
+        match = re.search(r'\b\d{6}\b', body)
+        self.assertIsNotNone(match)
+        otp = match.group(0)
 
         response = self.client.post(reverse('verify-otp'), {
             'email': user.email,
