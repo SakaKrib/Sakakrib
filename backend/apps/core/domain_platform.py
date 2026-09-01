@@ -36,7 +36,11 @@ class PaymentWebhookEvent(models.Model):
 
 class UserNotification(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); user_id=models.UUIDField(); notification_type=models.TextField(); title=models.TextField(); message=models.TextField(); data=models.JSONField(default=dict); read_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True); event_key=models.TextField(null=True,blank=True)
-    class Meta: db_table='user_notifications'
+    class Meta:
+        db_table='user_notifications'
+        constraints=[
+            models.UniqueConstraint(fields=['event_key'], condition=models.Q(event_key__isnull=False), name='user_notifications_event_key_uidx'),
+        ]
 
 class RenterNotification(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); renter_user_id=models.UUIDField(); renter_assoc_id=models.UUIDField(null=True,blank=True); landlord_id=models.UUIDField(null=True,blank=True); notification_type=models.TextField(default='RENT_REMINDER'); title=models.TextField(); body=models.TextField(); action_type=models.TextField(null=True,blank=True); action_payload=models.JSONField(default=dict); read_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
