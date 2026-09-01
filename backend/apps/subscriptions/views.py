@@ -2,6 +2,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import SubscriptionPlan
+from .payment_services import create_subscription_checkout
 from .services import get_current_subscription, get_subscription_access, get_subscription_plan
 
 
@@ -15,17 +16,11 @@ class SubscriptionPlansView(APIView):
         if audience in ('LANDLORD', 'REAL_ESTATE'):
             queryset = queryset.filter(audience=audience)
         return Response([
-            {
-                'id': plan.id,
-                'name': plan.name,
-                'audience': plan.audience,
-                'max_listings': plan.max_listings,
-                'max_units_per_listing': plan.max_units_per_listing,
-                'monthly_price_kes': plan.monthly_price_kes,
-                'annual_price_kes': plan.annual_price_kes,
-                'paypal_monthly_plan_id': plan.paypal_monthly_plan_id,
-                'paypal_annual_plan_id': plan.paypal_annual_plan_id,
-            }
+            {'id': plan.id, 'name': plan.name, 'audience': plan.audience,
+             'max_listings': plan.max_listings, 'max_units_per_listing': plan.max_units_per_listing,
+             'monthly_price_kes': plan.monthly_price_kes, 'annual_price_kes': plan.annual_price_kes,
+             'paypal_monthly_plan_id': plan.paypal_monthly_plan_id,
+             'paypal_annual_plan_id': plan.paypal_annual_plan_id}
             for plan in queryset
         ])
 
@@ -52,3 +47,21 @@ class MySubscriptionView(APIView):
 class MySubscriptionAccessView(APIView):
     def get(self, request):
         return Response(get_subscription_access(request.user.profile))
+
+
+class SubscriptionCheckoutView(APIView):
+    def post(self, request):
+        profile = request.user.profile
+        try:
+            result = create_subscription_checkout(
+                profile=profile,
+                plan_id=request.data.get('plan_id'),
+                billing_cycle=request.data.get('billing_cycle', 'MONTHLY'),
+                provider=request.data.get('provider'),
+                phone_number=request.data.get('phone_number'),
+            )
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=502)
+        return Response(result)
