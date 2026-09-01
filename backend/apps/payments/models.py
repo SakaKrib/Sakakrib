@@ -28,5 +28,4 @@ class ListingPayment(models.Model):
     updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        managed = False
         db_table = 'listing_payments'
