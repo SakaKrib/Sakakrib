@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.utils.html import escape
 
 from apps.accounts.models import Profile
 
@@ -21,24 +22,40 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
     if event_key:
         existing = UserNotification.objects.filter(event_key=event_key).first()
         if existing:
-            return {"status": "ALREADY_QUEUED", "notification_id": str(existing.id), "email_id": None}
+            return {
+                "status": "ALREADY_QUEUED",
+                "notification_id": str(existing.id),
+                "email_id": None,
+            }
 
-    profile = Profile.objects.filter(pk=user_id).first()
+    profile = Profile.objects.filter(pk=user_id, is_active=True).first()
     if not profile:
         raise ValidationError("Recipient profile not found")
 
-    notification = UserNotification.objects.create(
-        user_id=user_id,
-        notification_type=str(notification_type),
-        title=str(title),
-        message=str(message),
-        data=data if isinstance(data, dict) else {},
-        event_key=event_key,
-    )
+    try:
+        notification = UserNotification.objects.create(
+            user_id=user_id,
+            notification_type=str(notification_type),
+            title=str(title),
+            message=str(message),
+            data=data if isinstance(data, dict) else {},
+            event_key=event_key,
+        )
+    except IntegrityError:
+        if not event_key:
+            raise
+        existing = UserNotification.objects.filter(event_key=event_key).first()
+        if not existing:
+            raise
+        return {
+            "status": "ALREADY_QUEUED",
+            "notification_id": str(existing.id),
+            "email_id": None,
+        }
+
     email = None
     if send_email and str(profile.email or "").strip():
-        safe_message = (str(message).replace("&", "&amp;")
-                        .replace("<", "&lt;").replace(">", "&gt;"))
+        safe_message = escape(str(message))
         email = NotificationEmail.objects.create(
             recipient=profile.email,
             subject=str(title),
@@ -46,6 +63,7 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
             template_type=email_template or "generic",
             status="pending",
         )
+
     return {
         "status": "QUEUED",
         "notification_id": str(notification.id),
