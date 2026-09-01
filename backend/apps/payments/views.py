@@ -78,7 +78,7 @@ class MpesaListingCallbackView(APIView):
             with transaction.atomic():
                 result = finalize_listing_payment(
                     intent.id, provider='MPESA', provider_reference=checkout_id,
-                    provider_amount=items.get('Amount'), checkout_request_id=checkout_id,
+                    provider_amount=items.get('Amount'), provider_currency='KES', checkout_request_id=checkout_id,
                     merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
                     phone_number=items.get('PhoneNumber'), result_code=result_code,
                     result_description=callback.get('ResultDesc'), provider_transaction_id=items.get('MpesaReceiptNumber'),
@@ -102,11 +102,15 @@ class PayPalListingCaptureView(APIView):
         result = get_provider('paypal').verify_payment(provider_reference=order_id)
         if not result.success:
             return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
+        if intent.provider != 'PAYPAL' or intent.provider_reference != order_id:
+            return Response({'success': False, 'message': 'PayPal order does not match the payment intent.'}, status=400)
+        if not intent.provider_amount or intent.provider_currency != 'USD':
+            return Response({'success': False, 'message': 'Payment intent has no valid USD PayPal amount.'}, status=400)
         try:
             with transaction.atomic():
                 settled = finalize_listing_payment(
                     intent.id, provider='PAYPAL', provider_reference=order_id,
-                    provider_amount=result.amount, provider_currency=result.currency,
+                    provider_amount=intent.provider_amount, provider_currency='USD',
                     paypal_order_id=order_id, result_description=result.message,
                 )
         except Exception as exc:
