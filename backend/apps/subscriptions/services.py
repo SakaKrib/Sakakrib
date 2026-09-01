@@ -49,9 +49,12 @@ def get_subscription_access(profile):
     used = get_subscription_listing_usage(profile, subscription)
     limit = plan.max_listings if plan else None
     remaining = None if limit is None else max(limit - used, 0)
-    can_start = authorized and profile.verification_status == 'verified' and (
-        profile.role != 'landlord' or profile.landlord_application_status == 'approved'
+
+    application_approved = (
+        (profile.role == 'landlord' and profile.landlord_application_status == 'approved')
+        or (profile.role == 'real_estate' and profile.real_estate_application_status == 'approved')
     )
+    can_start = authorized and profile.verification_status == 'verified' and application_approved
     can_create = can_start and (
         free_remaining > 0 or (subscription is not None and (limit is None or remaining > 0))
     )
@@ -60,6 +63,7 @@ def get_subscription_access(profile):
         'role': profile.role,
         'verification_status': profile.verification_status,
         'landlord_application_status': getattr(profile, 'landlord_application_status', None),
+        'real_estate_application_status': getattr(profile, 'real_estate_application_status', None),
         'free_limit': FREE_LISTING_LIMIT,
         'free_listings_used': free_used,
         'free_listings_remaining': free_remaining,
