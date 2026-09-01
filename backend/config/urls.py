@@ -14,4 +14,5 @@ urlpatterns = [
     path('api/listings/', include('apps.listings.urls')),
     path('api/subscriptions/', include('apps.subscriptions.urls')),
     path('api/payments/', include('apps.payments.urls')),
+    path('api/core/', include('apps.core.urls')),
 ]
