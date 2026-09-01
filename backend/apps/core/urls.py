@@ -12,6 +12,12 @@ from .moving_views import (
     MovingPaymentView,
     MovingTrackingPointView,
 )
+from .moving_action_views import (
+    MoverBookingRequestView,
+    MoverBookingResponseView,
+    MoverQuoteView,
+    MovingBookingCancelView,
+)
 from .rent_views import (
     LandlordRentInvoiceCreateView,
     LandlordRentPaymentConfirmView,
@@ -21,8 +27,6 @@ from .rent_views import (
 )
 
 urlpatterns = [
-    # Moving / booking read APIs. Querysets are constrained by the audited
-    # production Supabase RLS rules before any object is returned.
     path("bookings/", BookingView.as_view(), name="booking-list"),
     path("bookings/<uuid:object_id>/", BookingView.as_view(), name="booking-detail"),
     path("booking-events/", BookingEventView.as_view(), name="booking-event-list"),
@@ -43,6 +47,12 @@ urlpatterns = [
     path("moving-tracking-points/<int:object_id>/", MovingTrackingPointView.as_view(), name="moving-tracking-point-detail"),
     path("moving-cancellation-events/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-list"),
     path("moving-cancellation-events/<uuid:object_id>/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-detail"),
+
+    # Moving domain actions mirrored from the audited production RPC behavior.
+    path("movers/quote/", MoverQuoteView.as_view(), name="mover-quote"),
+    path("bookings/request/", MoverBookingRequestView.as_view(), name="booking-request"),
+    path("bookings/<uuid:booking_id>/respond/", MoverBookingResponseView.as_view(), name="booking-response"),
+    path("bookings/<uuid:booking_id>/cancel/", MovingBookingCancelView.as_view(), name="booking-cancel"),
 
     # External rent verification workflow.
     path("invoices/landlord/", LandlordRentInvoiceCreateView.as_view(), name="rent-invoice-create-landlord"),
