@@ -94,4 +94,8 @@ class ListingPaymentIntent(models.Model):
                 condition=models.Q(status__in=['PENDING', 'PAID', 'FAILED', 'CANCELLED', 'EXPIRED']),
                 name='listing_payment_intents_status_valid',
             ),
+            models.UniqueConstraint(
+                fields=['provider_reference'],
+                name='listing_payment_intents_provider_reference_uniq',
+            ),
         ]
