@@ -29,7 +29,7 @@ class ListingPaymentStartView(APIView):
         provider_name = str(request.data.get('provider', '')).lower()
         if not intent_id or provider_name not in ('mpesa', 'paypal'):
             return Response({'detail': 'payment_intent_id and provider (mpesa or paypal) are required.'}, status=400)
-        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.profile.id, status='PENDING').first()
+        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk, status='PENDING').first()
         if not intent:
             return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
         currency = 'KES' if provider_name == 'mpesa' else 'USD'
@@ -96,7 +96,7 @@ class PayPalListingCaptureView(APIView):
         order_id = request.data.get('order_id')
         if not intent_id or not order_id:
             return Response({'detail': 'payment_intent_id and order_id are required.'}, status=400)
-        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.profile.id, status='PENDING').first()
+        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk, status='PENDING').first()
         if not intent:
             return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
         result = get_provider('paypal').verify_payment(provider_reference=order_id)
@@ -106,8 +106,8 @@ class PayPalListingCaptureView(APIView):
             with transaction.atomic():
                 settled = finalize_listing_payment(
                     intent.id, provider='PAYPAL', provider_reference=order_id,
-                    provider_amount=intent.provider_amount, paypal_order_id=order_id,
-                    result_description=result.message,
+                    provider_amount=result.amount, provider_currency=result.currency,
+                    paypal_order_id=order_id, result_description=result.message,
                 )
         except Exception as exc:
             return Response({'success': False, 'message': f'Payment captured but settlement failed: {exc}'}, status=500)
