@@ -46,5 +46,9 @@ class VerifyOtpSerializer(serializers.Serializer):
         return value
 
 
+class ResendOtpSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
 class SetRoleSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=['renter', 'landlord', 'mover', 'real_estate'])
