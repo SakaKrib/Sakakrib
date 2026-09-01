@@ -6,11 +6,15 @@ from .views import (
     ListingDetailView,
     ListingEntitlementView,
     ListingListView,
+    ListingMediaDetailView,
+    ListingMediaView,
     ListingPaymentIntentView,
 )
 
 urlpatterns = [
     path('entitlement/', ListingEntitlementView.as_view(), name='listing-entitlement'),
+    path('media/', ListingMediaView.as_view(), name='listing-media'),
+    path('media/<uuid:media_id>/', ListingMediaDetailView.as_view(), name='listing-media-detail'),
     path('', ListingListView.as_view(), name='listing-list'),
     path('create/', ListingCreateView.as_view(), name='listing-create'),
     path('payment-intents/', ListingPaymentIntentView.as_view(), name='listing-payment-intent-create'),
