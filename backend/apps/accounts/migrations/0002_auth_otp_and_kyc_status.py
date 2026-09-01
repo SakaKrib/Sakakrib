@@ -8,6 +8,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AlterField(
+            model_name='profile',
+            name='role',
+            field=models.CharField(blank=True, default='', max_length=50),
+        ),
+        migrations.AlterField(
+            model_name='profile',
+            name='verification_status',
+            field=models.CharField(default='unverified', max_length=50),
+        ),
         migrations.AddField(
             model_name='profile',
             name='kyc_status',
