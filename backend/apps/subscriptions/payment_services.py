@@ -25,6 +25,8 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
         raise ValueError('Identity verification is required before subscription checkout')
     if profile.role == 'landlord' and profile.landlord_application_status != 'approved':
         raise ValueError('Landlord application approval is required before subscription checkout')
+    if profile.role == 'real_estate' and profile.real_estate_application_status != 'approved':
+        raise ValueError('Real estate application approval is required before subscription checkout')
     plan = SubscriptionPlan.objects.filter(pk=plan_id, audience=profile.role.upper()).first()
     if not plan:
         raise ValueError('Subscription plan not found for this account type')
@@ -40,11 +42,29 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     now = timezone.now()
     with transaction.atomic():
         subscription_model.objects.filter(**{owner_field: profile.id}, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=now)
-        subscription = subscription_model.objects.create(
-            **{owner_field: profile.id}, plan_id=plan.id, billing_cycle=billing_cycle,
-            status='PENDING_PAYMENT', current_period_start=None, current_period_end=None,
-            grace_period_end=None, auto_renew=False, billing_amount_kes=amount_kes,
-            billing_amount_usd=amount_usd, paypal_plan_id=paypal_plan_id if provider == 'paypal' else None)
+        create_kwargs = {
+            owner_field: profile.id,
+            'plan_id': plan.id,
+            'billing_cycle': billing_cycle,
+            'status': 'PENDING_PAYMENT',
+            'grace_period_end': None,
+            'auto_renew': False,
+            'created_at': now,
+            'updated_at': now,
+            'billing_amount_kes': amount_kes,
+            'billing_amount_usd': amount_usd,
+            'paypal_plan_id': paypal_plan_id if provider == 'paypal' else None,
+        }
+        # Production's landlord schema currently requires these columns to be non-null,
+        # while its pending-checkout function inserts NULL. Use a provisional period in
+        # Django so the migrated schema remains writable; payment activation overwrites it.
+        if profile.role == 'landlord':
+            create_kwargs['current_period_start'] = now
+            create_kwargs['current_period_end'] = now
+        else:
+            create_kwargs['current_period_start'] = None
+            create_kwargs['current_period_end'] = None
+        subscription = subscription_model.objects.create(**create_kwargs)
         invoice = SubscriptionInvoice.objects.create(
             amount_kes=amount_kes, status='PENDING', payment_provider=provider.upper(),
             payment_method=provider.upper(), phone_number=phone_number,
