@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from .auth_service import send_signup_otp, verify_signup_otp
 from .jwt_service import clear_auth_cookies, issue_token_pair, revoke_refresh_token, rotate_refresh_token, set_auth_cookies
 from .models import Profile
-from .serializers import LoginSerializer, ProfileSerializer, SetRoleSerializer, SignupSerializer, VerifyOtpSerializer
+from .serializers import LoginSerializer, ProfileSerializer, ResendOtpSerializer, SetRoleSerializer, SignupSerializer, VerifyOtpSerializer
 
 
 class CsrfTokenView(APIView):
@@ -56,7 +56,7 @@ class ResendOtpView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        serializer = VerifyOtpSerializer(data={'email': request.data.get('email', ''), 'otp': '000000'})
+        serializer = ResendOtpSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email'].strip().lower()
         user = Profile.objects.filter(email__iexact=email, is_active=True).first()
