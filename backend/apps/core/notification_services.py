@@ -33,14 +33,15 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
         raise ValidationError("Recipient profile not found")
 
     try:
-        notification = UserNotification.objects.create(
-            user_id=user_id,
-            notification_type=str(notification_type),
-            title=str(title),
-            message=str(message),
-            data=data if isinstance(data, dict) else {},
-            event_key=event_key,
-        )
+        with transaction.atomic():
+            notification = UserNotification.objects.create(
+                user_id=user_id,
+                notification_type=str(notification_type),
+                title=str(title),
+                message=str(message),
+                data=data if isinstance(data, dict) else {},
+                event_key=event_key,
+            )
     except IntegrityError:
         if not event_key:
             raise
