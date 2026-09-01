@@ -25,12 +25,23 @@ class KycDocumentSignView(APIView):
             return Response({'detail': 'Unsupported document storage bucket.'}, status=400)
         if not path:
             return Response({'detail': 'Document path is required.'}, status=400)
+
+        requester_is_admin = is_admin(request.user)
         if bucket == 'kyc-documents':
-            if not (_owned_path(request.user.pk, path) or is_admin(request.user)):
+            if not (_owned_path(request.user.pk, path) or requester_is_admin):
                 return Response({'detail': 'You do not have access to this document.'}, status=403)
-        elif not is_admin(request.user):
+        elif not requester_is_admin:
             return Response({'detail': 'Administrator access is required for this document.'}, status=403)
+
         if not default_storage.exists(path):
             return Response({'detail': 'Document not found.'}, status=404)
-        token = signing.dumps({'path': path, 'user_id': str(request.user.pk)}, salt=KYC_SIGNING_SALT)
+
+        token = signing.dumps(
+            {
+                'path': path,
+                'user_id': str(request.user.pk),
+                'admin': requester_is_admin,
+            },
+            salt=KYC_SIGNING_SALT,
+        )
         return Response({'url': request.build_absolute_uri(f'/api/accounts/kyc/document/{token}/')})
