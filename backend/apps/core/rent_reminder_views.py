@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -18,14 +19,10 @@ class RentPaymentReminderView(APIView):
             )
         except PermissionError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except ValidationError as exc:
+            detail = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
         except (TypeError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as exc:
-            # ValidationError is intentionally handled here without exposing
-            # internal database details to the API client.
-            from django.core.exceptions import ValidationError
-            if isinstance(exc, ValidationError):
-                return Response({"detail": str(exc.message if hasattr(exc, "message") else exc)}, status=status.HTTP_400_BAD_REQUEST)
-            raise
 
         return Response(result, status=status.HTTP_200_OK)
