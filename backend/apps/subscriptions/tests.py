@@ -1,10 +1,7 @@
-from datetime import timedelta
-from decimal import Decimal
 from unittest.mock import Mock
 from uuid import uuid4
 
 from django.test import SimpleTestCase
-from django.utils import timezone
 
 from .constants import FREE_LISTING_LIMIT, INDIVIDUAL_LISTING_PRICE_KES, LANDLORD_PLANS, REAL_ESTATE_PLANS
 from .services import get_subscription_access
@@ -34,6 +31,7 @@ class SubscriptionAccessLogicTests(SimpleTestCase):
         profile.role = values.get('role', 'landlord')
         profile.verification_status = values.get('verification_status', 'verified')
         profile.landlord_application_status = values.get('landlord_application_status', 'approved')
+        profile.real_estate_application_status = values.get('real_estate_application_status', 'approved')
         profile.free_listings_used = values.get('free_listings_used', 0)
         return profile
 
@@ -47,6 +45,11 @@ class SubscriptionAccessLogicTests(SimpleTestCase):
 
     def test_landlord_pending_application_cannot_create(self):
         result = get_subscription_access(self.make_profile(landlord_application_status='pending'))
+        self.assertFalse(result['can_start_listing'])
+        self.assertFalse(result['can_create'])
+
+    def test_real_estate_pending_application_cannot_create(self):
+        result = get_subscription_access(self.make_profile(role='real_estate', real_estate_application_status='pending'))
         self.assertFalse(result['can_start_listing'])
         self.assertFalse(result['can_create'])
 
