@@ -18,6 +18,11 @@ from .moving_action_views import (
     MoverQuoteView,
     MovingBookingCancelView,
 )
+from .moving_payment_views import (
+    MovingEscrowReleaseView,
+    MovingMpesaCallbackView,
+    MovingMpesaStartView,
+)
 from .rent_views import (
     LandlordRentInvoiceCreateView,
     LandlordRentPaymentConfirmView,
@@ -48,11 +53,15 @@ urlpatterns = [
     path("moving-cancellation-events/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-list"),
     path("moving-cancellation-events/<uuid:object_id>/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-detail"),
 
-    # Moving domain actions mirrored from the audited production RPC behavior.
     path("movers/quote/", MoverQuoteView.as_view(), name="mover-quote"),
     path("bookings/request/", MoverBookingRequestView.as_view(), name="booking-request"),
     path("bookings/<uuid:booking_id>/respond/", MoverBookingResponseView.as_view(), name="booking-response"),
     path("bookings/<uuid:booking_id>/cancel/", MovingBookingCancelView.as_view(), name="booking-cancel"),
+
+    # Moving payment lifecycle: renter payment -> held escrow -> admin release.
+    path("bookings/<uuid:booking_id>/payment/mpesa/start/", MovingMpesaStartView.as_view(), name="moving-payment-mpesa-start"),
+    path("payments/moving/mpesa/callback/", MovingMpesaCallbackView.as_view(), name="moving-payment-mpesa-callback"),
+    path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"),
 
     # External rent verification workflow.
     path("invoices/landlord/", LandlordRentInvoiceCreateView.as_view(), name="rent-invoice-create-landlord"),
