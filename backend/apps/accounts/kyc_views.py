@@ -2,7 +2,6 @@ import uuid
 from pathlib import Path
 
 from django.core import signing
-from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.http import FileResponse
@@ -14,11 +13,7 @@ from rest_framework.views import APIView
 from .models import Profile
 
 MAX_KYC_IMAGE_BYTES = 10 * 1024 * 1024
-ALLOWED_KYC_TYPES = {
-    'image/jpeg': '.jpg',
-    'image/png': '.png',
-    'image/webp': '.webp',
-}
+ALLOWED_KYC_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 KYC_SIGNING_SALT = 'sakakrib.kyc-document'
 KYC_SIGNING_MAX_AGE = 900
 
@@ -49,8 +44,7 @@ class KycDocumentUploadView(APIView):
         size = int(getattr(file, 'size', 0) or 0)
         if size <= 0 or size > MAX_KYC_IMAGE_BYTES:
             return Response({'detail': 'Image is too large. Maximum size is 10 MB.'}, status=400)
-        extension = ALLOWED_KYC_TYPES[content_type]
-        path = f'kyc-documents/{request.user.pk}/{document_type}-{uuid.uuid4().hex}{extension}'
+        path = f'kyc-documents/{request.user.pk}/{document_type}-{uuid.uuid4().hex}{ALLOWED_KYC_TYPES[content_type]}'
         saved_path = default_storage.save(path, file)
         return Response({'path': saved_path, 'document_type': document_type, 'size': size, 'mime_type': content_type}, status=201)
 
@@ -99,8 +93,8 @@ class KycSubmitView(APIView):
         return Response({'success': True, 'profile': {
             'id': str(user.id), 'full_name': user.full_name, 'national_id': user.national_id,
             'kyc_completed': user.kyc_completed, 'kyc_status': user.kyc_status,
-            'verification_status': user.verification_status,
-            'id_photo_url': user.id_photo_url, 'selfie_url': user.selfie_url,
+            'verification_status': user.verification_status, 'id_photo_url': user.id_photo_url,
+            'selfie_url': user.selfie_url,
         }})
 
 
@@ -111,8 +105,8 @@ class KycDocumentView(APIView):
     def get(self, request, token):
         try:
             payload = signing.loads(token, salt=KYC_SIGNING_SALT, max_age=KYC_SIGNING_MAX_AGE)
-        except signing.BadSignature as exc:
-            raise ValidationError('Invalid or expired KYC document URL.') from exc
+        except signing.BadSignature:
+            return Response({'detail': 'Invalid or expired KYC document URL.'}, status=404)
         path = payload.get('path')
         user_id = payload.get('user_id')
         if not path or not user_id or not _owned_path(user_id, path) or not default_storage.exists(path):
