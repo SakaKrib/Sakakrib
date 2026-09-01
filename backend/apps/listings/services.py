@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -13,20 +14,14 @@ INDIVIDUAL_LISTING_PRICE_KES = 1000
 def _current_subscription(profile):
     now = timezone.now()
     if profile.role == 'landlord':
-        return LandlordSubscription.objects.filter(
-            landlord_id=profile.id,
-            status='ACTIVE', current_period_end__gt=now,
-        ).union(LandlordSubscription.objects.filter(
-            landlord_id=profile.id,
-            status='GRACE_PERIOD', grace_period_end__gt=now,
-        )).order_by('-created_at').first()
-    return RealEstateSubscription.objects.filter(
-        real_estate_id=profile.id,
-        status='ACTIVE', current_period_end__gt=now,
-    ).union(RealEstateSubscription.objects.filter(
-        real_estate_id=profile.id,
-        status='GRACE_PERIOD', grace_period_end__gt=now,
-    )).order_by('-created_at').first()
+        return LandlordSubscription.objects.filter(landlord_id=profile.id).filter(
+            Q(status='ACTIVE', current_period_end__gt=now) |
+            Q(status='GRACE_PERIOD', grace_period_end__gt=now)
+        ).order_by('-created_at').first()
+    return RealEstateSubscription.objects.filter(real_estate_id=profile.id).filter(
+        Q(status='ACTIVE', current_period_end__gt=now) |
+        Q(status='GRACE_PERIOD', grace_period_end__gt=now)
+    ).order_by('-created_at').first()
 
 
 def _subscription_usage(subscription, role, user_id):
@@ -103,15 +98,13 @@ def create_listing(profile, data):
         return {'success': False, 'listing_created': False, **entitlement}
 
     listing = Listing.objects.create(
-        user_id=profile.id,
-        title=data.get('title', ''), description=data.get('description', ''),
-        city=data.get('city', ''), county=data.get('county', ''),
-        location_search=data.get('location_search'), latitude=data.get('latitude'), longitude=data.get('longitude'),
-        property_name=data.get('property_name'), property_type=data.get('property_type'), price_kes=data.get('price_kes'),
-        listing_type=data.get('listing_type', 'rent'), deposit_required=data.get('deposit_required', False),
-        deposit_structure=data.get('deposit_structure'), deposit_amount=data.get('deposit_amount', 0), size=data.get('size'),
-        beds=data.get('beds', 0), baths=data.get('baths', 0), contact_phone=data.get('contact_phone'),
-        contact_email=data.get('contact_email'), social_links=data.get('social_links', []),
+        user_id=profile.id, title=data.get('title', ''), description=data.get('description', ''),
+        city=data.get('city', ''), county=data.get('county', ''), location_search=data.get('location_search'),
+        latitude=data.get('latitude'), longitude=data.get('longitude'), property_name=data.get('property_name'),
+        property_type=data.get('property_type'), price_kes=data.get('price_kes'), listing_type=data.get('listing_type', 'rent'),
+        deposit_required=data.get('deposit_required', False), deposit_structure=data.get('deposit_structure'),
+        deposit_amount=data.get('deposit_amount', 0), size=data.get('size'), beds=data.get('beds', 0), baths=data.get('baths', 0),
+        contact_phone=data.get('contact_phone'), contact_email=data.get('contact_email'), social_links=data.get('social_links', []),
         booking_enabled=data.get('booking_enabled', False), payment_enabled=data.get('payment_enabled', False),
         is_property_management=data.get('is_property_management', False), is_paid=True, is_published=False,
         approval_status='pending_review', is_approved=False, status='pending',
