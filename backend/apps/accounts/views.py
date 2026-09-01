@@ -51,6 +51,28 @@ class SignupView(APIView):
         return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id)}, status=status.HTTP_201_CREATED)
 
 
+class ResendOtpView(APIView):
+    permission_classes = [AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = VerifyOtpSerializer(data={'email': request.data.get('email', ''), 'otp': '000000'})
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip().lower()
+        user = Profile.objects.filter(email__iexact=email, is_active=True).first()
+        if not user:
+            return Response({'error': 'Unable to resend verification code.'}, status=status.HTTP_400_BAD_REQUEST)
+        if user.email_verified:
+            return Response({'success': True, 'authenticated': True, 'message': 'Email is already verified.'})
+        if user.verification_status != 'pending_verification':
+            return Response({'error': 'This verification request is no longer active.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            send_signup_otp(user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email})
+
+
 class VerifyOtpView(APIView):
     permission_classes = [AllowAny]
 
