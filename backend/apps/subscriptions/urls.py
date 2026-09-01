@@ -1,9 +1,10 @@
 from django.urls import path
 
-from .views import MySubscriptionAccessView, MySubscriptionView, SubscriptionPlansView
+from .views import MySubscriptionAccessView, MySubscriptionView, SubscriptionCheckoutView, SubscriptionPlansView
 
 urlpatterns = [
     path('plans/', SubscriptionPlansView.as_view(), name='subscription-plans'),
     path('me/', MySubscriptionView.as_view(), name='my-subscription'),
     path('me/access/', MySubscriptionAccessView.as_view(), name='my-subscription-access'),
+    path('checkout/', SubscriptionCheckoutView.as_view(), name='subscription-checkout'),
 ]
