@@ -5,8 +5,10 @@ from rest_framework.views import APIView
 
 from .moving_payment_services import (
     finalize_moving_mpesa_callback,
+    finalize_moving_paypal_webhook,
     release_moving_escrow,
     start_moving_mpesa_payment,
+    start_moving_paypal_payment,
 )
 
 
@@ -22,7 +24,6 @@ class MovingMpesaStartView(APIView):
             return Response(start_moving_mpesa_payment(
                 renter_id=request.user.id,
                 booking_id=booking_id,
-                phone_number=request.data.get("phone_number"),
             ))
         except (ValidationError, TypeError, ValueError, RuntimeError) as exc:
             return _error(exc)
@@ -52,6 +53,38 @@ class MovingMpesaCallbackView(APIView):
             return Response({"ResultCode": 0, "ResultDesc": "Accepted", **result})
         except (ValidationError, TypeError, ValueError) as exc:
             return Response({"ResultCode": 0, "ResultDesc": "Accepted", "processing_error": str(exc)})
+
+
+class MovingPaypalStartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, booking_id):
+        try:
+            return Response(start_moving_paypal_payment(
+                renter_id=request.user.id,
+                booking_id=booking_id,
+            ))
+        except (ValidationError, TypeError, ValueError, RuntimeError) as exc:
+            return _error(exc)
+
+
+class MovingPaypalWebhookView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        try:
+            result = finalize_moving_paypal_webhook(
+                headers=request.headers,
+                raw_body=request.body,
+            )
+            return Response(result)
+        except PermissionError as exc:
+            return Response({"success": False, "error": str(exc)}, status=401)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return Response({"success": False, "error": str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({"success": False, "error": str(exc)}, status=503)
 
 
 class MovingEscrowReleaseView(APIView):
