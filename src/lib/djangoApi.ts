@@ -64,3 +64,9 @@ export const protectedPost = <T = unknown>(path: string, body: unknown, init: Re
 
 export const protectedPatch = <T = unknown>(path: string, body: unknown, init: RequestInit = {}) =>
   request<T>(path, { ...init, method: 'PATCH', body: JSON.stringify(body) });
+
+export const protectedPut = <T = unknown>(path: string, body: unknown, init: RequestInit = {}) =>
+  request<T>(path, { ...init, method: 'PUT', body: JSON.stringify(body) });
+
+export const protectedDelete = <T = unknown>(path: string, init: RequestInit = {}) =>
+  request<T>(path, { ...init, method: 'DELETE' });
