@@ -29,12 +29,21 @@ def _error(exc):
 class LandlordRentInvoiceCreateView(APIView):
     def post(self, request):
         try:
+            periods = request.data.get("periods")
+            billing_start = request.data.get("billing_period_start")
+            billing_end = request.data.get("billing_period_end")
+            if periods is None and billing_start:
+                billing_start = _date(billing_start, "billing_period_start")
+                periods = [{"period_year": billing_start.year, "period_month": billing_start.month}]
             result = create_landlord_rent_invoice(
                 landlord_id=request.user.id,
+                unit_id=request.data.get("unit_id"),
                 renter_assoc_id=request.data.get("renter_assoc_id"),
-                billing_period_start=_date(request.data.get("billing_period_start"), "billing_period_start"),
-                billing_period_end=_date(request.data.get("billing_period_end"), "billing_period_end"),
+                periods=periods,
                 due_date=_date(request.data.get("due_date"), "due_date"),
+                payment_method_id=request.data.get("payment_method_id"),
+                billing_period_start=_date(billing_start, "billing_period_start") if billing_start else None,
+                billing_period_end=_date(billing_end, "billing_period_end") if billing_end else None,
             )
             return Response(result, status=status.HTTP_201_CREATED)
         except (ValidationError, TypeError, ValueError) as exc:
@@ -75,10 +84,7 @@ class RenterPaidInvoiceCreateView(APIView):
 class LandlordRentPaymentConfirmView(APIView):
     def post(self, request, submission_id):
         try:
-            result = confirm_rent_payment(
-                landlord_id=request.user.id,
-                submission_id=submission_id,
-            )
+            result = confirm_rent_payment(landlord_id=request.user.id, submission_id=submission_id)
             return Response(result, status=status.HTTP_200_OK)
         except (ValidationError, TypeError, ValueError) as exc:
             return _error(exc)
