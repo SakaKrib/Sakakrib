@@ -38,7 +38,6 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     middle_name = models.CharField(max_length=150, blank=True, default="")
     phone = models.CharField(max_length=50, blank=True, default="")
     role = models.CharField(max_length=50, default="renter")
-
     is_admin = models.BooleanField(default=False)
     kyc_completed = models.BooleanField(default=False)
     verification_status = models.CharField(max_length=50, default="pending_verification")
@@ -46,7 +45,6 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     landlord_application_status = models.CharField(max_length=50, default="not_requested")
     real_estate_application_status = models.CharField(max_length=50, default="not_requested")
     mover_application_status = models.CharField(max_length=50, default="not_requested")
-
     national_id = models.CharField(max_length=100, blank=True, default="")
     dl_number = models.CharField(max_length=100, blank=True, default="")
     profile_photo_url = models.TextField(blank=True, default="")
@@ -60,7 +58,6 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     free_listings_used = models.PositiveIntegerField(default=0)
     email_verified = models.BooleanField(default=False)
     admin_review_note = models.TextField(blank=True, default="")
-
     role_selected_at = models.DateTimeField(null=True, blank=True)
     signup_otp_hash = models.TextField(null=True, blank=True)
     signup_otp_expires_at = models.DateTimeField(null=True, blank=True)
@@ -71,26 +68,32 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     signup_otp_trial_count = models.PositiveIntegerField(default=0)
     signup_verification_started_at = models.DateTimeField(null=True, blank=True)
     signup_verification_deadline_at = models.DateTimeField(null=True, blank=True)
-
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     objects = ProfileManager()
-
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     class Meta:
         db_table = "profiles"
         ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["role"]),
-            models.Index(fields=["verification_status"]),
-            models.Index(fields=["kyc_status"]),
-        ]
+        indexes = [models.Index(fields=["role"]), models.Index(fields=["verification_status"]), models.Index(fields=["kyc_status"])]
 
     def __str__(self):
         return self.email
+
+
+class RefreshToken(models.Model):
+    jti = models.UUIDField(primary_key=True)
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='refresh_tokens')
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    replaced_by = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'django_refresh_tokens'
+        indexes = [models.Index(fields=['user', 'revoked_at']), models.Index(fields=['expires_at'])]
