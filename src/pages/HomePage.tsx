@@ -228,51 +228,6 @@ Saka Krib <span className="font-normal text-gray-400">|</span> <span className="
                       return;
                     }
 
-                    if (item.view === "listings" && isAdmin) {
-                      navigate('listings');
-                      return;
-                    }
-
-                    // If the user is a mover and tries to register as a mover again
-                    if (item.view === "movers" && profile.role === "mover") {
-                      setError("You are already registered as a mover.");
-                      return;
-                    }
-
-                    // If the user is a landlord and tries to register as a mover
-                    if (item.view === "movers" && profile.role === "landlord") {
-                      setError(
-                        "Landlords cannot register as movers. Please select a different role to find movers."
-                      );
-                      return;
-                    }
-
-                    // If user is renter and tries to post a listing
-                    if (item.view === "post-listing" && profile.role === "renter") {
-                      setRoleModalOpen(true);
-                      return;
-                    }
-
-                    // If user is renter and tries to find movers
-                    if (item.view === "movers" && profile.role === "renter") {
-                      setRoleModalOpen(true);
-                      return;
-                    }
-
-                    // If user is landlord and tries to post a listing
-                    if (item.view === "post-listing" && profile.role === "landlord") {
-                      navigate('post-listing');
-                      return;
-                    }
-
-                    // If user is mover and tries to post a listing
-                    if (item.view === "post-listing" && profile.role === "mover") {
-                      setError(
-                        "Movers cannot post listings. Please select a different role to post a listing."
-                      );
-                      return;
-                    }
-
                     navigate(item.view);
                   }}
                   className="flex items-center gap-1.5 rounded-full border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:border-btnblue-400 hover:text-btnblue-600 dark:border-brand-700 dark:text-gray-400 dark:hover:border-btnblue-500 dark:hover:text-btnblue-400"

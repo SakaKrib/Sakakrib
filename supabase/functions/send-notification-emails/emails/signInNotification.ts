@@ -1,69 +1,30 @@
 // ============================================================
 // SIGN-IN NOTIFICATION EMAIL
 // ============================================================
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-
-function escapeUrl(value: unknown): string {
+function escapeUrl(value) {
   const url = String(value ?? "").trim();
-
   // Only allow HTTP(S) URLs.
   if (!/^https?:\/\//i.test(url)) {
     return "https://sakakrib.com";
   }
-
   return escapeHtml(url);
 }
-
-export function signInNotificationEmail(user: any) {
-  const fullName =
-    typeof user?.full_name === "string"
-      ? user.full_name.trim()
-      : "";
-
-  const firstName = fullName
-    ? fullName.split(/\s+/)[0]
-    : "there";
-
-  const email =
-    typeof user?.email === "string"
-      ? user.email.trim()
-      : "";
-
-  const signInTime =
-    typeof user?.sign_in_time === "string"
-      ? user.sign_in_time
-      : "";
-
-  const device =
-    typeof user?.device === "string"
-      ? user.device
-      : "";
-
-  const location =
-    typeof user?.location === "string"
-      ? user.location
-      : "";
-
-  const securityUrl =
-    escapeUrl(
-      user?.security_url ||
-      "https://sakakrib.com"
-    );
-
+export function signInNotificationEmail(user) {
+  const fullName = typeof user?.full_name === "string" ? user.full_name.trim() : "";
+  const firstName = fullName ? fullName.split(/\s+/)[0] : "there";
+  const email = typeof user?.email === "string" ? user.email.trim() : "";
+  const signInTime = typeof user?.sign_in_time === "string" ? user.sign_in_time : "";
+  const device = typeof user?.device === "string" ? user.device : "";
+  const location = typeof user?.location === "string" ? user.location : "";
+  const securityUrl = escapeUrl(user?.security_url || "https://sakakrib.com");
   const safeFirstName = escapeHtml(firstName);
   const safeEmail = escapeHtml(email);
   const safeSignInTime = escapeHtml(signInTime);
   const safeDevice = escapeHtml(device);
   const safeLocation = escapeHtml(location);
-
   return `
 <!DOCTYPE html>
 <html>
@@ -224,9 +185,7 @@ export function signInNotificationEmail(user: any) {
           style="border-collapse:collapse;"
         >
 
-          ${
-            safeEmail
-              ? `
+          ${safeEmail ? `
           <tr>
             <td style="
               padding:7px 0;
@@ -245,14 +204,10 @@ export function signInNotificationEmail(user: any) {
               ${safeEmail}
             </td>
           </tr>
-          `
-              : ""
-          }
+          ` : ""}
 
 
-          ${
-            safeSignInTime
-              ? `
+          ${safeSignInTime ? `
           <tr>
             <td style="
               padding:7px 0;
@@ -270,14 +225,10 @@ export function signInNotificationEmail(user: any) {
               ${safeSignInTime}
             </td>
           </tr>
-          `
-              : ""
-          }
+          ` : ""}
 
 
-          ${
-            safeDevice
-              ? `
+          ${safeDevice ? `
           <tr>
             <td style="
               padding:7px 0;
@@ -295,14 +246,10 @@ export function signInNotificationEmail(user: any) {
               ${safeDevice}
             </td>
           </tr>
-          `
-              : ""
-          }
+          ` : ""}
 
 
-          ${
-            safeLocation
-              ? `
+          ${safeLocation ? `
           <tr>
             <td style="
               padding:7px 0;
@@ -320,9 +267,7 @@ export function signInNotificationEmail(user: any) {
               ${safeLocation}
             </td>
           </tr>
-          `
-              : ""
-          }
+          ` : ""}
 
         </table>
 

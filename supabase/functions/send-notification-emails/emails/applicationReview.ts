@@ -1,33 +1,13 @@
 // ============================================================
 // APPLICATION UNDER REVIEW — USER EMAIL
 // ============================================================
-
-export function applicationReviewEmail(application: any) {
-  const role =
-    application.application_type === "landlord"
-      ? "landlord"
-      : "mover";
-
+export function applicationReviewEmail(application) {
+  const role = application.application_type === "landlord" ? "landlord" : application.application_type === "realestate" ? "realestate" : "mover";
   // Support both payload structures
-  const fullName =
-    application.full_name ||
-    application.applicant_name ||
-    application.driver_full_name ||
-    "";
-
-  const firstName = fullName.trim()
-    ? fullName.trim().split(/\s+/)[0]
-    : "there";
-
-  const applicationId =
-    application.application_id ||
-    application.id ||
-    "";
-
-  const operatingCity =
-    application.operating_city ||
-    "";
-
+  const fullName = application.full_name || application.applicant_name || application.driver_full_name || "";
+  const firstName = fullName.trim() ? fullName.trim().split(/\s+/)[0] : "there";
+  const applicationId = application.application_id || application.id || "";
+  const operatingCity = application.operating_city || "";
   return `
 <!DOCTYPE html>
 <html>
@@ -212,10 +192,7 @@ export function applicationReviewEmail(application: any) {
                 font-weight:bold;
                 font-size:14px;
               ">
-                ${
-                  role.charAt(0).toUpperCase() +
-                  role.slice(1)
-                }
+                ${role.charAt(0).toUpperCase() + role.slice(1)}
               </td>
 
             </tr>
@@ -243,9 +220,7 @@ export function applicationReviewEmail(application: any) {
 
             </tr>
 
-            ${
-              applicationId
-                ? `
+            ${applicationId ? `
             <tr>
 
               <td style="
@@ -267,13 +242,9 @@ export function applicationReviewEmail(application: any) {
               </td>
 
             </tr>
-            `
-                : ""
-            }
+            ` : ""}
 
-            ${
-              operatingCity
-                ? `
+            ${operatingCity ? `
             <tr>
 
               <td style="
@@ -294,9 +265,7 @@ export function applicationReviewEmail(application: any) {
               </td>
 
             </tr>
-            `
-                : ""
-            }
+            ` : ""}
 
           </table>
 

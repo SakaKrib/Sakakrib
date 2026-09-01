@@ -1,40 +1,17 @@
 // ============================================================
 // OTP VERIFICATION EMAIL
 // ============================================================
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-
-export function otpVerificationEmail(application: any) {
-  const fullName =
-    typeof application?.full_name === "string"
-      ? application.full_name.trim()
-      : "";
-
-  const firstName = fullName
-    ? fullName.split(/\s+/)[0]
-    : "there";
-
-  const otp =
-    application?.otp ||
-    application?.verification_code ||
-    application?.code ||
-    "";
-
-  const purpose =
-    application?.purpose ||
-    "verify your account";
-
+export function otpVerificationEmail(application) {
+  const fullName = typeof application?.full_name === "string" ? application.full_name.trim() : "";
+  const firstName = fullName ? fullName.split(/\s+/)[0] : "there";
+  const otp = application?.otp || application?.verification_code || application?.code || "";
+  const purpose = application?.purpose || "verify your account";
   const safeFirstName = escapeHtml(firstName);
   const safeOtp = escapeHtml(otp);
   const safePurpose = escapeHtml(purpose);
-
   return `
 <!DOCTYPE html>
 <html>

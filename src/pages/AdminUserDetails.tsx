@@ -17,10 +17,25 @@ import {
   Car,
   CalendarDays,
   AlertCircle,
+  UserCheck,
   RefreshCw,
 } from 'lucide-react';
+import openKycDocument from '@/Dashboards/openPrivateDocsHelper';
 
-import type { LucideIcon } from 'lucide-react';
+import {
+  LandlordForm,
+  RealEstateForm,
+  LandlordPropertiesPanel,
+  RealEstatePropertiesPanel,
+  LandlordSubscriptionPanel,
+  RealEstateSubscriptionPanel,
+  KycPanel,
+  Info,
+  StatusRow,
+  DocumentRow,
+  formatValue,
+  formatDate,
+} from './AdminApplicationReview';
 
 
 import type {
@@ -48,6 +63,10 @@ type ReviewSection =
   | 'landlord-form'
   | 'landlord-properties'
   | 'landlord-subscription'
+  | 'real-estate-kyc'
+  | 'real-estate-form'
+  | 'real-estate-properties'
+  | 'real-estate-subscription'
   | 'mover-kyc'
   | 'mover-form';
 
@@ -64,6 +83,13 @@ interface MoverWithProfile extends Mover {
   profile?: Profile | null;
 }
 
+type ApplicationStatus =
+  | 'not_requested'
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | null;
+
 interface LandlordApplication {
   id: string;
   user_id: string;
@@ -78,14 +104,13 @@ interface LandlordApplication {
   county: string | null;
   is_agency: boolean | null;
   id_document_url: string | null;
-  id_document_type: string | null;
-  landlord_application_status:
-    | 'not_requested'
-    | 'pending'
-    | 'approved'
-    | 'rejected'
-    | string
-    | null;
+  id_document_type:
+  | ''
+  | 'national_id'
+  | 'passport'
+  | null;
+  landlord_application_status: ApplicationStatus;
+  real_estate_application_status: ApplicationStatus;
   verification_status: string | null;
   kyc_completed: boolean | null;
   admin_review_note: string | null;
@@ -166,6 +191,7 @@ const PROFILE_SELECT = `
   kyc_completed,
   verification_status,
   landlord_application_status,
+  real_estate_application_status,
   mover_application_status,
   admin_review_note,
   national_id,
@@ -355,15 +381,25 @@ export default function AdminUserDetails({
   }, [section, selectedMover, userId]);
 
   useEffect(() => {
-    if (!userId || normalizedRole !== 'landlord') {
+    if (
+      !userId ||
+      (normalizedRole !== 'landlord' &&
+        normalizedRole !== 'real_estate')
+    ) {
       return;
     }
 
-    if (section === 'landlord-form') {
+    if (
+      section === 'landlord-form' ||
+      section === 'real-estate-form'
+    ) {
       void loadLandlordApplication();
     }
 
-    if (section === 'landlord-properties') {
+    if (
+      section === 'landlord-properties' ||
+      section === 'real-estate-properties'
+    ) {
       void loadLandlordProperties();
     }
   }, [section, normalizedRole, userId]);
@@ -405,6 +441,14 @@ export default function AdminUserDetails({
         subscription = subscriptionRows?.[0] ?? null;
       }
 
+      if (data.role === 'real_estate') {
+        const subscriptionRows = await protectedGet<Subscription[]>(
+          `/rest/v1/real_estate_subscriptions?select=id,real_estate_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&real_estate_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=1`
+        );
+
+        subscription = subscriptionRows?.[0] ?? null;
+      }
+
       setUser({
         ...data,
         subscription,
@@ -426,7 +470,17 @@ export default function AdminUserDetails({
   ================================================== */
 
   const loadLandlordApplication = async () => {
-    if (!userId || normalizedRole !== 'landlord') {
+    // NOTE: despite the name (kept to avoid renaming every call
+    // site across this file), this loads the application record for
+    // BOTH landlord and real_estate roles - they're the same
+    // profiles row, differentiated by is_agency. Previously gated to
+    // landlord-only, which is why real estate applications never
+    // loaded at all.
+    if (
+      !userId ||
+      (normalizedRole !== 'landlord' &&
+        normalizedRole !== 'real_estate')
+    ) {
       return;
     }
 
@@ -462,6 +516,8 @@ export default function AdminUserDetails({
         id_document_type: data.id_document_type ?? null,
         landlord_application_status:
           data.landlord_application_status ?? null,
+        real_estate_application_status:
+          data.real_estate_application_status ?? null,
         verification_status:
           data.verification_status ?? null,
         kyc_completed: data.kyc_completed ?? null,
@@ -482,11 +538,291 @@ export default function AdminUserDetails({
   };
 
   /* ==================================================
+    UPDATE LANDLORD / REAL ESTATE APPLICATION STATUS
+  ================================================== */
+
+  const updateLandlordApplicationStatus = async (
+    status: ReviewStatus,
+    reviewNote?: string
+  ) => {
+    if (!userId || !landlordApplication) {
+      return;
+    }
+
+    setUpdating(true);
+    setError(null);
+
+    const note =
+      reviewNote?.trim() || null;
+
+    const now = new Date().toISOString();
+
+    try {
+      /* ==================================================
+        1. NORMALIZE STATUS
+      ================================================== */
+
+      const applicationStatus =
+        status === 'pending'
+          ? 'pending'
+          : status;
+
+      /* ==================================================
+        2. DETERMINE APPLICATION TYPE
+        
+        Agency = real estate application
+        Non-agency = landlord application
+      ================================================== */
+
+      const applicationField =
+        landlordApplication.is_agency === true
+          ? 'real_estate_application_status'
+          : 'landlord_application_status';
+
+      /* ==================================================
+        3. UPDATE PROFILE APPLICATION STATUS
+      ================================================== */
+
+      const profileUpdate: Record<string, unknown> = {
+        [applicationField]: applicationStatus,
+        admin_review_note: note,
+        updated_at: now,
+      };
+
+      /* ==================================================
+        4. KEEP VERIFICATION STATE IN SYNC
+      ================================================== */
+
+      switch (status) {
+        case 'approved':
+          profileUpdate.verification_status = 'verified';
+          profileUpdate.kyc_completed = true;
+          break;
+
+        case 'rejected':
+          profileUpdate.verification_status = 'rejected';
+          profileUpdate.kyc_completed = false;
+          break;
+
+        case 'pending':
+          profileUpdate.verification_status =
+            'pending_verification';
+          profileUpdate.kyc_completed = false;
+          break;
+      }
+
+      await protectedPatch(
+        `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+        profileUpdate
+      );
+
+      /* ==================================================
+        5. DETERMINE EMAIL TEMPLATE
+      ================================================== */
+
+      let emailType:
+        | 'application_approved'
+        | 'application_declined'
+        | 'application_review';
+
+      switch (status) {
+        case 'approved':
+          emailType = 'application_approved';
+          break;
+
+        case 'rejected':
+          emailType = 'application_declined';
+          break;
+
+        case 'pending':
+          emailType = 'application_review';
+          break;
+
+        default:
+          throw new Error(
+            `Unsupported application status: ${status}`
+          );
+      }
+
+      /* ==================================================
+        6. DETERMINE APPLICATION ROLE
+      ================================================== */
+
+      const applicationRole =
+        landlordApplication.is_agency === true
+          ? 'realestate'
+          : 'landlord';
+
+      /* ==================================================
+        7. SEND STATUS EMAIL
+      ================================================== */
+
+      const recipientEmail =
+        landlordApplication.email;
+
+      if (recipientEmail) {
+        const fullName =
+          landlordApplication.full_name ||
+          [
+            landlordApplication.first_name,
+            landlordApplication.middle_name,
+            landlordApplication.last_name,
+          ]
+            .filter(Boolean)
+            .join(' ') ||
+          'Applicant';
+
+        const firstName =
+          landlordApplication.first_name ||
+          fullName.trim().split(/\s+/)[0] ||
+          'Applicant';
+
+        const emailPayload = {
+          email: recipientEmail,
+
+          user: {
+            id: landlordApplication.user_id,
+            email: recipientEmail,
+            full_name: fullName,
+            first_name: firstName,
+            role: applicationRole,
+          },
+
+          applicant: {
+            id: landlordApplication.user_id,
+            email: recipientEmail,
+            full_name: fullName,
+            first_name: firstName,
+            role: applicationRole,
+          },
+
+          application_status: status,
+
+          application_type:
+            applicationRole,
+
+          admin_review_note: note,
+
+          landlord: {
+            id: landlordApplication.id,
+            user_id: landlordApplication.user_id,
+            full_name: fullName,
+            phone: landlordApplication.phone,
+            city: landlordApplication.city,
+            county: landlordApplication.county,
+            is_agency: landlordApplication.is_agency,
+          },
+        };
+
+        try {
+          await protectedFunctionPost(
+            '/send-notification-emails',
+            {
+              type: emailType,
+              application: emailPayload,
+            }
+          );
+        } catch (emailError) {
+          console.error(
+            'Application status updated but email failed:',
+            emailError
+          );
+
+          setError(
+            `Application ${status}, but the notification email could not be sent.`
+          );
+        }
+      } else {
+        console.warn(
+          'Application status updated but applicant has no email address.'
+        );
+
+        setError(
+          `Application ${status}, but the applicant does not have an email address.`
+        );
+      }
+
+      /* ==================================================
+        8. UPDATE LOCAL APPLICATION STATE
+      ================================================== */
+
+      setLandlordApplication((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+
+          ...(applicationField ===
+          'real_estate_application_status'
+            ? {
+                real_estate_application_status:
+                  applicationStatus,
+              }
+            : {
+                landlord_application_status:
+                  applicationStatus,
+              }),
+
+          verification_status:
+            status === 'approved'
+              ? 'verified'
+              : status === 'rejected'
+                ? 'rejected'
+                : 'pending_verification',
+
+          kyc_completed:
+            status === 'approved',
+
+          admin_review_note: note,
+          updated_at: now,
+        };
+      });
+
+      /* ==================================================
+        9. UPDATE ADMIN NOTE
+      ================================================== */
+
+      setAdminReviewNote(note || '');
+
+      /* ==================================================
+        10. RELOAD PROFILE
+      ================================================== */
+
+      await loadUser();
+
+      /* ==================================================
+        11. RELOAD APPLICATION
+      ================================================== */
+
+      await loadLandlordApplication();
+    } catch (err) {
+      console.error(
+        'Failed to update landlord/real-estate application:',
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to update application status.'
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  /* ==================================================
      LOAD LANDLORD PROPERTIES
   ================================================== */
 
   const loadLandlordProperties = async () => {
-    if (!userId || normalizedRole !== 'landlord') {
+    if (
+      !userId ||
+      (normalizedRole !== 'landlord' &&
+        normalizedRole !== 'real_estate')
+    ) {
       return;
     }
 
@@ -780,6 +1116,10 @@ export default function AdminUserDetails({
     const note =
       reviewNote?.trim() || null;
 
+      // pending approve status is_available setting
+      const isAvailable: boolean = status === 'approved';
+
+
     try {
       /* ==================================================
          DATABASE STATUS
@@ -800,6 +1140,7 @@ export default function AdminUserDetails({
         `/rest/v1/movers?id=eq.${encodeURIComponent(mover.id)}`,
         {
           approval_status: databaseStatus,
+          is_available: isAvailable,
           updated_at: now,
         }
       );
@@ -1341,39 +1682,91 @@ export default function AdminUserDetails({
 
                 <div className="space-y-2">
                   {moverProfile?.id_document_url && (
-                    <DocumentLink
-                      label="Identity Document"
-                      url={
-                        moverProfile.id_document_url
+                    <DocumentRow
+                    title="National ID Document"
+                    description={
+                      moverProfile.id_document_url
+                        ? 'Document uploaded'
+                        : 'No document uploaded'
+                    }
+                    url={moverProfile.id_document_url}
+                    onOpen={async (path) => {
+                      const message = await openKycDocument(
+                        path,
+                        'id'
+                      );
+
+                      if (message) {
+                        setError(message);
                       }
-                    />
+                    }}
+                  />
                   )}
 
-                  {moverProfile?.id_photo_url && (
-                    <DocumentLink
-                      label="ID Photo"
-                      url={
-                        moverProfile.id_photo_url
+                  {moverProfile?.profile_photo_url && (
+                    <DocumentRow
+                    title="selfie"
+                    description={
+                      selectedMover.profile_photo_url
+                        ? 'Document uploaded'
+                        : 'No document uploaded'
+                    }
+                    url={selectedMover.profile_photo_url}
+                    onOpen={async (path) => {
+                      const message = await openKycDocument(
+                        path,
+                        'id'
+                      );
+
+                      if (message) {
+                        setError(message);
                       }
-                    />
+                    }}
+                  />
                   )}
 
                   {moverProfile?.selfie_url && (
-                    <DocumentLink
-                      label="Verification Selfie"
-                      url={
-                        moverProfile.selfie_url
+                    <DocumentRow
+                    title="Selfie Photo"
+                    description={
+                      moverProfile.selfie_url
+                        ? 'Document uploaded'
+                        : 'No document uploaded'
+                    }
+                    url={moverProfile.selfie_url}
+                    onOpen={async (path) => {
+                      const message = await openKycDocument(
+                        path,
+                        'id'
+                      );
+
+                      if (message) {
+                        setError(message);
                       }
-                    />
+                    }}
+                  />
                   )}
 
                   {selectedMover.dl_photo_url && (
-                    <DocumentLink
-                      label="Driving Licence"
-                      url={
-                        selectedMover.dl_photo_url
+                    <DocumentRow
+                    title="DL Photo"
+                    description={
+                      selectedMover.dl_photo_url
+                        ? 'Document uploaded'
+                        : 'No document uploaded'
+                    }
+                    url={selectedMover.dl_photo_url}
+                    onOpen={async (path) => {
+                      const message = await openKycDocument(
+                        path,
+                        'id'
+                      );
+
+                      if (message) {
+                        setError(message);
                       }
-                    />
+                    }}
+                  />
                   )}
 
                   {!moverProfile?.id_document_url &&
@@ -2006,6 +2399,70 @@ export default function AdminUserDetails({
             </>
           )}
 
+          {normalizedRole === 'real_estate' && (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  setSection('real-estate-kyc')
+                }
+                className={cn(
+                  'btn-secondary',
+                  section === 'real-estate-kyc' &&
+                    'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                )}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Real Estate KYC
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSection('real-estate-form')
+                }
+                className={cn(
+                  'btn-secondary',
+                  section === 'real-estate-form' &&
+                    'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                )}
+              >
+                <FileText className="h-4 w-4" />
+                Real Estate Registration
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSection('real-estate-properties')
+                }
+                className={cn(
+                  'btn-secondary',
+                  section === 'real-estate-properties' &&
+                    'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                )}
+              >
+                <Building2 className="h-4 w-4" />
+                Properties
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSection('real-estate-subscription')
+                }
+                className={cn(
+                  'btn-secondary',
+                  section === 'real-estate-subscription' &&
+                    'bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                )}
+              >
+                <CreditCard className="h-4 w-4" />
+                Subscription
+              </button>
+            </>
+          )}
+
           {normalizedRole === 'mover' && (
             <>
               <button
@@ -2047,6 +2504,11 @@ export default function AdminUserDetails({
             onClick={() => {
               if (normalizedRole === 'landlord') {
                 setSection('landlord-kyc');
+                return;
+              }
+
+              if (normalizedRole === 'real_estate') {
+                setSection('real-estate-kyc');
                 return;
               }
 
@@ -2282,6 +2744,10 @@ export default function AdminUserDetails({
           <LandlordForm
             user={user}
             application={landlordApplication}
+            updating={updating}
+            adminReviewNote={adminReviewNote}
+            onReviewNoteChange={setAdminReviewNote}
+            onUpdateStatus={updateLandlordApplicationStatus}
           />
         )}
 
@@ -2296,6 +2762,57 @@ export default function AdminUserDetails({
       {section === 'landlord-subscription' &&
         normalizedRole === 'landlord' && (
           <LandlordSubscriptionPanel
+            subscription={user.subscription}
+          />
+        )}
+
+      {/* ==================================================
+          REAL ESTATE KYC
+      ================================================== */}
+
+      {section === 'real-estate-kyc' &&
+        normalizedRole === 'real_estate' && (
+          <KycPanel
+            title="Real Estate Profile KYC"
+            user={user}
+          />
+        )}
+
+      {/* ==================================================
+          REAL ESTATE FORM
+      ================================================== */}
+
+      {section === 'real-estate-form' &&
+        normalizedRole === 'real_estate' && (
+          <RealEstateForm
+            user={user}
+            application={landlordApplication}
+            updating={updating}
+            adminReviewNote={adminReviewNote}
+            onReviewNoteChange={setAdminReviewNote}
+            onUpdateStatus={updateLandlordApplicationStatus}
+          />
+        )}
+
+      {/* ==================================================
+          REAL ESTATE PROPERTIES
+      ================================================== */}
+
+      {section === 'real-estate-properties' &&
+        normalizedRole === 'real_estate' && (
+          <RealEstatePropertiesPanel
+            listings={properties}
+            loading={loadingProperties}
+          />
+        )}
+
+      {/* ==================================================
+          REAL ESTATE SUBSCRIPTION
+      ================================================== */}
+
+      {section === 'real-estate-subscription' &&
+        normalizedRole === 'real_estate' && (
+          <RealEstateSubscriptionPanel
             subscription={user.subscription}
           />
         )}
@@ -2462,506 +2979,4 @@ export default function AdminUserDetails({
       </div>
     </div>
   );
-}
-
-/* ==================================================
-   LANDLORD KYC
-================================================== */
-
-function KycPanel({
-  title,
-  user,
-}: {
-  title: string;
-  user: Profile;
-}) {
-  return (
-    <div className="card p-5">
-
-      <div className="mb-5 flex items-center gap-2">
-
-        <ShieldCheck className="h-5 w-5 text-brand-600" />
-
-        <h2 className="font-bold text-gray-900 dark:text-white">
-          {title}
-        </h2>
-
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-
-        <Info
-          label="Full Name"
-          value={user.full_name}
-          icon={User}
-        />
-
-        <Info
-          label="National ID"
-          value={user.national_id}
-          icon={CreditCard}
-        />
-
-        <Info
-          label="Phone"
-          value={user.phone}
-          icon={Phone}
-        />
-
-        <Info
-          label="Email"
-          value={user.email}
-          icon={Mail}
-        />
-
-        <Info
-          label="City"
-          value={user.city}
-          icon={MapPin}
-        />
-
-        <Info
-          label="County"
-          value={user.county}
-          icon={MapPin}
-        />
-
-        <Info
-          label="KYC"
-          value={
-            user.kyc_completed
-              ? 'Completed'
-              : 'Not completed'
-          }
-          icon={ShieldCheck}
-        />
-
-        <Info
-          label="Verification"
-          value={
-            user.verification_status
-          }
-          icon={ShieldCheck}
-        />
-
-        <Info
-          label="ID Document Type"
-          value={
-            user.id_document_type
-          }
-          icon={FileText}
-        />
-
-      </div>
-
-      <div className="mt-6">
-
-        <h3 className="mb-3 font-semibold text-gray-900 dark:text-white">
-          Documents
-        </h3>
-
-        <div className="space-y-2">
-
-          {user.id_document_url && (
-            <DocumentLink
-              label="Identity Document"
-              url={
-                user.id_document_url
-              }
-            />
-          )}
-
-          {user.id_photo_url && (
-            <DocumentLink
-              label="ID Photo"
-              url={
-                user.id_photo_url
-              }
-            />
-          )}
-
-          {user.selfie_url && (
-            <DocumentLink
-              label="Selfie"
-              url={
-                user.selfie_url
-              }
-            />
-          )}
-
-          {!user.id_document_url &&
-            !user.id_photo_url &&
-            !user.selfie_url && (
-              <p className="text-sm text-gray-500">
-                No KYC documents uploaded.
-              </p>
-            )}
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ==================================================
-   LANDLORD FORM
-================================================== */
-
-function LandlordForm({
-  user,
-  application,
-}: {
-  user: Profile;
-  application: LandlordApplication | null;
-}) {
-  const app = application ?? {
-    id: user.id,
-    user_id: user.id,
-    email: user.email ?? null,
-    full_name: user.full_name ?? null,
-    first_name: user.first_name ?? null,
-    middle_name: user.middle_name ?? null,
-    last_name: user.last_name ?? null,
-    phone: user.phone ?? null,
-    national_id: user.national_id ?? null,
-    city: user.city ?? null,
-    county: user.county ?? null,
-    is_agency: user.is_agency ?? null,
-    id_document_url: user.id_document_url ?? null,
-    id_document_type: user.id_document_type ?? null,
-    landlord_application_status:
-      user.landlord_application_status ?? null,
-    verification_status: user.verification_status ?? null,
-    kyc_completed: user.kyc_completed ?? null,
-    admin_review_note: user.admin_review_note ?? null,
-    created_at: user.created_at ?? null,
-    updated_at: user.updated_at ?? null,
-  };
-
-  return (
-    <div className="space-y-5">
-      <div className="card p-5">
-        <div className="mb-5 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-brand-600" />
-          <h2 className="font-bold text-gray-900 dark:text-white">
-            Landlord Registration
-          </h2>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="Full Name" value={app.full_name ?? user.full_name} icon={User} />
-          <Info label="National ID" value={app.national_id ?? user.national_id} icon={CreditCard} />
-          <Info label="Phone" value={app.phone ?? user.phone} icon={Phone} />
-          <Info label="Email" value={app.email ?? user.email} icon={Mail} />
-          <Info label="City" value={app.city ?? user.city} icon={MapPin} />
-          <Info label="County" value={app.county ?? user.county} icon={MapPin} />
-          <Info label="Agency" value={app.is_agency ?? user.is_agency ? 'Yes' : 'No'} icon={Building2} />
-          <Info label="Application" value={app.landlord_application_status ?? user.landlord_application_status} icon={FileText} />
-          <Info label="Admin Review Note" value={app.admin_review_note ?? user.admin_review_note} icon={FileText} />
-          <Info label="Created" value={formatDate(app.created_at ?? user.created_at)} icon={CalendarDays} />
-        </div>
-      </div>
-
-      <div className="card p-5">
-        <div className="mb-4 flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-brand-600" />
-          <h3 className="font-bold text-gray-900 dark:text-white">
-            KYC Information
-          </h3>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="KYC Completion" value={app.kyc_completed ? 'Completed' : 'Not completed'} icon={ShieldCheck} />
-          <Info label="Verification" value={app.verification_status ?? user.verification_status} icon={ShieldCheck} />
-          <Info label="ID Document Type" value={app.id_document_type ?? user.id_document_type} icon={FileText} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LandlordPropertiesPanel({
-  listings,
-  loading,
-}: {
-  listings: LandlordProperty[];
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <div className="card p-10 text-center">
-        <RefreshCw className="mx-auto h-7 w-7 animate-spin text-brand-600" />
-        <p className="mt-3 text-sm text-gray-500">
-          Loading landlord properties...
-        </p>
-      </div>
-    );
-  }
-
-  if (listings.length === 0) {
-    return (
-      <div className="card p-10 text-center">
-        <Building2 className="mx-auto h-10 w-10 text-gray-300" />
-        <p className="mt-3 text-sm font-medium text-gray-600 dark:text-gray-300">
-          No properties/listings found for this landlord.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {listings.map((listing) => (
-        <div key={listing.id} className="card overflow-hidden">
-          <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  {listing.title || 'Untitled listing'}
-                </h3>
-                <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                  {formatValue(listing.listing_type)}
-                </span>
-              </div>
-
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                {listing.description || 'No description provided.'}
-              </p>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Info label="City" value={listing.city} icon={MapPin} />
-                <Info label="County" value={listing.county} icon={MapPin} />
-                <Info label="Price" value={listing.price_kes != null ? `KES ${Number(listing.price_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
-                <Info label="Beds" value={listing.beds} icon={Building2} />
-                <Info label="Baths" value={listing.baths} icon={Building2} />
-                <Info label="Size" value={listing.size} icon={Building2} />
-                <Info label="Status" value={listing.status} icon={FileText} />
-                <Info label="Created" value={formatDate(listing.created_at)} icon={CalendarDays} />
-              </div>
-            </div>
-
-            {listing.media && listing.media.length > 0 && (
-              <div className="w-full max-w-xs">
-                <img
-                  src={listing.media[0]?.url}
-                  alt={listing.title || 'Property image'}
-                  className="h-40 w-full rounded-xl object-cover"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LandlordSubscriptionPanel({
-  subscription,
-}: {
-  subscription: Subscription | null | undefined;
-}) {
-  if (!subscription) {
-    return (
-      <div className="card p-10 text-center">
-        <CreditCard className="mx-auto h-10 w-10 text-gray-300" />
-        <p className="mt-3 text-sm font-medium text-gray-600 dark:text-gray-300">
-          No active subscription found.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card p-5">
-      <div className="mb-5 flex items-center gap-2">
-        <CreditCard className="h-5 w-5 text-brand-600" />
-        <h2 className="font-bold text-gray-900 dark:text-white">
-          Landlord Subscription
-        </h2>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Info label="Plan" value={subscription.plan?.name ?? subscription.plan_id} icon={Building2} />
-        <Info label="Audience" value={subscription.plan?.audience} icon={Building2} />
-        <Info label="Billing Cycle" value={subscription.billing_cycle} icon={CalendarDays} />
-        <Info label="Status" value={subscription.status} icon={ShieldCheck} />
-        <Info label="Monthly Price" value={subscription.plan?.monthly_price_kes != null ? `KES ${Number(subscription.plan.monthly_price_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
-        <Info label="Annual Price" value={subscription.plan?.annual_price_kes != null ? `KES ${Number(subscription.plan.annual_price_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
-        <Info label="Billing Amount" value={subscription.billing_amount_kes != null ? `KES ${Number(subscription.billing_amount_kes).toLocaleString('en-KE')}` : null} icon={CreditCard} />
-        <Info label="Current Period Start" value={formatDate(subscription.current_period_start)} icon={CalendarDays} />
-        <Info label="Current Period End" value={formatDate(subscription.current_period_end)} icon={CalendarDays} />
-        <Info label="Grace Period End" value={formatDate(subscription.grace_period_end)} icon={Clock} />
-        <Info label="Auto Renew" value={subscription.auto_renew ? 'Yes' : 'No'} icon={CheckCircle2} />
-        <Info label="Cancel at Period End" value={subscription.cancel_at_period_end ? 'Yes' : 'No'} icon={Clock} />
-        <Info label="Paypal Status" value={subscription.paypal_status} icon={CreditCard} />
-        <Info label="Next Billing" value={formatDate(subscription.next_billing_at)} icon={CalendarDays} />
-      </div>
-    </div>
-  );
-}
-
-/* ==================================================
-   INFO COMPONENT
-================================================== */
-
-function Info({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value:
-    | string
-    | number
-    | boolean
-    | null
-    | undefined;
-  icon: LucideIcon;
-}) {
-  return (
-    <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-900/40">
-
-      <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
-
-        <Icon className="h-3.5 w-3.5" />
-
-        {label}
-
-      </p>
-
-      <p className="mt-1 break-words text-sm font-semibold capitalize text-gray-900 dark:text-white">
-        {formatValue(value)}
-      </p>
-
-    </div>
-  );
-}
-
-/* ==================================================
-   STATUS ROW
-================================================== */
-
-function StatusRow({
-  label,
-  value,
-}: {
-  label: string;
-  value:
-    | string
-    | number
-    | boolean
-    | null
-    | undefined;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 p-3 dark:bg-brand-900/40">
-
-      <span className="text-sm text-gray-500">
-        {label}
-      </span>
-
-      <span className="max-w-[65%] text-right text-sm font-semibold capitalize text-gray-900 dark:text-white">
-        {formatValue(value)}
-      </span>
-
-    </div>
-  );
-}
-
-/* ==================================================
-   DOCUMENT LINK
-================================================== */
-
-function DocumentLink({
-  label,
-  url,
-}: {
-  label: string;
-  url: string;
-}) {
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900/40"
-    >
-
-      <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-
-        <FileText className="h-4 w-4 text-brand-600" />
-
-        {label}
-
-      </span>
-
-      <Eye className="h-4 w-4 text-brand-600" />
-
-    </a>
-  );
-}
-
-/* ==================================================
-   FORMAT VALUE
-================================================== */
-
-function formatValue(
-  value:
-    | string
-    | number
-    | boolean
-    | null
-    | undefined
-): string {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ''
-  ) {
-    return '—';
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'Yes' : 'No';
-  }
-
-  return String(value).replace(
-    /_/g,
-    ' '
-  );
-}
-
-/* ==================================================
-   FORMAT DATE
-================================================== */
-
-function formatDate(
-  value:
-    | string
-    | null
-    | undefined
-): string {
-  if (!value) {
-    return '—';
-  }
-
-  const date = new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return '—';
-  }
-
-  return new Intl.DateTimeFormat(
-    'en-KE',
-    {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    }
-  ).format(date);
 }

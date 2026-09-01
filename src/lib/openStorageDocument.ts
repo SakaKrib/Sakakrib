@@ -1,8 +1,31 @@
-import { supabase } from '@/lib/supabase';
+// ============================================================
+// OPEN STORAGE DOCUMENT (ADMIN + OWNER)
+//
+// FIX: previously called supabase.storage.from(bucket)
+// .createSignedUrl() directly. Under HttpOnly-cookie auth the raw
+// Supabase JS client has no client-readable session, so that call
+// failed for every caller - not an RLS problem (RLS already has a
+// dedicated "Admins can view private KYC documents" SELECT policy
+// on id-documents/licenses/kyc-documents, verified live), just a
+// transport problem. Rewired to call protected-api's /storage/sign
+// route instead, same credentials:'include' pattern used everywhere
+// else in the app now. That route checks owner-or-admin at the
+// application level and then generates the signed URL using the
+// caller's own authenticated identity, so storage RLS's admin
+// policy applies exactly as it already does for direct table access.
+// ============================================================
+
+const ALLOWED_BUCKETS = [
+  'id-documents',
+  'licenses',
+  'kyc-documents',
+] as const;
+
+type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
 
 export const openStorageDocument = async (
   documentPath: string | null | undefined,
-  bucketName = 'id-documents'
+  bucketName: string = 'id-documents'
 ): Promise<boolean> => {
   if (!documentPath) {
     console.error('Storage document path is missing.');
@@ -17,8 +40,23 @@ export const openStorageDocument = async (
       return false;
     }
 
+    if (
+      !ALLOWED_BUCKETS.includes(
+        bucketName as AllowedBucket
+      )
+    ) {
+      console.error(
+        'Unsupported storage bucket for document viewing:',
+        bucketName
+      );
+      return false;
+    }
+
     // ============================================================
     // NORMALIZE SUPABASE STORAGE PATH
+    //
+    // Unchanged from before - this is pure string parsing, nothing
+    // here depended on the Supabase client.
     // ============================================================
 
     const publicMarker =
@@ -66,29 +104,53 @@ export const openStorageDocument = async (
     );
 
     // ============================================================
-    // CREATE TEMPORARY SIGNED URL
+    // CREATE TEMPORARY SIGNED URL VIA protected-api
+    //
+    // Deliberately a raw fetch, not protectedGet/protectedPost from
+    // protectedApi.ts - that helper only allows /rest/v1/ paths by
+    // design. /storage/sign is a sibling route on the same Edge
+    // Function, same credentials:'include' HttpOnly-cookie
+    // transport, matching DocumentCapture.tsx's established pattern.
     // ============================================================
 
-    const { data, error } = await supabase.storage
-      .from(bucketName)
-      .createSignedUrl(path, 300);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    if (error) {
+    if (!supabaseUrl || !anonKey) {
       console.error(
-        'Failed to create signed storage URL:',
-        {
-          error,
-          bucket: bucketName,
-          path,
-        }
+        'Supabase configuration is missing.'
       );
-
       return false;
     }
 
-    if (!data?.signedUrl) {
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/protected-api/storage/sign`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: anonKey,
+        },
+        body: JSON.stringify({
+          bucket: bucketName,
+          path,
+        }),
+      }
+    );
+
+    const result = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok || !result?.url) {
       console.error(
-        'Supabase returned no signed URL.'
+        'Failed to create signed storage URL:',
+        {
+          error: result?.error ?? `HTTP ${response.status}`,
+          bucket: bucketName,
+          path,
+        }
       );
 
       return false;
@@ -99,7 +161,7 @@ export const openStorageDocument = async (
     // ============================================================
 
     const newWindow = window.open(
-      data.signedUrl,
+      result.url as string,
       '_blank',
       'noopener,noreferrer'
     );

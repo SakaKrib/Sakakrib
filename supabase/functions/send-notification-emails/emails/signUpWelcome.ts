@@ -1,46 +1,21 @@
 // ============================================================
 // SIGN-UP WELCOME EMAIL
 // ============================================================
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function escapeHtml(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-
-function escapeUrl(value: string): string {
+function escapeUrl(value) {
   return escapeHtml(value);
 }
-
-export function signUpWelcomeEmail(user: any) {
-  const fullName =
-    typeof user?.full_name === "string"
-      ? user.full_name.trim()
-      : "";
-
-  const firstName = fullName
-    ? fullName.split(/\s+/)[0]
-    : "there";
-
-  const email =
-    typeof user?.email === "string"
-      ? user.email.trim()
-      : "";
-
-  const dashboardUrl =
-    typeof user?.dashboard_url === "string" &&
-    user.dashboard_url.trim()
-      ? user.dashboard_url.trim()
-      : "https://sakakrib.com";
-
+export function signUpWelcomeEmail(user) {
+  const fullName = typeof user?.full_name === "string" ? user.full_name.trim() : "";
+  const firstName = fullName ? fullName.split(/\s+/)[0] : "there";
+  const email = typeof user?.email === "string" ? user.email.trim() : "";
+  const dashboardUrl = typeof user?.dashboard_url === "string" && user.dashboard_url.trim() ? user.dashboard_url.trim() : "https://sakakrib.com";
   const safeFirstName = escapeHtml(firstName);
   const safeFullName = escapeHtml(fullName);
   const safeEmail = escapeHtml(email);
   const safeDashboardUrl = escapeUrl(dashboardUrl);
-
   return `
 <!DOCTYPE html>
 <html>
@@ -185,9 +160,7 @@ export function signUpWelcomeEmail(user: any) {
              ACCOUNT DETAILS
         ================================================== -->
 
-        ${
-          fullName || email
-            ? `
+        ${fullName || email ? `
         <div style="
           margin:25px 0;
           padding:20px;
@@ -210,9 +183,7 @@ export function signUpWelcomeEmail(user: any) {
             style="border-collapse:collapse;"
           >
 
-            ${
-              fullName
-                ? `
+            ${fullName ? `
             <tr>
 
               <td style="
@@ -234,13 +205,9 @@ export function signUpWelcomeEmail(user: any) {
               </td>
 
             </tr>
-            `
-                : ""
-            }
+            ` : ""}
 
-            ${
-              email
-                ? `
+            ${email ? `
             <tr>
 
               <td style="
@@ -261,16 +228,12 @@ export function signUpWelcomeEmail(user: any) {
               </td>
 
             </tr>
-            `
-                : ""
-            }
+            ` : ""}
 
           </table>
 
         </div>
-        `
-            : ""
-        }
+        ` : ""}
 
 
         <!-- =================================================

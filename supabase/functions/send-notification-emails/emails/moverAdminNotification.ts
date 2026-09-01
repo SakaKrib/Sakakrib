@@ -1,79 +1,35 @@
 // ============================================================
 // MOVER APPLICATION — ADMIN NOTIFICATION EMAIL
 // ============================================================
-
-export function moverAdminNotificationEmail(application: any) {
+export function moverAdminNotificationEmail(application) {
   /*
    * ------------------------------------------------------
    * APPLICANT
    * ------------------------------------------------------
-   */
-
-  const applicantName =
-    application.applicant_name?.trim() ||
-    application.driver_full_name?.trim() ||
-    application.full_name?.trim() ||
-    'Unknown applicant';
-
-  const applicantEmail =
-    application.applicant_email?.trim() ||
-    application.email?.trim() ||
-    'Not provided';
-
-  const phone =
-    application.phone?.trim() ||
-    'Not provided';
-
+   */ const applicantName = application.applicant_name?.trim() || application.driver_full_name?.trim() || application.full_name?.trim() || 'Unknown applicant';
+  const applicantEmail = application.applicant_email?.trim() || application.email?.trim() || 'Not provided';
+  const phone = application.phone?.trim() || 'Not provided';
   /*
    * ------------------------------------------------------
    * VEHICLE
    * ------------------------------------------------------
-   */
-
-  const vehicleType =
-    application.vehicle_type ||
-    'Not provided';
-
-  const vehicleNumber =
-    application.number_plate ||
-    application.vehicle_number ||
-    'Not provided';
-
+   */ const vehicleType = application.vehicle_type || 'Not provided';
+  const vehicleNumber = application.number_plate || application.vehicle_number || 'Not provided';
   /*
    * ------------------------------------------------------
    * OPERATING LOCATION
    * ------------------------------------------------------
-   */
-
-  const operatingCity =
-    application.operating_city ||
-    'Not provided';
-
-  const operatingCounty =
-    application.operating_county ||
-    'Not provided';
-
+   */ const operatingCity = application.operating_city || 'Not provided';
+  const operatingCounty = application.operating_county || 'Not provided';
   /*
    * ------------------------------------------------------
    * APPLICATION
    * ------------------------------------------------------
-   */
-
-  const applicationId =
-    application.application_id ||
-    application.id ||
-    'Pending assignment';
-
-  const submittedAt =
-    application.submitted_at
-      ? new Date(
-          application.submitted_at
-        ).toLocaleString('en-KE', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        })
-      : 'Just now';
-
+   */ const applicationId = application.application_id || application.id || 'Pending assignment';
+  const submittedAt = application.submitted_at ? new Date(application.submitted_at).toLocaleString('en-KE', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }) : 'Just now';
   return `
 <!DOCTYPE html>
 <html>

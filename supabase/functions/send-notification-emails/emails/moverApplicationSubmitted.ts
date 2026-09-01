@@ -1,37 +1,16 @@
 // ============================================================
 // MOVER APPLICATION — SUBMISSION CONFIRMATION EMAIL
 // ============================================================
-
-export function moverApplicationSubmittedEmail(application: any) {
-  const firstName =
-    application.full_name?.trim()
-      ? application.full_name.trim().split(/\s+/)[0]
-      : "there";
-
-  const vehicleType =
-    application.vehicle_type || "Not provided";
-
-  const operatingCity =
-    application.operating_city || "Not provided";
-
-  const operatingCounty =
-    application.operating_county || "Not provided";
-
-  const applicationId =
-    application.application_id ||
-    application.id ||
-    null;
-
-  const submittedAt = application.submitted_at
-    ? new Date(application.submitted_at).toLocaleString(
-        "en-KE",
-        {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }
-      )
-    : "Just now";
-
+export function moverApplicationSubmittedEmail(application) {
+  const firstName = application.full_name?.trim() ? application.full_name.trim().split(/\s+/)[0] : "there";
+  const vehicleType = application.vehicle_type || "Not provided";
+  const operatingCity = application.operating_city || "Not provided";
+  const operatingCounty = application.operating_county || "Not provided";
+  const applicationId = application.application_id || application.id || null;
+  const submittedAt = application.submitted_at ? new Date(application.submitted_at).toLocaleString("en-KE", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }) : "Just now";
   return `
 <!DOCTYPE html>
 <html>
@@ -312,9 +291,7 @@ export function moverApplicationSubmittedEmail(application: any) {
         </div>
 
 
-        ${
-          applicationId
-            ? `
+        ${applicationId ? `
         <div style="
           margin:20px 0;
           padding:16px;
@@ -341,9 +318,7 @@ export function moverApplicationSubmittedEmail(application: any) {
           ${submittedAt}
 
         </div>
-        `
-            : ""
-        }
+        ` : ""}
 
 
         <!-- ==================================================

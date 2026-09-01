@@ -1,42 +1,17 @@
 // ============================================================
 // LANDLORD APPLICATION — ADMIN NOTIFICATION EMAIL
 // ============================================================
-
-export function landlordAdminNotificationEmail(application: any) {
-  const applicantName =
-    application.applicant_name?.trim() ||
-    application.full_name?.trim() ||
-    'Unknown applicant';
-
-  const applicantEmail =
-    application.applicant_email?.trim() ||
-    application.email?.trim() ||
-    'Not provided';
-
-  const phone =
-    application.phone?.trim() ||
-    'Not provided';
-
-  const nationalId =
-    application.national_id?.trim() ||
-    'Not provided';
-
-  const documentType =
-    application.document_type?.trim() ||
-    'Not provided';
-
-  const applicationId =
-    application.application_id ||
-    application.id ||
-    'Pending assignment';
-
-  const submittedAt = application.submitted_at
-    ? new Date(application.submitted_at).toLocaleString('en-KE', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
-    : 'Just now';
-
+export function landlordAdminNotificationEmail(application) {
+  const applicantName = application.applicant_name?.trim() || application.full_name?.trim() || 'Unknown applicant';
+  const applicantEmail = application.applicant_email?.trim() || application.email?.trim() || 'Not provided';
+  const phone = application.phone?.trim() || 'Not provided';
+  const nationalId = application.national_id?.trim() || 'Not provided';
+  const documentType = application.document_type?.trim() || 'Not provided';
+  const applicationId = application.application_id || application.id || 'Pending assignment';
+  const submittedAt = application.submitted_at ? new Date(application.submitted_at).toLocaleString('en-KE', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }) : 'Just now';
   return `
 <!DOCTYPE html>
 <html>

@@ -1,8 +1,24 @@
 // src/lib/openPrivateDocsHelper.ts
-
-import { supabase } from '@/lib/supabase';
+//
+// FIX: previously called supabase.storage.from(bucket)
+// .createSignedUrl() directly. Under HttpOnly-cookie auth the raw
+// Supabase JS client has no client-readable session, so this failed
+// for every caller regardless of RLS. Rewired to call protected-api's
+// /storage/sign route (same credentials:'include' HttpOnly-cookie
+// transport as everywhere else in the app now, same route
+// openStorageDocument.ts already uses). That route is authorized for
+// the document's owner OR an admin, backed by storage.objects' own
+// "Admins can view private KYC documents" RLS policy - verified live.
 
 type DocumentType = 'id' | 'selfie';
+
+const ALLOWED_BUCKETS = [
+  'id-documents',
+  'licenses',
+  'kyc-documents',
+] as const;
+
+type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
 
 export default async function openKycDocument(
   documentPath: string | null | undefined,
@@ -25,6 +41,9 @@ export default async function openKycDocument(
      * --------------------------------------------------------
      * DETERMINE BUCKET + PATH
      * --------------------------------------------------------
+     *
+     * Unchanged from before - this is pure string parsing,
+     * nothing here depended on the Supabase client.
      *
      * New KYC files:
      *
@@ -122,6 +141,19 @@ export default async function openKycDocument(
       return 'Invalid document path.';
     }
 
+    if (
+      !ALLOWED_BUCKETS.includes(
+        bucket as AllowedBucket
+      )
+    ) {
+      console.error(
+        'Unsupported storage bucket for KYC document viewing:',
+        bucket
+      );
+
+      return `Storage bucket "${bucket}" is not supported.`;
+    }
+
     console.log(
       'Opening KYC document:',
       {
@@ -133,44 +165,65 @@ export default async function openKycDocument(
 
     /*
      * --------------------------------------------------------
-     * CREATE SIGNED URL
+     * CREATE SIGNED URL VIA protected-api
+     *
+     * Deliberately a raw fetch, not protectedGet/protectedPost
+     * from protectedApi.ts - that helper only allows /rest/v1/
+     * paths by design. /storage/sign is a sibling route on the
+     * same Edge Function, same credentials:'include' transport.
      * --------------------------------------------------------
      */
 
-    const {
-      data,
-      error,
-    } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(
-        path,
-        300
-      );
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    if (error) {
+    if (!supabaseUrl || !anonKey) {
+      return 'Supabase configuration is missing.';
+    }
+
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/protected-api/storage/sign`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: anonKey,
+        },
+        body: JSON.stringify({
+          bucket,
+          path,
+        }),
+      }
+    );
+
+    const result = await response
+      .json()
+      .catch(() => null);
+
+    if (!response.ok || !result?.url) {
+      const message: string | undefined = result?.error;
+
       console.error(
-        'KYC createSignedUrl failed:',
+        'KYC signed URL request failed:',
         {
-          message: error.message,
+          message,
+          status: response.status,
           bucket,
           path,
           documentType,
-          error,
         }
       );
 
-      if (
-        error.message
-          ?.toLowerCase()
-          .includes('bucket not found')
-      ) {
+      const lower = (message ?? '').toLowerCase();
+
+      if (lower.includes('bucket not found')) {
         return `Storage bucket "${bucket}" was not found.`;
       }
 
       if (
-        error.message
-          ?.toLowerCase()
-          .includes('object not found')
+        lower.includes('object not found') ||
+        lower.includes('not found')
       ) {
         return (
           'The document file could not be found in storage.'
@@ -178,13 +231,9 @@ export default async function openKycDocument(
       }
 
       return (
-        error.message ||
+        message ||
         'Unable to open the document.'
       );
-    }
-
-    if (!data?.signedUrl) {
-      return 'Unable to generate a secure document URL.';
     }
 
     /*
@@ -194,7 +243,7 @@ export default async function openKycDocument(
      */
 
     const newWindow = window.open(
-      data.signedUrl,
+      result.url as string,
       '_blank',
       'noopener,noreferrer'
     );

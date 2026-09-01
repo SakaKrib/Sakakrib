@@ -172,6 +172,12 @@ export interface Profile {
     | 'approved'
     | 'rejected';
 
+  real_estate_application_status:
+    | 'not_requested'
+    | 'pending'
+    | 'approved'
+    | 'rejected';
+
   mover_application_status:
     | 'not_requested'
     | 'pending'
@@ -309,6 +315,11 @@ export interface Listing {
   created_at: string;
 
   updated_at: string;
+
+   /**
+   * Listing media
+   */
+  media: ListingMedia[];
 }
 
 /**

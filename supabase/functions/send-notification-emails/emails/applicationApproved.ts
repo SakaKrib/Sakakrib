@@ -1,50 +1,50 @@
-export function applicationApprovedEmail(application: any) {
+export function applicationApprovedEmail(application) {
   /*
    * ------------------------------------------------------
    * APPLICATION TYPE
    * ------------------------------------------------------
-   */
-
-  const applicationType =
-    application.application_type === 'landlord'
-      ? 'landlord'
-      : application.application_type === 'mover'
-      ? 'mover'
-      : 'professional';
-
-  const applicationName =
-    applicationType.charAt(0).toUpperCase() +
-    applicationType.slice(1);
-
+   *
+   * Supported:
+   *   landlord
+   *   realestate
+   *   mover
+   */ const rawApplicationType = String(application.application_type || application.applicant?.role || application.user?.role || '').trim().toLowerCase();
+  const applicationType = rawApplicationType === 'landlord' ? 'landlord' : rawApplicationType === 'realestate' || rawApplicationType === 'real_estate' ? 'real estate' : rawApplicationType === 'mover' ? 'mover' : 'professional';
+  const applicationName = applicationType === 'real estate' ? 'Real Estate' : applicationType.charAt(0).toUpperCase() + applicationType.slice(1);
   /*
    * ------------------------------------------------------
    * APPLICANT NAME
    * ------------------------------------------------------
    *
-   * The application payload uses applicant_name.
-   * full_name is retained as a fallback for older records.
-   */
-
-  const applicantName =
-    application.applicant_name?.trim() ||
-    application.full_name?.trim() ||
-    'there';
-
-  const firstName =
-    applicantName !== 'there'
-      ? applicantName.split(/\s+/)[0]
-      : 'there';
-
+   * The admin currently sends the name in:
+   *
+   * application.applicant.full_name
+   * application.applicant.first_name
+   *
+   * and also:
+   *
+   * application.user.full_name
+   * application.user.first_name
+   *
+   * Older payloads may use:
+   *
+   * application.applicant_name
+   * application.full_name
+   */ const applicantName = application.applicant_name?.trim() || application.applicant?.full_name?.trim() || application.user?.full_name?.trim() || application.full_name?.trim() || [
+    application.applicant?.first_name,
+    application.applicant?.middle_name,
+    application.applicant?.last_name
+  ].filter(Boolean).join(' ').trim() || [
+    application.user?.first_name,
+    application.user?.middle_name,
+    application.user?.last_name
+  ].filter(Boolean).join(' ').trim() || 'there';
+  const firstName = applicantName !== 'there' ? applicantName.split(/\s+/)[0] : 'there';
   /*
    * ------------------------------------------------------
    * DASHBOARD URL
    * ------------------------------------------------------
-   */
-
-  const dashboardUrl =
-    application.dashboard_url ||
-    'https://sakakrib.com/dashboard';
-
+   */ const dashboardUrl = application.dashboard_url || 'https://sakakrib.com/dashboard';
   return `
 <!DOCTYPE html>
 <html>
@@ -283,9 +283,7 @@ export function applicationApprovedEmail(application: any) {
           </tr>
 
 
-          ${
-            application.application_id
-              ? `
+          ${application.application_id ? `
           <tr>
 
             <td style="
@@ -307,9 +305,7 @@ export function applicationApprovedEmail(application: any) {
             </td>
 
           </tr>
-          `
-              : ''
-          }
+          ` : ''}
 
         </table>
 

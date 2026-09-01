@@ -1,4 +1,13 @@
-export function landlordApplicationSubmittedEmail(application: any) {
+export function landlordApplicationSubmittedEmail(application) {
+  /*
+   * ------------------------------------------------------
+   * APPLICATION TYPE
+   * ------------------------------------------------------
+   *
+   * Support landlord and realestate applications.
+   * Existing landlord applications remain unchanged.
+   */ const applicationType = application.application_type === 'realestate' ? 'realestate' : 'landlord';
+  const applicationName = applicationType === 'realestate' ? 'Real Estate' : 'Landlord';
   /*
    * ------------------------------------------------------
    * APPLICANT NAME
@@ -6,44 +15,21 @@ export function landlordApplicationSubmittedEmail(application: any) {
    *
    * RegisterLandlordPage sends applicant_name.
    * full_name is kept as a fallback for older records.
-   */
-
-  const applicantName =
-    application.applicant_name?.trim() ||
-    application.full_name?.trim() ||
-    'there';
-
-  const firstName =
-    applicantName !== 'there'
-      ? applicantName.split(/\s+/)[0]
-      : 'there';
-
+   */ const applicantName = application.applicant_name?.trim() || application.full_name?.trim() || 'there';
+  const firstName = applicantName !== 'there' ? applicantName.split(/\s+/)[0] : 'there';
   /*
    * ------------------------------------------------------
    * APPLICATION ID
    * ------------------------------------------------------
-   */
-
-  const applicationId =
-    application.application_id ||
-    application.id ||
-    'Pending assignment';
-
+   */ const applicationId = application.application_id || application.id || 'Pending assignment';
   /*
    * ------------------------------------------------------
    * SUBMITTED DATE
    * ------------------------------------------------------
-   */
-
-  const submittedAt = application.submitted_at
-    ? new Date(
-        application.submitted_at
-      ).toLocaleString('en-KE', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })
-    : 'Just now';
-
+   */ const submittedAt = application.submitted_at ? new Date(application.submitted_at).toLocaleString('en-KE', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }) : 'Just now';
   return `
 <!DOCTYPE html>
 <html>
@@ -56,7 +42,7 @@ export function landlordApplicationSubmittedEmail(application: any) {
   >
 
   <title>
-    Landlord Application Submitted
+    ${applicationName} Application Submitted
   </title>
 </head>
 
@@ -152,7 +138,7 @@ export function landlordApplicationSubmittedEmail(application: any) {
           font-size:14px;
           line-height:1.6;
         ">
-          Your landlord application has been
+          Your ${applicationName.toLowerCase()} application has been
           successfully submitted.
         </p>
 
@@ -182,7 +168,7 @@ export function landlordApplicationSubmittedEmail(application: any) {
           line-height:1.7;
         ">
           Thank you for applying to become a
-          <strong>landlord</strong> on Saka Krib.
+          <strong>${applicationName.toLowerCase()}</strong> on Saka Krib.
           Your application has been received successfully
           and is now awaiting administrator review.
         </p>
@@ -254,7 +240,7 @@ export function landlordApplicationSubmittedEmail(application: any) {
                 font-weight:bold;
                 font-size:14px;
               ">
-                Landlord
+                ${applicationName}
               </td>
 
             </tr>
@@ -360,7 +346,7 @@ export function landlordApplicationSubmittedEmail(application: any) {
             information and identity document you provided.
             Once the review is complete, you will receive
             another email informing you whether your
-            landlord application has been approved or declined.
+            ${applicationName.toLowerCase()} application has been approved or declined.
           </p>
 
         </div>

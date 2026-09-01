@@ -3,6 +3,30 @@
 -- This migration is intentionally committed to the repository so it can
 -- be applied to the local Supabase database with the normal migration flow.
 
+-- Ensure mover schedule events exists before functions reference it.
+CREATE TABLE IF NOT EXISTS public.mover_schedule_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mover_id uuid NOT NULL REFERENCES public.movers(id) ON DELETE CASCADE,
+  booking_id uuid NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
+  starts_at timestamptz NOT NULL,
+  ends_at timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'CONFIRMED',
+  title text NOT NULL DEFAULT 'Moving service',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT mover_schedule_events_booking_id_key UNIQUE (booking_id),
+  CONSTRAINT mover_schedule_events_check CHECK (ends_at > starts_at),
+  CONSTRAINT mover_schedule_events_status_check
+    CHECK (status IN ('TENTATIVE', 'CONFIRMED', 'CANCELLED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mover_schedule_events_mover_id
+  ON public.mover_schedule_events(mover_id);
+
+CREATE INDEX IF NOT EXISTS idx_mover_schedule_events_booking_id
+  ON public.mover_schedule_events(booking_id);
+
 create or replace function public.request_mover_booking(
   p_mover_id uuid,
   p_pickup_address text,

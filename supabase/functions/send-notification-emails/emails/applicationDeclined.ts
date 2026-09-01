@@ -1,52 +1,68 @@
 // ============================================================
 // APPLICATION DECLINED — USER EMAIL
 // ============================================================
-
-export function applicationDeclinedEmail(application: any) {
-  const role =
-    application.application_type === "landlord"
-      ? "landlord"
-      : "mover";
-
+export function applicationDeclinedEmail(application) {
+  /*
+   * ----------------------------------------------------------
+   * APPLICATION TYPE
+   * ----------------------------------------------------------
+   *
+   * Supported:
+   *   landlord
+   *   realestate
+   *   real_estate
+   *   mover
+   *
+   * Also supports older payloads where the role may exist
+   * inside applicant.role or user.role.
+   */ const rawApplicationType = String(application.application_type || application.applicant?.role || application.user?.role || '').trim().toLowerCase();
+  const role = rawApplicationType === 'landlord' ? 'landlord' : rawApplicationType === 'realestate' || rawApplicationType === 'real_estate' ? 'real estate' : rawApplicationType === 'mover' ? 'mover' : 'professional';
+  const roleName = role === 'real estate' ? 'Real Estate' : role.charAt(0).toUpperCase() + role.slice(1);
   /*
    * ----------------------------------------------------------
    * APPLICANT NAME
    * ----------------------------------------------------------
    *
-   * Support the different payload structures used by
-   * landlord and mover applications.
-   */
-
-  const fullName =
-    application.full_name ||
-    application.applicant_name ||
-    application.driver_full_name ||
-    "";
-
-  const firstName = fullName.trim()
-    ? fullName.trim().split(/\s+/)[0]
-    : "there";
-
+   * Current admin payload:
+   *
+   * application.applicant.full_name
+   * application.applicant.first_name
+   *
+   * application.user.full_name
+   * application.user.first_name
+   *
+   * Older payloads:
+   *
+   * application.applicant_name
+   * application.full_name
+   * application.driver_full_name
+   */ const applicantName = application.applicant_name?.trim() || application.applicant?.full_name?.trim() || application.user?.full_name?.trim() || application.full_name?.trim() || application.driver_full_name?.trim() || [
+    application.applicant?.first_name,
+    application.applicant?.middle_name,
+    application.applicant?.last_name
+  ].filter(Boolean).join(' ').trim() || [
+    application.user?.first_name,
+    application.user?.middle_name,
+    application.user?.last_name
+  ].filter(Boolean).join(' ').trim() || 'there';
+  const firstName = applicantName !== 'there' ? applicantName.split(/\s+/)[0] : 'there';
   /*
    * ----------------------------------------------------------
    * DECLINE REASON
    * ----------------------------------------------------------
-   */
-
-  const declineReason =
-    application.decline_reason?.trim() || "";
-
+   *
+   * The admin currently sends:
+   *
+   * admin_review_note
+   *
+   * Support decline_reason as well for compatibility with
+   * older payloads.
+   */ const declineReason = application.admin_review_note?.trim() || application.decline_reason?.trim() || application.review_notes?.trim() || '';
   /*
    * ----------------------------------------------------------
    * APPLICATION ID
    * ----------------------------------------------------------
-   */
-
-  const applicationId =
-    application.application_id ||
-    application.id ||
-    "";
-
+   */ const applicationId = application.application_id || application.id || application.applicant?.id || '';
   return `
 <!DOCTYPE html>
 <html>
@@ -155,7 +171,8 @@ export function applicationDeclinedEmail(application: any) {
           line-height:1.6;
         ">
           We have completed the review of your
-          ${role} application.
+          ${role}
+          application.
         </p>
 
       </div>
@@ -233,6 +250,28 @@ export function applicationDeclinedEmail(application: any) {
                 color:#777777;
                 font-size:14px;
               ">
+                Applicant
+              </td>
+
+              <td style="
+                padding:7px 0;
+                text-align:right;
+                font-weight:bold;
+                font-size:14px;
+              ">
+                ${applicantName}
+              </td>
+
+            </tr>
+
+
+            <tr>
+
+              <td style="
+                padding:7px 0;
+                color:#777777;
+                font-size:14px;
+              ">
                 Application Type
               </td>
 
@@ -242,10 +281,7 @@ export function applicationDeclinedEmail(application: any) {
                 font-weight:bold;
                 font-size:14px;
               ">
-                ${
-                  role.charAt(0).toUpperCase() +
-                  role.slice(1)
-                }
+                ${roleName}
               </td>
 
             </tr>
@@ -273,9 +309,7 @@ export function applicationDeclinedEmail(application: any) {
 
             </tr>
 
-            ${
-              applicationId
-                ? `
+            ${applicationId ? `
             <tr>
 
               <td style="
@@ -297,9 +331,7 @@ export function applicationDeclinedEmail(application: any) {
               </td>
 
             </tr>
-            `
-                : ""
-            }
+            ` : ""}
 
           </table>
 
@@ -310,9 +342,7 @@ export function applicationDeclinedEmail(application: any) {
              DECLINE REASON
         ================================================== -->
 
-        ${
-          declineReason
-            ? `
+        ${declineReason ? `
         <div style="
           margin:25px 0;
           padding:20px;
@@ -336,14 +366,13 @@ export function applicationDeclinedEmail(application: any) {
             color:#555555;
             font-size:14px;
             line-height:1.7;
+            white-space:pre-line;
           ">
             ${declineReason}
           </p>
 
         </div>
-        `
-            : ""
-        }
+        ` : ""}
 
 
         <!-- =================================================
