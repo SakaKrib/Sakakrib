@@ -1,13 +1,14 @@
 from django.urls import path
 
 from .application_review_views import AdminApplicationReviewView
-from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, SessionView, SetRoleView, SignupView, VerifyOtpView
+from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, ResendOtpView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
 urlpatterns = [
     path('csrf/', CsrfTokenView.as_view(), name='csrf'),
     path('signup/', SignupView.as_view(), name='signup'),
     path('login/', LoginView.as_view(), name='login'),
     path('verify-otp/', VerifyOtpView.as_view(), name='verify-otp'),
+    path('resend-otp/', ResendOtpView.as_view(), name='resend-otp'),
     path('refresh/', RefreshView.as_view(), name='refresh'),
     path('session/', SessionView.as_view(), name='session'),
     path('set-role/', SetRoleView.as_view(), name='set-role'),
