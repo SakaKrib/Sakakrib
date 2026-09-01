@@ -1,0 +1,97 @@
+from datetime import date
+
+from django.core.exceptions import ValidationError
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .rent_services import (
+    confirm_rent_payment,
+    create_landlord_rent_invoice,
+    create_renter_paid_invoice,
+    reject_rent_payment,
+    submit_invoice_payment,
+)
+
+
+def _date(value, field_name):
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"{field_name} must be an ISO date (YYYY-MM-DD).") from exc
+
+
+def _error(exc):
+    detail = getattr(exc, "message", None) or str(exc)
+    return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LandlordRentInvoiceCreateView(APIView):
+    def post(self, request):
+        try:
+            result = create_landlord_rent_invoice(
+                landlord_id=request.user.id,
+                renter_assoc_id=request.data.get("renter_assoc_id"),
+                billing_period_start=_date(request.data.get("billing_period_start"), "billing_period_start"),
+                billing_period_end=_date(request.data.get("billing_period_end"), "billing_period_end"),
+                due_date=_date(request.data.get("due_date"), "due_date"),
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class RenterInvoicePaymentSubmitView(APIView):
+    def post(self, request, invoice_id):
+        try:
+            payment_date = request.data.get("payment_date")
+            result = submit_invoice_payment(
+                renter_user_id=request.user.id,
+                invoice_id=invoice_id,
+                transaction_reference=request.data.get("transaction_reference", ""),
+                payment_method=request.data.get("payment_method"),
+                payment_date=_date(payment_date, "payment_date") if payment_date else None,
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class RenterPaidInvoiceCreateView(APIView):
+    def post(self, request):
+        try:
+            result = create_renter_paid_invoice(
+                renter_user_id=request.user.id,
+                unit_id=request.data.get("unit_id"),
+                payment_date=_date(request.data.get("payment_date"), "payment_date"),
+                payment_method=request.data.get("payment_method", ""),
+                transaction_reference=request.data.get("transaction_reference", ""),
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class LandlordRentPaymentConfirmView(APIView):
+    def post(self, request, submission_id):
+        try:
+            result = confirm_rent_payment(
+                landlord_id=request.user.id,
+                submission_id=submission_id,
+            )
+            return Response(result, status=status.HTTP_200_OK)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class LandlordRentPaymentRejectView(APIView):
+    def post(self, request, submission_id):
+        try:
+            result = reject_rent_payment(
+                landlord_id=request.user.id,
+                submission_id=submission_id,
+                rejection_reason=request.data.get("rejection_reason", ""),
+            )
+            return Response(result, status=status.HTTP_200_OK)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
