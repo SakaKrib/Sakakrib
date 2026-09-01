@@ -2,7 +2,6 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.payments.services import get_provider
 from .models import SubscriptionInvoice, SubscriptionPlan
 from .payment_services import (create_subscription_checkout, finalize_mpesa_subscription,
                                finalize_paypal_subscription)
@@ -85,20 +84,17 @@ class MpesaSubscriptionCallbackView(APIView):
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', **result})
 
 
-class PayPalSubscriptionCaptureView(APIView):
+class PayPalSubscriptionApproveView(APIView):
     def post(self, request):
         invoice_id = request.data.get('invoice_id')
-        order_id = request.data.get('order_id')
-        if not invoice_id or not order_id:
-            return Response({'success': False, 'detail': 'invoice_id and order_id are required.'}, status=400)
-        invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
-        if not invoice or invoice.status != 'PENDING':
-            return Response({'success': False, 'detail': 'Pending subscription invoice not found.'}, status=404)
-        if invoice.payment_provider != 'PAYPAL' or invoice.provider_reference != order_id:
-            return Response({'success': False, 'detail': 'PayPal order does not match invoice.'}, status=400)
+        paypal_subscription_id = request.data.get('paypal_subscription_id')
+        if not invoice_id or not paypal_subscription_id:
+            return Response({'success': False, 'detail': 'invoice_id and paypal_subscription_id are required.'}, status=400)
+        invoice = SubscriptionInvoice.objects.filter(pk=invoice_id, status='PENDING', payment_provider='PAYPAL').first()
+        if not invoice:
+            return Response({'success': False, 'detail': 'Pending PayPal subscription invoice not found.'}, status=404)
         try:
-            result = get_provider('paypal').verify_payment(provider_reference=order_id)
-            settled = finalize_paypal_subscription(invoice.id, order_id, result)
-        except Exception as exc:
-            return Response({'success': False, 'detail': str(exc)}, status=502)
-        return Response({**settled, 'payment_captured': True, 'provider_reference': order_id})
+            settled = finalize_paypal_subscription(invoice.id, paypal_subscription_id)
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        return Response({**settled, 'payment_approved': True, 'paypal_subscription_id': paypal_subscription_id})
