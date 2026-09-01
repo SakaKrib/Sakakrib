@@ -23,10 +23,6 @@ from .domain_property import PropertyUnit
 from .domain_rent import RentInvoice, RentPayment, RentPaymentIntent, RentPaymentSubmission
 
 
-def _user_id(user):
-    return str(user.pk)
-
-
 def bookings_for_user(user):
     """Production bookings SELECT scope: renter, mover owner, or admin."""
     if is_admin(user):
@@ -41,7 +37,7 @@ def booking_events_for_user(user):
         return BookingEvent.objects.all()
     mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
     return BookingEvent.objects.filter(
-        Q(renter_id=user.pk) | Q(mover_profile_id__in=mover_ids) | Q(mover_id=user.pk)
+        Q(renter_id=user.pk) | Q(mover_profile_id__in=mover_ids)
     )
 
 
@@ -100,12 +96,7 @@ def chat_messages_for_user(user):
 
 
 def property_units_for_user(user):
-    """Production property_units SELECT scope: landlord owner or active renter association.
-
-    The renter association is intentionally evaluated by a correlated subquery
-    through the UUID-backed relationship rather than trusting a client-supplied
-    renter/unit pair.
-    """
+    """Production property_units SELECT scope: landlord owner or active renter association."""
     if is_admin(user):
         return PropertyUnit.objects.all()
     from .domain_property import RenterUnitAssociation
