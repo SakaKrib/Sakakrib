@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.accounts.models import Profile
+from apps.listings.models import Listing
 from .constants import FREE_LISTING_LIMIT, INDIVIDUAL_LISTING_PRICE_KES
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionListing, SubscriptionPlan
 
@@ -30,9 +30,7 @@ def get_subscription_plan(subscription):
 def get_subscription_listing_usage(profile, subscription):
     if not subscription:
         return 0
-    owned_listing_ids = __import__('apps.listings.models', fromlist=['Listing']).Listing.objects.filter(
-        user_id=profile.id
-    ).values('id')
+    owned_listing_ids = Listing.objects.filter(user_id=profile.id).values('id')
     filters = {'listing_id__in': owned_listing_ids, 'status': 'ACTIVE'}
     if profile.role == 'landlord':
         filters['subscription_id'] = subscription.id
@@ -42,22 +40,23 @@ def get_subscription_listing_usage(profile, subscription):
 
 
 def get_subscription_access(profile):
-    """Return the same entitlement facts exposed by the Supabase access functions."""
+    """Return entitlement facts used by the frontend and listing service."""
+    authorized = profile.role in ('landlord', 'real_estate')
     free_used = profile.free_listings_used or 0
     free_remaining = max(FREE_LISTING_LIMIT - free_used, 0)
-    subscription = get_current_subscription(profile)
+    subscription = get_current_subscription(profile) if authorized else None
     plan = get_subscription_plan(subscription)
     used = get_subscription_listing_usage(profile, subscription)
     limit = plan.max_listings if plan else None
     remaining = None if limit is None else max(limit - used, 0)
-    can_start = profile.verification_status == 'verified' and (
+    can_start = authorized and profile.verification_status == 'verified' and (
         profile.role != 'landlord' or profile.landlord_application_status == 'approved'
     )
     can_create = can_start and (
         free_remaining > 0 or (subscription is not None and (limit is None or remaining > 0))
     )
     return {
-        'authorized': profile.role in ('landlord', 'real_estate'),
+        'authorized': authorized,
         'role': profile.role,
         'verification_status': profile.verification_status,
         'landlord_application_status': getattr(profile, 'landlord_application_status', None),
@@ -70,6 +69,7 @@ def get_subscription_access(profile):
         'subscription_status': subscription.status if subscription else None,
         'billing_cycle': subscription.billing_cycle if subscription else None,
         'subscription_limit': limit,
+        'max_listings': limit,
         'max_units_per_listing': plan.max_units_per_listing if plan else None,
         'subscription_listings_used': used,
         'subscription_listings_remaining': remaining,
