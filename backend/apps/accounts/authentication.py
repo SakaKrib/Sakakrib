@@ -1,13 +1,12 @@
 import jwt
 from django.conf import settings
 from rest_framework import authentication, exceptions
-from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import Profile
 
 
 class SupabasePrincipal:
-    """Small DRF principal backed by a Supabase Auth JWT and profile row."""
+    """Application principal backed by a Supabase Auth JWT and profile row."""
     def __init__(self, user_id, claims, profile):
         self.id = user_id
         self.pk = user_id
@@ -23,9 +22,6 @@ class SupabasePrincipal:
 
 class SupabaseJWTAuthentication(authentication.BaseAuthentication):
     """Validate Supabase access JWTs from Authorization or an HttpOnly cookie."""
-
-    keyword = 'Bearer'
-
     def authenticate(self, request):
         raw = self._token(request)
         if not raw:
@@ -35,9 +31,7 @@ class SupabaseJWTAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed('Supabase JWT verification is not configured')
         try:
             claims = jwt.decode(
-                raw,
-                secret,
-                algorithms=['HS256'],
+                raw, secret, algorithms=['HS256'],
                 audience=settings.SUPABASE_JWT_AUDIENCE,
             )
         except jwt.PyJWTError as exc:
