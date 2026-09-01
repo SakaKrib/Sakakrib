@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
+from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -79,7 +80,7 @@ class ListingListView(APIView):
         })
 
     def post(self, request):
-        """Keep the legacy POST /api/listings/ creation endpoint while GET lists listings."""
+        """Keep POST /api/listings/ creation while GET lists listings."""
         serializer = ListingCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         result = create_listing(request.user, serializer.validated_data)
@@ -181,7 +182,7 @@ class AdminListingReviewView(APIView):
                 decision=request.data.get('decision'),
                 note=request.data.get('note', ''),
             )
-        except PermissionError as exc:
+        except PermissionDenied as exc:
             return Response({'error': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except LookupError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_404_NOT_FOUND)
