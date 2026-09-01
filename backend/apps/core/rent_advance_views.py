@@ -1,8 +1,6 @@
-from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.response import Response
@@ -72,7 +70,7 @@ class LandlordMarkRentPaidThroughView(APIView):
             return Response({'detail': 'Landlord access is required.'}, status=403)
         try:
             through = date.fromisoformat(str(request.data.get('paid_through_month')))
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError):
             return Response({'detail': 'paid_through_month must be YYYY-MM-DD.'}, status=400)
         if through.day != 1:
             return Response({'detail': 'paid_through_month must be the first day of a month.'}, status=400)
@@ -96,7 +94,8 @@ class LandlordMarkRentPaidThroughView(APIView):
             existing = RentPayment.objects.filter(renter_assoc_id=association.id, period_year=year, period_month=month).first()
             if existing:
                 if str(existing.status).upper() != 'PAID':
-                    raise ValidationError(f'Billing period {year}-{month:02d} has an existing non-paid payment record.')
+                    transaction.set_rollback(True)
+                    return Response({'detail': f'Billing period {year}-{month:02d} has an existing non-paid payment record.'}, status=400)
                 already += 1
                 continue
             RentPayment.objects.create(
