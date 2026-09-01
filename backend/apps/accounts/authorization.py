@@ -50,7 +50,7 @@ def can_manage_listings(user):
     if role == 'landlord':
         return getattr(user, 'landlord_application_status', None) == 'approved'
     if role == 'real_estate':
-        return getattr(user, 'realestate_application_status', None) == 'approved'
+        return getattr(user, 'real_estate_application_status', None) == 'approved'
     return False
 
 
