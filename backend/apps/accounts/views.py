@@ -1,14 +1,17 @@
 from django.contrib.auth import authenticate, login, logout
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
+from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .auth_service import send_signup_otp, verify_signup_otp
 from .models import Profile
-from .serializers import ProfileSerializer
+from .serializers import LoginSerializer, ProfileSerializer, SetRoleSerializer, SignupSerializer, VerifyOtpSerializer
 
 
 class CsrfTokenView(APIView):
@@ -19,32 +22,142 @@ class CsrfTokenView(APIView):
         return JsonResponse({'csrfToken': get_token(request)})
 
 
+class SignupView(APIView):
+    permission_classes = [AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = SignupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip().lower()
+        password = serializer.validated_data['password']
+        full_name = serializer.validated_data.get('fullName', '').strip()
+
+        existing = Profile.objects.filter(email__iexact=email).first()
+        if existing:
+            if existing.email_verified:
+                return Response({'error': 'An account with this email already exists.'}, status=status.HTTP_409_CONFLICT)
+            try:
+                send_signup_otp(existing)
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            return Response({
+                'success': True,
+                'requiresEmailVerification': True,
+                'email': existing.email,
+            }, status=status.HTTP_200_OK)
+
+        user = Profile.objects.create_user(
+            email=email,
+            password=password,
+            full_name=full_name,
+            email_verified=False,
+            verification_status='pending_verification',
+            kyc_status='pending',
+        )
+        try:
+            send_signup_otp(user)
+        except Exception:
+            # Do not leave a half-created account if the configured mail transport fails.
+            user.delete()
+            raise
+
+        return Response({
+            'success': True,
+            'requiresEmailVerification': True,
+            'email': user.email,
+            'profile_id': str(user.id),
+        }, status=status.HTTP_201_CREATED)
+
+
+class VerifyOtpView(APIView):
+    permission_classes = [AllowAny]
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = VerifyOtpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip().lower()
+        otp = serializer.validated_data['otp']
+        user = Profile.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response({'error': 'Invalid verification request.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            verify_signup_otp(user, otp)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        login(request, user)
+        return Response({
+            'success': True,
+            'authenticated': True,
+            'user': {'id': str(user.id), 'email': user.email},
+            'profile': ProfileSerializer(user).data,
+        })
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        email = str(request.data.get('email', '')).strip().lower()
-        password = request.data.get('password', '')
-        if not email or not password:
-            return Response(
-                {'detail': 'Email and password are required.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].strip().lower()
+        password = serializer.validated_data['password']
 
         user = authenticate(request, email=email, password=password)
         if user is None:
-            return Response(
-                {'detail': 'Invalid email or password.'},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
         if not user.is_active:
-            return Response(
-                {'detail': 'This account is inactive.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({'error': 'This account is inactive.'}, status=status.HTTP_403_FORBIDDEN)
+        if not user.email_verified:
+            return Response({
+                'authenticated': False,
+                'requiresEmailVerification': True,
+                'email': user.email,
+                'profile_id': str(user.id),
+                'error': 'Please verify your email before signing in.',
+            }, status=status.HTTP_403_FORBIDDEN)
 
         login(request, user)
-        return Response(ProfileSerializer(user).data)
+        return Response({
+            'success': True,
+            'authenticated': True,
+            'user': {'id': str(user.id), 'email': user.email},
+            'profile': ProfileSerializer(user).data,
+        })
+
+
+class SessionView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        if not request.user.is_authenticated:
+            return Response({'authenticated': False}, status=status.HTTP_200_OK)
+        return Response({
+            'authenticated': True,
+            'user': {'id': str(request.user.id), 'email': request.user.email},
+            'profile': ProfileSerializer(request.user).data,
+        })
+
+
+class SetRoleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = SetRoleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        role = serializer.validated_data['role']
+
+        # Admin identity is controlled by staff/superuser state; it cannot be self-selected.
+        if request.user.is_staff or request.user.is_superuser or request.user.is_admin:
+            return Response({'error': 'Administrator role cannot be self-selected.'}, status=status.HTTP_403_FORBIDDEN)
+
+        request.user.role = role
+        request.user.role_selected_at = timezone.now()
+        request.user.save(update_fields=['role', 'role_selected_at', 'updated_at'])
+        return Response({'success': True, 'profile': ProfileSerializer(request.user).data})
 
 
 class LogoutView(APIView):
@@ -52,11 +165,11 @@ class LogoutView(APIView):
 
     def post(self, request):
         logout(request)
-        return Response({'success': True})
+        return Response({'success': True, 'authenticated': False})
 
 
 class MeView(APIView):
-    """Return the authenticated application's profile."""
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         return Response(ProfileSerializer(request.user).data)
