@@ -1,11 +1,12 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.utils import timezone
 
 from apps.accounts.models import Profile
 
+from .chat_services import conversation_id_for_users as _unused
 from .domain_bookings import ChatMessage
-from .domain_platform import Mover, UserNotification
+from .domain_platform import Mover
+from .notification_services import dispatch_user_notification
 
 
 MESSAGE_TYPES = {
@@ -34,14 +35,14 @@ def _participant_pair(sender_id, receiver_id):
 
 def list_conversation(*, user_id, conversation_id, limit=50, before=None):
     parts = str(conversation_id).split("__")
-    if len(parts) != 2:
-        raise ValidationError("Invalid conversation id")
+    if len(parts) != 2 or str(user_id) not in parts:
+        raise ValidationError("Unauthorized conversation")
     try:
         expected = conversation_id_for_users(parts[0], parts[1])
     except Exception as exc:
         raise ValidationError("Invalid conversation id") from exc
-    if expected != str(conversation_id) or str(user_id) not in parts:
-        raise ValidationError("Unauthorized conversation")
+    if expected != str(conversation_id):
+        raise ValidationError("Invalid conversation id")
 
     qs = ChatMessage.objects.filter(conversation_id=conversation_id).order_by("-created_at", "-id")
     if before:
@@ -71,13 +72,14 @@ def send_message(*, sender_id, receiver_id, content="", message_type="text", eve
         message_type=message_type,
         event_data=event_data if isinstance(event_data, dict) else None,
     )
-    UserNotification.objects.create(
+    dispatch_user_notification(
         user_id=receiver_id,
         notification_type="CHAT_MESSAGE",
         title="New message",
         message=text[:160] if text else "You received a new message.",
         data={"conversation_id": conversation_id, "message_id": str(message.id), "message_type": message_type},
         event_key=f"chat:{message.id}",
+        send_email=False,
     )
     return message
 
