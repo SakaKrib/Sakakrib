@@ -1,20 +1,20 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import ListingCreateSerializer, ListingSerializer
+from .serializers import ListingCreateSerializer
 from .services import create_listing, create_listing_payment_intent, get_listing_entitlement
 
 
 class ListingEntitlementView(APIView):
     def get(self, request):
-        return Response(get_listing_entitlement(request.user.profile))
+        return Response(get_listing_entitlement(request.user))
 
 
 class ListingCreateView(APIView):
     def post(self, request):
         serializer = ListingCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = create_listing(request.user.profile, serializer.validated_data)
+        result = create_listing(request.user, serializer.validated_data)
         if not result.get('listing_created'):
             return Response(result, status=402)
         return Response(result, status=201)
@@ -22,5 +22,5 @@ class ListingCreateView(APIView):
 
 class ListingPaymentIntentView(APIView):
     def post(self, request):
-        result = create_listing_payment_intent(request.user.profile, request.data)
+        result = create_listing_payment_intent(request.user, request.data)
         return Response(result, status=201)
