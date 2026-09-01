@@ -1,13 +1,13 @@
 """Booking and mover-quote services.
 
-This module is the Django equivalent of the production Supabase mover-booking
-functions.  It deliberately keeps pricing and state transitions server-side,
-uses row locks for concurrent requests, and preserves the canonical renter /
-mover conversation identity used by the existing frontend.
+The implementation mirrors the production Supabase mover-booking workflows,
+while moving authorization, pricing, transactions, notifications and state
+changes into Django-owned services.
 """
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import UUID
@@ -16,23 +16,13 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Profile
-from apps.core.domain_bookings import (
-    Booking,
-    ChatMessage,
-    MovingCancellationEvent,
-)
-from apps.core.domain_platform import (
-    Mover,
-    NotificationEmail,
-    UserNotification,
-)
+from apps.core.domain_bookings import Booking, ChatMessage, MovingCancellationEvent
+from apps.core.domain_platform import Mover, NotificationEmail, UserNotification
 from apps.core.domain_property import PlatformSettings
-
 
 MONEY = Decimal("0.01")
 DISTANCE = Decimal("0.001")
 DEFAULT_COMMISSION_RATE = Decimal("0.20")
-DEFAULT_MARKUP_RATE = Decimal("0")
 REQUEST_WINDOW_MINUTES = 30
 
 
@@ -45,13 +35,12 @@ def _distance(value: Decimal) -> Decimal:
 
 
 def _conversation_id(user_a: UUID, user_b: UUID) -> str:
-    """Return the canonical conversation key used by production Supabase."""
     first, second = sorted((str(user_a), str(user_b)))
     return f"{first}__{second}"
 
 
 class MoverQuoteService:
-    """Authoritative mover pricing equivalent to ``calculate_mover_quote``."""
+    """Authoritative equivalent of production ``calculate_mover_quote``."""
 
     @staticmethod
     def calculate(mover_id: UUID, distance_km: Decimal | int | float) -> dict[str, Any]:
@@ -73,42 +62,33 @@ class MoverQuoteService:
             if settings is not None
             else DEFAULT_COMMISSION_RATE
         )
-        markup_rate = (
-            Decimal(settings.mover_operational_markup_rate)
-            if settings is not None
-            else DEFAULT_MARKUP_RATE
-        )
 
         distance_rounded = _distance(distance)
         base_rate = _money(Decimal(mover.base_rate_kes or 0))
         rate_per_km = _money(Decimal(mover.rate_per_km_kes or 0))
-        mover_charge = _money(base_rate + (distance_rounded * rate_per_km))
-        operational_markup = _money(mover_charge * markup_rate)
-        renter_total = _money(mover_charge + operational_markup)
-        commission = _money(mover_charge * commission_rate)
-        net_mover = _money(renter_total - commission)
+        renter_total = _money(base_rate + (rate_per_km * distance_rounded))
+        platform_fee = _money(renter_total * commission_rate)
+        mover_net = _money(renter_total - platform_fee)
 
         return {
+            "mover_id": mover.id,
+            "distance_km": distance_rounded,
+            "base_rate_kes": base_rate,
+            "rate_per_km_kes": rate_per_km,
+            "renter_total_kes": renter_total,
+            "platform_fee_kes": platform_fee,
+            "platform_commission_rate": commission_rate,
+            "mover_net_kes": mover_net,
+            # Frontend-compatible aliases from the newer quote contract.
             "moverId": mover.id,
             "distanceKm": distance_rounded,
             "baseRateKes": base_rate,
             "ratePerKmKes": rate_per_km,
-            "moverChargeKes": mover_charge,
-            "operationalMarkupRate": markup_rate,
-            "operationalMarkupKes": operational_markup,
-            "commissionRate": commission_rate,
-            "commissionKes": commission,
             "renterTotalKes": renter_total,
-            "netMoverPayableKes": net_mover,
+            "commissionKes": platform_fee,
+            "commissionRate": commission_rate,
+            "netMoverPayableKes": mover_net,
             "currency": "KES",
-            # Compatibility aliases used by the older production function.
-            "distance_km": _distance(distance),
-            "base_rate_kes": base_rate,
-            "rate_per_km_kes": rate_per_km,
-            "renter_total_kes": renter_total,
-            "platform_fee_kes": commission,
-            "platform_commission_rate": commission_rate,
-            "mover_net_kes": net_mover,
         }
 
 
@@ -139,15 +119,19 @@ class BookingService:
         if not dropoff_address or not dropoff_address.strip():
             raise ValueError("Dropoff address is required")
 
-        def valid_lat(value: float) -> bool:
-            return value is not None and -90 <= float(value) <= 90
-
-        def valid_lng(value: float) -> bool:
-            return value is not None and -180 <= float(value) <= 180
-
-        if not valid_lat(pickup_latitude) or not valid_lat(dropoff_latitude):
+        if (
+            pickup_latitude is None
+            or dropoff_latitude is None
+            or not -90 <= float(pickup_latitude) <= 90
+            or not -90 <= float(dropoff_latitude) <= 90
+        ):
             raise ValueError("Invalid latitude")
-        if not valid_lng(pickup_longitude) or not valid_lng(dropoff_longitude):
+        if (
+            pickup_longitude is None
+            or dropoff_longitude is None
+            or not -180 <= float(pickup_longitude) <= 180
+            or not -180 <= float(dropoff_longitude) <= 180
+        ):
             raise ValueError("Invalid longitude")
 
         mover = (
@@ -168,7 +152,7 @@ class BookingService:
 
         quote = MoverQuoteService.calculate(mover.id, distance_km)
         now = timezone.now()
-        deadline = now + timezone.timedelta(minutes=REQUEST_WINDOW_MINUTES)
+        deadline = now + timedelta(minutes=REQUEST_WINDOW_MINUTES)
 
         booking = Booking.objects.create(
             renter_id=renter.id,
@@ -177,15 +161,15 @@ class BookingService:
             pickup_address=pickup_address,
             dropoff_address=dropoff_address,
             moving_date=timezone.localdate(),
-            booking_amount=quote["renterTotalKes"],
-            commission_amount=quote["commissionKes"],
-            total_amount=quote["renterTotalKes"],
+            booking_amount=quote["renter_total_kes"],
+            commission_amount=quote["platform_fee_kes"],
+            total_amount=quote["renter_total_kes"],
             status="pending",
             payment_status="unpaid",
             payment_method="",
-            distance_km=quote["distanceKm"],
-            rate_per_km_kes=quote["ratePerKmKes"],
-            base_rate_kes=quote["baseRateKes"],
+            distance_km=quote["distance_km"],
+            rate_per_km_kes=quote["rate_per_km_kes"],
+            base_rate_kes=quote["base_rate_kes"],
             pickup_latitude=pickup_latitude,
             pickup_longitude=pickup_longitude,
             dropoff_latitude=dropoff_latitude,
@@ -195,12 +179,11 @@ class BookingService:
         )
 
         conversation_id = _conversation_id(renter.id, mover.user_id)
-        distance_display = f"{float(quote['distanceKm']):.2f}"
-        total_display = f"{quote['renterTotalKes']:,.2f}"
         content = (
             "Moving request received. Please respond within 30 minutes. "
             f"Pickup: {pickup_address}. Destination: {dropoff_address}. "
-            f"Distance: {distance_display} km. Estimated total: KES {total_display}."
+            f"Distance: {float(quote['distance_km']):.2f} km. "
+            f"Estimated total: KES {quote['renter_total_kes']:,.2f}."
         )
 
         ChatMessage.objects.create(
@@ -211,11 +194,11 @@ class BookingService:
             message_type="booking_request",
             event_data={
                 "booking_id": str(booking.id),
-                "distance_km": str(quote["distanceKm"]),
-                "rate_per_km_kes": str(quote["ratePerKmKes"]),
-                "renter_total_kes": str(quote["renterTotalKes"]),
-                "platform_fee_kes": str(quote["commissionKes"]),
-                "mover_net_kes": str(quote["netMoverPayableKes"]),
+                "distance_km": str(quote["distance_km"]),
+                "rate_per_km_kes": str(quote["rate_per_km_kes"]),
+                "renter_total_kes": str(quote["renter_total_kes"]),
+                "platform_fee_kes": str(quote["platform_fee_kes"]),
+                "mover_net_kes": str(quote["mover_net_kes"]),
                 "pickup_latitude": pickup_latitude,
                 "pickup_longitude": pickup_longitude,
                 "dropoff_latitude": dropoff_latitude,
@@ -261,11 +244,7 @@ class BookingService:
         if decision not in {"confirm", "not_sure", "cancel"}:
             raise ValueError("Invalid decision")
 
-        booking = (
-            Booking.objects.select_for_update()
-            .filter(id=booking_id, mover_id__isnull=False)
-            .first()
-        )
+        booking = Booking.objects.select_for_update().filter(id=booking_id).first()
         if booking is None:
             raise ValueError("Booking not found or unauthorized")
 
@@ -278,7 +257,7 @@ class BookingService:
         now = timezone.now()
         expiry = booking.request_expires_at
         if expiry is None and booking.requested_at is not None:
-            expiry = booking.requested_at + timezone.timedelta(minutes=REQUEST_WINDOW_MINUTES)
+            expiry = booking.requested_at + timedelta(minutes=REQUEST_WINDOW_MINUTES)
         if expiry is not None and expiry < now:
             Booking.objects.filter(id=booking.id).update(
                 status="cancelled",
