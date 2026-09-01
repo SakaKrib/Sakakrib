@@ -1,6 +1,5 @@
 import uuid
 from django.db import models
-from django.contrib.postgres.fields import ArrayField
 
 
 class Listing(models.Model):
@@ -40,7 +39,6 @@ class Listing(models.Model):
     updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        managed = False
         db_table = 'listings'
 
 
@@ -64,5 +62,4 @@ class ListingPaymentIntent(models.Model):
     paypal_fx_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
 
     class Meta:
-        managed = False
         db_table = 'listing_payment_intents'
