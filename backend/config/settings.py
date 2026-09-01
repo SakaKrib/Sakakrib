@@ -22,6 +22,18 @@ if REDIS_URL:
 else:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
 
+# Shared Celery infrastructure. The same Redis deployment used by Channels can
+# also act as the Celery broker/result backend; dedicated URLs remain supported.
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
+CELERY_TIMEZONE = TIME_ZONE = os.getenv('CELERY_TIMEZONE', 'Africa/Nairobi')
+CELERY_ENABLE_UTC = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_SCHEDULE = {}
+
 AUTH_USER_MODEL = 'accounts.Profile'
 AUTHENTICATION_BACKENDS = ['apps.accounts.authentication.CookieJWTAuthenticationBackend']
 AUTH_PASSWORD_VALIDATORS = [
@@ -33,7 +45,6 @@ AUTH_PASSWORD_VALIDATORS = [
 
 DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql','NAME': os.getenv('DB_NAME','sakakrib'),'USER': os.getenv('DB_USER','sakakrib'),'PASSWORD': os.getenv('DB_PASSWORD',''),'HOST': os.getenv('DB_HOST','127.0.0.1'),'PORT': os.getenv('DB_PORT','5432'),'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE','60')),'OPTIONS': {'sslmode': os.getenv('DB_SSLMODE','prefer')}}}
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Africa/Nairobi'
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
