@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .application_review_views import AdminApplicationReviewView
+from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
 from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, ResendOtpView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
 urlpatterns = [
@@ -14,5 +15,9 @@ urlpatterns = [
     path('set-role/', SetRoleView.as_view(), name='set-role'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('me/', MeView.as_view(), name='me'),
+    path('kyc/upload/', KycDocumentUploadView.as_view(), name='kyc-upload'),
+    path('kyc/verify/', KycDocumentVerifyView.as_view(), name='kyc-verify'),
+    path('kyc/submit/', KycSubmitView.as_view(), name='kyc-submit'),
+    path('kyc/document/<str:token>/', KycDocumentView.as_view(), name='kyc-document'),
     path('admin/applications/<uuid:user_id>/review/', AdminApplicationReviewView.as_view(), name='admin-application-review'),
 ]
