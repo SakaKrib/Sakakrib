@@ -6,6 +6,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 
 from .chat_media_services import resolve_signed_attachment, sign_chat_attachment, store_chat_image
+from .chat_services import validate_conversation_for_user
 from .domain_bookings import ChatMessage
 
 
@@ -31,12 +32,12 @@ class ChatMediaUploadView(APIView):
             if action != "upload":
                 raise ValidationError("Invalid media action")
             conversation_id = str(request.data.get("conversation_id", ""))
-            message_id = str(request.data.get("message_id", "")) or "pending"
             if not conversation_id:
                 raise ValidationError("conversation_id is required")
+            validate_conversation_for_user(user_id=request.user.pk, conversation_id=conversation_id)
             file = request.FILES.get("file")
             attachment = store_chat_image(
-                message_id=message_id,
+                message_id=str(request.data.get("message_id", "pending")) or "pending",
                 conversation_id=conversation_id,
                 file=file,
             )
@@ -51,7 +52,7 @@ class ChatMediaFileView(APIView):
 
     def get(self, request, token):
         try:
-            message, attachment = resolve_signed_attachment(token)
+            _message, attachment = resolve_signed_attachment(token)
             if not default_storage.exists(attachment["path"]):
                 return JsonResponse({"error": "Attachment not found"}, status=404)
             file_obj = default_storage.open(attachment["path"], "rb")
