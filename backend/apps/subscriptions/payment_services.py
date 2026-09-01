@@ -88,3 +88,58 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
         'provider_reference': result.provider_reference, 'provider_response': result.raw,
         'status': 'PENDING',
     }
+
+
+def finalize_mpesa_subscription(invoice_id, result_code, result_description='', mpesa_receipt=None,
+                                checkout_request_id=None, merchant_request_id=None, phone_number=None,
+                                paid_amount=None):
+    with transaction.atomic():
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(pk=invoice_id).first()
+        if not invoice:
+            return {'success': True, 'already_settled': True}
+        if invoice.status == 'PAID':
+            return {'success': True, 'already_settled': True, 'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id)}
+
+        invoice.result_code = int(result_code or 0)
+        invoice.result_description = result_description
+        invoice.checkout_request_id = checkout_request_id or invoice.checkout_request_id
+        invoice.merchant_request_id = merchant_request_id
+        invoice.phone_number = phone_number or invoice.phone_number
+        invoice.mpesa_receipt = mpesa_receipt
+
+        if int(result_code or 1) != 0:
+            invoice.status = 'FAILED'
+            invoice.save(update_fields=['result_code','result_description','checkout_request_id','merchant_request_id','phone_number','mpesa_receipt','status'])
+            if invoice.landlord_subscription_id:
+                LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
+            if invoice.real_estate_subscription_id:
+                RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
+            return {'success': False, 'status': 'FAILED'}
+
+        if paid_amount is not None and Decimal(str(paid_amount)) != invoice.amount_kes:
+            raise ValueError('M-Pesa paid amount does not match invoice amount')
+
+        now = timezone.now()
+        invoice.status = 'PAID'
+        invoice.payment_provider = 'MPESA'
+        invoice.payment_method = 'MPESA'
+        invoice.paid_at = now
+        invoice.provider_reference = invoice.checkout_request_id
+        invoice.provider_transaction_id = mpesa_receipt
+        invoice.save(update_fields=['result_code','result_description','checkout_request_id','merchant_request_id','phone_number','mpesa_receipt','status','payment_provider','payment_method','paid_at','provider_reference','provider_transaction_id'])
+
+        if invoice.landlord_subscription_id:
+            LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).update(
+                status='ACTIVE', current_period_start=invoice.billing_period_start or now,
+                current_period_end=invoice.billing_period_end or now,
+                grace_period_end=None, updated_at=now,
+            )
+            sid = invoice.landlord_subscription_id
+        else:
+            RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).update(
+                status='ACTIVE', current_period_start=invoice.billing_period_start or now,
+                current_period_end=invoice.billing_period_end or now,
+                grace_period_end=None, updated_at=now,
+            )
+            sid = invoice.real_estate_subscription_id
+        return {'success': True, 'status': 'PAID', 'subscription_id': str(sid)}
