@@ -1,8 +1,31 @@
 from rest_framework import serializers
+
+from apps.core.domain_property import ListingMedia
+
 from .models import Listing
 
 
+class ListingMediaSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ListingMedia
+        fields = ['id', 'listing_id', 'user_id', 'url', 'label', 'media_type', 'position', 'created_at', 'unit_id']
+        read_only_fields = fields
+
+    def get_url(self, obj):
+        value = obj.url or ''
+        if not value.startswith('django-media://'):
+            return value
+        request = self.context.get('request')
+        if request is None:
+            return f'/api/listings/media/{obj.id}/'
+        return request.build_absolute_uri(f'/api/listings/media/{obj.id}/')
+
+
 class ListingSerializer(serializers.ModelSerializer):
+    media = serializers.SerializerMethodField()
+
     class Meta:
         model = Listing
         fields = [
@@ -12,9 +35,18 @@ class ListingSerializer(serializers.ModelSerializer):
             'size', 'beds', 'baths', 'contact_phone', 'contact_email', 'social_links',
             'booking_enabled', 'payment_enabled', 'is_property_management', 'is_paid',
             'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at',
-            'admin_review_note', 'created_at', 'updated_at',
+            'admin_review_note', 'ai_caption', 'ai_caption_generated_at', 'created_at',
+            'updated_at', 'media',
         ]
-        read_only_fields = ['id', 'user_id', 'is_paid', 'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at', 'admin_review_note', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'user_id', 'is_paid', 'is_published', 'approval_status', 'is_approved',
+            'status', 'admin_reviewed_at', 'admin_review_note', 'ai_caption',
+            'ai_caption_generated_at', 'created_at', 'updated_at', 'media',
+        ]
+
+    def get_media(self, obj):
+        rows = ListingMedia.objects.filter(listing_id=obj.id).order_by('position', 'created_at')
+        return ListingMediaSerializer(rows, many=True, context=self.context).data
 
 
 class ListingCreateSerializer(serializers.Serializer):
