@@ -4,6 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .authorization import is_admin
+
 KYC_SIGNING_SALT = 'sakakrib.kyc-document'
 KYC_SIGNING_MAX_AGE = 900
 ALLOWED_BUCKETS = {'id-documents', 'licenses', 'kyc-documents'}
@@ -23,8 +25,11 @@ class KycDocumentSignView(APIView):
             return Response({'detail': 'Unsupported document storage bucket.'}, status=400)
         if not path:
             return Response({'detail': 'Document path is required.'}, status=400)
-        if bucket == 'kyc-documents' and not _owned_path(request.user.pk, path):
-            return Response({'detail': 'You do not have access to this document.'}, status=403)
+        if bucket == 'kyc-documents':
+            if not (_owned_path(request.user.pk, path) or is_admin(request.user)):
+                return Response({'detail': 'You do not have access to this document.'}, status=403)
+        elif not is_admin(request.user):
+            return Response({'detail': 'Administrator access is required for this document.'}, status=403)
         if not default_storage.exists(path):
             return Response({'detail': 'Document not found.'}, status=404)
         token = signing.dumps({'path': path, 'user_id': str(request.user.pk)}, salt=KYC_SIGNING_SALT)
