@@ -1,5 +1,6 @@
 import uuid
 
+from django.contrib.postgres.fields import ArrayField
 from django.db import migrations, models
 
 
@@ -29,7 +30,7 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(blank=True, null=True)),
                 ('updated_at', models.DateTimeField(blank=True, null=True)),
                 ('business_name', models.TextField(blank=True, default='', null=True)),
-                ('working_days', models.JSONField(blank=True, default=list, null=True)),
+                ('working_days', ArrayField(base_field=models.TextField(), default=list, size=None, blank=True, null=True)),
                 ('start_time', models.TimeField(blank=True, null=True)),
                 ('end_time', models.TimeField(blank=True, null=True)),
                 ('payment_channel', models.TextField(default='mpesa_send_money')),
