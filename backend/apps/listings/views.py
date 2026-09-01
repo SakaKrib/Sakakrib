@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 import uuid
 from pathlib import Path
 
@@ -54,11 +55,11 @@ class ListingMediaView(APIView):
             queryset = queryset.filter(listing_id=listing_id)
 
         if not is_admin(request.user):
-            owned_listing_ids = Listing.objects.filter(user_id=request.user.pk).values_list('id', flat=True)
             queryset = queryset.filter(
                 Q(user_id=request.user.pk)
-                | Q(listing_id__in=Listing.objects.filter(approval_status='approved', is_published=True).values_list('id', flat=True))
-                | Q(listing_id__in=owned_listing_ids)
+                | Q(listing_id__in=Listing.objects.filter(
+                    approval_status='approved', is_published=True
+                ).values_list('id', flat=True))
             )
 
         queryset = queryset.order_by('position', 'created_at')
