@@ -43,6 +43,12 @@ class Listing(models.Model):
 
     class Meta:
         db_table = 'listings'
+        indexes = [
+            models.Index(fields=['city'], name='idx_listings_city'),
+            models.Index(fields=['-created_at'], name='idx_listings_created_at'),
+            models.Index(fields=['user_id'], name='idx_listings_user_id'),
+            models.Index(fields=['is_property_management'], name='listings_property_management_idx'),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(listing_type__in=['rent', 'sale']),
