@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('accounts', '0003_schema_reconciliation_marker'),
+        ('accounts', '0004_refresh_tokens'),
     ]
 
     operations = [
@@ -33,8 +33,8 @@ class Migration(migrations.Migration):
                 ('size', models.TextField(blank=True, default='', null=True)),
                 ('beds', models.IntegerField(default=0, null=True)),
                 ('baths', models.IntegerField(default=0, null=True)),
-                ('contact_phone', models.TextField(blank=True, default='', null=True)),
-                ('contact_email', models.TextField(blank=True, default='', null=True)),
+                ('contact_phone', models.TextField(default='', null=True, blank=True)),
+                ('contact_email', models.TextField(default='', null=True, blank=True)),
                 ('social_links', models.JSONField(default=list)),
                 ('booking_enabled', models.BooleanField(default=False)),
                 ('payment_enabled', models.BooleanField(default=False)),
@@ -45,7 +45,7 @@ class Migration(migrations.Migration):
                 ('is_approved', models.BooleanField(default=False)),
                 ('status', models.TextField(default='pending')),
                 ('admin_reviewed_at', models.DateTimeField(blank=True, null=True)),
-                ('admin_review_note', models.TextField(blank=True, default='', null=True)),
+                ('admin_review_note', models.TextField(default='', blank=True, null=True)),
                 ('ai_caption', models.TextField(blank=True, null=True)),
                 ('ai_caption_generated_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(blank=True, null=True)),
@@ -78,45 +78,27 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='listing',
-            constraint=models.CheckConstraint(
-                condition=models.Q(listing_type__in=['rent', 'sale']),
-                name='listings_listing_type_valid',
-            ),
+            constraint=models.CheckConstraint(condition=models.Q(listing_type__in=['rent', 'sale']), name='listings_listing_type_valid'),
         ),
         migrations.AddConstraint(
             model_name='listing',
-            constraint=models.CheckConstraint(
-                condition=models.Q(deposit_structure__in=['fixed', 'installments']) | models.Q(deposit_structure__isnull=True),
-                name='listings_deposit_structure_valid',
-            ),
+            constraint=models.CheckConstraint(condition=models.Q(deposit_structure__in=['fixed', 'installments']) | models.Q(deposit_structure__isnull=True), name='listings_deposit_structure_valid'),
         ),
         migrations.AddConstraint(
             model_name='listing',
-            constraint=models.CheckConstraint(
-                condition=models.Q(approval_status__in=['pending_review', 'approved', 'rejected']),
-                name='listings_approval_status_valid',
-            ),
+            constraint=models.CheckConstraint(condition=models.Q(approval_status__in=['pending_review', 'approved', 'rejected']), name='listings_approval_status_valid'),
         ),
         migrations.AddConstraint(
             model_name='listingpaymentintent',
-            constraint=models.CheckConstraint(
-                condition=models.Q(role__in=['landlord', 'real_estate']),
-                name='listing_payment_intents_role_valid',
-            ),
+            constraint=models.CheckConstraint(condition=models.Q(role__in=['landlord', 'real_estate']), name='listing_payment_intents_role_valid'),
         ),
         migrations.AddConstraint(
             model_name='listingpaymentintent',
-            constraint=models.CheckConstraint(
-                condition=models.Q(amount_kes=1000),
-                name='listing_payment_intents_amount_1000',
-            ),
+            constraint=models.CheckConstraint(condition=models.Q(amount_kes=1000), name='listing_payment_intents_amount_1000'),
         ),
         migrations.AddConstraint(
             model_name='listingpaymentintent',
-            constraint=models.CheckConstraint(
-                condition=models.Q(status__in=['PENDING', 'PAID', 'FAILED', 'CANCELLED', 'EXPIRED']),
-                name='listing_payment_intents_status_valid',
-            ),
+            constraint=models.CheckConstraint(condition=models.Q(status__in=['PENDING', 'PAID', 'FAILED', 'CANCELLED', 'EXPIRED']), name='listing_payment_intents_status_valid'),
         ),
         migrations.RunSQL(
             sql="""
