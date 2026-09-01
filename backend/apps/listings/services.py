@@ -32,9 +32,11 @@ def _subscription_usage(subscription, role, user_id):
 def get_listing_entitlement(profile):
     if profile.role not in ('landlord', 'real_estate'):
         return {'authorized': False, 'can_create': False, 'reason': 'INVALID_ROLE'}
-    can_start = profile.verification_status == 'verified' and (
-        profile.role != 'landlord' or profile.landlord_application_status == 'approved'
-    )
+    if profile.role == 'landlord':
+        application_approved = profile.landlord_application_status == 'approved'
+    else:
+        application_approved = profile.real_estate_application_status == 'approved'
+    can_start = profile.verification_status == 'verified' and application_approved
     free_used = profile.free_listings_used or 0
     free_remaining = max(FREE_LIMIT - free_used, 0)
     subscription = _current_subscription(profile)
@@ -106,7 +108,7 @@ def create_listing(profile, data):
     profile = Profile.objects.select_for_update().get(pk=profile.id)
     entitlement = get_listing_entitlement(profile)
     if not entitlement.get('can_start_listing'):
-        raise ValidationError('Identity verification and, for landlords, application approval are required before creating a listing.')
+        raise ValidationError('Identity verification and application approval are required before creating a listing.')
     if data.get('is_property_management'):
         if profile.role != 'landlord':
             raise ValidationError('Property management listings are currently available only to landlord accounts.')
@@ -196,14 +198,12 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
         paypal_order_id=paypal_order_id, paypal_fx_rate=paypal_fx_rate, result_code=result_code,
         result_description=result_description, created_at=timezone.now(), paid_at=timezone.now(), updated_at=timezone.now(),
     )
-
     data = dict(intent.listing_data or {})
     listing = _create_listing_from_data(profile, data, entitlement={**entitlement, 'free_listings_remaining': 0},
                                         listing_entitlement='INDIVIDUAL_PAID')
     payment.listing_id = listing['listing_id']
     payment.updated_at = timezone.now()
     payment.save(update_fields=['listing_id', 'updated_at'])
-
     intent.status = 'PAID'
     intent.paid_at = timezone.now()
     intent.listing_id = listing['listing_id']
