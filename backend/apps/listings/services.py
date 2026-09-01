@@ -51,7 +51,8 @@ def get_listing_entitlement(profile):
     requires_individual = bool(can_start and not can_create)
     return {
         'authorized': True, 'role': profile.role, 'can_start_listing': can_start, 'can_create': can_create,
-        'free_limit': FREE_LIMIT, 'free_listings_used': free_used, 'free_listings_remaining': free_remaining,
+        'free_limit': free_limit if (free_limit := FREE_LIMIT) else FREE_LIMIT,
+        'free_listings_used': free_used, 'free_listings_remaining': free_remaining,
         'subscription_id': subscription.id if subscription else None,
         'subscription_plan': plan_obj.name if plan_obj else None,
         'subscription_status': subscription.status if subscription else None,
@@ -135,9 +136,25 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
                             provider_transaction_id=None, checkout_request_id=None, merchant_request_id=None,
                             mpesa_receipt=None, phone_number=None, result_code=None, result_description=None,
                             paypal_order_id=None, paypal_fx_rate=None):
-    intent = ListingPaymentIntent.objects.select_for_update().filter(pk=intent_id, status='PENDING').first()
+    intent = ListingPaymentIntent.objects.select_for_update().filter(pk=intent_id).first()
     if not intent:
-        raise ValidationError('Pending listing payment intent not found or already finalized.')
+        raise ValidationError('Listing payment intent not found.')
+    if intent.status == 'PAID':
+        return {
+            'success': True,
+            'already_processed': True,
+            'payment_intent_id': intent.id,
+            'listing_id': intent.listing_id,
+            'status': 'PAID',
+        }
+    if intent.status != 'PENDING':
+        raise ValidationError('Payment intent is not pending.')
+    if intent.expires_at is not None and intent.expires_at <= timezone.now():
+        intent.status = 'EXPIRED'
+        intent.updated_at = timezone.now()
+        intent.save(update_fields=['status', 'updated_at'])
+        raise ValidationError('Payment intent has expired.')
+
     profile = Profile.objects.select_for_update().get(pk=intent.user_id)
     entitlement = get_listing_entitlement(profile)
     if not entitlement.get('can_start_listing'):
@@ -145,24 +162,36 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
     if entitlement.get('can_create'):
         raise ValidationError('A free or subscription entitlement is now available; paid settlement is not required.')
 
+    provider = (provider or '').upper()
     if provider not in ('MPESA', 'PAYPAL'):
-        raise ValidationError('Unsupported payment provider.')
+        raise ValidationError('Unsupported individual listing payment provider.')
+
     if provider == 'MPESA':
         if result_code is not None and int(result_code) != 0:
             raise ValidationError('M-Pesa payment was not successful.')
-        if provider_amount is None or provider_amount < intent.amount_kes:
-            raise ValidationError('M-Pesa paid amount does not satisfy the listing payment amount.')
+        if provider_amount is None or round(float(provider_amount), 2) != 1000.00:
+            raise ValidationError('Individual listing payment must be exactly KES 1,000.')
+        if round(float(intent.amount_kes), 2) != round(float(provider_amount), 2):
+            raise ValidationError('Payment amount does not match payment intent.')
+        if not (mpesa_receipt or '').strip() or not (provider_reference or checkout_request_id or '').strip():
+            raise ValidationError('Valid M-Pesa receipt and provider reference are required.')
+        provider_currency = 'KES'
+        effective_reference = (provider_reference or checkout_request_id).strip()
     else:
-        if provider_amount is None or provider_amount <= 0:
-            raise ValidationError('PayPal settlement amount is missing.')
+        if not (paypal_order_id or provider_reference or '').strip():
+            raise ValidationError('Valid PayPal order is required.')
+        if provider_amount is None or provider_amount <= 0 or (provider_currency := '').upper() != 'USD':
+            # The caller must provide USD explicitly through provider_currency below.
+            raise ValidationError('Valid PayPal order, USD amount and currency are required.')
+        effective_reference = (paypal_order_id or provider_reference).strip()
 
     payment = ListingPayment.objects.create(
         user_id=profile.id, listing_id=None, payment_intent_id=intent.id,
         amount_kes=intent.amount_kes, status='PAID', payment_provider=provider,
-        payment_method='MPESA' if provider == 'MPESA' else 'PAYPAL', provider_reference=provider_reference,
+        payment_method=provider, provider_reference=effective_reference,
         provider_transaction_id=provider_transaction_id, checkout_request_id=checkout_request_id,
         merchant_request_id=merchant_request_id, mpesa_receipt=mpesa_receipt, phone_number=phone_number,
-        provider_amount=provider_amount, provider_currency='KES' if provider == 'MPESA' else 'USD',
+        provider_amount=provider_amount, provider_currency=provider_currency,
         paypal_order_id=paypal_order_id, paypal_fx_rate=paypal_fx_rate, result_code=result_code,
         result_description=result_description, created_at=timezone.now(), paid_at=timezone.now(), updated_at=timezone.now(),
     )
@@ -181,6 +210,25 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
     intent.paid_at = timezone.now()
     intent.listing_id = listing['listing_id']
     intent.updated_at = timezone.now()
-    intent.save(update_fields=['status', 'paid_at', 'listing_id', 'updated_at'])
-    return {'success': True, 'listing_created': True, 'listing_id': listing['listing_id'],
-            'payment_id': payment.id, 'payment_status': 'PAID', 'listing_entitlement': 'INDIVIDUAL_PAID'}
+    intent.provider = provider
+    intent.provider_reference = effective_reference
+    intent.provider_amount = provider_amount
+    intent.provider_currency = provider_currency
+    intent.paypal_order_id = paypal_order_id
+    intent.paypal_fx_rate = paypal_fx_rate
+    intent.save(update_fields=[
+        'status', 'paid_at', 'listing_id', 'updated_at', 'provider',
+        'provider_reference', 'provider_amount', 'provider_currency',
+        'paypal_order_id', 'paypal_fx_rate',
+    ])
+    return {
+        'success': True,
+        'already_processed': False,
+        'payment_intent_id': intent.id,
+        'payment_id': payment.id,
+        'listing_id': listing['listing_id'],
+        'status': 'PAID',
+        'listing_is_paid': True,
+        'listing_is_published': False,
+        'listing_approval_status': 'pending_review',
+    }
