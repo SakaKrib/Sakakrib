@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.listings',
     'apps.subscriptions',
+    'apps.payments',
 ]
 
 MIDDLEWARE = [
@@ -87,3 +88,15 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SUPABASE_ACCESS_COOKIE = os.getenv('SUPABASE_ACCESS_COOKIE', 'sb-access-token')
 SUPABASE_JWT_SECRET = os.getenv('SUPABASE_JWT_SECRET', '')
 SUPABASE_JWT_AUDIENCE = os.getenv('SUPABASE_JWT_AUDIENCE', 'authenticated')
+
+# Payment provider configuration. Secrets are environment-only; never hard-code them.
+MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY', '')
+MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET', '')
+MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE', '')
+MPESA_PASSKEY = os.getenv('MPESA_PASSKEY', '')
+MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '')
+MPESA_BASE_URL = os.getenv('MPESA_BASE_URL', 'https://sandbox.safaricom.co.ke')
+
+PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID', '')
+PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET', '')
+PAYPAL_BASE_URL = os.getenv('PAYPAL_BASE_URL', 'https://api-m.sandbox.paypal.com')
