@@ -1,4 +1,3 @@
-import mimetypes
 import uuid
 from pathlib import Path
 
@@ -18,6 +17,11 @@ ALLOWED_IMAGE_TYPES = {
 }
 SIGNING_SALT = "sakakrib.chat-attachment"
 SIGNING_MAX_AGE = 3600
+
+
+def _url_for_token(token):
+    base = getattr(settings, "CHAT_ATTACHMENT_BASE_URL", "").rstrip("/")
+    return f"{base}/api/core/chat/media/{token}/"
 
 
 def _attachment_from_message(message):
@@ -40,28 +44,26 @@ def store_chat_image(*, message_id, conversation_id, file):
     size = int(getattr(file, "size", 0) or 0)
     if size <= 0 or size > MAX_IMAGE_BYTES:
         raise ValidationError("Picture attachments must be smaller than 8 MB.")
-
     extension = ALLOWED_IMAGE_TYPES[content_type]
     path = f"chat-attachments/{conversation_id}/{message_id}-{uuid.uuid4().hex}{extension}"
     saved_path = default_storage.save(path, file)
     name = Path(getattr(file, "name", "image") or "image").name
-    return {
-        "path": saved_path,
-        "name": name,
-        "mime_type": content_type,
-        "size": size,
-    }
+    return {"path": saved_path, "name": name, "mime_type": content_type, "size": size}
 
 
 def sign_chat_attachment(*, message, user_id):
     if str(user_id) not in {str(message.sender_id), str(message.receiver_id)}:
         raise ValidationError("Unauthorized chat attachment")
     attachment = _attachment_from_message(message)
-    payload = {"message_id": str(message.id), "path": attachment["path"]}
-    token = signing.dumps(payload, salt=SIGNING_SALT)
-    base = getattr(settings, "CHAT_ATTACHMENT_BASE_URL", "").rstrip("/")
-    url = f"{base}/api/core/chat/media/{token}/"
-    return url
+    return sign_chat_path(path=attachment["path"], conversation_id=message.conversation_id)
+
+
+def sign_chat_path(*, path, conversation_id):
+    prefix = f"chat-attachments/{conversation_id}/"
+    if not path.startswith(prefix):
+        raise ValidationError("Invalid chat attachment path")
+    token = signing.dumps({"path": path, "conversation_id": conversation_id}, salt=SIGNING_SALT)
+    return _url_for_token(token)
 
 
 def resolve_signed_attachment(token):
@@ -69,10 +71,11 @@ def resolve_signed_attachment(token):
         payload = signing.loads(token, salt=SIGNING_SALT, max_age=SIGNING_MAX_AGE)
     except signing.BadSignature as exc:
         raise ValidationError("Invalid or expired attachment URL") from exc
-    message = ChatMessage.objects.filter(pk=payload.get("message_id")).first()
-    if not message:
-        raise ValidationError("Chat message not found")
-    attachment = _attachment_from_message(message)
-    if attachment.get("path") != payload.get("path"):
-        raise ValidationError("Attachment no longer matches the message")
-    return message, attachment
+    path = payload.get("path")
+    conversation_id = payload.get("conversation_id")
+    if not isinstance(path, str) or not isinstance(conversation_id, str):
+        raise ValidationError("Invalid attachment token")
+    prefix = f"chat-attachments/{conversation_id}/"
+    if not path.startswith(prefix):
+        raise ValidationError("Invalid attachment path")
+    return path
