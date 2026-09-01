@@ -26,7 +26,7 @@ class SubscriptionPlansView(APIView):
 
 class MySubscriptionView(APIView):
     def get(self, request):
-        profile = request.user.profile
+        profile = request.user
         subscription = get_current_subscription(profile)
         plan = get_subscription_plan(subscription)
         return Response({'subscription_id': subscription.id if subscription else None,
@@ -42,14 +42,14 @@ class MySubscriptionView(APIView):
 
 class MySubscriptionAccessView(APIView):
     def get(self, request):
-        return Response(get_subscription_access(request.user.profile))
+        return Response(get_subscription_access(request.user))
 
 
 class SubscriptionCheckoutView(APIView):
     def post(self, request):
         try:
             result = create_subscription_checkout(
-                profile=request.user.profile, plan_id=request.data.get('plan_id'),
+                profile=request.user, plan_id=request.data.get('plan_id'),
                 billing_cycle=request.data.get('billing_cycle', 'MONTHLY'),
                 provider=request.data.get('provider'), phone_number=request.data.get('phone_number'))
         except ValueError as exc:
