@@ -37,6 +37,9 @@ TIME_ZONE = 'Africa/Nairobi'
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
+MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
+MEDIA_URL = '/media/'
+CHAT_ATTACHMENT_BASE_URL = os.getenv('CHAT_ATTACHMENT_BASE_URL', '')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
