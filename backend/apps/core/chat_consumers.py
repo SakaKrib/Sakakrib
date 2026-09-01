@@ -4,8 +4,12 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.core.exceptions import ValidationError
 
-from .chat_services import conversation_id_for_users, send_message, serialize_message
-from .domain_bookings import ChatMessage
+from .chat_services import (
+    conversation_id_for_users,
+    send_message,
+    serialize_message,
+    validate_conversation_for_user,
+)
 
 
 class MovingChatConsumer(AsyncJsonWebsocketConsumer):
@@ -19,6 +23,7 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
         self.group_name = f"chat_{digest}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        await self.send_json({"type": "ready", "conversation_id": self.conversation_id})
 
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
@@ -29,8 +34,12 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
             receiver_id = content.get("receiver_id")
             if not receiver_id:
                 raise ValidationError("receiver_id is required")
+            expected_receiver = await self._other_participant()
+            if str(receiver_id) != str(expected_receiver):
+                raise ValidationError("Receiver is not a participant in this conversation")
+
             message = await self._send(
-                receiver_id=receiver_id,
+                receiver_id=expected_receiver,
                 content=content.get("content", ""),
                 message_type=content.get("message_type", "text"),
                 event_data=content.get("event_data"),
@@ -47,13 +56,21 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _authorized_conversation(self):
-        parts = self.conversation_id.split("__")
-        if len(parts) != 2 or str(self.user.pk) not in parts:
-            return False
         try:
-            return conversation_id_for_users(parts[0], parts[1]) == self.conversation_id
-        except Exception:
+            validate_conversation_for_user(
+                user_id=self.user.pk,
+                conversation_id=self.conversation_id,
+            )
+            return True
+        except (ValidationError, ValueError, TypeError):
             return False
+
+    @database_sync_to_async
+    def _other_participant(self):
+        parts = self.conversation_id.split("__")
+        if len(parts) != 2:
+            raise ValidationError("Invalid conversation id")
+        return parts[1] if parts[0] == str(self.user.pk) else parts[0]
 
     @database_sync_to_async
     def _send(self, **kwargs):
