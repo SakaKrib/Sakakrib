@@ -22,6 +22,8 @@ from .moving_payment_views import (
     MovingEscrowReleaseView,
     MovingMpesaCallbackView,
     MovingMpesaStartView,
+    MovingPaypalStartView,
+    MovingPaypalWebhookView,
 )
 from .rent_views import (
     LandlordRentInvoiceCreateView,
@@ -61,6 +63,8 @@ urlpatterns = [
     # Moving payment lifecycle: renter payment -> held escrow -> admin release.
     path("bookings/<uuid:booking_id>/payment/mpesa/start/", MovingMpesaStartView.as_view(), name="moving-payment-mpesa-start"),
     path("payments/moving/mpesa/callback/", MovingMpesaCallbackView.as_view(), name="moving-payment-mpesa-callback"),
+    path("bookings/<uuid:booking_id>/payment/paypal/start/", MovingPaypalStartView.as_view(), name="moving-payment-paypal-start"),
+    path("payments/moving/paypal/webhook/", MovingPaypalWebhookView.as_view(), name="moving-payment-paypal-webhook"),
     path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"),
 
     # External rent verification workflow.
