@@ -1,17 +1,4 @@
-import {
-  protectedGet,
-  protectedPost,
-} from '@/lib/protectedApi';
-
-// ============================================================
-// TYPES
-// ============================================================
-//
-// This service uses the application's HttpOnly-cookie transport
-// exclusively. It does NOT use the browser Supabase Auth session.
-// protectedApi forwards the authenticated cookie context through
-// the protected-api Edge Function to PostgREST/RPC.
-// ============================================================
+import { protectedGet } from '@/lib/djangoApi';
 
 export interface RealEstateSubscription {
   subscription_id: string;
@@ -51,31 +38,32 @@ export interface RealEstateListingSummary {
   cover_photo_url: string | null;
 }
 
-interface RealEstateSubscriptionRow {
-  subscription_id: string;
-  plan_id: string;
-  plan_name: string;
-  subscription_status: string;
-  billing_cycle: 'MONTHLY' | 'ANNUAL';
-  max_listings: number | null;
-  max_units_per_listing: number | null;
-  current_period_start: string;
-  current_period_end: string;
-  grace_period_end: string | null;
+interface SubscriptionResponse {
+  subscription_id?: string | null;
+  plan_id?: string | null;
+  plan_name?: string | null;
+  subscription_status?: string | null;
+  billing_cycle?: 'MONTHLY' | 'ANNUAL' | null;
+  max_listings?: number | null;
+  max_units_per_listing?: number | null;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  grace_period_end?: string | null;
 }
 
-interface RealEstateListingEntitlementRow {
-  can_start_listing: boolean | null;
-  can_create: boolean | null;
-  requires_subscription: boolean | null;
-  requires_individual_payment: boolean | null;
-  free_listings_remaining: number | null;
-  free_limit: number | null;
-  individual_listing_price_kes: number | null;
+interface EntitlementResponse {
+  can_start_listing?: boolean;
+  can_create?: boolean;
+  requires_subscription?: boolean;
+  requires_individual_payment?: boolean;
+  free_listings_remaining?: number;
+  free_limit?: number;
+  individual_listing_price_kes?: number;
 }
 
-interface RealEstateListingRow {
+interface ListingRow {
   id: string;
+  user_id: string;
   title: string;
   city: string;
   county: string;
@@ -88,168 +76,54 @@ interface RealEstateListingRow {
   created_at: string;
 }
 
-interface ListingMediaRow {
-  listing_id: string;
-  url: string;
-  position: number | null;
+export async function getCurrentRealEstateSubscription(): Promise<RealEstateSubscription | null> {
+  const row = await protectedGet<SubscriptionResponse>('/api/subscriptions/me/');
+  if (!row.subscription_id) return null;
+  return {
+    subscription_id: String(row.subscription_id),
+    plan_id: String(row.plan_id ?? ''),
+    plan_name: String(row.plan_name ?? ''),
+    subscription_status: String(row.subscription_status ?? ''),
+    billing_cycle: (row.billing_cycle ?? 'MONTHLY') as 'MONTHLY' | 'ANNUAL',
+    max_listings: row.max_listings == null ? null : Number(row.max_listings),
+    max_units_per_listing: row.max_units_per_listing == null ? null : Number(row.max_units_per_listing),
+    current_period_start: String(row.current_period_start ?? ''),
+    current_period_end: String(row.current_period_end ?? ''),
+    grace_period_end: row.grace_period_end ? String(row.grace_period_end) : null,
+  };
 }
 
-type RpcResult<T> = T | T[] | null;
-
-function firstRpcRow<T>(data: RpcResult<T>): T | null {
-  if (Array.isArray(data)) {
-    return data[0] ?? null;
-  }
-
-  return data;
-}
-
-// ============================================================
-// SUBSCRIPTION
-// ============================================================
-
-export async function getCurrentRealEstateSubscription(): Promise<
-  RealEstateSubscription | null
-> {
-  try {
-    const data = await protectedPost<
-      RpcResult<RealEstateSubscriptionRow>
-    >('/rest/v1/rpc/get_current_real_estate_subscription', {});
-
-    const row = firstRpcRow(data);
-    return row ? { ...row } : null;
-  } catch (error) {
-    console.error(
-      'Failed to load real estate subscription:',
-      error
-    );
-
-    throw new Error(
-      error instanceof Error
-        ? error.message
-        : 'Unable to load subscription.'
-    );
-  }
-}
-
-// ============================================================
-// LISTING ENTITLEMENT
-// ============================================================
-
-export async function getRealEstateListingEntitlement(
-  userId: string
-): Promise<RealEstateListingEntitlement> {
-  const data = await protectedPost<
-    RpcResult<RealEstateListingEntitlementRow>
-  >(
-    '/rest/v1/rpc/get_real_estate_listing_entitlement',
-    { p_real_estate_id: userId }
-  );
-
-  const raw = firstRpcRow(data);
-
-  if (!raw) {
-    throw new Error('Unable to determine listing entitlement.');
-  }
-
+export async function getRealEstateListingEntitlement(_userId: string): Promise<RealEstateListingEntitlement> {
+  const raw = await protectedGet<EntitlementResponse>('/api/listings/entitlement/');
   return {
     canStartListing: Boolean(raw.can_start_listing),
     canCreate: Boolean(raw.can_create),
     requiresSubscription: Boolean(raw.requires_subscription),
-    requiresIndividualPayment: Boolean(
-      raw.requires_individual_payment
-    ),
-    freeListingsRemaining: Number(
-      raw.free_listings_remaining ?? 0
-    ),
+    requiresIndividualPayment: Boolean(raw.requires_individual_payment),
+    freeListingsRemaining: Number(raw.free_listings_remaining ?? 0),
     freeLimit: Number(raw.free_limit ?? 0),
-    individualListingPriceKes: Number(
-      raw.individual_listing_price_kes ?? 1000
-    ),
+    individualListingPriceKes: Number(raw.individual_listing_price_kes ?? 1000),
   };
 }
 
-// ============================================================
-// LISTINGS
-// ============================================================
-//
-// Do not call supabase.auth.getUser() here. The browser has no
-// Supabase Auth session in the HttpOnly architecture.
-//
-// The protected-api Edge Function carries the authenticated user
-// context to PostgREST, so RLS scopes the listings query to the
-// current user. No client-derived user ID is required for this
-// read.
-// ============================================================
-
-export async function getMyRealEstateListings(): Promise<
-  RealEstateListingSummary[]
-> {
-  const data = await protectedGet<RealEstateListingRow[]>(
-    '/rest/v1/listings?select=id,title,city,county,price_kes,listing_type,approval_status,is_approved,is_published,is_paid,created_at&order=created_at.desc'
-  );
-
-  const listings: RealEstateListingRow[] = Array.isArray(data)
-    ? data
-    : [];
-
-  if (listings.length === 0) {
-    return [];
-  }
-
-  const listingIds = listings.map(
-    (listing: RealEstateListingRow) => listing.id
-  );
-
-  const mediaFilter = listingIds
-    .map((id) => encodeURIComponent(id))
-    .join(',');
-
-  let media: ListingMediaRow[] = [];
-
-  try {
-    const mediaData = await protectedGet<ListingMediaRow[]>(
-      `/rest/v1/listing_media?select=listing_id,url,position&listing_id=in.(${mediaFilter})&media_type=eq.photo&order=position.asc`
-    );
-
-    media = Array.isArray(mediaData) ? mediaData : [];
-  } catch (error) {
-    console.error('Unable to load listing photos:', error);
-  }
-
-  const coverByListing = new Map<string, string>();
-
-  for (const item of media) {
-    if (!coverByListing.has(item.listing_id)) {
-      coverByListing.set(item.listing_id, item.url);
-    }
-  }
-
-  return listings.map(
-    (listing: RealEstateListingRow): RealEstateListingSummary => ({
-      id: listing.id,
-      title: listing.title,
-      city: listing.city,
-      county: listing.county,
-      price_kes:
-        listing.price_kes === null
-          ? null
-          : Number(listing.price_kes),
-      listing_type: listing.listing_type,
-      approval_status: listing.approval_status,
-      is_approved: Boolean(listing.is_approved),
-      is_published: Boolean(listing.is_published),
-      is_paid: Boolean(listing.is_paid),
-      created_at: listing.created_at,
-      cover_photo_url:
-        coverByListing.get(listing.id) ?? null,
-    })
-  );
+export async function getMyRealEstateListings(userId?: string): Promise<RealEstateListingSummary[]> {
+  const data = await protectedGet<{ results?: ListingRow[] }>('/api/listings/?limit=100&offset=0');
+  const listings = (data.results ?? []).filter((listing) => !userId || listing.user_id === userId);
+  return listings.map((listing) => ({
+    id: listing.id,
+    title: listing.title,
+    city: listing.city,
+    county: listing.county,
+    price_kes: listing.price_kes === null ? null : Number(listing.price_kes),
+    listing_type: listing.listing_type,
+    approval_status: listing.approval_status,
+    is_approved: Boolean(listing.is_approved),
+    is_published: Boolean(listing.is_published),
+    is_paid: Boolean(listing.is_paid),
+    created_at: listing.created_at,
+    cover_photo_url: null,
+  }));
 }
-
-// ============================================================
-// DASHBOARD AGGREGATE
-// ============================================================
 
 export interface RealEstateDashboardData {
   subscription: RealEstateSubscription | null;
@@ -257,18 +131,11 @@ export interface RealEstateDashboardData {
   listings: RealEstateListingSummary[];
 }
 
-export async function loadRealEstateDashboardData(
-  userId: string
-): Promise<RealEstateDashboardData> {
+export async function loadRealEstateDashboardData(userId: string): Promise<RealEstateDashboardData> {
   const [subscription, entitlement, listings] = await Promise.all([
     getCurrentRealEstateSubscription(),
     getRealEstateListingEntitlement(userId),
-    getMyRealEstateListings(),
+    getMyRealEstateListings(userId),
   ]);
-
-  return {
-    subscription,
-    entitlement,
-    listings,
-  };
+  return { subscription, entitlement, listings };
 }
