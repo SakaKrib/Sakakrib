@@ -2,8 +2,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.payments.services import get_provider
 from .models import SubscriptionInvoice, SubscriptionPlan
-from .payment_services import create_subscription_checkout, finalize_mpesa_subscription
+from .payment_services import (create_subscription_checkout, finalize_mpesa_subscription,
+                               finalize_paypal_subscription)
 from .services import get_current_subscription, get_subscription_access, get_subscription_plan
 
 
@@ -16,14 +18,11 @@ class SubscriptionPlansView(APIView):
         queryset = SubscriptionPlan.objects.all().order_by('audience', 'monthly_price_kes')
         if audience in ('LANDLORD', 'REAL_ESTATE'):
             queryset = queryset.filter(audience=audience)
-        return Response([
-            {'id': plan.id, 'name': plan.name, 'audience': plan.audience,
-             'max_listings': plan.max_listings, 'max_units_per_listing': plan.max_units_per_listing,
-             'monthly_price_kes': plan.monthly_price_kes, 'annual_price_kes': plan.annual_price_kes,
-             'paypal_monthly_plan_id': plan.paypal_monthly_plan_id,
-             'paypal_annual_plan_id': plan.paypal_annual_plan_id}
-            for plan in queryset
-        ])
+        return Response([{'id': plan.id, 'name': plan.name, 'audience': plan.audience,
+                          'max_listings': plan.max_listings, 'max_units_per_listing': plan.max_units_per_listing,
+                          'monthly_price_kes': plan.monthly_price_kes, 'annual_price_kes': plan.annual_price_kes,
+                          'paypal_monthly_plan_id': plan.paypal_monthly_plan_id,
+                          'paypal_annual_plan_id': plan.paypal_annual_plan_id} for plan in queryset])
 
 
 class MySubscriptionView(APIView):
@@ -84,3 +83,22 @@ class MpesaSubscriptionCallbackView(APIView):
         except Exception as exc:
             return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', **result})
+
+
+class PayPalSubscriptionCaptureView(APIView):
+    def post(self, request):
+        invoice_id = request.data.get('invoice_id')
+        order_id = request.data.get('order_id')
+        if not invoice_id or not order_id:
+            return Response({'success': False, 'detail': 'invoice_id and order_id are required.'}, status=400)
+        invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
+        if not invoice or invoice.status != 'PENDING':
+            return Response({'success': False, 'detail': 'Pending subscription invoice not found.'}, status=404)
+        if invoice.payment_provider != 'PAYPAL' or invoice.provider_reference != order_id:
+            return Response({'success': False, 'detail': 'PayPal order does not match invoice.'}, status=400)
+        try:
+            result = get_provider('paypal').verify_payment(provider_reference=order_id)
+            settled = finalize_paypal_subscription(invoice.id, order_id, result)
+        except Exception as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=502)
+        return Response({**settled, 'payment_captured': True, 'provider_reference': order_id})
