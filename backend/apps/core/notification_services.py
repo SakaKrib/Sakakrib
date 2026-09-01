@@ -28,7 +28,7 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
                 "email_id": None,
             }
 
-    profile = Profile.objects.filter(pk=user_id, is_active=True).first()
+    profile = Profile.objects.filter(pk=user_id).first()
     if not profile:
         raise ValidationError("Recipient profile not found")
 
