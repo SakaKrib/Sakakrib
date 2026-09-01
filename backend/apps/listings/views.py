@@ -51,9 +51,8 @@ class ListingListView(APIView):
         if not getattr(user, 'email_verified', False):
             return Response({'error': 'Email verification is required.'}, status=status.HTTP_403_FORBIDDEN)
 
-        admin = is_admin(user)
         queryset = Listing.objects.all()
-        if not admin:
+        if not is_admin(user):
             queryset = queryset.filter(
                 Q(user_id=user.pk)
                 | Q(approval_status='approved', is_published=True)
@@ -78,6 +77,15 @@ class ListingListView(APIView):
             'offset': offset,
             'results': ListingSerializer(listings, many=True).data,
         })
+
+    def post(self, request):
+        """Keep the legacy POST /api/listings/ creation endpoint while GET lists listings."""
+        serializer = ListingCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = create_listing(request.user, serializer.validated_data)
+        if not result.get('listing_created'):
+            return Response(result, status=402)
+        return Response(result, status=201)
 
     @staticmethod
     def _apply_filters(queryset, params):
