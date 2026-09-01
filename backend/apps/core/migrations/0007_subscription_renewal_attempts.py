@@ -43,7 +43,10 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name='subscriptionrenewalattempt',
             constraint=models.CheckConstraint(
-                condition=(models.Q(subscription_id__isnull=False) != models.Q(real_estate_subscription_id__isnull=False)),
+                condition=(
+                    (models.Q(subscription_id__isnull=False) & models.Q(real_estate_subscription_id__isnull=True))
+                    | (models.Q(subscription_id__isnull=True) & models.Q(real_estate_subscription_id__isnull=False))
+                ),
                 name='subscription_renewal_attempts_owner_check',
             ),
         ),
