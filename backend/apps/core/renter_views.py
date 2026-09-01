@@ -3,7 +3,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .renter_services import claim_renter_invitation, create_renter_invitation, preview_renter_invitation, resend_renter_invitation
+from .renter_services import (
+    cancel_renter_invitation,
+    claim_renter_invitation,
+    create_renter_invitation,
+    preview_renter_invitation,
+    resend_renter_invitation,
+)
 
 
 def _error(exc):
@@ -46,5 +52,14 @@ class RenterInvitationResendView(APIView):
             return Response(resend_renter_invitation(
                 landlord_id=request.user.id, association_id=association_id,
                 app_base_url=request.data.get("app_base_url")), status=status.HTTP_200_OK)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class RenterInvitationCancelView(APIView):
+    def post(self, request, association_id):
+        try:
+            return Response(cancel_renter_invitation(
+                landlord_id=request.user.id, association_id=association_id), status=status.HTTP_200_OK)
         except (ValidationError, TypeError, ValueError) as exc:
             return _error(exc)
