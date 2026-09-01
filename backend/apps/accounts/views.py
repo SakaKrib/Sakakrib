@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -96,9 +97,8 @@ class LoginView(APIView):
 class RefreshView(APIView):
     permission_classes = [AllowAny]
 
-    @transaction.atomic
     def post(self, request):
-        raw = request.COOKIES.get('sakakrib_refresh') or request.COOKIES.get(getattr(__import__('django.conf', fromlist=['settings']), 'settings').JWT_REFRESH_COOKIE)
+        raw = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
         if not raw:
             return Response({'authenticated': False, 'error': 'Refresh token is required.'}, status=status.HTTP_401_UNAUTHORIZED)
         try:
@@ -139,7 +139,7 @@ class LogoutView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        raw = request.COOKIES.get('sakakrib_refresh')
+        raw = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
         if raw:
             revoke_refresh_token(raw)
         response = Response({'success': True, 'authenticated': False})
