@@ -56,6 +56,38 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   return body as T;
 };
 
+const requestMultipart = async <T>(
+  path: string,
+  formData: FormData,
+): Promise<T> => {
+  if (!path.startsWith('/api/')) {
+    throw new Error('Django API paths must target /api/.');
+  }
+
+  const response = await fetch(`${getBaseUrl()}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+    body: formData,
+  });
+
+  const body = await readJson<T | DjangoApiErrorBody>(response);
+  if (!response.ok) {
+    const errorBody = body as DjangoApiErrorBody | null;
+    const error = new Error(
+      errorBody?.detail || errorBody?.error || errorBody?.message ||
+        `Django API request failed (${response.status}).`,
+    ) as DjangoApiException;
+    error.status = response.status;
+    error.authenticated = errorBody?.authenticated;
+    throw error;
+  }
+
+  return body as T;
+};
+
 export const protectedGet = <T = unknown>(path: string, init: RequestInit = {}) =>
   request<T>(path, { ...init, method: 'GET' });
 
@@ -70,3 +102,6 @@ export const protectedPut = <T = unknown>(path: string, body: unknown, init: Req
 
 export const protectedDelete = <T = unknown>(path: string, init: RequestInit = {}) =>
   request<T>(path, { ...init, method: 'DELETE' });
+
+export const protectedUpload = <T = unknown>(path: string, formData: FormData) =>
+  requestMultipart<T>(path, formData);
