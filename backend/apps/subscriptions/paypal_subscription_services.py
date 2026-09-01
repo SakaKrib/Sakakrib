@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.core.domain_platform import PaymentWebhookEvent, SubscriptionRenewalAttempt
+from apps.core.domain_platform import PaymentWebhookEvent
 
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice
 
@@ -82,15 +82,10 @@ def verify_paypal_webhook(payload, headers):
     }
     if not all(required.values()):
         raise ValueError('Incomplete PayPal webhook signature headers')
-    body = {
-        **required,
-        'webhook_id': webhook_id,
-        'webhook_event': payload,
-    }
     result = _paypal_json(
         '/v1/notifications/verify-webhook-signature',
         method='POST',
-        body=body,
+        body={**required, 'webhook_id': webhook_id, 'webhook_event': payload},
         token=_paypal_token(),
     )
     if result.get('verification_status') != 'SUCCESS':
@@ -101,14 +96,10 @@ def verify_paypal_webhook(payload, headers):
 def _subscription_for_paypal_id(subscription_id):
     if not subscription_id:
         return None, None
-    landlord = LandlordSubscription.objects.select_for_update().filter(
-        paypal_subscription_id=subscription_id
-    ).first()
+    landlord = LandlordSubscription.objects.select_for_update().filter(paypal_subscription_id=subscription_id).first()
     if landlord:
         return landlord, 'landlord'
-    real_estate = RealEstateSubscription.objects.select_for_update().filter(
-        paypal_subscription_id=subscription_id
-    ).first()
+    real_estate = RealEstateSubscription.objects.select_for_update().filter(paypal_subscription_id=subscription_id).first()
     if real_estate:
         return real_estate, 'real_estate'
     return None, None
@@ -118,11 +109,8 @@ def _event_subscription_id(payload):
     resource = payload.get('resource') or {}
     if payload.get('event_type', '').startswith('BILLING.SUBSCRIPTION.'):
         return resource.get('id')
-    return (
-        resource.get('billing_agreement_id')
-        or ((resource.get('supplementary_data') or {}).get('related_ids') or {}).get('subscription_id')
-        or ((payload.get('resource') or {}).get('links') or [{}])[0].get('href', '').rstrip('/').split('/')[-1]
-    )
+    related = (resource.get('supplementary_data') or {}).get('related_ids') or {}
+    return resource.get('billing_agreement_id') or related.get('subscription_id')
 
 
 def _next_billing_time(resource):
@@ -151,7 +139,7 @@ def verify_and_finalize_initial_subscription(invoice_id, paypal_subscription_id)
     subscription_id = invoice.landlord_subscription_id or invoice.real_estate_subscription_id
     subscription_model = LandlordSubscription if invoice.landlord_subscription_id else RealEstateSubscription
     subscription = subscription_model.objects.select_for_update().get(pk=subscription_id)
-    if subscription.paypal_plan_id is None:
+    if not subscription.paypal_plan_id:
         raise ValueError('PayPal plan is not attached to this subscription')
     details = _paypal_json(
         f'/v1/billing/subscriptions/{urllib.parse.quote(str(paypal_subscription_id), safe="")}',
@@ -162,17 +150,18 @@ def verify_and_finalize_initial_subscription(invoice_id, paypal_subscription_id)
     remote_plan_id = (details.get('plan_id') or '').strip()
     if remote_plan_id and remote_plan_id != subscription.paypal_plan_id:
         raise ValueError('PayPal subscription plan does not match the selected SakaKrib plan')
+    now = timezone.now()
     subscription.paypal_subscription_id = paypal_subscription_id
     subscription.paypal_status = details.get('status')
     subscription.auto_renew = True
     subscription.next_billing_at = _next_billing_time(details)
-    subscription.updated_at = timezone.now()
+    subscription.updated_at = now
     subscription.save(update_fields=['paypal_subscription_id', 'paypal_status', 'auto_renew', 'next_billing_at', 'updated_at'])
     invoice.paypal_subscription_id = paypal_subscription_id
     invoice.provider_reference = paypal_subscription_id
     invoice.status = 'PAID'
     invoice.payment_method = 'PAYPAL'
-    invoice.paid_at = timezone.now()
+    invoice.paid_at = now
     invoice.save(update_fields=['paypal_subscription_id', 'provider_reference', 'status', 'payment_method', 'paid_at'])
     from .payment_services import _activate_invoice
     return _activate_invoice(invoice, provider='PAYPAL', provider_reference=paypal_subscription_id, transaction_id=paypal_subscription_id)
@@ -187,18 +176,13 @@ def process_paypal_subscription_webhook(payload):
     if event_type not in PAYPAL_SUBSCRIPTION_EVENTS:
         return {'status': 'IGNORED', 'event_id': event_id, 'event_type': event_type}
 
-    existing = PaymentWebhookEvent.objects.select_for_update().filter(
-        provider='PAYPAL_SUBSCRIPTION', event_id=event_id
-    ).first()
+    existing = PaymentWebhookEvent.objects.select_for_update().filter(provider='PAYPAL_SUBSCRIPTION', event_id=event_id).first()
     if existing and existing.status == 'PROCESSED':
         return {'status': 'ALREADY_PROCESSED', 'event_id': event_id}
     if existing is None:
         existing = PaymentWebhookEvent.objects.create(
-            provider='PAYPAL_SUBSCRIPTION',
-            event_id=event_id,
-            event_type=event_type,
-            status='PROCESSING',
-            metadata=payload,
+            provider='PAYPAL_SUBSCRIPTION', event_id=event_id, event_type=event_type,
+            status='PROCESSING', metadata=payload,
         )
     else:
         existing.status = 'PROCESSING'
@@ -298,18 +282,6 @@ def process_paypal_subscription_webhook(payload):
                 invoice.paid_at = invoice.paid_at or now
                 invoice.save(update_fields=['status', 'paid_at'])
 
-            attempt_day = 1
-            SubscriptionRenewalAttempt.objects.update_or_create(
-                **({'subscription_id': subscription.id} if audience == 'landlord' else {'subscription_id': None, 'real_estate_subscription_id': subscription.id}),
-                attempt_day=attempt_day,
-                defaults={
-                    'status': 'PAID',
-                    'payment_provider': 'PAYPAL',
-                    'provider_reference': str(resource.get('billing_agreement_id') or subscription_id),
-                    'provider_transaction_id': str(resource.get('id') or subscription_id),
-                    'completed_at': now,
-                },
-            )
             subscription.status = 'ACTIVE'
             subscription.paypal_status = 'ACTIVE'
             subscription.auto_renew = not subscription.cancel_at_period_end
