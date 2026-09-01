@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .authorization import is_admin
 from .models import Profile
 
 MAX_KYC_IMAGE_BYTES = 10 * 1024 * 1024
@@ -23,7 +24,7 @@ def _owned_path(user_id, path):
 
 
 def _signed_url(request, path):
-    token = signing.dumps({'path': path, 'user_id': str(request.user.pk)}, salt=KYC_SIGNING_SALT)
+    token = signing.dumps({'path': path, 'user_id': str(request.user.pk), 'admin': is_admin(request.user)}, salt=KYC_SIGNING_SALT)
     return request.build_absolute_uri(f'/api/accounts/kyc/document/{token}/')
 
 
@@ -109,7 +110,9 @@ class KycDocumentView(APIView):
             return Response({'detail': 'Invalid or expired KYC document URL.'}, status=404)
         path = payload.get('path')
         user_id = payload.get('user_id')
-        if not path or not user_id or not _owned_path(user_id, path) or not default_storage.exists(path):
+        admin_access = bool(payload.get('admin'))
+        authorized_path = admin_access or _owned_path(user_id, path)
+        if not path or not user_id or not authorized_path or not default_storage.exists(path):
             return Response({'detail': 'Document not found.'}, status=404)
         file_obj = default_storage.open(path, 'rb')
         extension = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
