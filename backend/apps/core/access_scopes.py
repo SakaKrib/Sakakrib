@@ -32,12 +32,14 @@ def bookings_for_user(user):
 
 
 def booking_events_for_user(user):
-    """Production booking_events SELECT scope."""
+    """Production booking_events SELECT scope: renter, mover, or admin."""
     if is_admin(user):
         return BookingEvent.objects.all()
     mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
     return BookingEvent.objects.filter(
-        Q(renter_id=user.pk) | Q(mover_profile_id__in=mover_ids)
+        Q(renter_id=user.pk)
+        | Q(mover_id=user.pk)
+        | Q(mover_profile_id__in=mover_ids)
     )
 
 
