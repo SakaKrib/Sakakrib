@@ -38,7 +38,9 @@ def get_listing_entitlement(profile):
     free_used = profile.free_listings_used or 0
     free_remaining = max(FREE_LIMIT - free_used, 0)
     subscription = _current_subscription(profile)
-    used = 0; limit = None; plan_obj = None
+    used = 0
+    limit = None
+    plan_obj = None
     if subscription:
         from apps.subscriptions.models import SubscriptionPlan
         plan_obj = SubscriptionPlan.objects.get(pk=subscription.plan_id)
@@ -51,8 +53,7 @@ def get_listing_entitlement(profile):
     requires_individual = bool(can_start and not can_create)
     return {
         'authorized': True, 'role': profile.role, 'can_start_listing': can_start, 'can_create': can_create,
-        'free_limit': free_limit if (free_limit := FREE_LIMIT) else FREE_LIMIT,
-        'free_listings_used': free_used, 'free_listings_remaining': free_remaining,
+        'free_limit': FREE_LIMIT, 'free_listings_used': free_used, 'free_listings_remaining': free_remaining,
         'subscription_id': subscription.id if subscription else None,
         'subscription_plan': plan_obj.name if plan_obj else None,
         'subscription_status': subscription.status if subscription else None,
@@ -121,7 +122,7 @@ def create_listing_payment_intent(profile, listing_data):
     profile = Profile.objects.select_for_update().get(pk=profile.id)
     entitlement = get_listing_entitlement(profile)
     if not entitlement.get('can_start_listing'):
-        raise ValidationError('Identity verification and, for landlords, application approval are required before payment.')
+        raise ValidationError('Identity verification and application approval are required before payment.')
     if entitlement.get('can_create'):
         raise ValidationError('A free or subscription listing entitlement is available.')
     ListingPaymentIntent.objects.filter(user_id=profile.id, status='PENDING').update(status='CANCELLED', updated_at=timezone.now())
@@ -133,20 +134,15 @@ def create_listing_payment_intent(profile, listing_data):
 
 @transaction.atomic
 def finalize_listing_payment(intent_id, *, provider, provider_reference, provider_amount=None,
-                            provider_transaction_id=None, checkout_request_id=None, merchant_request_id=None,
-                            mpesa_receipt=None, phone_number=None, result_code=None, result_description=None,
-                            paypal_order_id=None, paypal_fx_rate=None):
+                            provider_currency=None, provider_transaction_id=None, checkout_request_id=None,
+                            merchant_request_id=None, mpesa_receipt=None, phone_number=None, result_code=None,
+                            result_description=None, paypal_order_id=None, paypal_fx_rate=None):
     intent = ListingPaymentIntent.objects.select_for_update().filter(pk=intent_id).first()
     if not intent:
         raise ValidationError('Listing payment intent not found.')
     if intent.status == 'PAID':
-        return {
-            'success': True,
-            'already_processed': True,
-            'payment_intent_id': intent.id,
-            'listing_id': intent.listing_id,
-            'status': 'PAID',
-        }
+        return {'success': True, 'already_processed': True, 'payment_intent_id': intent.id,
+                'listing_id': intent.listing_id, 'status': 'PAID'}
     if intent.status != 'PENDING':
         raise ValidationError('Payment intent is not pending.')
     if intent.expires_at is not None and intent.expires_at <= timezone.now():
@@ -180,9 +176,14 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
     else:
         if not (paypal_order_id or provider_reference or '').strip():
             raise ValidationError('Valid PayPal order is required.')
-        if provider_amount is None or provider_amount <= 0 or (provider_currency := '').upper() != 'USD':
-            # The caller must provide USD explicitly through provider_currency below.
-            raise ValidationError('Valid PayPal order, USD amount and currency are required.')
+        if provider_amount is None or provider_amount <= 0:
+            raise ValidationError('Valid PayPal amount is required.')
+        if (provider_currency or '').upper() != 'USD':
+            raise ValidationError('PayPal listing settlement must be denominated in USD.')
+        if intent.provider_currency and intent.provider_currency.upper() != 'USD':
+            raise ValidationError('PayPal currency does not match the payment intent.')
+        if intent.provider_amount is not None and round(float(intent.provider_amount), 2) != round(float(provider_amount), 2):
+            raise ValidationError('PayPal amount does not match the payment intent.')
         effective_reference = (paypal_order_id or provider_reference).strip()
 
     payment = ListingPayment.objects.create(
@@ -197,11 +198,8 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
     )
 
     data = dict(intent.listing_data or {})
-    listing = _create_listing_from_data(
-        profile, data,
-        entitlement={**entitlement, 'free_listings_remaining': 0},
-        listing_entitlement='INDIVIDUAL_PAID',
-    )
+    listing = _create_listing_from_data(profile, data, entitlement={**entitlement, 'free_listings_remaining': 0},
+                                        listing_entitlement='INDIVIDUAL_PAID')
     payment.listing_id = listing['listing_id']
     payment.updated_at = timezone.now()
     payment.save(update_fields=['listing_id', 'updated_at'])
@@ -216,19 +214,9 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
     intent.provider_currency = provider_currency
     intent.paypal_order_id = paypal_order_id
     intent.paypal_fx_rate = paypal_fx_rate
-    intent.save(update_fields=[
-        'status', 'paid_at', 'listing_id', 'updated_at', 'provider',
-        'provider_reference', 'provider_amount', 'provider_currency',
-        'paypal_order_id', 'paypal_fx_rate',
-    ])
-    return {
-        'success': True,
-        'already_processed': False,
-        'payment_intent_id': intent.id,
-        'payment_id': payment.id,
-        'listing_id': listing['listing_id'],
-        'status': 'PAID',
-        'listing_is_paid': True,
-        'listing_is_published': False,
-        'listing_approval_status': 'pending_review',
-    }
+    intent.save(update_fields=['status', 'paid_at', 'listing_id', 'updated_at', 'provider',
+                               'provider_reference', 'provider_amount', 'provider_currency',
+                               'paypal_order_id', 'paypal_fx_rate'])
+    return {'success': True, 'already_processed': False, 'payment_intent_id': intent.id,
+            'payment_id': payment.id, 'listing_id': listing['listing_id'], 'status': 'PAID',
+            'listing_is_paid': True, 'listing_is_published': False, 'listing_approval_status': 'pending_review'}
