@@ -54,13 +54,32 @@ class MySubscriptionAccessView(APIView):
         return Response(get_subscription_access(request.user))
 
 
+class MySubscriptionInvoiceView(APIView):
+    def get(self, request, invoice_id):
+        invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
+        if not invoice:
+            return Response({'detail': 'Subscription invoice not found.'}, status=404)
+        owned = str(invoice.landlord_subscription_id) == str(getattr(get_current_subscription(request.user), 'id', ''))
+        if not owned:
+            # Also allow a pending/paid invoice belonging to the user's subscription history.
+            from .models import LandlordSubscription, RealEstateSubscription
+            owned = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id, landlord_id=request.user.id).exists() or RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, real_estate_id=request.user.id).exists()
+        if not owned:
+            return Response({'detail': 'You are not authorized to view this invoice.'}, status=404)
+        return Response({'id': str(invoice.id), 'status': invoice.status, 'amount_kes': invoice.amount_kes,
+                         'payment_provider': invoice.payment_provider, 'provider_reference': invoice.provider_reference,
+                         'checkout_request_id': invoice.checkout_request_id, 'merchant_request_id': invoice.merchant_request_id,
+                         'mpesa_receipt': invoice.mpesa_receipt, 'paid_at': invoice.paid_at})
+
+
 class SubscriptionCheckoutView(APIView):
     def post(self, request):
         try:
+            phone_number = request.data.get('phone_number') or getattr(request.user, 'phone', None)
             result = create_subscription_checkout(
                 profile=request.user, plan_id=request.data.get('plan_id'),
                 billing_cycle=request.data.get('billing_cycle', 'MONTHLY'),
-                provider=request.data.get('provider'), phone_number=request.data.get('phone_number'))
+                provider=request.data.get('provider'), phone_number=phone_number)
         except ValueError as exc:
             return Response({'success': False, 'detail': str(exc)}, status=400)
         except RuntimeError as exc:
