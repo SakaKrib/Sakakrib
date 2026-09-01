@@ -1,8 +1,9 @@
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.authorization import require_admin
+from apps.core.domain_property import CommunityPost
+from apps.core.notification_services import dispatch_user_notification
 
 from .models import Listing
 
@@ -24,9 +25,10 @@ def review_listing(admin_user, listing_id, decision, note=''):
     except Listing.DoesNotExist as exc:
         raise LookupError('Listing not found.') from exc
 
+    was_approved = listing.approval_status == 'approved'
     listing.approval_status = decision
-    # This mirrors the production admin_review_listing function: approval controls
-    # publication, while the legacy is_approved flag is not mutated by review.
+    # Mirrors production admin_review_listing: approval controls publication;
+    # the legacy is_approved field is intentionally left unchanged.
     listing.is_published = decision == 'approved'
     listing.admin_reviewed_at = timezone.now()
     listing.admin_review_note = note
@@ -37,4 +39,34 @@ def review_listing(admin_user, listing_id, decision, note=''):
         'admin_review_note',
         'updated_at',
     ])
+
+    if decision == 'approved' and not was_approved:
+        caption = (listing.ai_caption or '').strip()
+        if not caption:
+            caption = (
+                f"🏠 {listing.title or 'Property listing'}\n\n"
+                f"📍 {listing.city or 'Location not specified'}, {listing.county or ''}\n"
+                f"💰 KES {listing.price_kes or 0}{'/month' if listing.listing_type == 'rent' else ''}\n\n"
+                f"{listing.description or ''}\n\n🔑 Verified listing on Saka Krib."
+            )
+        CommunityPost.objects.get_or_create(
+            listing_id=listing.id,
+            defaults={
+                'user_id': listing.user_id,
+                'content': caption,
+                'ai_caption': listing.ai_caption or None,
+                'post_type': 'listing',
+            },
+        )
+        dispatch_user_notification(
+            user_id=listing.user_id,
+            notification_type='LISTING_APPROVED',
+            title='Listing Approved - Saka Krib',
+            message=f'Your property listing "{listing.title}" has been approved and is now live.',
+            data={'listing_id': str(listing.id)},
+            event_key=f'listing:approved:{listing.id}',
+            send_email=True,
+            email_template='listing_approved',
+        )
+
     return listing
