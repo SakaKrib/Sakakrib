@@ -37,19 +37,21 @@ def require_owner(user, owner_id):
 
 
 def can_manage_listings(user):
-    return bool(
-        user
-        and user.is_authenticated
-        and (
-            is_admin(user)
-            or (
-                getattr(user, 'role', None) in CONTENT_ROLES
-                and getattr(user, 'email_verified', False)
-                and getattr(user, 'kyc_completed', False)
-                and getattr(user, 'landlord_application_status', None) == 'approved'
-            )
-        )
-    )
+    """Mirror the verified/approved production listing-management gate."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_admin(user):
+        return True
+    role = getattr(user, 'role', None)
+    if role not in CONTENT_ROLES:
+        return False
+    if not getattr(user, 'email_verified', False) or not getattr(user, 'kyc_completed', False):
+        return False
+    if role == 'landlord':
+        return getattr(user, 'landlord_application_status', None) == 'approved'
+    if role == 'real_estate':
+        return getattr(user, 'realestate_application_status', None) == 'approved'
+    return False
 
 
 def can_view_public_listings(user):
