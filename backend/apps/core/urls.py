@@ -11,6 +11,7 @@ from .community_support_views import CommunityPostView, ReviewView, SupportTicke
 from .renter_views import RenterInvitationClaimView, RenterInvitationCreateView, RenterInvitationPreviewView, RenterInvitationResendView, RenterInvitationCancelView
 from .pms_views import PMSActionView, PMSDashboardView
 from .payment_method_views import LandlordPaymentMethodView
+from .rent_advance_views import LandlordMarkRentPaidThroughView, LandlordRentPaymentHistoryView, LandlordRentUnitView
 
 urlpatterns = [
     path("bookings/", BookingView.as_view(), name="booking-list"), path("bookings/<uuid:object_id>/", BookingView.as_view(), name="booking-detail"),
@@ -34,6 +35,7 @@ urlpatterns = [
     path("notifications/", UserNotificationView.as_view(), name="user-notifications"), path("renter-notifications/", RenterNotificationView.as_view(), name="renter-notifications"),
     path("pms/dashboard/", PMSDashboardView.as_view(), name="pms-dashboard"), path("pms/action/", PMSActionView.as_view(), name="pms-action"),
     path("payment-methods/", LandlordPaymentMethodView.as_view(), name="landlord-payment-method-create"), path("payment-methods/<uuid:payment_method_id>/", LandlordPaymentMethodView.as_view(), name="landlord-payment-method-delete"),
+    path("rent/units/", LandlordRentUnitView.as_view(), name="landlord-rent-units"), path("rent/units/<uuid:unit_id>/history/", LandlordRentPaymentHistoryView.as_view(), name="landlord-rent-payment-history"), path("rent/units/<uuid:unit_id>/paid-through/", LandlordMarkRentPaidThroughView.as_view(), name="landlord-rent-paid-through"),
     path("invoices/landlord/", LandlordRentInvoiceCreateView.as_view(), name="rent-invoice-create-landlord"), path("invoices/renter/paid/", RenterPaidInvoiceCreateView.as_view(), name="rent-invoice-create-renter-paid"), path("invoices/<uuid:invoice_id>/submit-payment/", RenterInvoicePaymentSubmitView.as_view(), name="rent-invoice-submit-payment"), path("payment-submissions/<uuid:submission_id>/confirm/", LandlordRentPaymentConfirmView.as_view(), name="rent-payment-confirm"), path("payment-submissions/<uuid:submission_id>/reject/", LandlordRentPaymentRejectView.as_view(), name="rent-payment-reject"),
     path("rent-reminders/<uuid:renter_assoc_id>/send/", RentPaymentReminderView.as_view(), name="rent-payment-reminder-send"),
     path("community-posts/", CommunityPostView.as_view(), name="community-post-list"), path("community-posts/<uuid:object_id>/", CommunityPostView.as_view(), name="community-post-detail"),
