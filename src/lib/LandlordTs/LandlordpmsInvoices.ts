@@ -3,6 +3,7 @@ import { protectedGet, protectedPost } from '@/lib/djangoApi';
 export interface CreateInvoicePeriod { period_year: number; period_month: number; }
 
 export interface PaymentDestination {
+  id?: string;
   payment_method_id: string;
   provider: 'MPESA' | 'PAYPAL' | string;
   mpesa_method?: 'PAYBILL' | 'TILL' | string;
@@ -48,8 +49,6 @@ export interface RentInvoice {
   updated_at: string;
 }
 
-export type PendingConfirmation = RentPaymentSubmission & { invoice: RentInvoice };
-
 export interface RentPaymentSubmission {
   id: string;
   invoice_id: string;
@@ -67,10 +66,12 @@ export interface RentPaymentSubmission {
   updated_at: string;
 }
 
+export type PendingConfirmation = RentPaymentSubmission & { invoice: RentInvoice };
+
 type PMSDashboard = {
   rentInvoices?: RentInvoice[];
   pendingRentSubmissions?: RentPaymentSubmission[];
-  paymentMethods?: PaymentDestination[];
+  paymentMethods?: Array<PaymentDestination & { id?: string }>;
 };
 
 const dashboard = () => protectedGet<PMSDashboard>('/api/core/pms/dashboard/');
@@ -83,17 +84,9 @@ export async function previewPaymentDestination(paymentMethodId: string, _unitId
   return method;
 }
 
-export async function createRentInvoice(
-  unitId: string,
-  periods: CreateInvoicePeriod[],
-  dueDate: string,
-  paymentMethodId: string,
-): Promise<CreateInvoiceResult> {
+export async function createRentInvoice(unitId: string, periods: CreateInvoicePeriod[], dueDate: string, paymentMethodId: string): Promise<CreateInvoiceResult> {
   const result = await protectedPost<Record<string, unknown>>('/api/core/invoices/landlord/', {
-    unit_id: unitId,
-    periods,
-    due_date: dueDate,
-    payment_method_id: paymentMethodId,
+    unit_id: unitId, periods, due_date: dueDate, payment_method_id: paymentMethodId,
   });
   return {
     success: result.success !== false,
@@ -108,19 +101,15 @@ export async function createRentInvoice(
   };
 }
 
-export async function getMyRentInvoices(): Promise<RentInvoice[]> {
-  return (await dashboard()).rentInvoices ?? [];
-}
+export async function getMyRentInvoices(): Promise<RentInvoice[]> { return (await dashboard()).rentInvoices ?? []; }
 
 export async function getPendingPaymentConfirmations(): Promise<PendingConfirmation[]> {
   const data = await dashboard();
   const invoices = new Map((data.rentInvoices ?? []).map((invoice) => [invoice.id, invoice]));
-  return (data.pendingRentSubmissions ?? [])
-    .map((submission) => {
-      const invoice = invoices.get(submission.invoice_id);
-      return invoice ? { ...submission, invoice } : null;
-    })
-    .filter((row): row is PendingConfirmation => row !== null);
+  return (data.pendingRentSubmissions ?? []).map((submission) => {
+    const invoice = invoices.get(submission.invoice_id);
+    return invoice ? { ...submission, invoice } : null;
+  }).filter((row): row is PendingConfirmation => row !== null);
 }
 
 export async function confirmRentPayment(submissionId: string): Promise<void> {
@@ -130,7 +119,5 @@ export async function confirmRentPayment(submissionId: string): Promise<void> {
 
 export async function rejectRentPayment(submissionId: string, reason: string): Promise<void> {
   if (!submissionId) throw new Error('A payment submission is required.');
-  await protectedPost(`/api/core/payment-submissions/${encodeURIComponent(submissionId)}/reject/`, {
-    rejection_reason: reason,
-  });
+  await protectedPost(`/api/core/payment-submissions/${encodeURIComponent(submissionId)}/reject/`, { rejection_reason: reason });
 }
