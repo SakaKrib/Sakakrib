@@ -3,7 +3,6 @@ from django.db import transaction
 
 from apps.accounts.models import Profile
 
-from .chat_services import conversation_id_for_users as _unused
 from .domain_bookings import ChatMessage
 from .domain_platform import Mover
 from .notification_services import dispatch_user_notification
