@@ -1,18 +1,156 @@
-from decimal import Decimal, InvalidOperation
+import uuid
+from pathlib import Path
 
+from django.core.files.storage import default_storage
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
+from django.http import FileResponse
+from django.utils import timezone
 from rest_framework import status
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
+from apps.core.domain_property import ListingMedia
 
 from .models import Listing, ListingPaymentIntent
 from .review_services import review_listing
-from .serializers import ListingCreateSerializer, ListingSerializer
+from .serializers import ListingCreateSerializer, ListingMediaSerializer, ListingSerializer
 from .services import create_listing, create_listing_payment_intent, get_listing_entitlement
+
+MAX_LISTING_PHOTO_BYTES = 10 * 1024 * 1024
+MAX_LISTING_VIDEO_BYTES = 100 * 1024 * 1024
+ALLOWED_PHOTO_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
+ALLOWED_VIDEO_TYPES = {'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov'}
+
+
+def _media_is_visible(request, media):
+    if is_admin(request.user) or str(media.user_id) == str(request.user.pk):
+        return True
+    return Listing.objects.filter(
+        id=media.listing_id,
+        approval_status='approved',
+        is_published=True,
+    ).exists()
+
+
+def _media_storage_path(media):
+    value = media.url or ''
+    if not value.startswith('django-media://'):
+        return None
+    return value[len('django-media://'):].lstrip('/')
+
+
+class ListingMediaView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        queryset = ListingMedia.objects.all()
+        listing_id = request.query_params.get('listing_id')
+        if listing_id:
+            queryset = queryset.filter(listing_id=listing_id)
+
+        if not is_admin(request.user):
+            owned_listing_ids = Listing.objects.filter(user_id=request.user.pk).values_list('id', flat=True)
+            queryset = queryset.filter(
+                Q(user_id=request.user.pk)
+                | Q(listing_id__in=Listing.objects.filter(approval_status='approved', is_published=True).values_list('id', flat=True))
+                | Q(listing_id__in=owned_listing_ids)
+            )
+
+        queryset = queryset.order_by('position', 'created_at')
+        return Response(ListingMediaSerializer(queryset, many=True, context={'request': request}).data)
+
+    def post(self, request):
+        listing_id = request.data.get('listing_id')
+        if not listing_id:
+            return Response({'detail': 'listing_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        listing = Listing.objects.filter(id=listing_id, user_id=request.user.pk).first()
+        if not listing:
+            return Response({'detail': 'You may only add media to your own listing.'}, status=status.HTTP_403_FORBIDDEN)
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'detail': 'Media file is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        media_type = str(request.data.get('media_type') or 'photo').lower()
+        if media_type == 'photo':
+            allowed_types = ALLOWED_PHOTO_TYPES
+            max_bytes = MAX_LISTING_PHOTO_BYTES
+        elif media_type == 'video':
+            allowed_types = ALLOWED_VIDEO_TYPES
+            max_bytes = MAX_LISTING_VIDEO_BYTES
+        else:
+            return Response({'detail': 'media_type must be photo or video.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        content_type = str(getattr(file, 'content_type', '') or '').lower()
+        if content_type not in allowed_types:
+            return Response({'detail': 'Unsupported media type.'}, status=status.HTTP_400_BAD_REQUEST)
+        if int(getattr(file, 'size', 0) or 0) <= 0 or int(file.size) > max_bytes:
+            return Response({'detail': 'Media file is too large.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        extension = allowed_types[content_type]
+        original_name = Path(getattr(file, 'name', '') or 'media').stem
+        safe_name = ''.join(char if char.isalnum() or char in '-_' else '-' for char in original_name)
+        safe_name = '-'.join(part for part in safe_name.split('-') if part)[:80] or 'media'
+        media_id = uuid.uuid4()
+        storage_path = f'listing-media/{request.user.pk}/{listing.id}/{media_type}/{media_id}-{safe_name}{extension}'
+
+        saved_path = default_storage.save(storage_path, file)
+        media = ListingMedia.objects.create(
+            id=media_id,
+            listing_id=listing.id,
+            user_id=request.user.pk,
+            url=f'django-media://{saved_path}',
+            label=str(request.data.get('label') or '').strip(),
+            media_type=media_type,
+            position=int(request.data.get('position') or 0),
+            unit_id=request.data.get('unit_id') or None,
+            created_at=timezone.now(),
+        )
+        return Response(ListingMediaSerializer(media, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+
+class ListingMediaDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, media_id):
+        media = ListingMedia.objects.filter(pk=media_id).first()
+        if not media or not _media_is_visible(request, media):
+            return Response({'detail': 'Media not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        storage_path = _media_storage_path(media)
+        if not storage_path:
+            return Response({'url': media.url}, status=status.HTTP_200_OK)
+        if not default_storage.exists(storage_path):
+            return Response({'detail': 'Media file not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        file_obj = default_storage.open(storage_path, 'rb')
+        extension = storage_path.rsplit('.', 1)[-1].lower() if '.' in storage_path else ''
+        content_type = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp',
+            'mp4': 'video/mp4', 'webm': 'video/webm', 'mov': 'video/quicktime',
+        }.get(extension, 'application/octet-stream')
+        response = FileResponse(file_obj, content_type=content_type)
+        response['Content-Disposition'] = 'inline'
+        response['Cache-Control'] = 'private, max-age=300'
+        return response
+
+    def delete(self, request, media_id):
+        media = ListingMedia.objects.filter(pk=media_id).first()
+        if not media:
+            return Response({'detail': 'Media not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not (is_admin(request.user) or str(media.user_id) == str(request.user.pk)):
+            return Response({'detail': 'You may only delete your own listing media.'}, status=status.HTTP_403_FORBIDDEN)
+
+        storage_path = _media_storage_path(media)
+        if storage_path and default_storage.exists(storage_path):
+            default_storage.delete(storage_path)
+        media.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ListingEntitlementView(APIView):
@@ -98,7 +236,7 @@ class ListingListView(APIView):
             'count': total,
             'limit': limit,
             'offset': offset,
-            'results': ListingSerializer(listings, many=True).data,
+            'results': ListingSerializer(listings, many=True, context={'request': request}).data,
         })
 
     def post(self, request):
@@ -190,7 +328,7 @@ class ListingDetailView(APIView):
         ):
             return Response({'error': 'You are not authorized to view this listing.'}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(ListingSerializer(listing).data)
+        return Response(ListingSerializer(listing, context={'request': request}).data)
 
 
 class AdminListingReviewView(APIView):
@@ -213,5 +351,5 @@ class AdminListingReviewView(APIView):
 
         return Response({
             'success': True,
-            'listing': ListingSerializer(listing).data,
+            'listing': ListingSerializer(listing, context={'request': request}).data,
         })
