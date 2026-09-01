@@ -8,7 +8,7 @@ from .notification_views import RenterNotificationView, UserNotificationView
 from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfirmView, LandlordRentPaymentRejectView, RenterInvoicePaymentSubmitView, RenterPaidInvoiceCreateView
 from .rent_reminder_views import RentPaymentReminderView
 from .community_support_views import CommunityPostView, ReviewView, SupportTicketView, TermsAcceptanceView
-from .renter_views import RenterInvitationClaimView, RenterInvitationCreateView, RenterInvitationPreviewView, RenterInvitationResendView
+from .renter_views import RenterInvitationClaimView, RenterInvitationCreateView, RenterInvitationPreviewView, RenterInvitationResendView, RenterInvitationCancelView
 from .pms_views import PMSActionView, PMSDashboardView
 
 urlpatterns = [
@@ -40,6 +40,7 @@ urlpatterns = [
     path("terms-acceptance/", TermsAcceptanceView.as_view(), name="terms-acceptance-list"), path("terms-acceptance/<uuid:object_id>/", TermsAcceptanceView.as_view(), name="terms-acceptance-detail"),
     path("renter-invitations/", RenterInvitationCreateView.as_view(), name="renter-invitation-create"),
     path("renter-invitations/<uuid:association_id>/resend/", RenterInvitationResendView.as_view(), name="renter-invitation-resend"),
+    path("renter-invitations/<uuid:association_id>/cancel/", RenterInvitationCancelView.as_view(), name="renter-invitation-cancel"),
     path("renter-invitations/<str:token>/preview/", RenterInvitationPreviewView.as_view(), name="renter-invitation-preview"),
     path("renter-invitations/<str:token>/claim/", RenterInvitationClaimView.as_view(), name="renter-invitation-claim"),
 ]
