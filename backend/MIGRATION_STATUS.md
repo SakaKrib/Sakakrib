@@ -25,6 +25,7 @@ Do not modify or destructively migrate the live Supabase production database fro
 
 ### Applications and listings
 - Landlord and real-estate application review endpoint
+- Application review restricted to pending renter applications before role transition
 - Listing model projection
 - Listing creation API
 - Listing entitlement service
@@ -71,6 +72,13 @@ Do not modify or destructively migrate the live Supabase production database fro
 - Terms-acceptance owner-scoped CRUD
 - Production indexes for these domains
 
+### Subscription reconciliation
+- Real-estate and landlord subscription access now require the corresponding approved application plus verified identity before listing entitlement is granted
+- Subscription checkout now blocks unapproved real-estate applications as well as unapproved landlord applications
+- Django subscription views use the custom `Profile` request user directly; no invalid `request.user.profile` dereference
+- Pending landlord subscription checkout is writable against the current production schema, whose period columns are non-null, while successful payment still establishes the real paid period
+- Production PayPal recurring-payment behavior has been identified as still requiring a dedicated Django webhook/renewal implementation before cutover
+
 ## Migration-history integrity
 
 The accounts migration history was consolidated to a single linear path:
@@ -86,7 +94,8 @@ Core migration history currently ends at:
 ## Still outstanding before production cutover
 
 - Complete 44-table production schema parity audit, including every column, constraint, index, trigger, and function
-- Reconcile remaining real-estate subscription behavior and renewal automation
+- Implement Django equivalent of production PayPal recurring subscription webhook/renewal processing for landlord and real-estate subscriptions
+- Reconcile subscription expiry/grace behavior and automation against the effective production schedule
 - Finish listing API/read/search parity
 - Verify exact mover payout provider callback authentication against production
 - Reconcile remaining moving lifecycle edge cases and dispute financial settlement behavior
