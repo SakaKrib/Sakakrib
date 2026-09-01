@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Search, MapPin, Home, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
-import { supabase } from '@/lib/supabase';
+import { protectedGet } from '@/lib/djangoApi';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import type { Listing, ListingMedia } from '@/lib/supabase';
+
+interface ListingListResponse {
+  count: number;
+  limit: number;
+  offset: number;
+  results: (Listing & { media?: ListingMedia[] })[];
+}
 
 export default function ListingsPage() {
   const { navigate } = useNav();
@@ -15,47 +22,46 @@ export default function ListingsPage() {
   const [filterMinPrice, setFilterMinPrice] = useState('');
   const [filterMaxPrice, setFilterMaxPrice] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [mediaMap, setMediaMap] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchListings = async () => {
       setLoading(true);
-      let query = supabase
-        .from('listings')
-        .select('*')
-        .eq('is_published', true)
-        .order('created_at', { ascending: false });
+      setError(null);
 
-      if (filterCity) query = query.eq('city', filterCity);
-      if (filterType !== 'all') query = query.eq('listing_type', filterType);
-      if (filterMinPrice) query = query.gte('price_kes', Number(filterMinPrice));
-      if (filterMaxPrice) query = query.lte('price_kes', Number(filterMaxPrice));
-      if (search) query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,city.ilike.%${search}%`);
+      try {
+        const params = new URLSearchParams();
+        params.set('limit', '100');
+        if (filterCity) params.set('city', filterCity);
+        if (filterType !== 'all') params.set('listing_type', filterType);
+        if (filterMinPrice) params.set('min_price', filterMinPrice);
+        if (filterMaxPrice) params.set('max_price', filterMaxPrice);
+        if (search.trim()) params.set('q', search.trim());
 
-      const { data } = await query;
-      if (data) {
-        setListings(data as Listing[]);
-        // Fetch media for all listings
-        if (data.length > 0) {
-          const ids = data.map((l) => l.id);
-          const { data: media } = await supabase
-            .from('listing_media')
-            .select('listing_id, url')
-            .in('listing_id', ids)
-            .eq('media_type', 'photo')
-            .order('position');
-          if (media) {
-            const map: Record<string, string> = {};
-            media.forEach((m) => {
-              if (!map[m.listing_id]) map[m.listing_id] = m.url;
-            });
-            setMediaMap(map);
-          }
+        const response = await protectedGet<ListingListResponse>(
+          `/api/listings/?${params.toString()}`,
+        );
+
+        if (!cancelled) {
+          setListings(Array.isArray(response?.results) ? response.results : []);
         }
+      } catch (err) {
+        console.error('Failed to load listings:', err);
+        if (!cancelled) {
+          setListings([]);
+          setError(err instanceof Error ? err.message : 'Unable to load listings.');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     };
+
     fetchListings();
+    return () => {
+      cancelled = true;
+    };
   }, [search, filterCity, filterType, filterMinPrice, filterMaxPrice]);
 
   const clearFilters = () => {
@@ -77,7 +83,6 @@ export default function ListingsPage() {
         </p>
       </div>
 
-      {/* Search & Filters */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
@@ -132,7 +137,12 @@ export default function ListingsPage() {
         </div>
       )}
 
-      {/* Results */}
+      {error && (
+        <div className="mb-6 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-900/50 dark:bg-error-900/20 dark:text-error-300">
+          {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
@@ -146,41 +156,44 @@ export default function ListingsPage() {
         <>
           <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">{listings.length} home{listings.length !== 1 ? 's' : ''} found</p>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {listings.map((listing) => (
-              <button
-                key={listing.id}
-                onClick={() => navigate('listing-detail', listing.id)}
-                className="card group overflow-hidden text-left transition-all hover:shadow-lg"
-              >
-                <div className="relative h-44 overflow-hidden bg-gray-200 dark:bg-brand-800">
-                  {mediaMap[listing.id] ? (
-                    <img src={mediaMap[listing.id]} alt={listing.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <Home className="h-10 w-10 text-gray-400" />
+            {listings.map((listing) => {
+              const firstPhoto = listing.media?.find((item) => item.media_type === 'photo');
+              return (
+                <button
+                  key={listing.id}
+                  onClick={() => navigate('listing-detail', listing.id)}
+                  className="card group overflow-hidden text-left transition-all hover:shadow-lg"
+                >
+                  <div className="relative h-44 overflow-hidden bg-gray-200 dark:bg-brand-800">
+                    {firstPhoto?.url ? (
+                      <img src={firstPhoto.url} alt={listing.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <Home className="h-10 w-10 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="absolute right-2 top-2 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white">
+                      {listing.listing_type === 'rent' ? 'For Rent' : 'For Sale'}
                     </div>
-                  )}
-                  <div className="absolute right-2 top-2 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white">
-                    {listing.listing_type === 'rent' ? 'For Rent' : 'For Sale'}
                   </div>
-                </div>
-                <div className="p-4">
-                  <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">{listing.title}</h3>
-                  <p className="mt-1 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
-                    <MapPin className="h-3.5 w-3.5" /> {listing.city}, {listing.county}
-                  </p>
-                  <p className="mt-2 text-lg font-bold text-brand-600 dark:text-brand-400">
-                    {formatKES(listing.price_kes)}
-                    {listing.listing_type === 'rent' && <span className="text-sm font-normal text-gray-400">/mo</span>}
-                  </p>
-                  <div className="mt-2 flex gap-3 text-xs text-gray-500 dark:text-gray-400">
-                    <span>{listing.beds} bed</span>
-                    <span>{listing.baths} bath</span>
-                    <span className="truncate">{listing.size}</span>
+                  <div className="p-4">
+                    <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">{listing.title}</h3>
+                    <p className="mt-1 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                      <MapPin className="h-3.5 w-3.5" /> {listing.city}, {listing.county}
+                    </p>
+                    <p className="mt-2 text-lg font-bold text-brand-600 dark:text-brand-400">
+                      {formatKES(listing.price_kes)}
+                      {listing.listing_type === 'rent' && <span className="text-sm font-normal text-gray-400">/mo</span>}
+                    </p>
+                    <div className="mt-2 flex gap-3 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{listing.beds} bed</span>
+                      <span>{listing.baths} bath</span>
+                      <span className="truncate">{listing.size}</span>
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </>
       )}
