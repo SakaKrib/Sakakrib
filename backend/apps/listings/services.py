@@ -63,7 +63,7 @@ def get_listing_entitlement(profile):
     }
 
 
-def _create_listing_from_data(profile, data, *, entitlement=None):
+def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitlement=None):
     entitlement = entitlement or get_listing_entitlement(profile)
     listing = Listing.objects.create(
         user_id=profile.id, title=data.get('title', ''), description=data.get('description', ''),
@@ -77,6 +77,10 @@ def _create_listing_from_data(profile, data, *, entitlement=None):
         is_property_management=data.get('is_property_management', False), is_paid=True, is_published=False,
         approval_status='pending_review', is_approved=False, status='pending',
     )
+    if listing_entitlement == 'INDIVIDUAL_PAID':
+        return {'success': True, 'listing_created': True, 'listing_id': listing.id,
+                'listing_entitlement': 'INDIVIDUAL_PAID', 'payment_required': False,
+                'is_published': False, 'approval_status': 'pending_review'}
     if entitlement['free_listings_remaining'] > 0:
         profile.free_listings_used = (profile.free_listings_used or 0) + 1
         profile.save(update_fields=['free_listings_used'])
@@ -152,8 +156,6 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
         if provider_amount is None or provider_amount <= 0:
             raise ValidationError('PayPal settlement amount is missing.')
 
-    # Keep payment settlement and listing creation in one transaction. The payment
-    # row is authoritative; the listing is only committed if the complete settlement succeeds.
     payment = ListingPayment.objects.create(
         user_id=profile.id, listing_id=None, payment_intent_id=intent.id,
         amount_kes=intent.amount_kes, status='PAID', payment_provider=provider,
@@ -166,7 +168,11 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
     )
 
     data = dict(intent.listing_data or {})
-    listing = _create_listing_from_data(profile, data, entitlement={**entitlement, 'free_listings_remaining': 0})
+    listing = _create_listing_from_data(
+        profile, data,
+        entitlement={**entitlement, 'free_listings_remaining': 0},
+        listing_entitlement='INDIVIDUAL_PAID',
+    )
     payment.listing_id = listing['listing_id']
     payment.updated_at = timezone.now()
     payment.save(update_fields=['listing_id', 'updated_at'])
