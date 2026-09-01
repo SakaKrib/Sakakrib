@@ -122,3 +122,10 @@ class SubscriptionInvoice(models.Model):
 
     class Meta:
         db_table = 'subscription_invoices'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['webhook_event_id'],
+                condition=models.Q(webhook_event_id__isnull=False),
+                name='subscription_invoices_webhook_event_uidx',
+            ),
+        ]
