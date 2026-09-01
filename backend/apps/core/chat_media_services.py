@@ -35,7 +35,7 @@ def _attachment_from_message(message):
     return item
 
 
-def store_chat_image(*, message_id, conversation_id, file):
+def store_chat_image(*, user_id, file):
     if not file:
         raise ValidationError("Image file is required")
     content_type = str(getattr(file, "content_type", "") or "").lower()
@@ -45,7 +45,7 @@ def store_chat_image(*, message_id, conversation_id, file):
     if size <= 0 or size > MAX_IMAGE_BYTES:
         raise ValidationError("Picture attachments must be smaller than 8 MB.")
     extension = ALLOWED_IMAGE_TYPES[content_type]
-    path = f"chat-attachments/{conversation_id}/{message_id}-{uuid.uuid4().hex}{extension}"
+    path = f"chat-attachments/{user_id}/{uuid.uuid4().hex}{extension}"
     saved_path = default_storage.save(path, file)
     name = Path(getattr(file, "name", "image") or "image").name
     return {"path": saved_path, "name": name, "mime_type": content_type, "size": size}
@@ -55,14 +55,13 @@ def sign_chat_attachment(*, message, user_id):
     if str(user_id) not in {str(message.sender_id), str(message.receiver_id)}:
         raise ValidationError("Unauthorized chat attachment")
     attachment = _attachment_from_message(message)
-    return sign_chat_path(path=attachment["path"], conversation_id=message.conversation_id)
+    return sign_chat_path(path=attachment["path"])
 
 
-def sign_chat_path(*, path, conversation_id):
-    prefix = f"chat-attachments/{conversation_id}/"
-    if not path.startswith(prefix):
+def sign_chat_path(*, path):
+    if not path.startswith("chat-attachments/"):
         raise ValidationError("Invalid chat attachment path")
-    token = signing.dumps({"path": path, "conversation_id": conversation_id}, salt=SIGNING_SALT)
+    token = signing.dumps({"path": path}, salt=SIGNING_SALT)
     return _url_for_token(token)
 
 
@@ -72,10 +71,6 @@ def resolve_signed_attachment(token):
     except signing.BadSignature as exc:
         raise ValidationError("Invalid or expired attachment URL") from exc
     path = payload.get("path")
-    conversation_id = payload.get("conversation_id")
-    if not isinstance(path, str) or not isinstance(conversation_id, str):
-        raise ValidationError("Invalid attachment token")
-    prefix = f"chat-attachments/{conversation_id}/"
-    if not path.startswith(prefix):
+    if not isinstance(path, str) or not path.startswith("chat-attachments/"):
         raise ValidationError("Invalid attachment path")
     return path
