@@ -82,7 +82,7 @@ class RealEstateSubscription(models.Model):
 
 class SubscriptionListing(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    subscription_id = models.UUIDField(null=False)
+    subscription_id = models.UUIDField(null=True, blank=True)
     listing_id = models.UUIDField()
     status = models.TextField()
     activated_at = models.DateTimeField()
