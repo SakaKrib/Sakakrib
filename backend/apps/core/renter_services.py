@@ -100,3 +100,16 @@ def resend_renter_invitation(*, landlord_id, association_id, app_base_url=None):
             html_body=f"<p>Reminder: open this link to claim your rental:</p><p><a href=\"{link}\">{link}</a></p><p>This link expires in 14 days.</p>",
             template_type="renter_invitation", status="pending")
     return {"id": str(row.id), "invited_at": row.invited_at.isoformat(), "invite_expires_at": row.invite_expires_at.isoformat(), "invite_token": token}
+
+
+@transaction.atomic
+def cancel_renter_invitation(*, landlord_id, association_id):
+    row = RenterUnitAssociation.objects.select_for_update().filter(
+        id=association_id, landlord_id=landlord_id, status="PENDING"
+    ).first()
+    if row is None:
+        raise ValidationError("Pending invitation not found or not owned by this account.")
+    row.status = "EXPIRED"
+    row.updated_at = timezone.now()
+    row.save(update_fields=["status", "updated_at"])
+    return {"success": True, "id": str(row.id), "status": row.status}
