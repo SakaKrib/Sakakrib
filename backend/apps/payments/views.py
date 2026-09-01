@@ -7,6 +7,8 @@ from rest_framework.views import APIView
 
 from apps.listings.models import ListingPaymentIntent
 from .services import get_provider
+from .models import ListingPayment
+from apps.listings.services import finalize_listing_payment
 
 
 class PaymentProviderConfigView(APIView):
@@ -34,9 +36,8 @@ class ListingPaymentStartView(APIView):
         if provider_name == 'mpesa':
             amount = intent.amount_kes
         else:
-            try:
-                amount = request.data['amount_usd']
-            except KeyError:
+            amount = request.data.get('amount_usd')
+            if amount is None:
                 return Response({'detail': 'amount_usd is required for PayPal.'}, status=400)
         result = get_provider(provider_name).create_payment(
             amount=amount, currency=currency, reference=str(intent.id),
@@ -69,20 +70,22 @@ class MpesaListingCallbackView(APIView):
         if not intent:
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
         items = {item.get('Name'): item.get('Value') for item in callback.get('CallbackMetadata', {}).get('Item', [])}
-        with transaction.atomic():
-            locked = ListingPaymentIntent.objects.select_for_update().get(pk=intent.id)
-            if int(result_code or 1) == 0:
-                # Settlement is deliberately isolated until the canonical payment finalizer is wired.
-                locked.provider = 'MPESA'
-                locked.provider_reference = checkout_id
-                locked.provider_amount = items.get('Amount')
-                locked.updated_at = timezone.now()
-                locked.save(update_fields=['provider','provider_reference','provider_amount','updated_at'])
-            else:
-                locked.status = 'FAILED'
-                locked.updated_at = timezone.now()
-                locked.save(update_fields=['status','updated_at'])
-        return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+        if int(result_code or 1) != 0:
+            intent.status = 'FAILED'; intent.updated_at = timezone.now()
+            intent.save(update_fields=['status','updated_at'])
+            return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+        try:
+            with transaction.atomic():
+                result = finalize_listing_payment(
+                    intent.id, provider='MPESA', provider_reference=checkout_id,
+                    provider_amount=items.get('Amount'), checkout_request_id=checkout_id,
+                    merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
+                    phone_number=items.get('PhoneNumber'), result_code=result_code,
+                    result_description=callback.get('ResultDesc'), provider_transaction_id=items.get('MpesaReceiptNumber'),
+                )
+        except Exception as exc:
+            return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
+        return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', 'listing_id': str(result['listing_id'])})
 
 
 class PayPalListingCaptureView(APIView):
@@ -99,6 +102,13 @@ class PayPalListingCaptureView(APIView):
         result = get_provider('paypal').verify_payment(provider_reference=order_id)
         if not result.success:
             return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
-        return Response({'success': True, 'payment_captured': True, 'payment_intent_id': str(intent.id),
-                         'provider_reference': order_id,
-                         'message': 'PayPal payment captured; final settlement must be performed server-side.'})
+        try:
+            with transaction.atomic():
+                settled = finalize_listing_payment(
+                    intent.id, provider='PAYPAL', provider_reference=order_id,
+                    provider_amount=intent.provider_amount, paypal_order_id=order_id,
+                    result_description=result.message,
+                )
+        except Exception as exc:
+            return Response({'success': False, 'message': f'Payment captured but settlement failed: {exc}'}, status=500)
+        return Response({**settled, 'payment_captured': True, 'provider_reference': order_id})
