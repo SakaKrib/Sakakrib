@@ -1,20 +1,24 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { User } from '@supabase/supabase-js';
 import type { Profile, UserRole } from '@/lib/supabase';
-import { authGateway } from '@/lib/authGateway';
-import { protectedFunctionPost } from '@/lib/protectedApi';
+import {
+  authGateway,
+  gatewayLogin,
+  gatewayLogout,
+  gatewayResendOtp,
+  gatewaySignup,
+  gatewayVerifyOtp,
+} from '@/lib/authGateway';
+import { protectedPost } from '@/lib/djangoApi';
 
-interface RegistrationEmailApplication {
-  email: string;
-  applicant_email?: string;
-  full_name?: string;
-  purpose?: string;
-  [key: string]: unknown;
+interface AuthUser {
+  id: string;
+  email?: string | null;
+  user_metadata: Record<string, unknown>;
 }
 
 interface AuthSession {
-  /** UI compatibility object. Authentication tokens are deliberately excluded. */
-  user: Pick<User, 'id' | 'email' | 'user_metadata'>;
+  /** Compatibility shape only. Django authentication tokens are never exposed to JS. */
+  user: AuthUser;
 }
 
 interface AuthResult {
@@ -45,56 +49,13 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-const toAuthSession = (user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }): AuthSession => ({
+const toAuthSession = (user: { id: string; email?: string | null }): AuthSession => ({
   user: {
     id: user.id,
     email: user.email ?? undefined,
-    user_metadata: user.user_metadata ?? {},
+    user_metadata: {},
   },
 });
-
-const sendRegistrationEmail = async (
-  type: 'otp_verification' | 'sign_in_notification' | 'sign_up_welcome',
-  application: RegistrationEmailApplication,
-): Promise<void> => {
-  const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-  if (!baseUrl) throw new Error('VITE_SUPABASE_URL is not configured.');
-  if (!publishableKey) throw new Error('VITE_SUPABASE_ANON_KEY is not configured.');
-
-  const response = await fetch(
-    `${baseUrl.replace(/\/+$/, '')}/functions/v1/send-notification-emails`,
-    {
-      method: 'POST',
-      // This email function is intentionally public (verify_jwt=false) and
-      // does not need the application's HttpOnly authentication cookies.
-      // Sending credentials with the function's wildcard CORS response causes
-      // browsers to reject the request before a response can be read.
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: publishableKey,
-      },
-      body: JSON.stringify({ type, application }),
-    },
-  );
-
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-
-  if (!response.ok) {
-    const message =
-      typeof body.error === 'string'
-        ? body.error
-        : typeof body.message === 'string'
-          ? body.message
-          : 'Email delivery failed.';
-    throw new Error(message);
-  }
-
-  if (body.success === false) {
-    throw new Error(typeof body.error === 'string' ? body.error : 'Email delivery failed.');
-  }
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -119,21 +80,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPendingVerificationEmail(email ? normalizeEmail(email) : null);
   };
 
-  const isProfileEmailVerified = (nextProfile: Profile | null) => nextProfile?.email_verified === true;
-
   const applyGatewayAuth = (result: Awaited<ReturnType<typeof authGateway>>) => {
     if (!result.authenticated || !result.user || !result.profile) {
       clearAuthState();
       return false;
     }
 
-    if (!isProfileEmailVerified(result.profile as Profile)) {
+    if (result.profile.email_verified !== true) {
       requireEmailVerification(result.email ?? result.user.email ?? null);
       return false;
     }
 
     setSession(toAuthSession(result.user));
-    setProfile(result.profile as Profile);
+    setProfile(result.profile);
     clearVerificationState();
     return true;
   };
@@ -146,14 +105,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await authGateway('session');
         if (!mounted) return;
 
-        if (result.authenticated) applyGatewayAuth(result);
-        else if (result.requiresEmailVerification) requireEmailVerification(result.email ?? null);
-        else {
+        if (result.authenticated) {
+          applyGatewayAuth(result);
+        } else if (result.requiresEmailVerification) {
+          requireEmailVerification(result.email ?? null);
+        } else {
           clearAuthState();
           clearVerificationState();
         }
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('Django auth initialization error:', error);
         if (mounted) {
           clearAuthState();
           clearVerificationState();
@@ -167,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { mounted = false; };
   }, []);
 
-  const isAuthenticated = Boolean(session && profile && profile.email_verified === true);
+  const isAuthenticated = Boolean(session && profile?.email_verified === true);
   const needsRoleSelection = Boolean(!loading && isAuthenticated && !profile?.role);
 
   const signUp = async (email: string, password: string, fullName: string): Promise<AuthResult> => {
@@ -175,56 +136,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedName = fullName.trim();
 
     if (!isValidEmail(normalizedEmail)) return { error: 'Please enter a valid email address.' };
-    if (password.length < 6) return { error: 'Password must be at least 6 characters long.' };
+    if (password.length < 8) return { error: 'Password must be at least 8 characters long.' };
     if (!normalizedName) return { error: 'Please enter your full name.' };
 
     try {
-      const result = await authGateway('signup', {
-        email: normalizedEmail,
-        password,
-        fullName: normalizedName,
-      });
-
-      if (result.error) {
-        clearAuthState();
-        return { error: result.error };
-      }
-
+      const result = await gatewaySignup(normalizedEmail, password, normalizedName);
       if (result.authenticated) {
         applyGatewayAuth(result);
-        try {
-          await sendRegistrationEmail('sign_up_welcome', {
-            email: normalizedEmail,
-            applicant_email: normalizedEmail,
-            full_name: normalizedName,
-          });
-        } catch (error) {
-          console.error('Welcome email delivery failed:', error);
-        }
-        return { error: null, requiresEmailVerification: false };
+        return { error: null };
       }
 
       requireEmailVerification(result.email ?? normalizedEmail);
-      try {
-        await sendRegistrationEmail('otp_verification', {
-          email: normalizedEmail,
-          applicant_email: normalizedEmail,
-          full_name: normalizedName,
-          purpose: 'verify your Saka Krib account',
-        });
-      } catch (error) {
-        console.error('OTP email delivery failed:', error);
-        return {
-          error: error instanceof Error
-            ? `Your account was created, but the verification email could not be sent: ${error.message}`
-            : 'Your account was created, but the verification email could not be sent.',
-          requiresEmailVerification: true,
-        };
-      }
-
       return { error: null, requiresEmailVerification: true };
     } catch (error) {
-      console.error('Signup gateway error:', error);
+      console.error('Django signup error:', error);
       return { error: error instanceof Error ? error.message : 'Unable to create your account.' };
     }
   };
@@ -237,20 +162,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (normalizedOtp.length !== 6) return { error: 'Please enter the 6-digit verification code.' };
 
     try {
-      const result = await authGateway('verify_otp', { email: normalizedEmail, otp: normalizedOtp });
-      if (!result.success || !result.authenticated || !result.user || !result.profile) {
-        return { error: result.error ?? 'Unable to establish your authenticated session after verification.' };
+      const result = await gatewayVerifyOtp(normalizedEmail, normalizedOtp);
+      if (!result.success || !result.authenticated) {
+        return { error: result.error ?? 'Unable to verify your email.' };
       }
-
-      // OTP verification now returns the authenticated server session as
-      // HttpOnly cookies. Hydrate the same AuthContext state used by login.
       if (!applyGatewayAuth(result)) {
         return { error: 'Email verification succeeded, but your authenticated profile could not be loaded.' };
       }
-
       return { error: null };
     } catch (error) {
-      console.error('Email OTP verification error:', error);
+      console.error('Django OTP verification error:', error);
       return { error: error instanceof Error ? error.message : 'Invalid or expired verification code.' };
     }
   };
@@ -260,16 +181,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isValidEmail(normalizedEmail)) return { error: 'Please enter a valid email address.' };
 
     requireEmailVerification(normalizedEmail);
-
     try {
-      await sendRegistrationEmail('otp_verification', {
-        email: normalizedEmail,
-        applicant_email: normalizedEmail,
-        purpose: 'verify your Saka Krib account',
-      });
-      return { error: null };
+      const result = await gatewayResendOtp(normalizedEmail);
+      return result.success ? { error: null } : { error: result.error ?? 'Unable to send a new verification code.' };
     } catch (error) {
-      console.error('OTP resend error:', error);
+      console.error('Django OTP resend error:', error);
       return { error: error instanceof Error ? error.message : 'Unable to send a new verification code.' };
     }
   };
@@ -280,18 +196,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!password) return { error: 'Please enter your password.' };
 
     try {
-      const result = await authGateway('login', { email: normalizedEmail, password });
-
+      const result = await gatewayLogin(normalizedEmail, password);
       if (!result.authenticated) {
         if (result.requiresEmailVerification) {
           requireEmailVerification(result.email ?? normalizedEmail);
-          const resendResult = await resendSignupOtp(normalizedEmail);
-          if (resendResult.error) return {
-            error: `Your email is not verified. ${resendResult.error}`,
-            requiresEmailVerification: true,
-          };
           return {
-            error: 'Your email is not verified. A new verification code has been sent to your email.',
+            error: result.error ?? 'Your email is not verified. Please verify it before signing in.',
             requiresEmailVerification: true,
           };
         }
@@ -300,34 +210,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       applyGatewayAuth(result);
-
-      try {
-        await sendRegistrationEmail('sign_in_notification', {
-          email: normalizedEmail,
-          applicant_email: normalizedEmail,
-          full_name: result.profile?.full_name ?? undefined,
-        });
-      } catch (error) {
-        console.error('Sign-in notification email failed:', error);
-      }
-
       return { error: null };
     } catch (error) {
-      console.error('Sign-in gateway error:', error);
+      console.error('Django sign-in error:', error);
       clearAuthState();
       return { error: error instanceof Error ? error.message : 'Unable to sign in.' };
     }
   };
 
   const signInWithGoogle = async (): Promise<void> => {
-    console.warn('Google OAuth HttpOnly migration is pending its server callback implementation.');
+    console.warn('Google OAuth Django callback is not migrated yet.');
   };
 
   const signOut = async (): Promise<void> => {
     try {
-      await authGateway('logout');
+      await gatewayLogout();
     } catch (error) {
-      console.error('Sign out gateway error:', error);
+      console.error('Django sign-out error:', error);
     } finally {
       clearAuthState();
       clearVerificationState();
@@ -335,26 +234,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshProfile = async (): Promise<void> => {
-    if (!session?.user) {
-      clearAuthState();
-      return;
-    }
-
     try {
       const result = await authGateway('session');
-
       if (!result.authenticated) {
-        if (result.requiresEmailVerification) {
-          requireEmailVerification(result.email ?? session.user.email ?? null);
-        } else {
-          clearAuthState();
-        }
+        if (result.requiresEmailVerification) requireEmailVerification(result.email ?? null);
+        else clearAuthState();
         return;
       }
-
       applyGatewayAuth(result);
     } catch (error) {
-      console.error('Session refresh error:', error);
+      console.error('Django session refresh error:', error);
       clearAuthState();
     }
   };
@@ -362,28 +251,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setRole = async (role: UserRole) => {
     if (!session?.user) return { error: 'Not authenticated.' };
     if (!profile) return { error: 'Application profile is required.' };
-    if (!isProfileEmailVerified(profile)) {
-      return { error: 'Email verification is required before setting a role.' };
-    }
 
-    const allowedRoles: UserRole[] = ['renter', 'landlord', 'mover', 'real_estate', 'admin'];
+    const allowedRoles: UserRole[] = ['renter', 'landlord', 'mover', 'real_estate'];
     if (!allowedRoles.includes(role)) return { error: 'Invalid role selected.' };
 
     try {
-      // Role selection is an authenticated application mutation, not an auth action.
-      // The browser sends only the HttpOnly cookies through protected-api.
-      await protectedFunctionPost<{ success?: boolean; authenticated?: boolean }>(
-        '/set-role',
-        { role },
-      );
-
+      await protectedPost('/api/accounts/set-role/', { role });
       await refreshProfile();
       return { error: null };
     } catch (error) {
-      console.error('Set role protected-api error:', error);
-      return {
-        error: error instanceof Error ? error.message : 'Unable to save your role.',
-      };
+      console.error('Django role selection error:', error);
+      return { error: error instanceof Error ? error.message : 'Unable to save your role.' };
     }
   };
 
