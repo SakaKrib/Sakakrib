@@ -418,7 +418,9 @@ def finalize_moving_paypal_webhook(*, headers, raw_body):
         hook.error = None
         hook.save(update_fields=["status", "event_type", "metadata", "error"])
 
-    order_id = resource.get("id") or ((resource.get("supplementary_data") or {}).get("related_ids") or {}).get("order_id")
+    related_ids = (resource.get("supplementary_data") or {}).get("related_ids") or {}
+    order_id = related_ids.get("order_id") if event_type == "PAYMENT.CAPTURE.COMPLETED" else resource.get("id")
+    order_id = order_id or related_ids.get("order_id") or resource.get("id")
     payment = MovingPayment.objects.select_for_update().filter(provider="PAYPAL", provider_reference=order_id).first() if order_id else None
     if payment is None:
         hook.status = "IGNORED"
@@ -430,7 +432,7 @@ def finalize_moving_paypal_webhook(*, headers, raw_body):
     failed = {"PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.DECLINED", "CHECKOUT.ORDER.VOIDED"}
 
     if event_type in completed:
-        amount_value = resource.get("amount", {}).get("value")
+        amount_value = (resource.get("amount") or {}).get("value")
         if not amount_value:
             captures = ((resource.get("purchase_units") or [{}])[0].get("payments") or {}).get("captures") or []
             if captures:
