@@ -68,10 +68,22 @@ export interface RentPaymentSubmission {
 
 export type PendingConfirmation = RentPaymentSubmission & { invoice: RentInvoice };
 
+type PaymentMethodRow = {
+  id?: string;
+  payment_method_id?: string;
+  provider: string;
+  mpesa_method?: string | null;
+  display_name?: string | null;
+  paybill_number?: string | null;
+  paybill_account?: string | null;
+  till_number?: string | null;
+  paypal_email?: string | null;
+};
+
 type PMSDashboard = {
   rentInvoices?: RentInvoice[];
   pendingRentSubmissions?: RentPaymentSubmission[];
-  paymentMethods?: Array<PaymentDestination & { id?: string }>;
+  paymentMethods?: PaymentMethodRow[];
 };
 
 const dashboard = () => protectedGet<PMSDashboard>('/api/core/pms/dashboard/');
@@ -79,9 +91,19 @@ const dashboard = () => protectedGet<PMSDashboard>('/api/core/pms/dashboard/');
 export async function previewPaymentDestination(paymentMethodId: string, _unitId: string): Promise<PaymentDestination> {
   if (!paymentMethodId) throw new Error('Payment method is required.');
   const data = await dashboard();
-  const method = (data.paymentMethods ?? []).find((item) => item.payment_method_id === paymentMethodId || item.id === paymentMethodId);
+  const method = (data.paymentMethods ?? []).find((item) => (item.payment_method_id ?? item.id) === paymentMethodId);
   if (!method) throw new Error('Payment method is not available.');
-  return method;
+  return {
+    id: method.id,
+    payment_method_id: method.payment_method_id ?? method.id ?? paymentMethodId,
+    provider: method.provider,
+    mpesa_method: method.mpesa_method,
+    display_name: method.display_name,
+    paybill_number: method.paybill_number ?? undefined,
+    paybill_account: method.paybill_account ?? undefined,
+    till_number: method.till_number ?? undefined,
+    paypal_email: method.paypal_email ?? undefined,
+  };
 }
 
 export async function createRentInvoice(unitId: string, periods: CreateInvoicePeriod[], dueDate: string, paymentMethodId: string): Promise<CreateInvoiceResult> {
