@@ -3,8 +3,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import SubscriptionInvoice, SubscriptionPlan
-from .payment_services import (create_subscription_checkout, finalize_mpesa_subscription,
-                               finalize_paypal_subscription)
+from .paypal_subscription_services import (
+    process_paypal_subscription_webhook,
+    verify_and_finalize_initial_subscription,
+    verify_paypal_webhook,
+)
+from .payment_services import create_subscription_checkout, finalize_mpesa_subscription
 from .services import get_current_subscription, get_subscription_access, get_subscription_plan
 
 
@@ -37,7 +41,12 @@ class MySubscriptionView(APIView):
                          'max_units_per_listing': plan.max_units_per_listing if plan else None,
                          'current_period_start': subscription.current_period_start if subscription else None,
                          'current_period_end': subscription.current_period_end if subscription else None,
-                         'grace_period_end': subscription.grace_period_end if subscription else None})
+                         'grace_period_end': subscription.grace_period_end if subscription else None,
+                         'auto_renew': subscription.auto_renew if subscription else False,
+                         'paypal_subscription_id': subscription.paypal_subscription_id if subscription else None,
+                         'paypal_status': subscription.paypal_status if subscription else None,
+                         'next_billing_at': subscription.next_billing_at if subscription else None,
+                         'cancel_at_period_end': subscription.cancel_at_period_end if subscription else False})
 
 
 class MySubscriptionAccessView(APIView):
@@ -94,7 +103,27 @@ class PayPalSubscriptionApproveView(APIView):
         if not invoice:
             return Response({'success': False, 'detail': 'Pending PayPal subscription invoice not found.'}, status=404)
         try:
-            settled = finalize_paypal_subscription(invoice.id, paypal_subscription_id)
+            settled = verify_and_finalize_initial_subscription(invoice.id, paypal_subscription_id)
         except ValueError as exc:
             return Response({'success': False, 'detail': str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=502)
         return Response({**settled, 'payment_approved': True, 'paypal_subscription_id': paypal_subscription_id})
+
+
+class PayPalSubscriptionWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        payload = request.data
+        try:
+            verify_paypal_webhook(payload, request.headers)
+            result = process_paypal_subscription_webhook(payload)
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=503)
+        except Exception as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=500)
+        return Response({'success': True, **result})
