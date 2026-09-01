@@ -1,4 +1,5 @@
 from django.db import migrations, models
+from django.utils import timezone
 
 
 class Migration(migrations.Migration):
@@ -65,6 +66,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='profile',
             name='date_joined',
-            field=models.DateTimeField(default=models.functions.Now),
+            field=models.DateTimeField(default=timezone.now),
         ),
     ]
