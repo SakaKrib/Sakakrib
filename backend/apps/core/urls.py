@@ -6,6 +6,7 @@ from .chat_views import ChatConversationView, ChatMessageView
 from .chat_media_views import ChatMediaFileView, ChatMediaUploadView
 from .notification_views import RenterNotificationView, UserNotificationView
 from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfirmView, LandlordRentPaymentRejectView, RenterInvoicePaymentSubmitView, RenterPaidInvoiceCreateView
+from .renter_views import RenterInvitationClaimView, RenterInvitationCreateView, RenterInvitationPreviewView, RenterInvitationResendView
 
 urlpatterns = [
     path("bookings/", BookingView.as_view(), name="booking-list"), path("bookings/<uuid:object_id>/", BookingView.as_view(), name="booking-detail"),
@@ -28,4 +29,8 @@ urlpatterns = [
     path("chat/media/", ChatMediaUploadView.as_view(), name="chat-media-upload"), path("chat/media/<str:token>/", ChatMediaFileView.as_view(), name="chat-media-file"),
     path("notifications/", UserNotificationView.as_view(), name="user-notifications"), path("renter-notifications/", RenterNotificationView.as_view(), name="renter-notifications"),
     path("invoices/landlord/", LandlordRentInvoiceCreateView.as_view(), name="rent-invoice-create-landlord"), path("invoices/renter/paid/", RenterPaidInvoiceCreateView.as_view(), name="rent-invoice-create-renter-paid"), path("invoices/<uuid:invoice_id>/submit-payment/", RenterInvoicePaymentSubmitView.as_view(), name="rent-invoice-submit-payment"), path("payment-submissions/<uuid:submission_id>/confirm/", LandlordRentPaymentConfirmView.as_view(), name="rent-payment-confirm"), path("payment-submissions/<uuid:submission_id>/reject/", LandlordRentPaymentRejectView.as_view(), name="rent-payment-reject"),
+    path("renter-invitations/", RenterInvitationCreateView.as_view(), name="renter-invitation-create"),
+    path("renter-invitations/<uuid:association_id>/resend/", RenterInvitationResendView.as_view(), name="renter-invitation-resend"),
+    path("renter-invitations/<str:token>/preview/", RenterInvitationPreviewView.as_view(), name="renter-invitation-preview"),
+    path("renter-invitations/<str:token>/claim/", RenterInvitationClaimView.as_view(), name="renter-invitation-claim"),
 ]
