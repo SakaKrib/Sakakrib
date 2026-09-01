@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
 
 from .models import Profile
@@ -12,6 +13,7 @@ OTP_EXPIRY_MINUTES = 10
 OTP_RESEND_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
 VERIFICATION_WINDOW_HOURS = 24
+OTP_ACCOUNT_CLEANUP_DELAY_SECONDS = 180
 
 
 def generate_signup_otp():
@@ -25,12 +27,13 @@ def send_signup_otp(user: Profile, *, now=None):
         if elapsed < OTP_RESEND_SECONDS:
             raise ValueError('Please wait before requesting another verification code.')
 
+    is_first_verification_send = user.signup_verification_started_at is None
     otp = generate_signup_otp()
     user.signup_otp_hash = make_password(otp)
     user.signup_otp_expires_at = now + timedelta(minutes=OTP_EXPIRY_MINUTES)
     user.signup_otp_attempts = 0
     user.signup_otp_last_sent_at = now
-    if not user.signup_verification_started_at:
+    if is_first_verification_send:
         user.signup_verification_started_at = now
         user.signup_verification_deadline_at = now + timedelta(hours=VERIFICATION_WINDOW_HOURS)
     user.save(update_fields=[
@@ -46,6 +49,19 @@ def send_signup_otp(user: Profile, *, now=None):
         recipient_list=[user.email],
         fail_silently=False,
     )
+
+    # Start the three-minute cleanup clock only after the OTP email has been
+    # successfully handed to Django's configured email backend. The task
+    # re-checks email_verified at execution time before deleting anything.
+    if is_first_verification_send:
+        from .tasks import delete_unverified_account_after_3_minutes
+
+        transaction.on_commit(
+            lambda: delete_unverified_account_after_3_minutes.apply_async(
+                args=[str(user.id)],
+                countdown=OTP_ACCOUNT_CLEANUP_DELAY_SECONDS,
+            )
+        )
 
 
 def verify_signup_otp(user: Profile, otp: str, *, now=None):
