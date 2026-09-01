@@ -18,7 +18,6 @@ class SubscriptionPlan(models.Model):
     paypal_annual_price_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     paypal_fx_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     paypal_fx_rate_timestamp = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         managed = False
         db_table = 'subscription_plans'
@@ -46,7 +45,6 @@ class LandlordSubscription(models.Model):
     billing_amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     billing_exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     billing_exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         managed = False
         db_table = 'landlord_subscriptions'
@@ -74,7 +72,6 @@ class RealEstateSubscription(models.Model):
     billing_amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     billing_exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     billing_exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         managed = False
         db_table = 'real_estate_subscriptions'
@@ -89,7 +86,39 @@ class SubscriptionListing(models.Model):
     deactivated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(null=True, blank=True)
     real_estate_subscription_id = models.UUIDField(null=True, blank=True)
-
     class Meta:
         managed = False
         db_table = 'subscription_listings'
+
+
+class SubscriptionInvoice(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    amount_kes = models.DecimalField(max_digits=14, decimal_places=2)
+    mpesa_receipt = models.TextField(null=True, blank=True)
+    checkout_request_id = models.TextField(null=True, blank=True)
+    merchant_request_id = models.TextField(null=True, blank=True)
+    phone_number = models.TextField(null=True, blank=True)
+    status = models.TextField(default='PENDING')
+    result_code = models.IntegerField(null=True, blank=True)
+    result_description = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    payment_provider = models.TextField(null=True, blank=True)
+    provider_reference = models.TextField(null=True, blank=True)
+    provider_transaction_id = models.TextField(null=True, blank=True)
+    payment_method = models.TextField(null=True, blank=True)
+    landlord_subscription_id = models.UUIDField(null=True, blank=True)
+    real_estate_subscription_id = models.UUIDField(null=True, blank=True)
+    currency = models.TextField(null=True, blank=True)
+    amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
+    exchange_rate_source = models.TextField(null=True, blank=True)
+    exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
+    paypal_subscription_id = models.TextField(null=True, blank=True)
+    billing_period_start = models.DateTimeField(null=True, blank=True)
+    billing_period_end = models.DateTimeField(null=True, blank=True)
+    webhook_event_id = models.TextField(null=True, blank=True)
+    pricing_snapshot_source = models.TextField(null=True, blank=True)
+    class Meta:
+        managed = False
+        db_table = 'subscription_invoices'
