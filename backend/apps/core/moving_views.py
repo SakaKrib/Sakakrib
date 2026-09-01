@@ -1,6 +1,9 @@
+from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.accounts.authorization import is_admin
 
 from .access_scopes import (
     booking_events_for_user,
@@ -22,7 +25,6 @@ from .domain_bookings import (
     MoverScheduleEvent,
 )
 from .domain_platform import Mover
-from apps.accounts.authorization import is_admin
 
 
 class ScopedListDetailView(APIView):
@@ -30,7 +32,6 @@ class ScopedListDetailView(APIView):
     model = None
     scope = None
     fields = ()
-    lookup_url_kwarg = "object_id"
 
     def get_queryset(self):
         return self.scope(self.request.user)
@@ -159,23 +160,12 @@ class MoverScheduleEventView(APIView):
         "created_at", "updated_at",
     )
 
-    def get_queryset(self):
-        user = self.request.user
-        mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
-        renter_booking_ids = Booking.objects.filter(renter_id=user.pk).values("id")
-        return MoverScheduleEvent.objects.filter(
-            __dummy__=False
-        ).filter(
-            # The first filter is replaced below; keeping the queryset construction
-            # explicit makes the two production authorization paths easy to audit.
-        )
-
     def get(self, request, object_id=None):
         user = request.user
         mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
         renter_booking_ids = Booking.objects.filter(renter_id=user.pk).values("id")
         queryset = MoverScheduleEvent.objects.filter(
-            models.Q(mover_id__in=mover_ids) | models.Q(booking_id__in=renter_booking_ids)
+            Q(mover_id__in=mover_ids) | Q(booking_id__in=renter_booking_ids)
         )
         if object_id is not None:
             obj = queryset.filter(pk=object_id).first()
@@ -201,7 +191,7 @@ class MovingTrackingPointView(APIView):
         user = request.user
         mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
         participant_bookings = Booking.objects.filter(
-            models.Q(renter_id=user.pk) | models.Q(mover_id__in=mover_ids),
+            Q(renter_id=user.pk) | Q(mover_id__in=mover_ids),
             status__in=["in_progress", "completed"],
         ).values("id")
         queryset = MovingTrackingPoint.objects.filter(booking_id__in=participant_bookings)
@@ -234,10 +224,10 @@ class MovingCancellationEventView(APIView):
         user = request.user
         mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
         participant_booking_ids = Booking.objects.filter(
-            models.Q(renter_id=user.pk) | models.Q(mover_id__in=mover_ids)
+            Q(renter_id=user.pk) | Q(mover_id__in=mover_ids)
         ).values("id")
         queryset = MovingCancellationEvent.objects.filter(
-            models.Q(cancelled_by=user.pk) | models.Q(booking_id__in=participant_booking_ids)
+            Q(cancelled_by=user.pk) | Q(booking_id__in=participant_booking_ids)
         )
         if object_id is not None:
             obj = queryset.filter(pk=object_id).first()
