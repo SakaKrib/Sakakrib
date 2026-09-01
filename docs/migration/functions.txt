@@ -1,0 +1,117 @@
+26:CREATE OR REPLACE FUNCTION "public"."add_listing_to_pms"("p_subscription_id" "uuid", "p_listing_id" "uuid") RETURNS "jsonb"
+95:CREATE OR REPLACE FUNCTION "public"."admin_release_escrow"("p_booking_id" "uuid") RETURNS "jsonb"
+131:CREATE OR REPLACE FUNCTION "public"."admin_release_mover_payout"("p_payout_id" "uuid", "p_tranche" "text") RETURNS "void"
+152:CREATE OR REPLACE FUNCTION "public"."admin_review_landlord_application"("p_user_id" "uuid", "p_decision" "text") RETURNS "void"
+168:CREATE OR REPLACE FUNCTION "public"."admin_review_listing"("p_listing_id" "uuid", "p_decision" "text", "p_note" "text" DEFAULT ''::"text") RETURNS "void"
+192:CREATE OR REPLACE FUNCTION "public"."admin_review_mover_application"("p_user_id" "uuid", "p_decision" "text") RETURNS "void"
+210:CREATE OR REPLACE FUNCTION "public"."build_email_html"("p_title" "text", "p_body" "text") RETURNS "text"
+246:CREATE OR REPLACE FUNCTION "public"."calculate_mover_quote"("p_mover_id" "uuid", "p_distance_km" numeric) RETURNS "jsonb"
+264:CREATE OR REPLACE FUNCTION "public"."can_manage_pms"() RETURNS boolean
+355:CREATE OR REPLACE FUNCTION "public"."can_manage_pms_listing"("p_listing_id" "uuid") RETURNS boolean
+433:CREATE OR REPLACE FUNCTION "public"."cancel_moving_booking"("p_booking_id" "uuid", "p_reason_code" "text", "p_reason_text" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+497:CREATE OR REPLACE FUNCTION "public"."claim_renter_invitation"("p_token" "text") RETURNS "public"."renter_unit_associations"
+543:CREATE OR REPLACE FUNCTION "public"."cleanup_expired_unverified_profiles"() RETURNS integer
+578:CREATE OR REPLACE FUNCTION "public"."confirm_moving_delivery"("p_booking_id" "uuid") RETURNS "jsonb"
+606:CREATE OR REPLACE FUNCTION "public"."confirm_moving_schedule"("p_booking_id" "uuid") RETURNS "jsonb"
+669:CREATE OR REPLACE FUNCTION "public"."confirm_rent_payment"("p_submission_id" "uuid") RETURNS "jsonb"
+699:CREATE OR REPLACE FUNCTION "public"."create_listing_payment_intent"("p_listing_data" "jsonb") RETURNS "jsonb"
+753:CREATE OR REPLACE FUNCTION "public"."create_paypal_subscription_pending"("p_plan_id" "uuid", "p_billing_cycle" "text") RETURNS "uuid"
+842:CREATE OR REPLACE FUNCTION "public"."create_real_estate_subscription_checkout"("p_plan_id" "uuid", "p_billing_cycle" "text", "p_phone_number" "text") RETURNS TABLE("subscription_id" "uuid", "invoice_id" "uuid", "plan_name" "text", "billing_cycle" "text", "amount_kes" numeric, "phone_number" "text")
+869:CREATE OR REPLACE FUNCTION "public"."create_rent_invoice"("p_unit_id" "uuid", "p_periods" "jsonb", "p_due_date" "date", "p_payment_method_id" "uuid") RETURNS "jsonb"
+918:CREATE OR REPLACE FUNCTION "public"."create_rent_payment_intent"("p_renter_assoc_id" "uuid", "p_periods" "jsonb") RETURNS "jsonb"
+983:CREATE OR REPLACE FUNCTION "public"."create_renter_invitation"("p_unit_id" "uuid", "p_renter_name" "text", "p_renter_phone" "text", "p_renter_email" "text", "p_app_base_url" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+1075:CREATE OR REPLACE FUNCTION "public"."create_role_aware_listing"("p_title" "text", "p_description" "text", "p_city" "text", "p_county" "text", "p_location_search" "text" DEFAULT NULL::"text", "p_latitude" double precision DEFAULT NULL::double precision, "p_longitude" double precision DEFAULT NULL::double precision, "p_property_name" "text" DEFAULT NULL::"text", "p_property_type" "text" DEFAULT NULL::"text", "p_price_kes" numeric DEFAULT NULL::numeric, "p_listing_type" "text" DEFAULT 'rent'::"text", "p_deposit_required" boolean DEFAULT false, "p_deposit_structure" "text" DEFAULT NULL::"text", "p_deposit_amount" numeric DEFAULT 0, "p_size" "text" DEFAULT NULL::"text", "p_beds" integer DEFAULT 0, "p_baths" integer DEFAULT 0, "p_contact_phone" "text" DEFAULT NULL::"text", "p_contact_email" "text" DEFAULT NULL::"text", "p_social_links" "jsonb" DEFAULT '[]'::"jsonb", "p_booking_enabled" boolean DEFAULT false, "p_payment_enabled" boolean DEFAULT false, "p_is_property_management" boolean DEFAULT false) RETURNS "jsonb"
+1169:CREATE OR REPLACE FUNCTION "public"."create_subscription_checkout"("p_plan_id" "uuid", "p_billing_cycle" "text", "p_phone_number" "text") RETURNS TABLE("subscription_id" "uuid", "invoice_id" "uuid", "plan_name" "text", "billing_cycle" "text", "amount_kes" numeric, "phone_number" "text")
+1197:CREATE OR REPLACE FUNCTION "public"."dispatch_user_notification"("p_user_id" "uuid", "p_notification_type" "text", "p_title" "text", "p_message" "text", "p_data" "jsonb" DEFAULT '{}'::"jsonb", "p_event_key" "text" DEFAULT NULL::"text", "p_send_email" boolean DEFAULT true, "p_email_template" "text" DEFAULT 'generic'::"text") RETURNS "jsonb"
+1228:CREATE OR REPLACE FUNCTION "public"."enforce_property_unit_entitlement"() RETURNS "trigger"
+1283:CREATE OR REPLACE FUNCTION "public"."ensure_mover_payout_for_paid_booking"() RETURNS "trigger"
+1344:CREATE OR REPLACE FUNCTION "public"."expire_mover_requests"() RETURNS integer
+1366:CREATE OR REPLACE FUNCTION "public"."finalize_mover_payout"("p_payout_id" "uuid", "p_provider" "text", "p_provider_reference" "text", "p_provider_transaction_id" "text", "p_success" boolean, "p_failure_reason" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+1395:CREATE OR REPLACE FUNCTION "public"."finalize_paypal_recurring_payment"("p_subscription_id" "text", "p_provider_transaction_id" "text", "p_amount_usd" numeric, "p_webhook_event_id" "text") RETURNS "jsonb"
+1542:CREATE OR REPLACE FUNCTION "public"."finalize_subscription_payment"("p_checkout_request_id" "text", "p_merchant_request_id" "text", "p_result_code" integer, "p_result_description" "text", "p_mpesa_receipt" "text" DEFAULT NULL::"text", "p_paid_amount" numeric DEFAULT NULL::numeric, "p_phone_number" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+2040:CREATE OR REPLACE FUNCTION "public"."finalize_subscription_paypal_payment"("p_invoice_id" "uuid", "p_order_id" "text", "p_capture_id" "text", "p_amount_usd" numeric) RETURNS "jsonb"
+2114:CREATE OR REPLACE FUNCTION "public"."generate_signup_otp"("p_email" "text", "p_full_name" "text") RETURNS "jsonb"
+2171:CREATE OR REPLACE FUNCTION "public"."generate_signup_otp"("p_email" "text", "p_full_name" "text", "p_encryption_key" "text") RETURNS "jsonb"
+2229:CREATE OR REPLACE FUNCTION "public"."get_active_moving_location"("p_booking_id" "uuid") RETURNS TABLE("booking_id" "uuid", "mover_id" "uuid", "latitude" double precision, "longitude" double precision, "accuracy_meters" double precision, "speed_kph" double precision, "heading_degrees" double precision, "recorded_at" timestamp with time zone)
+2258:CREATE OR REPLACE FUNCTION "public"."get_current_landlord_subscription"("p_landlord_id" "uuid" DEFAULT "auth"."uid"()) RETURNS TABLE("subscription_id" "uuid", "plan_id" "uuid", "plan_name" "text", "subscription_status" "text", "billing_cycle" "text", "max_listings" integer, "max_units_per_listing" integer, "current_period_start" timestamp with time zone, "current_period_end" timestamp with time zone, "grace_period_end" timestamp with time zone)
+2280:CREATE OR REPLACE FUNCTION "public"."get_current_real_estate_subscription"("p_real_estate_id" "uuid" DEFAULT "auth"."uid"()) RETURNS TABLE("subscription_id" "uuid", "plan_id" "uuid", "plan_name" "text", "subscription_status" "text", "billing_cycle" "text", "max_listings" integer, "max_units_per_listing" integer, "current_period_start" timestamp with time zone, "current_period_end" timestamp with time zone, "grace_period_end" timestamp with time zone)
+2289:CREATE OR REPLACE FUNCTION "public"."get_landlord_listing_entitlement"("p_landlord_id" "uuid" DEFAULT "auth"."uid"()) RETURNS "jsonb"
+2404:CREATE OR REPLACE FUNCTION "public"."get_mover_booking_detail"("p_booking_id" "uuid") RETURNS "jsonb"
+2472:CREATE OR REPLACE FUNCTION "public"."get_mover_quote"("p_mover_id" "uuid", "p_distance_km" numeric) RETURNS "jsonb"
+2536:CREATE OR REPLACE FUNCTION "public"."get_mover_schedule_availability"("p_booking_id" "uuid", "p_from" timestamp with time zone, "p_to" timestamp with time zone) RETURNS "jsonb"
+2604:CREATE OR REPLACE FUNCTION "public"."get_mover_tracking_booking"("p_booking_id" "uuid") RETURNS "jsonb"
+2664:CREATE OR REPLACE FUNCTION "public"."get_my_available_pms_listings"() RETURNS TABLE("listing_id" "uuid", "title" "text", "city" "text", "price_kes" numeric, "created_at" timestamp with time zone)
+2714:CREATE OR REPLACE FUNCTION "public"."get_my_landlord_payment_methods"() RETURNS TABLE("id" "uuid", "provider" "text", "mpesa_method" "text", "display_name" "text", "paybill_number" "text", "paybill_account" "text", "till_number" "text", "paypal_email" "text", "is_default" boolean, "is_active" boolean, "created_at" timestamp with time zone, "updated_at" timestamp with time zone)
+2731:CREATE OR REPLACE FUNCTION "public"."get_my_pms_listings"() RETURNS TABLE("subscription_listing_id" "uuid", "subscription_id" "uuid", "listing_id" "uuid", "listing_title" "text", "listing_city" "text", "listing_price_kes" numeric, "status" "text", "activated_at" timestamp with time zone)
+2776:CREATE OR REPLACE FUNCTION "public"."get_my_pms_subscription"() RETURNS TABLE("subscription_id" "uuid", "landlord_id" "uuid", "plan_id" "uuid", "plan_name" "text", "max_listings" integer, "billing_cycle" "text", "status" "text", "current_period_start" timestamp with time zone, "current_period_end" timestamp with time zone, "grace_period_end" timestamp with time zone, "auto_renew" boolean)
+2802:CREATE OR REPLACE FUNCTION "public"."get_my_pms_unit_count"("p_subscription_id" "uuid" DEFAULT NULL::"uuid") RETURNS integer
+2874:CREATE OR REPLACE FUNCTION "public"."get_my_pms_units"("p_listing_id" "uuid" DEFAULT NULL::"uuid") RETURNS TABLE("unit_id" "uuid", "listing_id" "uuid", "listing_title" "text", "unit_number" "text", "unit_type" "text", "rent" numeric, "beds" integer, "baths" integer, "availability" "text", "renter_name" "text", "renter_assoc_id" "uuid", "renter_phone" "text", "renter_email" "text", "lease_start" "date", "lease_end" "date", "assoc_status" "text")
+2963:CREATE OR REPLACE FUNCTION "public"."get_my_profile"() RETURNS "public"."profiles"
+2974:CREATE OR REPLACE FUNCTION "public"."get_my_rent_payable_periods"("p_assoc_id" "uuid", "p_requested_months" integer DEFAULT 1) RETURNS TABLE("period_year" integer, "period_month" integer, "period_start" "date", "due_date" "date", "amount_kes" numeric, "status" "text")
+3058:CREATE OR REPLACE FUNCTION "public"."get_my_rent_summary"() RETURNS TABLE("total_units" integer, "occupied_units" integer, "vacant_units" integer, "total_renters" integer, "monthly_rent_due" numeric, "monthly_rent_paid" numeric, "monthly_rent_outstanding" numeric)
+3104:CREATE OR REPLACE FUNCTION "public"."get_my_renter_associations"() RETURNS TABLE("assoc_id" "uuid", "unit_id" "uuid", "listing_id" "uuid", "unit_number" "text", "renter_name" "text", "renter_phone" "text", "renter_email" "text", "rent_amount" numeric, "unit_rent" numeric, "payment_tracking_enabled" boolean, "rent_due_day" smallint, "lease_start" "date", "lease_end" "date", "status" "text", "created_at" timestamp with time zone)
+3113:CREATE OR REPLACE FUNCTION "public"."get_my_subscription_access"() RETURNS "jsonb"
+3190:CREATE OR REPLACE FUNCTION "public"."get_real_estate_listing_entitlement"("p_real_estate_id" "uuid" DEFAULT "auth"."uid"()) RETURNS "jsonb"
+3280:CREATE OR REPLACE FUNCTION "public"."get_rent_payment_destination"("p_payment_method_id" "uuid", "p_unit_id" "uuid") RETURNS "jsonb"
+3349:CREATE OR REPLACE FUNCTION "public"."get_rent_payments_for_assoc"("p_assoc_id" "uuid") RETURNS TABLE("id" "uuid", "renter_assoc_id" "uuid", "unit_id" "uuid", "amount_kes" numeric, "period_year" integer, "period_month" integer, "status" "text", "mpesa_receipt" "text", "paid_at" timestamp with time zone, "payment_provider" "text", "created_at" timestamp with time zone)
+3375:CREATE OR REPLACE FUNCTION "public"."get_renter_invitation_preview"("p_token" "text") RETURNS TABLE("renter_name" "text", "unit_number" "text", "unit_type" "text", "rent_amount" numeric, "property_title" "text", "property_city" "text", "invitation_status" "text")
+3406:CREATE OR REPLACE FUNCTION "public"."get_renter_payment_history"("p_assoc_id" "uuid") RETURNS TABLE("id" "uuid", "amount_kes" numeric, "period_year" integer, "period_month" integer, "status" "text", "payment_provider" "text", "payment_method" "text", "mpesa_receipt" "text", "paid_at" timestamp with time zone, "created_at" timestamp with time zone)
+3415:CREATE OR REPLACE FUNCTION "public"."get_renter_rent_summary"("p_renter_assoc_id" "uuid") RETURNS "jsonb"
+3441:CREATE OR REPLACE FUNCTION "public"."get_signup_otp_for_email"("p_email" "text") RETURNS "text"
+3480:CREATE OR REPLACE FUNCTION "public"."get_signup_otp_for_email"("p_email" "text", "p_encryption_key" "text") RETURNS "text"
+3503:CREATE OR REPLACE FUNCTION "public"."handle_new_auth_user"() RETURNS "trigger"
+3524:CREATE OR REPLACE FUNCTION "public"."is_current_user_admin"() RETURNS boolean
+3540:CREATE OR REPLACE FUNCTION "public"."is_listing_pms_managed"("p_listing_id" "uuid") RETURNS boolean
+3576:CREATE OR REPLACE FUNCTION "public"."issue_signup_otp"("p_email" "text") RETURNS "jsonb"
+3647:CREATE OR REPLACE FUNCTION "public"."mark_unit_rent_paid_through"("p_unit_id" "uuid", "p_paid_through_month" "date") RETURNS "jsonb"
+3788:CREATE OR REPLACE FUNCTION "public"."moving_day_name"("p_date" "date") RETURNS "text"
+3799:CREATE OR REPLACE FUNCTION "public"."notify_application_decision"() RETURNS "trigger"
+3847:CREATE OR REPLACE FUNCTION "public"."notify_listing_approved"() RETURNS "trigger"
+3877:CREATE OR REPLACE FUNCTION "public"."notify_listing_posted"() RETURNS "trigger"
+3908:CREATE OR REPLACE FUNCTION "public"."open_moving_dispute"("p_booking_id" "uuid", "p_reason_code" "text", "p_description" "text") RETURNS "jsonb"
+3934:CREATE OR REPLACE FUNCTION "public"."process_listing_payment"("p_payment_id" "uuid" DEFAULT NULL::"uuid", "p_checkout_request_id" "text" DEFAULT NULL::"text", "p_paid_amount" numeric DEFAULT NULL::numeric, "p_mpesa_receipt" "text" DEFAULT NULL::"text", "p_merchant_request_id" "text" DEFAULT NULL::"text", "p_phone_number" "text" DEFAULT NULL::"text", "p_result_code" integer DEFAULT NULL::integer, "p_result_description" "text" DEFAULT NULL::"text", "p_provider" "text" DEFAULT 'MPESA'::"text", "p_payment_method" "text" DEFAULT 'MPESA'::"text", "p_provider_reference" "text" DEFAULT NULL::"text", "p_payment_intent_id" "uuid" DEFAULT NULL::"uuid", "p_provider_amount" numeric DEFAULT NULL::numeric, "p_provider_currency" "text" DEFAULT NULL::"text", "p_paypal_order_id" "text" DEFAULT NULL::"text", "p_paypal_fx_rate" numeric DEFAULT NULL::numeric) RETURNS "jsonb"
+3968:CREATE OR REPLACE FUNCTION "public"."process_pms_growth_notifications"() RETURNS "jsonb"
+4134:CREATE OR REPLACE FUNCTION "public"."process_real_estate_subscription_payment"("p_invoice_id" "uuid", "p_checkout_request_id" "text", "p_mpesa_receipt" "text", "p_merchant_request_id" "text" DEFAULT NULL::"text", "p_phone_number" "text" DEFAULT NULL::"text", "p_result_code" integer DEFAULT 0, "p_result_description" "text" DEFAULT NULL::"text", "p_paid_amount" numeric DEFAULT NULL::numeric) RETURNS "jsonb"
+4163:CREATE OR REPLACE FUNCTION "public"."process_rent_payment"("p_payment_intent_id" "uuid", "p_provider" "text", "p_payment_method" "text", "p_paid_amount" numeric, "p_provider_reference" "text", "p_provider_amount" numeric DEFAULT NULL::numeric, "p_provider_currency" "text" DEFAULT NULL::"text", "p_mpesa_receipt" "text" DEFAULT NULL::"text", "p_checkout_request_id" "text" DEFAULT NULL::"text", "p_merchant_request_id" "text" DEFAULT NULL::"text", "p_phone_number" "text" DEFAULT NULL::"text", "p_result_code" integer DEFAULT NULL::integer, "p_result_description" "text" DEFAULT NULL::"text", "p_paypal_order_id" "text" DEFAULT NULL::"text", "p_paypal_fx_rate" numeric DEFAULT NULL::numeric) RETURNS "jsonb"
+4226:CREATE OR REPLACE FUNCTION "public"."process_subscription_expiry"() RETURNS "jsonb"
+4352:CREATE OR REPLACE FUNCTION "public"."process_subscription_payment"("p_invoice_id" "uuid", "p_checkout_request_id" "text", "p_mpesa_receipt" "text", "p_merchant_request_id" "text" DEFAULT NULL::"text", "p_phone_number" "text" DEFAULT NULL::"text", "p_result_code" integer DEFAULT 0, "p_result_description" "text" DEFAULT NULL::"text", "p_paid_amount" numeric DEFAULT NULL::numeric) RETURNS "jsonb"
+4382:CREATE OR REPLACE FUNCTION "public"."propose_moving_schedule"("p_booking_id" "uuid", "p_starts_at" timestamp with time zone, "p_ends_at" timestamp with time zone) RETURNS "jsonb"
+4463:CREATE OR REPLACE FUNCTION "public"."protect_listing_admin_fields"() RETURNS "trigger"
+4498:CREATE OR REPLACE FUNCTION "public"."protect_listing_payment_creation"() RETURNS "trigger"
+4519:CREATE OR REPLACE FUNCTION "public"."protect_mover_admin_fields"() RETURNS "trigger"
+4551:CREATE OR REPLACE FUNCTION "public"."protect_mover_application_admin_fields"() RETURNS "trigger"
+4595:CREATE OR REPLACE FUNCTION "public"."protect_profile_kyc_verification_fields"() RETURNS "trigger"
+4668:CREATE OR REPLACE FUNCTION "public"."protect_profile_role_transition"() RETURNS "trigger"
+4718:CREATE OR REPLACE FUNCTION "public"."publish_approved_listing_to_community"() RETURNS "trigger"
+4773:CREATE OR REPLACE FUNCTION "public"."queue_notification_email"("p_recipient" "text", "p_subject" "text", "p_html_body" "text", "p_template_type" "text" DEFAULT 'generic'::"text") RETURNS "void"
+4787:CREATE OR REPLACE FUNCTION "public"."queue_payment_success_notifications"() RETURNS "trigger"
+4885:CREATE OR REPLACE FUNCTION "public"."queue_subscription_payment_notifications"() RETURNS "trigger"
+5010:CREATE OR REPLACE FUNCTION "public"."record_mover_location"("p_booking_id" "uuid", "p_latitude" double precision, "p_longitude" double precision, "p_accuracy_meters" double precision DEFAULT NULL::double precision, "p_speed_kph" double precision DEFAULT NULL::double precision, "p_heading_degrees" double precision DEFAULT NULL::double precision) RETURNS "jsonb"
+5116:CREATE OR REPLACE FUNCTION "public"."record_moving_location"("p_booking_id" "uuid", "p_latitude" double precision, "p_longitude" double precision, "p_accuracy_meters" double precision DEFAULT NULL::double precision, "p_speed_kph" double precision DEFAULT NULL::double precision, "p_heading_degrees" double precision DEFAULT NULL::double precision, "p_recorded_at" timestamp with time zone DEFAULT "now"()) RETURNS "public"."moving_tracking_points"
+5142:CREATE OR REPLACE FUNCTION "public"."record_moving_payment"("p_booking_id" "uuid", "p_provider" "text", "p_provider_reference" "text", "p_provider_transaction_id" "text", "p_amount_kes" numeric, "p_mpesa_receipt" "text" DEFAULT NULL::"text", "p_paypal_order_id" "text" DEFAULT NULL::"text", "p_provider_currency" "text" DEFAULT 'KES'::"text") RETURNS "jsonb"
+5200:CREATE OR REPLACE FUNCTION "public"."reject_rent_payment"("p_submission_id" "uuid", "p_reason" "text") RETURNS "jsonb"
+5221:CREATE OR REPLACE FUNCTION "public"."remove_listing_from_pms"("p_subscription_id" "uuid", "p_listing_id" "uuid") RETURNS "jsonb"
+5287:CREATE OR REPLACE FUNCTION "public"."request_mover_booking"("p_mover_id" "uuid", "p_pickup_address" "text", "p_dropoff_address" "text", "p_pickup_latitude" double precision, "p_pickup_longitude" double precision, "p_dropoff_latitude" double precision, "p_dropoff_longitude" double precision, "p_distance_km" numeric, "p_listing_id" "uuid" DEFAULT NULL::"uuid") RETURNS "jsonb"
+5365:CREATE OR REPLACE FUNCTION "public"."resend_renter_invitation"("p_association_id" "uuid", "p_app_base_url" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+5426:CREATE OR REPLACE FUNCTION "public"."resolve_moving_dispute"("p_dispute_id" "uuid", "p_resolution_code" "text", "p_resolution_notes" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+5454:CREATE OR REPLACE FUNCTION "public"."respond_to_mover_booking"("p_booking_id" "uuid", "p_decision" "text", "p_reason" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+5547:CREATE OR REPLACE FUNCTION "public"."review_mover_after_delivery"("p_booking_id" "uuid", "p_rating" integer, "p_comment" "text" DEFAULT ''::"text") RETURNS "jsonb"
+5575:CREATE OR REPLACE FUNCTION "public"."send_payment_reminder"("p_renter_assoc_id" "uuid", "p_message" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+5655:CREATE OR REPLACE FUNCTION "public"."set_booking_mover_pricing"() RETURNS "trigger"
+5711:CREATE OR REPLACE FUNCTION "public"."set_landlord_payment_method_default"("p_payment_method_id" "uuid") RETURNS "void"
+5736:CREATE OR REPLACE FUNCTION "public"."set_otp_verifications_updated_at"() RETURNS "trigger"
+5750:CREATE OR REPLACE FUNCTION "public"."set_platform_settings_updated_at"() RETURNS "trigger"
+5764:CREATE OR REPLACE FUNCTION "public"."set_subscription_updated_at"() RETURNS "trigger"
+5781:CREATE OR REPLACE FUNCTION "public"."start_moving_journey"("p_booking_id" "uuid") RETURNS "jsonb"
+5810:CREATE OR REPLACE FUNCTION "public"."submit_kyc_application"("p_full_name" "text", "p_national_id" "text", "p_id_photo_url" "text", "p_selfie_url" "text") RETURNS "public"."profiles"
+5881:CREATE OR REPLACE FUNCTION "public"."submit_landlord_application"("p_first_name" "text", "p_middle_name" "text", "p_last_name" "text", "p_email" "text", "p_phone" "text", "p_national_id" "text", "p_document_type" "text", "p_document_url" "text") RETURNS "void"
+5929:CREATE OR REPLACE FUNCTION "public"."submit_mover_application"("p_application" "jsonb") RETURNS "jsonb"
+6148:CREATE OR REPLACE FUNCTION "public"."submit_rent_payment"("p_invoice_id" "uuid", "p_transaction_reference" "text") RETURNS "jsonb"
+6171:CREATE OR REPLACE FUNCTION "public"."sync_mover_profile_application_status"() RETURNS "trigger"
+6230:CREATE OR REPLACE FUNCTION "public"."sync_renter_assoc_rent_from_unit"() RETURNS "trigger"
+6254:CREATE OR REPLACE FUNCTION "public"."touch_listing_payment_intent_updated_at"() RETURNS "trigger"
+6268:CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
+6282:CREATE OR REPLACE FUNCTION "public"."validate_moving_payment_state"() RETURNS "trigger"
+6308:CREATE OR REPLACE FUNCTION "public"."validate_rent_payment_relationship"() RETURNS "trigger"
+6345:CREATE OR REPLACE FUNCTION "public"."validate_renter_unit_association"() RETURNS "trigger"
+6387:CREATE OR REPLACE FUNCTION "public"."verify_signup_otp"("p_email" "text", "p_otp" "text") RETURNS "jsonb"

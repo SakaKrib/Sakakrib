@@ -1,0 +1,96 @@
+9104:CREATE POLICY "Authenticated users can view subscription plans" ON "public"."subscription_plans" FOR SELECT TO "authenticated" USING (true);
+9108:CREATE POLICY "Landlords can create own property units" ON "public"."property_units" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+9112:CREATE POLICY "Landlords can delete own property units" ON "public"."property_units" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9116:CREATE POLICY "Landlords can update own property units" ON "public"."property_units" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
+9120:CREATE POLICY "Landlords can view own property units" ON "public"."property_units" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9124:CREATE POLICY "Landlords can view own subscription" ON "public"."landlord_subscriptions" FOR SELECT TO "authenticated" USING (("landlord_id" = "auth"."uid"()));
+9128:CREATE POLICY "Subscription owners can view own invoices" ON "public"."subscription_invoices" FOR SELECT TO "authenticated" USING (((EXISTS ( SELECT 1
+9136:CREATE POLICY "admins_can_update_listings" ON "public"."listings" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+9147:CREATE POLICY "booking_events_select_authorized" ON "public"."booking_events" FOR SELECT TO "authenticated" USING ((("renter_id" = ( SELECT "auth"."uid"() AS "uid")) OR (EXISTS ( SELECT 1
+9158:CREATE POLICY "bookings_select_own" ON "public"."bookings" FOR SELECT TO "authenticated" USING ((("auth"."uid"() = "renter_id") OR (EXISTS ( SELECT 1
+9164:CREATE POLICY "bookings_select_participant" ON "public"."bookings" FOR SELECT TO "authenticated" USING ((("auth"."uid"() = "renter_id") OR (EXISTS ( SELECT 1
+9172:CREATE POLICY "cancellations participant read" ON "public"."moving_cancellation_events" FOR SELECT TO "authenticated" USING ((("cancelled_by" = ( SELECT "auth"."uid"() AS "uid")) OR (EXISTS ( SELECT 1
+9187:CREATE POLICY "community_posts_delete_own" ON "public"."community_posts" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9191:CREATE POLICY "community_posts_insert_own" ON "public"."community_posts" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+9195:CREATE POLICY "community_posts_select_visible" ON "public"."community_posts" FOR SELECT TO "authenticated" USING ((("listing_id" IS NULL) OR (EXISTS ( SELECT 1
+9201:CREATE POLICY "community_posts_update_own" ON "public"."community_posts" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
+9205:CREATE POLICY "delete_own_renter_assoc" ON "public"."renter_unit_associations" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "landlord_id"));
+9212:CREATE POLICY "insert_own_booking_events" ON "public"."booking_events" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "renter_id"));
+9216:CREATE POLICY "insert_own_chat_messages" ON "public"."chat_messages" FOR INSERT TO "authenticated" WITH CHECK (((( SELECT "auth"."uid"() AS "uid") = "sender_id") AND ("conversation_id" = (((LEAST("sender_id", "receiver_id"))::"text" || '__'::"text") || (GREATEST("sender_id", "receiver_id"))::"text")) AND (((EXISTS ( SELECT 1
+9228:CREATE POLICY "insert_own_renter_assoc" ON "public"."renter_unit_associations" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "landlord_id"));
+9235:CREATE POLICY "landlord_payment_methods_delete_own" ON "public"."landlord_payment_methods" FOR DELETE TO "authenticated" USING (("landlord_id" = "auth"."uid"()));
+9239:CREATE POLICY "landlord_payment_methods_insert_own" ON "public"."landlord_payment_methods" FOR INSERT TO "authenticated" WITH CHECK (("landlord_id" = "auth"."uid"()));
+9243:CREATE POLICY "landlord_payment_methods_select_own" ON "public"."landlord_payment_methods" FOR SELECT TO "authenticated" USING (("landlord_id" = "auth"."uid"()));
+9247:CREATE POLICY "landlord_payment_methods_update_own" ON "public"."landlord_payment_methods" FOR UPDATE TO "authenticated" USING (("landlord_id" = "auth"."uid"())) WITH CHECK (("landlord_id" = "auth"."uid"()));
+9254:CREATE POLICY "landlords_can_view_own_listing_payments" ON "public"."listing_payments" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9261:CREATE POLICY "listing_media_delete_own" ON "public"."listing_media" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9265:CREATE POLICY "listing_media_insert_own" ON "public"."listing_media" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+9269:CREATE POLICY "listing_media_select_approved" ON "public"."listing_media" FOR SELECT TO "authenticated" USING (((EXISTS ( SELECT 1
+9277:CREATE POLICY "listing_media_update_own" ON "public"."listing_media" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
+9284:CREATE POLICY "listing_payment_intents_select_own" ON "public"."listing_payment_intents" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
+9291:CREATE POLICY "listing_payments_select_own" ON "public"."listing_payments" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9298:CREATE POLICY "listings_delete_own" ON "public"."listings" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9302:CREATE POLICY "listings_select_approved_verified" ON "public"."listings" FOR SELECT TO "authenticated" USING ((("is_approved" = true) AND ("is_published" = true) AND (EXISTS ( SELECT 1
+9308:CREATE POLICY "listings_select_own_verified" ON "public"."listings" FOR SELECT TO "authenticated" USING ((((( SELECT "auth"."uid"() AS "uid") = "user_id") AND (EXISTS ( SELECT 1
+9316:CREATE POLICY "listings_update_own" ON "public"."listings" FOR UPDATE TO "authenticated" USING (((( SELECT "auth"."uid"() AS "uid") = "user_id") AND (EXISTS ( SELECT 1
+9327:CREATE POLICY "mover_applications_delete_admin" ON "public"."mover_applications" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+9333:CREATE POLICY "mover_applications_insert_own" ON "public"."mover_applications" FOR INSERT TO "authenticated" WITH CHECK (("applicant_id" = "auth"."uid"()));
+9337:CREATE POLICY "mover_applications_select_own_or_admin" ON "public"."mover_applications" FOR SELECT TO "authenticated" USING ((("applicant_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+9343:CREATE POLICY "mover_applications_update_admin" ON "public"."mover_applications" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+9354:CREATE POLICY "mover_payouts_select_admin_or_mover" ON "public"."mover_payouts" FOR SELECT TO "authenticated" USING (((EXISTS ( SELECT 1
+9362:CREATE POLICY "mover_payouts_select_authorized" ON "public"."mover_payouts" FOR SELECT TO "authenticated" USING (((EXISTS ( SELECT 1
+9376:CREATE POLICY "movers_delete_own" ON "public"."movers" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9380:CREATE POLICY "movers_insert_own" ON "public"."movers" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+9384:CREATE POLICY "movers_select_approved" ON "public"."movers" FOR SELECT TO "authenticated" USING (((("approval_status" = 'approved'::"text") AND ("is_available" = true)) OR ("auth"."uid"() = "user_id") OR (EXISTS ( SELECT 1
+9390:CREATE POLICY "movers_update_admin" ON "public"."movers" FOR UPDATE TO "authenticated" USING ("public"."is_current_user_admin"()) WITH CHECK ("public"."is_current_user_admin"());
+9394:CREATE POLICY "moving invoices mover own" ON "public"."moving_invoices" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9400:CREATE POLICY "moving invoices renter own" ON "public"."moving_invoices" FOR SELECT TO "authenticated" USING (("renter_id" = ( SELECT "auth"."uid"() AS "uid")));
+9404:CREATE POLICY "moving payments mover own" ON "public"."moving_payments" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9411:CREATE POLICY "moving payments payer own" ON "public"."moving_payments" FOR SELECT TO "authenticated" USING (("payer_id" = ( SELECT "auth"."uid"() AS "uid")));
+9421:CREATE POLICY "moving_disputes_participant_select" ON "public"."moving_disputes" FOR SELECT TO "authenticated" USING ((("opened_by" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+9433:CREATE POLICY "moving_invoices_select_authorized" ON "public"."moving_invoices" FOR SELECT TO "authenticated" USING ((("renter_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+9444:CREATE POLICY "moving_payments_select_authorized" ON "public"."moving_payments" FOR SELECT TO "authenticated" USING ((("payer_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+9456:CREATE POLICY "moving_tracking_points_select_authorized" ON "public"."moving_tracking_points" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9475:CREATE POLICY "platform_settings_select_authenticated" ON "public"."platform_settings" FOR SELECT TO "authenticated" USING (true);
+9479:CREATE POLICY "platform_settings_update_admin" ON "public"."platform_settings" FOR UPDATE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") IN ( SELECT "p"."id"
+9493:CREATE POLICY "profiles_insert_own" ON "public"."profiles" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "id"));
+9497:CREATE POLICY "profiles_select_admin" ON "public"."profiles" FOR SELECT TO "authenticated" USING ("public"."is_current_user_admin"());
+9501:CREATE POLICY "profiles_select_own" ON "public"."profiles" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "id"));
+9505:CREATE POLICY "profiles_update_admin" ON "public"."profiles" FOR UPDATE TO "authenticated" USING ("public"."is_current_user_admin"()) WITH CHECK ("public"."is_current_user_admin"());
+9509:CREATE POLICY "profiles_update_own" ON "public"."profiles" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "id")) WITH CHECK ((("auth"."uid"() = "id") AND ("role" = ANY (ARRAY['renter'::"text", 'landlord'::"text", 'mover'::"text", 'real_estate'::"text"]))));
+9516:CREATE POLICY "real_estate_subscription_owner_select" ON "public"."real_estate_subscriptions" FOR SELECT TO "authenticated" USING (("real_estate_id" = "auth"."uid"()));
+9526:CREATE POLICY "rent_invoice_periods_select_participant" ON "public"."rent_invoice_periods" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9535:CREATE POLICY "rent_invoices_select_participant" ON "public"."rent_invoices" FOR SELECT TO "authenticated" USING ((("landlord_id" = "auth"."uid"()) OR ("renter_user_id" = "auth"."uid"())));
+9542:CREATE POLICY "rent_payment_intents_renter_select" ON "public"."rent_payment_intents" FOR SELECT TO "authenticated" USING (("renter_user_id" = ( SELECT "auth"."uid"() AS "uid")));
+9549:CREATE POLICY "rent_payment_submissions_select_participant" ON "public"."rent_payment_submissions" FOR SELECT TO "authenticated" USING ((("landlord_id" = "auth"."uid"()) OR ("renter_user_id" = "auth"."uid"())));
+9556:CREATE POLICY "rent_payments_renter_select" ON "public"."rent_payments" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9565:CREATE POLICY "rent_reminder_settings_landlord_delete" ON "public"."rent_reminder_settings" FOR DELETE TO "authenticated" USING (("landlord_id" = ( SELECT "auth"."uid"() AS "uid")));
+9569:CREATE POLICY "rent_reminder_settings_landlord_insert" ON "public"."rent_reminder_settings" FOR INSERT TO "authenticated" WITH CHECK (("landlord_id" = ( SELECT "auth"."uid"() AS "uid")));
+9573:CREATE POLICY "rent_reminder_settings_landlord_select" ON "public"."rent_reminder_settings" FOR SELECT TO "authenticated" USING (("landlord_id" = ( SELECT "auth"."uid"() AS "uid")));
+9577:CREATE POLICY "rent_reminder_settings_landlord_update" ON "public"."rent_reminder_settings" FOR UPDATE TO "authenticated" USING (("landlord_id" = ( SELECT "auth"."uid"() AS "uid"))) WITH CHECK (("landlord_id" = ( SELECT "auth"."uid"() AS "uid")));
+9584:CREATE POLICY "rent_reminders_landlord_select" ON "public"."rent_reminders" FOR SELECT TO "authenticated" USING (("landlord_id" = ( SELECT "auth"."uid"() AS "uid")));
+9591:CREATE POLICY "renter_notifications_owner_select" ON "public"."renter_notifications" FOR SELECT TO "authenticated" USING (("renter_user_id" = ( SELECT "auth"."uid"() AS "uid")));
+9595:CREATE POLICY "renter_notifications_owner_update" ON "public"."renter_notifications" FOR UPDATE TO "authenticated" USING (("renter_user_id" = ( SELECT "auth"."uid"() AS "uid"))) WITH CHECK (("renter_user_id" = ( SELECT "auth"."uid"() AS "uid")));
+9602:CREATE POLICY "renter_unit_associations_renter_select" ON "public"."renter_unit_associations" FOR SELECT TO "authenticated" USING (("renter_user_id" = ( SELECT "auth"."uid"() AS "uid")));
+9606:CREATE POLICY "renter_view_associated_property_units" ON "public"."property_units" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9615:CREATE POLICY "reviews_delete_own" ON "public"."reviews" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "reviewer_id"));
+9619:CREATE POLICY "reviews_insert_own" ON "public"."reviews" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "reviewer_id"));
+9623:CREATE POLICY "reviews_select_all" ON "public"."reviews" FOR SELECT TO "authenticated" USING (true);
+9627:CREATE POLICY "reviews_update_own" ON "public"."reviews" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "reviewer_id")) WITH CHECK (("auth"."uid"() = "reviewer_id"));
+9631:CREATE POLICY "schedule mover own" ON "public"."mover_schedule_events" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9637:CREATE POLICY "schedule renter own booking" ON "public"."mover_schedule_events" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+9643:CREATE POLICY "select_own_chat_messages" ON "public"."chat_messages" FOR SELECT TO "authenticated" USING (((( SELECT "auth"."uid"() AS "uid") = "sender_id") OR (( SELECT "auth"."uid"() AS "uid") = "receiver_id")));
+9647:CREATE POLICY "select_own_rent_payments" ON "public"."rent_payments" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "landlord_id"));
+9651:CREATE POLICY "select_own_renter_assoc" ON "public"."renter_unit_associations" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "landlord_id"));
+9661:CREATE POLICY "subscription_listings_owner_select" ON "public"."subscription_listings" FOR SELECT TO "authenticated" USING (((EXISTS ( SELECT 1
+9678:CREATE POLICY "support_tickets_delete_admin" ON "public"."support_tickets" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+9684:CREATE POLICY "support_tickets_insert_public" ON "public"."support_tickets" FOR INSERT TO "authenticated", "anon" WITH CHECK ((("user_id" IS NULL) OR ("user_id" = "auth"."uid"())));
+9688:CREATE POLICY "support_tickets_select_admin_or_owner" ON "public"."support_tickets" FOR SELECT TO "authenticated" USING ((("user_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+9694:CREATE POLICY "support_tickets_update_admin" ON "public"."support_tickets" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+9705:CREATE POLICY "terms_insert_own" ON "public"."terms_acceptance" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+9709:CREATE POLICY "terms_select_own" ON "public"."terms_acceptance" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+9713:CREATE POLICY "terms_update_own" ON "public"."terms_acceptance" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
+9717:CREATE POLICY "update_own_booking_events" ON "public"."booking_events" FOR UPDATE TO "authenticated" USING ((("auth"."uid"() = "renter_id") OR ("auth"."uid"() = "mover_id"))) WITH CHECK ((("auth"."uid"() = "renter_id") OR ("auth"."uid"() = "mover_id")));
+9721:CREATE POLICY "update_own_renter_assoc" ON "public"."renter_unit_associations" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "landlord_id")) WITH CHECK (("auth"."uid"() = "landlord_id"));
+9728:CREATE POLICY "user_notifications_select_own" ON "public"."user_notifications" FOR SELECT TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
+9732:CREATE POLICY "user_notifications_update_own" ON "public"."user_notifications" FOR UPDATE TO "authenticated" USING ((( SELECT "auth"."uid"() AS "uid") = "user_id")) WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
