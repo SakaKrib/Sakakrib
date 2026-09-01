@@ -73,11 +73,19 @@ Do not modify or destructively migrate the live Supabase production database fro
 - Production indexes for these domains
 
 ### Subscription reconciliation
-- Real-estate and landlord subscription access now require the corresponding approved application plus verified identity before listing entitlement is granted
-- Subscription checkout now blocks unapproved real-estate applications as well as unapproved landlord applications
+- Real-estate and landlord subscription access require the corresponding approved application plus verified identity before listing entitlement is granted
+- Subscription checkout blocks unapproved real-estate applications as well as unapproved landlord applications
 - Django subscription views use the custom `Profile` request user directly; no invalid `request.user.profile` dereference
 - Pending landlord subscription checkout is writable against the current production schema, whose period columns are non-null, while successful payment still establishes the real paid period
-- Production PayPal recurring-payment behavior has been identified as still requiring a dedicated Django webhook/renewal implementation before cutover
+- Production `subscription_renewal_attempts` schema is now represented in Django
+- PayPal recurring subscriptions are retained for both landlord and real-estate audiences
+- PayPal subscription approval now verifies the remote PayPal subscription server-side before activating the local subscription
+- Signed PayPal subscription webhooks are verified server-side using the configured PayPal webhook ID
+- Recurring subscription events are idempotently recorded through `payment_webhook_events`
+- PayPal subscription activation, update, cancellation, suspension, expiry, payment failure, recurring payment, and refund events are handled by Django
+- Successful recurring PayPal payments create paid subscription invoices and advance the subscription billing period
+- Recurring invoice webhook IDs have a database-level uniqueness constraint
+- Subscription API exposes auto-renew, PayPal status, PayPal subscription ID, next billing time, and cancel-at-period-end state
 
 ## Migration-history integrity
 
@@ -89,13 +97,16 @@ Duplicate migration branches were removed so Django does not encounter conflicti
 
 Core migration history currently ends at:
 
-`0001_booking_domain_initial → 0002_mover_and_webhook_integrity → 0003_rent_invoice_external_verification → 0004_chat_notification_indexes → 0005_rent_production_indexes → 0006_social_support_indexes`
+`0001_booking_domain_initial → 0002_mover_and_webhook_integrity → 0003_rent_invoice_external_verification → 0004_chat_notification_indexes → 0005_rent_production_indexes → 0006_social_support_indexes → 0007_subscription_renewal_attempts`
+
+Subscriptions migration history currently ends at:
+
+`0001_initial → 0002_paypal_recurring_webhook_idempotency`
 
 ## Still outstanding before production cutover
 
 - Complete 44-table production schema parity audit, including every column, constraint, index, trigger, and function
-- Implement Django equivalent of production PayPal recurring subscription webhook/renewal processing for landlord and real-estate subscriptions
-- Reconcile subscription expiry/grace behavior and automation against the effective production schedule
+- Reconcile subscription expiry/grace behavior and automation against the effective production schedule, including the exact renewal automation semantics
 - Finish listing API/read/search parity
 - Verify exact mover payout provider callback authentication against production
 - Reconcile remaining moving lifecycle edge cases and dispute financial settlement behavior
