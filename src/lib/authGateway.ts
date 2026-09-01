@@ -25,76 +25,48 @@ type AuthGatewayAction =
   | 'set_role'
   | 'logout';
 
-const FUNCTION_NAME = 'auth-gateway';
-
-const getFunctionUrl = (): string => {
-  const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-
-  if (!baseUrl) {
-    throw new Error('VITE_SUPABASE_URL is not configured.');
-  }
-
-  return `${baseUrl.replace(/\/$/, '')}/functions/v1/${FUNCTION_NAME}`;
+const getBaseUrl = (): string => {
+  const configured = import.meta.env.VITE_DJANGO_API_URL as string | undefined;
+  return (configured || '').replace(/\/+$/, '');
 };
 
-const getPublishableKey = (): string => {
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-  if (!key) {
-    throw new Error('VITE_SUPABASE_ANON_KEY is not configured.');
+const readJson = async <T>(response: Response): Promise<T | null> => {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
   }
-
-  return key;
 };
 
 /**
- * Browser-side transport for the HttpOnly auth gateway.
+ * Django HttpOnly-cookie authentication transport.
  *
- * IMPORTANT:
- * - No user access token is read from JavaScript.
- * - No refresh token is read from JavaScript.
- * - credentials: 'include' allows the browser to send/receive
- *   the HttpOnly authentication cookies.
- * - The Supabase publishable/anon key is public and is NOT a
- *   user authentication credential.
- *
- * User authentication is performed server-side by auth-gateway
- * using the HttpOnly cookies.
+ * Supabase is no longer involved in browser authentication. The browser only
+ * sends/receives the Django access and refresh cookies; token values are never
+ * read by JavaScript.
  */
 export const authGateway = async (
   action: AuthGatewayAction,
   payload: Record<string, unknown> = {},
 ): Promise<GatewaySessionResponse> => {
-  const response = await fetch(getFunctionUrl(), {
-    method: 'POST',
+  const isSession = action === 'session';
+  const path = isSession ? '/api/accounts/session/' : `/api/accounts/${action === 'verify_otp' ? 'verify-otp' : action === 'set_role' ? 'set-role' : `${action}/`}`;
 
-    // Required for HttpOnly cookies.
+  const response = await fetch(`${getBaseUrl()}${path}`, {
+    method: isSession ? 'GET' : 'POST',
     credentials: 'include',
-
     headers: {
-      'Content-Type': 'application/json',
-
-      // Public Supabase project key used to invoke the Edge Function.
-      // DO NOT put the user's JWT here.
-      apikey: getPublishableKey(),
+      ...(isSession ? {} : { 'Content-Type': 'application/json' }),
     },
-
-    body: JSON.stringify({
-      action,
-      ...payload,
-    }),
+    ...(isSession ? {} : { body: JSON.stringify(payload) }),
   });
 
-  const body = (await response.json().catch(() => ({}))) as GatewaySessionResponse;
+  const body = await readJson<GatewaySessionResponse>(response) ?? {};
 
-  /*
-   * 401/403 are intentionally returned to the AuthContext so it
-   * can handle:
-   *
-   * - unauthenticated sessions
-   * - expired sessions
-   * - email verification requirements
-   */
+  // Authentication endpoints intentionally expose 401/403 as structured
+  // responses so AuthContext can distinguish signed-out and unverified states.
   if (!response.ok && response.status !== 401 && response.status !== 403) {
     throw new Error(body.error ?? 'Authentication service error.');
   }
