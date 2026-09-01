@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .application_review_views import AdminApplicationReviewView
 from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
 urlpatterns = [
@@ -12,4 +13,5 @@ urlpatterns = [
     path('set-role/', SetRoleView.as_view(), name='set-role'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('me/', MeView.as_view(), name='me'),
+    path('admin/applications/<uuid:user_id>/review/', AdminApplicationReviewView.as_view(), name='admin-application-review'),
 ]
