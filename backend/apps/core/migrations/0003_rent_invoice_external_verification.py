@@ -1,4 +1,10 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import migrations, models
+
+from apps.core.domain_rent import (
+    default_rent_reminder_channels,
+    default_rent_reminder_offsets,
+)
 
 
 class Migration(migrations.Migration):
@@ -40,11 +46,19 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='rentremindersetting',
             name='channels',
-            field=models.JSONField(default=lambda: ['IN_APP']),
+            field=ArrayField(
+                base_field=models.TextField(),
+                default=default_rent_reminder_channels,
+                size=None,
+            ),
         ),
         migrations.AlterField(
             model_name='rentremindersetting',
             name='offsets_days',
-            field=models.JSONField(default=lambda: [7, 3, 1, 0, -1]),
+            field=ArrayField(
+                base_field=models.IntegerField(),
+                default=default_rent_reminder_offsets,
+                size=None,
+            ),
         ),
     ]
