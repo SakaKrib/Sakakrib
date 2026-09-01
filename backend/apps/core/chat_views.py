@@ -1,16 +1,31 @@
 from datetime import datetime
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from .access_scopes import chat_messages_for_user
-from .chat_services import list_conversation, send_message, serialize_message
+from .chat_services import conversation_id_for_users, list_conversation, send_message, serialize_message
 
 
 def _error(exc):
     return JsonResponse({"detail": str(exc)}, status=400)
+
+
+def _broadcast(message):
+    layer = get_channel_layer()
+    if not layer:
+        return
+    conversation_id = message.conversation_id
+    import hashlib
+    group_name = f"chat_{hashlib.sha256(conversation_id.encode()).hexdigest()[:40]}"
+    async_to_sync(layer.group_send)(
+        group_name,
+        {"type": "chat.message", "message": serialize_message(message)},
+    )
 
 
 class ChatConversationView(APIView):
@@ -45,6 +60,7 @@ class ChatConversationView(APIView):
                 message_type=request.data.get("message_type", "text"),
                 event_data=request.data.get("event_data"),
             )
+            _broadcast(message)
             return JsonResponse({"message": serialize_message(message)}, status=201)
         except (ValidationError, ValueError, TypeError) as exc:
             return _error(exc)
