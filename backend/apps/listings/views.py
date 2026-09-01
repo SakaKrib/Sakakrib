@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
 
-from .models import Listing
+from .models import Listing, ListingPaymentIntent
 from .review_services import review_listing
 from .serializers import ListingCreateSerializer, ListingSerializer
 from .services import create_listing, create_listing_payment_intent, get_listing_entitlement
@@ -40,6 +40,28 @@ class ListingPaymentIntentView(APIView):
     def post(self, request):
         result = create_listing_payment_intent(request.user, request.data)
         return Response(result, status=201)
+
+    def get(self, request, intent_id):
+        intent = ListingPaymentIntent.objects.filter(
+            pk=intent_id,
+            user_id=request.user.pk,
+        ).first()
+        if not intent:
+            return Response({'error': 'Listing payment intent not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'id': str(intent.id),
+            'status': intent.status,
+            'listing_id': str(intent.listing_id) if intent.listing_id else None,
+            'amount_kes': float(intent.amount_kes),
+            'provider': intent.provider,
+            'provider_reference': intent.provider_reference,
+            'provider_amount': float(intent.provider_amount) if intent.provider_amount is not None else None,
+            'provider_currency': intent.provider_currency,
+            'created_at': intent.created_at,
+            'paid_at': intent.paid_at,
+            'expires_at': intent.expires_at,
+        })
 
 
 class ListingListView(APIView):
