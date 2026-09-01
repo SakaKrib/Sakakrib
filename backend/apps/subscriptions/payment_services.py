@@ -25,32 +25,42 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
         raise ValueError('Identity verification is required before subscription checkout')
     if profile.role == 'landlord' and profile.landlord_application_status != 'approved':
         raise ValueError('Landlord application approval is required before subscription checkout')
+
     plan = SubscriptionPlan.objects.filter(pk=plan_id, audience=profile.role.upper()).first()
     if not plan:
         raise ValueError('Subscription plan not found for this account type')
+    paypal_plan_id = plan.paypal_monthly_plan_id if billing_cycle == 'MONTHLY' else plan.paypal_annual_plan_id
+    if provider == 'paypal' and not paypal_plan_id:
+        raise ValueError('PayPal is not configured for this plan yet')
+
+    subscription_model = LandlordSubscription if profile.role == 'landlord' else RealEstateSubscription
+    owner_field = 'landlord_id' if profile.role == 'landlord' else 'real_estate_id'
+    if subscription_model.objects.filter(**{owner_field: profile.id}, status__in=('ACTIVE', 'GRACE_PERIOD')).exists():
+        raise ValueError('You already have an active subscription. Use the upgrade or renewal flow.')
+
     amount_kes = plan.annual_price_kes if billing_cycle == 'ANNUAL' else plan.monthly_price_kes
     amount_usd = plan.paypal_annual_price_usd if billing_cycle == 'ANNUAL' else plan.paypal_monthly_price_usd
     now = timezone.now()
-    period_end = _period_end(now, billing_cycle)
+
     with transaction.atomic():
-        if profile.role == 'landlord':
-            subscription = LandlordSubscription.objects.create(
-                landlord_id=profile.id, plan_id=plan.id, billing_cycle=billing_cycle,
-                status='PENDING_PAYMENT', current_period_start=now, current_period_end=period_end,
-                billing_amount_kes=amount_kes, billing_amount_usd=amount_usd)
-        else:
-            subscription = RealEstateSubscription.objects.create(
-                real_estate_id=profile.id, plan_id=plan.id, billing_cycle=billing_cycle,
-                status='PENDING_PAYMENT', current_period_start=now, current_period_end=period_end,
-                billing_amount_kes=amount_kes, billing_amount_usd=amount_usd)
+        subscription_model.objects.filter(**{owner_field: profile.id}, status='PENDING_PAYMENT').update(
+            status='CANCELLED', updated_at=now)
+        subscription = subscription_model.objects.create(
+            **{owner_field: profile.id}, plan_id=plan.id, billing_cycle=billing_cycle,
+            status='PENDING_PAYMENT', current_period_start=None, current_period_end=None,
+            grace_period_end=None, auto_renew=False,
+            billing_amount_kes=amount_kes, billing_amount_usd=amount_usd,
+            paypal_plan_id=paypal_plan_id if provider == 'paypal' else None,
+        )
         invoice = SubscriptionInvoice.objects.create(
             amount_kes=amount_kes, status='PENDING', payment_provider=provider.upper(),
             payment_method=provider.upper(), phone_number=phone_number,
             landlord_subscription_id=subscription.id if profile.role == 'landlord' else None,
             real_estate_subscription_id=subscription.id if profile.role == 'real_estate' else None,
             currency='KES' if provider == 'mpesa' else 'USD', amount_usd=amount_usd,
-            billing_period_start=now, billing_period_end=period_end,
-            pricing_snapshot_source='subscription_plans')
+            billing_period_start=None, billing_period_end=None,
+            paypal_subscription_id=None, pricing_snapshot_source='subscription_plans')
+
     if provider == 'mpesa':
         if not phone_number:
             raise ValueError('phone_number is required for M-Pesa')
@@ -58,22 +68,27 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
             amount=Decimal(amount_kes), currency='KES', reference=str(invoice.id),
             metadata={'phone_number': phone_number, 'description': 'SakaKrib subscription'})
     else:
-        if amount_usd is None:
-            raise ValueError('PayPal USD price is not configured for this plan and billing cycle')
-        result = get_provider('paypal').create_payment(
-            amount=Decimal(amount_usd), currency='USD', reference=str(invoice.id), metadata={})
+        # PayPal recurring checkout is intentionally not downgraded to a one-time order.
+        # The configured PayPal plan ID is returned so the frontend can create the
+        # provider subscription using the official PayPal JS/REST subscription flow.
+        return {'success': True, 'subscription_id': str(subscription.id), 'invoice_id': str(invoice.id),
+                'provider': 'paypal', 'billing_cycle': billing_cycle, 'plan_id': str(plan.id),
+                'plan_name': plan.name, 'paypal_plan_id': paypal_plan_id, 'status': 'PENDING_PAYMENT',
+                'payment_action': 'PAYPAL_SUBSCRIPTION_APPROVAL'}
+
     if not result.success:
         invoice.status = 'FAILED'
         invoice.result_description = result.message
         invoice.save(update_fields=['status', 'result_description'])
         raise RuntimeError(result.message)
     invoice.provider_reference = result.provider_reference
-    invoice.checkout_request_id = result.provider_reference if provider == 'mpesa' else None
+    invoice.checkout_request_id = result.provider_reference
     invoice.save(update_fields=['provider_reference', 'checkout_request_id'])
     return {'success': True, 'subscription_id': str(subscription.id), 'invoice_id': str(invoice.id),
-            'provider': provider, 'billing_cycle': billing_cycle, 'plan_id': str(plan.id),
+            'provider': 'mpesa', 'billing_cycle': billing_cycle, 'plan_id': str(plan.id),
             'plan_name': plan.name, 'amount_kes': amount_kes, 'amount_usd': amount_usd,
-            'provider_reference': result.provider_reference, 'provider_response': result.raw, 'status': 'PENDING'}
+            'provider_reference': result.provider_reference, 'provider_response': result.raw,
+            'status': 'PENDING_PAYMENT'}
 
 
 def finalize_mpesa_subscription(invoice_id, result_code, result_description='', mpesa_receipt=None,
@@ -106,9 +121,35 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
                                  transaction_id=mpesa_receipt)
 
 
-def finalize_paypal_subscription(invoice_id, order_id, capture_result):
-    if not capture_result.success:
-        raise ValueError(capture_result.message)
+def _activate_invoice(invoice, provider, provider_reference, transaction_id=None):
+    now = timezone.now()
+    start = invoice.billing_period_start or now
+    end = invoice.billing_period_end or _period_end(start, 'ANNUAL' if invoice.amount_usd and False else 'MONTHLY')
+    invoice.status = 'PAID'
+    invoice.payment_provider = provider
+    invoice.payment_method = provider
+    invoice.provider_reference = provider_reference
+    invoice.provider_transaction_id = transaction_id
+    invoice.paid_at = now
+    invoice.billing_period_start = start
+    invoice.billing_period_end = end
+    invoice.save(update_fields=['status','payment_provider','payment_method','provider_reference','provider_transaction_id','paid_at','billing_period_start','billing_period_end'])
+    if invoice.landlord_subscription_id:
+        LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).update(
+            status='ACTIVE', current_period_start=start, current_period_end=end,
+            grace_period_end=None, updated_at=now)
+        sid = invoice.landlord_subscription_id
+    else:
+        RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).update(
+            status='ACTIVE', current_period_start=start, current_period_end=end,
+            grace_period_end=None, updated_at=now)
+        sid = invoice.real_estate_subscription_id
+    return {'success': True, 'status': 'PAID', 'subscription_id': str(sid)}
+
+
+def finalize_paypal_subscription(invoice_id, subscription_id):
+    # PayPal recurring activation is completed by the provider webhook/verification
+    # layer after the frontend approves the configured PayPal billing plan.
     with transaction.atomic():
         invoice = SubscriptionInvoice.objects.select_for_update().filter(pk=invoice_id).first()
         if not invoice:
@@ -116,26 +157,20 @@ def finalize_paypal_subscription(invoice_id, order_id, capture_result):
         if invoice.status == 'PAID':
             return {'success': True, 'already_settled': True,
                     'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id)}
-        return _activate_invoice(invoice, provider='PAYPAL', provider_reference=order_id, transaction_id=order_id)
-
-
-def _activate_invoice(invoice, provider, provider_reference, transaction_id=None):
-    now = timezone.now()
-    invoice.status = 'PAID'
-    invoice.payment_provider = provider
-    invoice.payment_method = provider
-    invoice.provider_reference = provider_reference
-    invoice.provider_transaction_id = transaction_id
-    invoice.paid_at = now
-    invoice.save(update_fields=['status','payment_provider','payment_method','provider_reference','provider_transaction_id','paid_at'])
-    if invoice.landlord_subscription_id:
-        LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).update(
-            status='ACTIVE', current_period_start=invoice.billing_period_start or now,
-            current_period_end=invoice.billing_period_end or now, grace_period_end=None, updated_at=now)
-        sid = invoice.landlord_subscription_id
-    else:
-        RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).update(
-            status='ACTIVE', current_period_start=invoice.billing_period_start or now,
-            current_period_end=invoice.billing_period_end or now, grace_period_end=None, updated_at=now)
-        sid = invoice.real_estate_subscription_id
-    return {'success': True, 'status': 'PAID', 'subscription_id': str(sid)}
+        if invoice.payment_provider != 'PAYPAL':
+            raise ValueError('Invoice is not a PayPal invoice')
+        invoice.paypal_subscription_id = subscription_id
+        invoice.provider_reference = subscription_id
+        invoice.status = 'PAID'
+        invoice.payment_method = 'PAYPAL'
+        invoice.paid_at = timezone.now()
+        invoice.save(update_fields=['paypal_subscription_id','provider_reference','status','payment_method','paid_at'])
+        now = timezone.now()
+        end = _period_end(now, 'ANNUAL' if invoice.billing_period_end and (invoice.billing_period_end - now).days > 300 else 'MONTHLY')
+        if invoice.landlord_subscription_id:
+            LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).update(status='ACTIVE', current_period_start=now, current_period_end=end, paypal_subscription_id=subscription_id, paypal_status='ACTIVE', next_billing_at=end, updated_at=now)
+            sid = invoice.landlord_subscription_id
+        else:
+            RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).update(status='ACTIVE', current_period_start=now, current_period_end=end, paypal_subscription_id=subscription_id, paypal_status='ACTIVE', next_billing_at=end, updated_at=now)
+            sid = invoice.real_estate_subscription_id
+        return {'success': True, 'status': 'PAID', 'subscription_id': str(sid)}
