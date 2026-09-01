@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('accounts', '0002_auth_otp_and_kyc_status'),
+        ('accounts', '0002_profile_signup_verification_state'),
     ]
 
     operations = [
