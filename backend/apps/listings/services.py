@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -8,8 +9,8 @@ from apps.subscriptions.models import LandlordSubscription, RealEstateSubscripti
 from apps.payments.models import ListingPayment
 from .models import Listing, ListingPaymentIntent
 
-FREE_LIMIT = 3
-INDIVIDUAL_LISTING_PRICE_KES = 1000
+FREE_LIMIT = settings.LISTING_FREE_LIMIT
+INDIVIDUAL_LISTING_PRICE_KES = settings.INDIVIDUAL_LISTING_PRICE_KES
 
 
 def _current_subscription(profile):
@@ -81,6 +82,8 @@ def _create_listing_from_data(profile, data, *, entitlement=None):
         profile.save(update_fields=['free_listings_used'])
         listing_entitlement = 'FREE'
     else:
+        if not entitlement.get('subscription_id'):
+            raise ValidationError('No active subscription entitlement is available for this listing.')
         SubscriptionListing.objects.create(
             subscription_id=entitlement['subscription_id'] if profile.role == 'landlord' else None,
             real_estate_subscription_id=entitlement['subscription_id'] if profile.role == 'real_estate' else None,
@@ -137,10 +140,22 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
         raise ValidationError('Account is no longer eligible to create a listing.')
     if entitlement.get('can_create'):
         raise ValidationError('A free or subscription entitlement is now available; paid settlement is not required.')
-    data = dict(intent.listing_data or {})
-    listing = _create_listing_from_data(profile, data, entitlement={**entitlement, 'free_listings_remaining': 0})
+
+    if provider not in ('MPESA', 'PAYPAL'):
+        raise ValidationError('Unsupported payment provider.')
+    if provider == 'MPESA':
+        if result_code is not None and int(result_code) != 0:
+            raise ValidationError('M-Pesa payment was not successful.')
+        if provider_amount is None or provider_amount < intent.amount_kes:
+            raise ValidationError('M-Pesa paid amount does not satisfy the listing payment amount.')
+    else:
+        if provider_amount is None or provider_amount <= 0:
+            raise ValidationError('PayPal settlement amount is missing.')
+
+    # Keep payment settlement and listing creation in one transaction. The payment
+    # row is authoritative; the listing is only committed if the complete settlement succeeds.
     payment = ListingPayment.objects.create(
-        user_id=profile.id, listing_id=listing['listing_id'], payment_intent_id=intent.id,
+        user_id=profile.id, listing_id=None, payment_intent_id=intent.id,
         amount_kes=intent.amount_kes, status='PAID', payment_provider=provider,
         payment_method='MPESA' if provider == 'MPESA' else 'PAYPAL', provider_reference=provider_reference,
         provider_transaction_id=provider_transaction_id, checkout_request_id=checkout_request_id,
@@ -149,7 +164,17 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
         paypal_order_id=paypal_order_id, paypal_fx_rate=paypal_fx_rate, result_code=result_code,
         result_description=result_description, created_at=timezone.now(), paid_at=timezone.now(), updated_at=timezone.now(),
     )
-    intent.status = 'PAID'; intent.paid_at = timezone.now(); intent.listing_id = listing['listing_id']; intent.updated_at = timezone.now()
-    intent.save(update_fields=['status','paid_at','listing_id','updated_at'])
+
+    data = dict(intent.listing_data or {})
+    listing = _create_listing_from_data(profile, data, entitlement={**entitlement, 'free_listings_remaining': 0})
+    payment.listing_id = listing['listing_id']
+    payment.updated_at = timezone.now()
+    payment.save(update_fields=['listing_id', 'updated_at'])
+
+    intent.status = 'PAID'
+    intent.paid_at = timezone.now()
+    intent.listing_id = listing['listing_id']
+    intent.updated_at = timezone.now()
+    intent.save(update_fields=['status', 'paid_at', 'listing_id', 'updated_at'])
     return {'success': True, 'listing_created': True, 'listing_id': listing['listing_id'],
             'payment_id': payment.id, 'payment_status': 'PAID', 'listing_entitlement': 'INDIVIDUAL_PAID'}
