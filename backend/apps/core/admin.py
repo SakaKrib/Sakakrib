@@ -1,0 +1,86 @@
+"""Django admin registrations for the frozen core-domain models."""
+
+from django.contrib import admin
+
+from .models import (
+    Booking,
+    BookingEvent,
+    ChatMessage,
+    CommunityPost,
+    ExchangeRateCache,
+    LandlordPaymentMethod,
+    ListingMedia,
+    Mover,
+    MoverApplication,
+    MoverPayout,
+    MoverScheduleEvent,
+    MovingCancellationEvent,
+    MovingDispute,
+    MovingInvoice,
+    MovingPayment,
+    MovingTrackingPoint,
+    NotificationEmail,
+    PMSSubscriptionNotification,
+    PaymentWebhookEvent,
+    PlatformSettings,
+    PropertyUnit,
+    RentInvoice,
+    RentInvoicePeriod,
+    RentPayment,
+    RentPaymentIntent,
+    RentPaymentSubmission,
+    RentReminder,
+    RentReminderSetting,
+    RenterNotification,
+    RenterUnitAssociation,
+    Review,
+    SubscriptionRenewalAttempt,
+    SupportTicket,
+    TermsAcceptance,
+    UserNotification,
+)
+
+
+# These models are intentionally registered with the standard ModelAdmin.
+# Domain behavior remains in services/views; the admin is an operational view
+# over the same PostgreSQL-backed models.
+_CORE_MODELS = (
+    Booking,
+    BookingEvent,
+    ChatMessage,
+    CommunityPost,
+    ExchangeRateCache,
+    LandlordPaymentMethod,
+    ListingMedia,
+    Mover,
+    MoverApplication,
+    MoverPayout,
+    MoverScheduleEvent,
+    MovingCancellationEvent,
+    MovingDispute,
+    MovingInvoice,
+    MovingPayment,
+    MovingTrackingPoint,
+    NotificationEmail,
+    PMSSubscriptionNotification,
+    PaymentWebhookEvent,
+    PlatformSettings,
+    PropertyUnit,
+    RentInvoice,
+    RentInvoicePeriod,
+    RentPayment,
+    RentPaymentIntent,
+    RentPaymentSubmission,
+    RentReminder,
+    RentReminderSetting,
+    RenterNotification,
+    RenterUnitAssociation,
+    Review,
+    SubscriptionRenewalAttempt,
+    SupportTicket,
+    TermsAcceptance,
+    UserNotification,
+)
+
+for _model in _CORE_MODELS:
+    admin.site.register(_model)
