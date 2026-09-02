@@ -8,6 +8,7 @@ from .notification_views import RenterNotificationView, UserNotificationView
 from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfirmView, LandlordRentPaymentRejectView, RenterInvoicePaymentSubmitView, RenterPaidInvoiceCreateView
 from .rent_reminder_views import RentPaymentReminderView
 from .community_support_views import CommunityPostView, ReviewView, SupportTicketView, TermsAcceptanceView
+from .platform_settings_views import PlatformSettingsView
 from .renter_views import RenterDashboardView, RenterInvoiceView, RenterPaymentSubmissionView, RenterPaymentDestinationView, RenterRentSummaryView, RenterPaymentHistoryView, RenterMoverScheduleAvailabilityView, RenterInvitationClaimView, RenterInvitationCreateView, RenterInvitationPreviewView, RenterInvitationResendView, RenterInvitationCancelView
 from .pms_views import PMSActionView, PMSDashboardView
 from .payment_method_views import LandlordPaymentMethodView
@@ -46,6 +47,7 @@ urlpatterns = [
     path("rent/units/", LandlordRentUnitView.as_view(), name="landlord-rent-units"), path("rent/units/<uuid:unit_id>/history/", LandlordRentPaymentHistoryView.as_view(), name="landlord-rent-payment-history"), path("rent/units/<uuid:unit_id>/paid-through/", LandlordMarkRentPaidThroughView.as_view(), name="landlord-rent-paid-through"),
     path("invoices/landlord/", LandlordRentInvoiceCreateView.as_view(), name="rent-invoice-create-landlord"), path("invoices/renter/paid/", RenterPaidInvoiceCreateView.as_view(), name="rent-invoice-create-renter-paid"), path("invoices/<uuid:invoice_id>/submit-payment/", RenterInvoicePaymentSubmitView.as_view(), name="rent-invoice-submit-payment"), path("payment-submissions/<uuid:submission_id>/confirm/", LandlordRentPaymentConfirmView.as_view(), name="rent-payment-confirm"), path("payment-submissions/<uuid:submission_id>/reject/", LandlordRentPaymentRejectView.as_view(), name="rent-payment-reject"),
     path("rent-reminders/<uuid:renter_assoc_id>/send/", RentPaymentReminderView.as_view(), name="rent-payment-reminder-send"),
+    path("platform-settings/", PlatformSettingsView.as_view(), name="platform-settings"),
     path("community-posts/", CommunityPostView.as_view(), name="community-post-list"), path("community-posts/<uuid:object_id>/", CommunityPostView.as_view(), name="community-post-detail"),
     path("reviews/", ReviewView.as_view(), name="review-list"), path("reviews/<uuid:object_id>/", ReviewView.as_view(), name="review-detail"),
     path("support-tickets/", SupportTicketView.as_view(), name="support-ticket-list"), path("support-tickets/<uuid:object_id>/", SupportTicketView.as_view(), name="support-ticket-detail"),
