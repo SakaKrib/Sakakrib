@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { PayPalProvider, PayPalOneTimePaymentButton, PayPalSubscriptionButton, type OnApproveDataOneTimePayments, type OnApproveDataSubscriptions } from '@paypal/react-paypal-js/sdk-v6';
 import { protectedPost } from '@/lib/djangoApi';
 export type PayPalButtonMode = 'ONE_TIME' | 'SUBSCRIPTION';
-interface PayPalPaymentButtonProps { mode: PayPalButtonMode; paymentIntentId?: string | null; planId?: string | null; billingCycle?: 'MONTHLY' | 'ANNUAL'; listingId?: string | null; onSuccess: () => Promise<void> | void; onError?: (message: string) => void; disabled?: boolean; }
+interface PayPalPaymentButtonProps { mode: PayPalButtonMode; paymentIntentId?: string | null; planId?: string | null; billingCycle?: 'MONTHLY' | 'ANNUAL'; listingId?: string | null; onPreparePayPalPayment?: () => Promise<string>; onSuccess: () => Promise<void> | void; onError?: (message: string) => void; disabled?: boolean; }
 interface ListingStartResponse { success?: boolean; detail?: string; message?: string; provider_reference?: string; }
 interface ListingCaptureResponse { success?: boolean; status?: string; detail?: string; message?: string; }
 interface SubscriptionCheckoutResponse { success?: boolean; detail?: string; paypal_subscription_id?: string; invoice_id?: string; }
@@ -10,22 +10,26 @@ interface SubscriptionApproveResponse { success?: boolean; detail?: string; stat
 const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID as string | undefined;
 const environment = (import.meta.env.VITE_PAYPAL_ENVIRONMENT || 'sandbox') as 'sandbox' | 'production';
 function errorMessage(data: { detail?: string; message?: string } | null, fallback: string) { return data?.detail || data?.message || fallback; }
-export default function PayPalPaymentButton({ mode, paymentIntentId, planId, billingCycle, listingId, onSuccess, onError, disabled = false }: PayPalPaymentButtonProps) {
+export default function PayPalPaymentButton({ mode, paymentIntentId, planId, billingCycle, listingId, onPreparePayPalPayment, onSuccess, onError, disabled = false }: PayPalPaymentButtonProps) {
   const [working, setWorking] = useState(false);
   const subscriptionInvoiceIdRef = useRef<string | null>(null);
   if (!clientId) return <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300">PayPal is not currently configured for this environment.</div>;
   const fail = (message: string) => { setWorking(false); onError?.(message); };
   const createOneTimeOrder = async () => {
-    if (!paymentIntentId) throw new Error('A listing payment intent is required.');
+    let intentId = paymentIntentId;
+    if (!intentId && onPreparePayPalPayment) intentId = await onPreparePayPalPayment();
+    if (!intentId) throw new Error('A listing payment intent is required.');
     setWorking(true);
-    const response = await protectedPost<ListingStartResponse>('/api/payments/listing/start/', { payment_intent_id: paymentIntentId, provider: 'paypal' });
+    const response = await protectedPost<ListingStartResponse>('/api/payments/listing/start/', { payment_intent_id: intentId, provider: 'paypal' });
     if (!response?.success || !response.provider_reference) { setWorking(false); throw new Error(errorMessage(response, 'Unable to start PayPal payment.')); }
     return { orderId: response.provider_reference };
   };
   const approveOneTime = async ({ orderId }: OnApproveDataOneTimePayments) => {
-    if (!paymentIntentId) return fail('The listing payment intent is missing.');
+    let intentId = paymentIntentId;
+    if (!intentId && onPreparePayPalPayment) intentId = await onPreparePayPalPayment();
+    if (!intentId) return fail('The listing payment intent is missing.');
     try {
-      const response = await protectedPost<ListingCaptureResponse>('/api/payments/listing/paypal/capture/', { payment_intent_id: paymentIntentId, order_id: orderId });
+      const response = await protectedPost<ListingCaptureResponse>('/api/payments/listing/paypal/capture/', { payment_intent_id: intentId, order_id: orderId });
       if (!response?.success || response.status !== 'PAID') throw new Error(errorMessage(response, 'PayPal payment could not be confirmed.'));
       setWorking(false); await onSuccess();
     } catch (error) { fail(error instanceof Error ? error.message : 'Unable to confirm PayPal payment.'); }
