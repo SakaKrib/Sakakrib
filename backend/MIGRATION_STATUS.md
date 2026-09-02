@@ -49,12 +49,17 @@ Do not modify or destructively migrate the live Supabase production database fro
 - Booking, mover, invoice, payment, payout, schedule, tracking, cancellation, and dispute projections
 - Participant/owner/admin authorization scopes
 - Mover quote and booking request/response/cancellation services
+- Authoritative GPS distance calculation and server-side mover pricing
+- Canonical renter schedule proposal and mover schedule confirmation workflow
+- Moving invoice creation on mover confirmation with booking-total integrity checks
+- Renter moving invoice/payment API surface
 - M-Pesa moving payment lifecycle
 - PayPal moving payment lifecycle and webhook verification
+- Renter moving card payment controls for M-Pesa and PayPal
 - Escrow release gating
 - Delivery confirmation
 - Dispute open/resolve lifecycle
-- Mover payout callback lifecycle
+- Mover payout callback lifecycle with shared-secret authentication
 
 ### Chat and notifications
 - Participant-scoped chat history/send API
@@ -108,7 +113,7 @@ Subscriptions migration history currently ends at:
 - Complete 44-table production schema parity audit, including every column, constraint, index, trigger, and function
 - Reconcile subscription expiry/grace behavior and automation against the effective production schedule, including the exact renewal automation semantics
 - Finish listing API/read/search parity
-- Verify exact mover payout provider callback authentication against production
+- Verify external mover payout initiation/provider integration; payout callback authentication is now aligned with the production shared-secret requirement
 - Reconcile remaining moving lifecycle edge cases and dispute financial settlement behavior
 - Implement/verify remaining rent reminder scheduling automation
 - Migrate frontend transport domain-by-domain from Supabase to Django
