@@ -11,5 +11,5 @@ def send_listing_payment_success_email(self, payment_id):
         return {'sent': False, 'reason': 'payment or recipient not found'}
     if email.status == 'sent':
         return {'sent': True, 'already_sent': True, 'email_id': str(email.id)}
-    send_notification_email(email.id)
-    return {'sent': True, 'email_id': str(email.id)}
+    result = send_notification_email(email)
+    return {'sent': True, 'email_id': str(email.id), 'result': result}
