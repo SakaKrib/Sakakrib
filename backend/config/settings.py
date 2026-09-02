@@ -4,24 +4,20 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
-
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
-
 INSTALLED_APPS = ['django.contrib.admin','django.contrib.contenttypes','django.contrib.auth','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','corsheaders','rest_framework','channels','apps.core','apps.accounts','apps.listings','apps.subscriptions','apps.payments']
 MIDDLEWARE = ['corsheaders.middleware.CorsMiddleware','django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware']
 ROOT_URLCONF = 'config.urls'
 TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
-
 REDIS_URL = os.getenv('REDIS_URL', '')
 if REDIS_URL:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels_redis.core.RedisChannelLayer', 'CONFIG': {'hosts': [REDIS_URL]}}}
 else:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
-
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
 CELERY_TIMEZONE = TIME_ZONE = os.getenv('CELERY_TIMEZONE', 'Africa/Nairobi')
@@ -30,31 +26,15 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-
 CELERY_BEAT_SCHEDULE = {
-    'generate-recurring-rent-reminders-daily': {
-        'task': 'apps.core.tasks.generate_recurring_rent_reminders',
-        'schedule': 86400.0,
-    },
-    'process-due-rent-reminders-every-minute': {
-        'task': 'apps.core.tasks.process_due_rent_reminders',
-        'schedule': 60.0,
-    },
-    'process-notification-email-queue-every-minute': {
-        'task': 'apps.core.email_tasks.process_notification_email_queue',
-        'schedule': 60.0,
-    },
+    'generate-recurring-rent-reminders-daily': {'task': 'apps.core.tasks.generate_recurring_rent_reminders', 'schedule': 86400.0},
+    'process-due-rent-reminders-every-minute': {'task': 'apps.core.tasks.process_due_rent_reminders', 'schedule': 60.0},
+    'process-notification-email-queue-every-minute': {'task': 'apps.core.email_tasks.process_notification_email_queue', 'schedule': 60.0},
+    'process-subscription-expiry-every-five-minutes': {'task': 'apps.subscriptions.tasks.process_subscription_expiry_task', 'schedule': 300.0},
 }
-
 AUTH_USER_MODEL = 'accounts.Profile'
 AUTHENTICATION_BACKENDS = ['apps.accounts.authentication.CookieJWTAuthenticationBackend']
-AUTH_PASSWORD_VALIDATORS = [
- {'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
- {'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':8}},
- {'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},
- {'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'},
-]
-
+AUTH_PASSWORD_VALIDATORS = [{'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},{'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':8}},{'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},{'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql','NAME': os.getenv('DB_NAME','sakakrib'),'USER': os.getenv('DB_USER','sakakrib'),'PASSWORD': os.getenv('DB_PASSWORD',''),'HOST': os.getenv('DB_HOST','127.0.0.1'),'PORT': os.getenv('DB_PORT','5432'),'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE','60')),'OPTIONS': {'sslmode': os.getenv('DB_SSLMODE','prefer')}}}
 LANGUAGE_CODE = 'en-us'
 USE_I18N = True
@@ -64,7 +44,6 @@ MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
 MEDIA_URL = '/media/'
 CHAT_ATTACHMENT_BASE_URL = os.getenv('CHAT_ATTACHMENT_BASE_URL', '')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 JWT_ALGORITHM = 'HS256'
 JWT_ISSUER = os.getenv('JWT_ISSUER', 'sakakrib-django')
@@ -76,7 +55,6 @@ JWT_REFRESH_COOKIE = os.getenv('JWT_REFRESH_COOKIE','sakakrib_refresh')
 JWT_COOKIE_SECURE = os.getenv('JWT_COOKIE_SECURE','false').lower() == 'true'
 JWT_COOKIE_SAMESITE = os.getenv('JWT_COOKIE_SAMESITE','Lax')
 JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
-
 REST_FRAMEWORK = {'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CookieJWTAuthentication'],'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],'DEFAULT_RENDERER_CLASSES':['rest_framework.renderers.JSONRenderer']}
 CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS','http://localhost:5173,http://127.0.0.1:5173').split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
@@ -88,8 +66,6 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE','Lax')
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE','false').lower() == 'true'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO','https')
-
-# Direct SMTP email delivery. No Resend or other email API is used.
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', '')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
@@ -101,9 +77,7 @@ EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '20'))
 EMAIL_FROM = os.getenv('EMAIL_FROM', os.getenv('DEFAULT_FROM_EMAIL', ''))
 DEFAULT_FROM_EMAIL = EMAIL_FROM or EMAIL_HOST_USER
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', '')
-
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-
 LISTING_FREE_LIMIT = int(os.getenv('LISTING_FREE_LIMIT','3'))
 INDIVIDUAL_LISTING_PRICE_KES = int(os.getenv('INDIVIDUAL_LISTING_PRICE_KES','1000'))
 MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY','')
