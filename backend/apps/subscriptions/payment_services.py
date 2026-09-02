@@ -33,6 +33,8 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     paypal_plan_id = plan.paypal_monthly_plan_id if billing_cycle == 'MONTHLY' else plan.paypal_annual_plan_id
     if provider == 'paypal' and not paypal_plan_id:
         raise ValueError('PayPal is not configured for this plan yet')
+    if provider == 'mpesa' and not phone_number:
+        raise ValueError('phone_number is required for M-Pesa')
     subscription_model = LandlordSubscription if profile.role == 'landlord' else RealEstateSubscription
     owner_field = 'landlord_id' if profile.role == 'landlord' else 'real_estate_id'
     if subscription_model.objects.filter(**{owner_field: profile.id}, status__in=('ACTIVE', 'GRACE_PERIOD')).exists():
@@ -55,9 +57,6 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
             'billing_amount_usd': amount_usd,
             'paypal_plan_id': paypal_plan_id if provider == 'paypal' else None,
         }
-        # Production's landlord schema currently requires these columns to be non-null,
-        # while its pending-checkout function inserts NULL. Use a provisional period in
-        # Django so the migrated schema remains writable; payment activation overwrites it.
         if profile.role == 'landlord':
             create_kwargs['current_period_start'] = now
             create_kwargs['current_period_end'] = now
@@ -77,8 +76,6 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
                 'provider': 'paypal', 'billing_cycle': billing_cycle, 'plan_id': str(plan.id),
                 'plan_name': plan.name, 'paypal_plan_id': paypal_plan_id,
                 'status': 'PENDING_PAYMENT', 'payment_action': 'PAYPAL_SUBSCRIPTION_APPROVAL'}
-    if not phone_number:
-        raise ValueError('phone_number is required for M-Pesa')
     result = get_provider('mpesa').create_payment(
         amount=Decimal(amount_kes), currency='KES', reference=str(invoice.id),
         metadata={'phone_number': phone_number, 'description': 'SakaKrib subscription'})
@@ -106,13 +103,14 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
         if invoice.status == 'PAID':
             return {'success': True, 'already_settled': True,
                     'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id)}
-        invoice.result_code = int(result_code or 0)
+        result_code_int = int(result_code) if result_code is not None else None
+        invoice.result_code = result_code_int
         invoice.result_description = result_description
         invoice.checkout_request_id = checkout_request_id or invoice.checkout_request_id
         invoice.merchant_request_id = merchant_request_id
         invoice.phone_number = phone_number or invoice.phone_number
         invoice.mpesa_receipt = mpesa_receipt
-        if int(result_code or 1) != 0:
+        if result_code_int != 0:
             invoice.status = 'FAILED'
             invoice.save(update_fields=['result_code','result_description','checkout_request_id','merchant_request_id','phone_number','mpesa_receipt','status'])
             if invoice.landlord_subscription_id:
@@ -120,38 +118,39 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
             if invoice.real_estate_subscription_id:
                 RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
             return {'success': False, 'status': 'FAILED'}
-        if paid_amount is not None and Decimal(str(paid_amount)) != invoice.amount_kes:
+        if result_code_int is None:
+            raise ValueError('M-Pesa result code is required')
+        if not mpesa_receipt:
+            raise ValueError('M-Pesa receipt is required for successful settlement')
+        reference = (checkout_request_id or invoice.provider_reference or '').strip()
+        if not reference:
+            raise ValueError('M-Pesa provider reference is required for successful settlement')
+        if paid_amount is None:
+            raise ValueError('M-Pesa paid amount is required for successful settlement')
+        if Decimal(str(paid_amount)) != invoice.amount_kes:
             raise ValueError('M-Pesa paid amount does not match invoice amount')
-        return _activate_invoice(invoice, provider='MPESA', provider_reference=checkout_request_id or invoice.provider_reference, transaction_id=mpesa_receipt)
+        if invoice.payment_provider != 'MPESA':
+            raise ValueError('Invoice is not an M-Pesa invoice')
+        return _activate_invoice(invoice, provider='MPESA', provider_reference=reference, transaction_id=mpesa_receipt)
 
 
 def finalize_paypal_subscription(invoice_id, subscription_id):
-    with transaction.atomic():
-        invoice = SubscriptionInvoice.objects.select_for_update().filter(pk=invoice_id).first()
-        if not invoice:
-            raise ValueError('Subscription invoice not found')
-        if invoice.status == 'PAID':
-            return {'success': True, 'already_settled': True,
-                    'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id)}
-        if invoice.payment_provider != 'PAYPAL':
-            raise ValueError('Invoice is not a PayPal invoice')
-        if not subscription_id:
-            raise ValueError('PayPal subscription ID is required')
-        invoice.paypal_subscription_id = subscription_id
-        invoice.provider_reference = subscription_id
-        invoice.status = 'PAID'
-        invoice.payment_method = 'PAYPAL'
-        invoice.paid_at = timezone.now()
-        invoice.save(update_fields=['paypal_subscription_id','provider_reference','status','payment_method','paid_at'])
-        return _activate_invoice(invoice, provider='PAYPAL', provider_reference=subscription_id, transaction_id=subscription_id)
+    if not subscription_id:
+        raise ValueError('PayPal subscription ID is required')
+    # The browser-supplied PayPal subscription ID is only an identifier. Never
+    # activate from it directly; verify its remote status and plan first.
+    from .paypal_subscription_services import verify_and_finalize_initial_subscription
+    return verify_and_finalize_initial_subscription(invoice_id, subscription_id)
 
 
 def _activate_invoice(invoice, provider, provider_reference, transaction_id=None):
     now = timezone.now()
     if invoice.landlord_subscription_id:
         subscription = LandlordSubscription.objects.select_for_update().get(pk=invoice.landlord_subscription_id)
-    else:
+    elif invoice.real_estate_subscription_id:
         subscription = RealEstateSubscription.objects.select_for_update().get(pk=invoice.real_estate_subscription_id)
+    else:
+        raise ValueError('Subscription invoice is not linked to a subscription')
     start = now
     end = _period_end(start, subscription.billing_cycle)
     invoice.status = 'PAID'
@@ -171,6 +170,7 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
         subscription.paypal_subscription_id = provider_reference
         subscription.paypal_status = 'ACTIVE'
         subscription.next_billing_at = end
+        subscription.auto_renew = True
     subscription.updated_at = now
-    subscription.save(update_fields=['status','current_period_start','current_period_end','grace_period_end','paypal_subscription_id','paypal_status','next_billing_at','updated_at'])
+    subscription.save(update_fields=['status','current_period_start','current_period_end','grace_period_end','paypal_subscription_id','paypal_status','next_billing_at','auto_renew','updated_at'])
     return {'success': True, 'status': 'PAID', 'subscription_id': str(subscription.id)}
