@@ -35,6 +35,31 @@ def _request_json(url: str, *, method: str = 'GET', data: dict | None = None,
         raise RuntimeError(f'Payment provider HTTP {exc.code}: {body}') from exc
 
 
+def get_exchange_rate(base: str, quote: str) -> Decimal:
+    """Return the server-side ExchangeRate-API conversion rate for a pair."""
+    base = base.strip().upper()
+    quote = quote.strip().upper()
+    if not base or not quote or base == quote:
+        raise ValueError('Base and quote currencies must differ')
+
+    api_key = settings.EXCHANGE_RATE_API_KEY
+    base_url = settings.EXCHANGE_RATE_API_BASE_URL.rstrip('/')
+    if not api_key:
+        raise RuntimeError('Exchange-rate service is not configured')
+
+    result = _request_json(f'{base_url}/{api_key}/pair/{base}/{quote}')
+    if result.get('result') != 'success':
+        raise RuntimeError(f'Unable to obtain current {base}/{quote} exchange rate')
+
+    try:
+        rate = Decimal(str(result['conversion_rate']))
+    except (KeyError, TypeError, ValueError):
+        raise RuntimeError(f'Unable to obtain current {base}/{quote} exchange rate') from None
+    if rate <= 0:
+        raise RuntimeError(f'Unable to obtain current {base}/{quote} exchange rate')
+    return rate
+
+
 class PaymentProvider:
     name = 'base'
 
