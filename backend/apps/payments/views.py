@@ -23,6 +23,17 @@ def _normalize_kenyan_phone(phone: str) -> str:
     raise ValueError('Invalid Kenyan phone number')
 
 
+def _paypal_capture_details(raw):
+    purchase_units = raw.get('purchase_units') or []
+    captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or [] if purchase_units else []
+    capture = captures[0] if captures else {}
+    capture_id = capture.get('id')
+    amount_data = capture.get('amount') or {}
+    captured_amount = amount_data.get('value')
+    captured_currency = amount_data.get('currency_code')
+    return capture_id, captured_amount, captured_currency
+
+
 class PaymentProviderConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -166,12 +177,23 @@ class PayPalListingCaptureView(APIView):
 
     def post(self, request):
         intent_id = request.data.get('payment_intent_id')
-        order_id = request.data.get('order_id')
+        order_id = str(request.data.get('order_id') or '').strip()
         if not intent_id or not order_id:
             return Response({'detail': 'payment_intent_id and order_id are required.'}, status=400)
-        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk, status='PENDING').first()
+
+        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk).first()
         if not intent:
-            return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
+            return Response({'detail': 'Listing payment intent not found.'}, status=404)
+        if intent.status == 'PAID':
+            return Response({
+                'success': True,
+                'already_processed': True,
+                'payment_intent_id': str(intent.id),
+                'listing_id': str(intent.listing_id) if intent.listing_id else None,
+                'status': 'PAID',
+            })
+        if intent.status != 'PENDING':
+            return Response({'detail': 'Payment intent is not pending.'}, status=409)
         if intent.expires_at is not None and intent.expires_at <= timezone.now():
             intent.status = 'EXPIRED'
             intent.updated_at = timezone.now()
@@ -182,31 +204,36 @@ class PayPalListingCaptureView(APIView):
         if not intent.provider_amount or intent.provider_currency != 'USD' or not intent.paypal_fx_rate:
             return Response({'success': False, 'message': 'Payment intent has no valid server-side USD/FX settlement data.'}, status=400)
 
-        result = get_provider('paypal').verify_payment(provider_reference=order_id)
-        if not result.success:
-            return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
-
-        raw = result.raw or {}
-        purchase_units = raw.get('purchase_units') or []
-        captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or [] if purchase_units else []
-        capture = captures[0] if captures else {}
-        capture_id = capture.get('id')
-        amount_data = capture.get('amount') or {}
-        captured_amount = amount_data.get('value')
-        captured_currency = amount_data.get('currency_code')
-        if not capture_id or captured_amount is None or captured_currency != 'USD':
-            return Response({'success': False, 'message': 'PayPal capture response is missing a valid USD capture.'}, status=409)
-
+        provider = get_provider('paypal')
         try:
+            # Verification is read-only. This is important when a previous request
+            # captured the PayPal order but failed before local settlement completed.
+            order_result = provider.verify_payment(provider_reference=order_id)
+            raw = order_result.raw or {}
+            provider_status = raw.get('status')
+
+            if provider_status == 'APPROVED':
+                result = provider.capture_payment(order_id=order_id, request_id=str(intent.id))
+                if not result.success:
+                    return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
+                raw = result.raw or {}
+            elif provider_status != 'COMPLETED':
+                return Response({'success': False, 'message': f'PayPal order is not capturable: {provider_status}'}, status=409)
+
+            capture_id, captured_amount, captured_currency = _paypal_capture_details(raw)
+            if not capture_id or captured_amount is None or captured_currency != 'USD':
+                return Response({'success': False, 'message': 'PayPal order does not contain a valid USD capture.'}, status=409)
+
             with transaction.atomic():
                 settled = process_listing_payment(
                     intent.id, provider='PAYPAL', payment_method='PAYPAL', provider_reference=capture_id,
                     provider_amount=captured_amount, provider_currency='USD',
                     paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
                     paid_amount_kes=intent.amount_kes,
-                    result_description=result.message,
+                    result_description=f'PayPal order {order_id} status {provider_status}',
                 )
         except Exception as exc:
-            return Response({'success': False, 'message': f'Payment captured but settlement failed: {exc}'}, status=500)
+            return Response({'success': False, 'message': f'Payment provider verification/settlement failed: {exc}'}, status=500)
+
         return Response({**settled, 'payment_captured': True, 'provider_reference': capture_id,
                          'paypal_order_id': order_id, 'paypal_capture_id': capture_id})
