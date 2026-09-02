@@ -41,6 +41,7 @@ Do not modify or destructively migrate the live Supabase production database fro
 - Listing payment-intent flow
 - Transactional listing entitlement consumption with subscription locking
 - Individual listing payments do not unlock PMS
+- Real-estate property-management listings are now allowed only with an active real-estate PMS subscription, matching the landlord PMS gate without conflating the two roles
 
 ### PMS and rent
 - Property units and renter associations
@@ -52,8 +53,15 @@ Do not modify or destructively migrate the live Supabase production database fro
 - Production rent indexes and uniqueness protections
 - Landlord rent-payment reminder endpoint
 - Rent reminder configuration/scheduled-reminder model projection
-- Backend PMS access boundary separate from listing entitlement
+- Shared backend PMS access entitlement with role, verification, application-approval, subscription, and grace-period checks
+- Landlord PMS dashboard/action boundary remains landlord-specific
+- Dedicated real-estate PMS dashboard endpoint at `/api/pms/real-estate/dashboard/`
+- Dedicated real-estate PMS mutation endpoint at `/api/pms/real-estate/action/`
+- Real-estate PMS dashboard returns real-estate subscription, entitlement, subscription capacity, plans, and owner-scoped listings through Django
+- Real-estate subscription-listing associations use `real_estate_subscription_id`; landlord associations continue using `subscription_id`
+- Real-estate PMS listing add/remove mutations are transactionally capacity-checked and idempotent
 - PMS grace-period access is read-only; expired subscriptions lose PMS access
+- Existing landlord-owned rent/payment domain is intentionally not exposed as a real-estate PMS API until a real-estate ownership model is explicitly defined
 
 ### Moving
 - Booking, mover, invoice, payment, payout, schedule, tracking, cancellation, and dispute projections
@@ -133,6 +141,7 @@ Payments migration history is linear:
 - Verify external mover payout initiation/provider integration
 - Reconcile remaining moving lifecycle edge cases and dispute financial settlement behavior
 - Complete rent automated M-Pesa/PayPal payment parity where required by the target architecture
+- Define and implement any additional real-estate PMS domains only when the frontend/business contract requires them; do not reuse landlord-owned rent models merely to claim parity
 - Run backend migration checks, unit/integration tests, and CI in the project environment
 - Perform controlled data migration and cutover rehearsal
 - Remove Supabase runtime dependencies only after backend and frontend parity is verified
