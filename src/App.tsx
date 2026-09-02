@@ -28,6 +28,7 @@ import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
 import RegisterMoverPage from './pages/RegisterMoverPage';
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
+import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
 
 function AppContent() {
   const { view, selectedAdminUserId } = useNav();
@@ -35,6 +36,7 @@ function AppContent() {
 
   if (window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
   if (window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
+  if (window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
 
   const renderView = () => {
     switch (view) {
