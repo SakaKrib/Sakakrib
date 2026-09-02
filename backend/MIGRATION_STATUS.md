@@ -102,14 +102,26 @@ Do not modify or destructively migrate the live Supabase production database fro
 - Pending landlord subscription checkout is writable against the current production schema, whose period columns are non-null, while successful payment establishes the actual paid period
 - Production `subscription_renewal_attempts` schema is represented in Django
 - PayPal recurring subscriptions are retained for both landlord and real-estate audiences
+- PayPal subscription checkout now creates the remote PayPal subscription server-side and returns its approval URL
+- PayPal subscription return carries the Django invoice ID and is finalized through an authenticated Django endpoint
 - PayPal subscription approval verifies the remote PayPal subscription server-side before activating the local subscription
+- PayPal approval is owner-scoped to the authenticated account
 - Signed PayPal subscription webhooks are verified server-side using the configured PayPal webhook ID
 - Recurring subscription events are idempotently recorded through `payment_webhook_events`
 - PayPal subscription activation, update, cancellation, suspension, expiry, payment failure, recurring payment, and refund events are handled by Django
 - Successful recurring PayPal payments create paid subscription invoices and advance the subscription billing period
 - Recurring invoice webhook IDs have a database-level uniqueness constraint
+- M-Pesa subscription callbacks now query Daraja server-side before settlement; callback result code, invoice amount, receipt, and provider reference are required for successful activation
+- Subscription activation occurs only after provider-confirmed payment; frontend polling never activates a subscription itself
 - Subscription API exposes auto-renew, PayPal status, PayPal subscription ID, next billing time, and cancel-at-period-end state
 - Subscription expiry automation runs through Celery Beat for both landlord and real-estate subscriptions
+
+### Listing payments
+- Individual KES 1,000 payment intent is owner-scoped and expires safely
+- M-Pesa listing callbacks query Daraja before settlement instead of trusting the unauthenticated callback body
+- PayPal listing orders are verified and captured server-side before settlement
+- Listing payment settlement validates provider amount/currency/reference and is transactionally idempotent
+- Individual paid listing creation does not consume a free listing entitlement
 
 ## Migration-history integrity
 
@@ -133,6 +145,7 @@ Payments migration history is linear:
 
 - Complete 44-table production schema parity audit, including every relevant column, constraint, index, trigger, and function, while applying corrected Django architecture where Supabase behavior is defective
 - Verify subscription renewal automation end-to-end for both M-Pesa and PayPal, including provider-confirmed renewal, invoice creation, grace handling, and retry semantics
+- Configure production PayPal subscription return/cancel URLs and verify PayPal plan IDs for every supported plan
 - Finish listing API/read/search parity
 - Complete persistent production object-storage architecture and authorization for KYC, profile, listing, and chat media
 - Migrate remaining frontend transport domain-by-domain from Supabase to Django
