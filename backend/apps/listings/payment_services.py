@@ -7,7 +7,7 @@ callbacks must be verified before calling it.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +22,10 @@ from .services import _create_listing_from_data, get_listing_entitlement
 
 LISTING_PRICE_KES = Decimal("1000.00")
 MONEY_QUANTUM = Decimal("0.01")
+
+
+def _money(value: Decimal | int | float | str) -> Decimal:
+    return Decimal(str(value)).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
 
 
 @transaction.atomic
@@ -68,16 +72,16 @@ def process_listing_payment(
         intent.save(update_fields=["status", "updated_at"])
         raise ValidationError("Payment intent has expired")
 
-    provider_paid_amount = Decimal(str(provider_amount)) if provider_amount is not None else None
-    if provider_paid_amount is None or provider_paid_amount.quantize(MONEY_QUANTUM) <= 0:
+    provider_paid_amount = _money(provider_amount) if provider_amount is not None else None
+    if provider_paid_amount is None or provider_paid_amount <= 0:
         raise ValidationError("A valid provider payment amount is required")
 
     if provider == "MPESA":
         if result_code is not None and int(result_code) != 0:
             raise ValidationError("M-Pesa payment was not successful")
-        if provider_paid_amount.quantize(MONEY_QUANTUM) != LISTING_PRICE_KES:
+        if provider_paid_amount != LISTING_PRICE_KES:
             raise ValidationError("Individual listing payment must be exactly KES 1,000")
-        if Decimal(intent.amount_kes).quantize(MONEY_QUANTUM) != provider_paid_amount.quantize(MONEY_QUANTUM):
+        if _money(intent.amount_kes) != provider_paid_amount:
             raise ValidationError("Payment amount does not match payment intent")
         if not (mpesa_receipt or "").strip():
             raise ValidationError("Valid M-Pesa receipt and provider reference are required")
@@ -92,14 +96,23 @@ def process_listing_payment(
         if not paypal_fx_rate or Decimal(str(paypal_fx_rate)) <= 0:
             raise ValidationError("A valid server exchange rate is required for PayPal settlement")
         fx_rate = Decimal(str(paypal_fx_rate))
-        effective_paid_kes = Decimal(str(paid_amount_kes)) if paid_amount_kes is not None else Decimal(intent.amount_kes)
-        if effective_paid_kes.quantize(MONEY_QUANTUM) != Decimal(intent.amount_kes).quantize(MONEY_QUANTUM):
+        effective_paid_kes = _money(paid_amount_kes) if paid_amount_kes is not None else _money(intent.amount_kes)
+        expected_kes = _money(intent.amount_kes)
+        if effective_paid_kes != expected_kes:
             raise ValidationError("Paid KES amount does not match payment intent")
-        converted_kes = (provider_paid_amount / fx_rate).quantize(MONEY_QUANTUM)
-        if converted_kes != effective_paid_kes.quantize(MONEY_QUANTUM):
-            raise ValidationError("PayPal captured amount does not match the KES payment intent at the recorded FX rate")
-        if intent.provider_amount is not None and Decimal(intent.provider_amount).quantize(MONEY_QUANTUM) != provider_paid_amount.quantize(MONEY_QUANTUM):
+
+        # Reconcile against the exact USD amount the server authorized when
+        # creating this intent. Do not reverse-convert a rounded provider amount
+        # because that can introduce a false match or false rejection.
+        expected_usd = _money(expected_kes * fx_rate)
+        if provider_paid_amount != expected_usd:
+            raise ValidationError("PayPal captured amount does not match the server-calculated USD payment amount")
+        if intent.provider_amount is not None and _money(intent.provider_amount) != provider_paid_amount:
             raise ValidationError("PayPal amount does not match the payment intent")
+        if intent.provider_currency and intent.provider_currency.upper() != "USD":
+            raise ValidationError("PayPal payment intent currency is invalid")
+        if intent.paypal_fx_rate is not None and Decimal(str(intent.paypal_fx_rate)) != fx_rate:
+            raise ValidationError("PayPal FX rate does not match the payment intent")
         if intent.paypal_order_id and intent.paypal_order_id != paypal_order_id:
             raise ValidationError("PayPal order does not match payment intent")
         currency = "USD"
