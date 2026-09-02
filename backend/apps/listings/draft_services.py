@@ -3,7 +3,65 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Profile
+from apps.core.domain_property import PropertyUnit
 from .models import Listing
+
+
+@transaction.atomic
+def _sync_draft_units(owner, draft, data):
+    """Mirror the form's PMS units into property_units while the listing is a draft."""
+    draft_ui = data.get('draft_ui') if isinstance(data, dict) else None
+    raw_units = draft_ui.get('units', []) if isinstance(draft_ui, dict) else []
+    if not isinstance(raw_units, list):
+        return
+
+    incoming_ids = set()
+    for position, raw in enumerate(raw_units):
+        if not isinstance(raw, dict):
+            continue
+        raw_id = str(raw.get('id') or '').strip()
+        if not raw_id:
+            raw_id = str(__import__('uuid').uuid4())
+        try:
+            unit_id = __import__('uuid').UUID(raw_id)
+        except (ValueError, AttributeError):
+            raise ValidationError('Each property unit must have a valid ID.')
+        incoming_ids.add(unit_id)
+
+        try:
+            rent = raw.get('rent')
+            beds = int(raw.get('beds') or 0)
+            baths = int(raw.get('baths') or 0)
+        except (TypeError, ValueError):
+            raise ValidationError('Property unit rent, beds, and baths must be valid numbers.')
+        if beds < 0 or baths < 0:
+            raise ValidationError('Property unit beds and baths cannot be negative.')
+
+        defaults = {
+            'listing_id': draft.id,
+            'user_id': owner.id,
+            'unit_number': str(raw.get('unitNumber') or '').strip(),
+            'unit_type': str(raw.get('unitType') or '').strip(),
+            'rent': rent or 0,
+            'deposit_amount': raw.get('depositAmount') or 0,
+            'size': str(raw.get('size') or '').strip() or None,
+            'beds': beds,
+            'baths': baths,
+            'availability': str(raw.get('availability') or 'available').lower(),
+            'description': str(raw.get('description') or '').strip() or None,
+            'position': position,
+            'updated_at': timezone.now(),
+        }
+        if defaults['availability'] not in {'available', 'occupied', 'reserved'}:
+            raise ValidationError('Invalid property unit availability.')
+        PropertyUnit.objects.update_or_create(
+            id=unit_id,
+            listing_id=draft.id,
+            user_id=owner.id,
+            defaults=defaults,
+        )
+
+    PropertyUnit.objects.filter(listing_id=draft.id, user_id=owner.id).exclude(id__in=incoming_ids).delete()
 
 
 @transaction.atomic
@@ -60,6 +118,9 @@ def save_listing_draft(profile, data, draft_id=None):
         draft.save()
     else:
         draft = Listing.objects.create(user_id=owner.id, **defaults)
+
+    if role == 'landlord' and draft.is_property_management or role == 'real_estate' and draft.is_property_management:
+        _sync_draft_units(owner, draft, data)
     return draft
 
 
@@ -76,4 +137,5 @@ def delete_listing_draft(profile, draft_id):
     draft = Listing.objects.select_for_update().filter(id=draft_id, user_id=profile.id, is_draft=True).first()
     if not draft:
         raise ValidationError('Draft not found.')
+    PropertyUnit.objects.filter(listing_id=draft.id, user_id=profile.id).delete()
     draft.delete()
