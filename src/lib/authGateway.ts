@@ -20,6 +20,7 @@ export interface GatewaySessionResponse {
 type AuthGatewayAction =
   | 'signup'
   | 'login'
+  | 'google'
   | 'session'
   | 'refresh'
   | 'verify_otp'
@@ -35,6 +36,7 @@ const getBaseUrl = (): string => {
 const actionPath: Record<Exclude<AuthGatewayAction, 'session'>, string> = {
   signup: '/api/accounts/signup/',
   login: '/api/accounts/login/',
+  google: '/api/accounts/google/',
   refresh: '/api/accounts/refresh/',
   verify_otp: '/api/accounts/verify-otp/',
   resend_otp: '/api/accounts/resend-otp/',
@@ -81,6 +83,9 @@ export const gatewaySignup = (email: string, password: string, fullName: string)
 
 export const gatewayLogin = (email: string, password: string) =>
   authGateway('login', { email, password });
+
+export const gatewayGoogleLogin = (credential: string) =>
+  authGateway('google', { credential });
 
 export const gatewayVerifyOtp = (email: string, otp: string) =>
   authGateway('verify_otp', { email, otp });
