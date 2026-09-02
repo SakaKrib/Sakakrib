@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .pms_units_views import MyPMSUnitsView
 from .views import (
     MpesaSubscriptionCallbackView,
     MyAvailablePMSListingsView,
@@ -22,6 +23,7 @@ urlpatterns = [
     path('me/pms-listings/', MyPMSListingsView.as_view(), name='my-pms-listings'),
     path('me/pms-listings/available/', MyAvailablePMSListingsView.as_view(), name='my-available-pms-listings'),
     path('me/pms-unit-count/', MyPMSUnitCountView.as_view(), name='my-pms-unit-count'),
+    path('me/pms-units/', MyPMSUnitsView.as_view(), name='my-pms-units'),
     path('me/pms-listings/membership/', PMSListingMembershipView.as_view(), name='pms-listing-membership'),
     path('invoices/<uuid:invoice_id>/', MySubscriptionInvoiceView.as_view(), name='subscription-invoice-detail'),
     path('checkout/', SubscriptionCheckoutView.as_view(), name='subscription-checkout'),
