@@ -6,6 +6,7 @@ import {
   MapPin,
   Plus,
   Truck,
+  CreditCard,
 } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
@@ -147,6 +148,24 @@ export default function RenterMoveCard({
   const status = getBookingStatus(booking?.status);
   const [invoice, setInvoice] = useState<MovingInvoice | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  const refreshInvoice = async () => {
+    if (!booking?.id) {
+      setInvoice(null);
+      return;
+    }
+
+    try {
+      const result = await renterApi.getMovingInvoice(booking.id);
+      setInvoice(result);
+    } catch (error) {
+      console.error('Failed to load moving invoice:', error);
+      setInvoice(null);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -176,6 +195,69 @@ export default function RenterMoveCard({
       active = false;
     };
   }, [booking?.id]);
+
+  useEffect(() => {
+    setPaymentMessage(null);
+    setPaymentError(null);
+  }, [booking?.id, booking?.status, booking?.payment_status]);
+
+  const handleMpesaPayment = async () => {
+    if (!booking?.id) return;
+    setPaymentLoading(true);
+    setPaymentMessage(null);
+    setPaymentError(null);
+
+    try {
+      const result = await renterApi.startMovingMpesaPayment(booking.id);
+      setPaymentMessage(
+        result.customer_message || 'M-Pesa payment prompt sent. Complete the prompt on your phone; payment will be confirmed automatically.',
+      );
+
+      const startedAt = Date.now();
+      const poll = async () => {
+        if (Date.now() - startedAt > 90000) return;
+        try {
+          const current = await renterApi.getBooking(booking.id);
+          if (String(current.payment_status).toLowerCase() === 'paid') {
+            await refreshInvoice();
+            setPaymentMessage('Payment received and securely held in escrow.');
+            return;
+          }
+        } catch (error) {
+          console.error('Failed to check moving payment status:', error);
+        }
+        window.setTimeout(() => void poll(), 3000);
+      };
+      window.setTimeout(() => void poll(), 3000);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Unable to start M-Pesa payment.');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handlePaypalPayment = async () => {
+    if (!booking?.id) return;
+    setPaymentLoading(true);
+    setPaymentMessage(null);
+    setPaymentError(null);
+
+    try {
+      const result = await renterApi.startMovingPaypalPayment(booking.id);
+      if (!result.approval_url) {
+        throw new Error('PayPal approval URL was not returned.');
+      }
+      window.location.assign(result.approval_url);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Unable to start PayPal payment.');
+      setPaymentLoading(false);
+    }
+  };
+
+  const canPay =
+    booking?.status?.trim().toLowerCase() === 'confirmed' &&
+    booking?.payment_status?.trim().toLowerCase() !== 'paid' &&
+    invoice?.status?.trim().toUpperCase() === 'ISSUED';
 
   return (
     <section className="card overflow-hidden">
@@ -293,7 +375,7 @@ export default function RenterMoveCard({
                       ? `Invoice #${invoice.invoice_number}`
                       : booking.payment_status?.toLowerCase() === 'paid'
                         ? 'Invoice is being prepared.'
-                        : 'Invoice becomes available after successful payment.'}
+                        : 'Invoice becomes available after the mover confirms.'}
                   </p>
                 </div>
               </div>
@@ -322,9 +404,48 @@ export default function RenterMoveCard({
               </div>
             ) : !invoiceLoading ? (
               <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                SakaCrib generates the moving invoice from the confirmed payment record. No duplicate invoice is created when you retry or refresh.
+                The moving invoice is created when the mover confirms the request. It is the authoritative amount used for payment.
               </p>
             ) : null}
+
+            {canPay && (
+              <div className="mt-4 border-t border-gray-200 pt-4 dark:border-brand-800">
+                <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                  Payment is required after mover confirmation. Funds are held securely until delivery is confirmed.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleMpesaPayment()}
+                    disabled={paymentLoading}
+                    className="btn-primary inline-flex items-center justify-center gap-2 text-sm"
+                  >
+                    {paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                    Pay with M-Pesa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handlePaypalPayment()}
+                    disabled={paymentLoading}
+                    className="btn-secondary inline-flex items-center justify-center gap-2 text-sm"
+                  >
+                    {paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                    Pay with PayPal
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {paymentMessage && (
+              <div className="mt-3 rounded-lg bg-success-50 px-3 py-2 text-xs text-success-700 dark:bg-success-900/20 dark:text-success-400">
+                {paymentMessage}
+              </div>
+            )}
+            {paymentError && (
+              <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700 dark:bg-error-900/20 dark:text-error-400">
+                {paymentError}
+              </div>
+            )}
           </div>
 
           {/* Action */}
