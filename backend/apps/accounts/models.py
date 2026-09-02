@@ -68,6 +68,7 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     signup_otp_trial_count = models.PositiveIntegerField(default=0)
     signup_verification_started_at = models.DateTimeField(null=True, blank=True)
     signup_verification_deadline_at = models.DateTimeField(null=True, blank=True)
+    google_subject = models.CharField(max_length=255, unique=True, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
