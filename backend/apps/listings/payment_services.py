@@ -39,7 +39,6 @@ def process_listing_payment(
     result_description: str | None = None,
     provider_amount: Decimal | int | float | None = None,
     provider_currency: str | None = None,
-    provider_transaction_id: str | None = None,
     paypal_order_id: str | None = None,
     paypal_fx_rate: Decimal | None = None,
     paid_amount_kes: Decimal | int | float | None = None,
@@ -86,7 +85,6 @@ def process_listing_payment(
         if not reference:
             raise ValidationError("Valid M-Pesa receipt and provider reference are required")
         currency = "KES"
-        effective_paid_kes = provider_paid_amount
     else:
         reference = (provider_reference or "").strip()
         if not reference or (provider_currency or "").upper() != "USD":
@@ -125,13 +123,11 @@ def process_listing_payment(
     payment = ListingPayment.objects.create(
         user_id=profile.id,
         listing_id=listing["listing_id"],
-        payment_intent_id=intent.id,
         amount_kes=intent.amount_kes,
         status="PAID",
         payment_provider=provider,
         payment_method=payment_method,
         provider_reference=reference,
-        provider_transaction_id=provider_transaction_id,
         checkout_request_id=checkout_request_id,
         merchant_request_id=merchant_request_id,
         mpesa_receipt=mpesa_receipt,
