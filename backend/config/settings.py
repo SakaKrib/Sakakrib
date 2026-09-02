@@ -89,14 +89,19 @@ SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE','Lax')
 SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE','false').lower() == 'true'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO','https')
 
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND','django.core.mail.backends.console.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST','')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT','587'))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER','')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD','')
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS','true').lower() == 'true'
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL','false').lower() == 'true'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL','no-reply@sakakrib.com')
+# Direct SMTP email delivery. No Resend or other email API is used.
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'false').lower() == 'true'
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '20'))
+EMAIL_FROM = os.getenv('EMAIL_FROM', os.getenv('DEFAULT_FROM_EMAIL', ''))
+DEFAULT_FROM_EMAIL = EMAIL_FROM or EMAIL_HOST_USER
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', '')
+
 LISTING_FREE_LIMIT = int(os.getenv('LISTING_FREE_LIMIT','3'))
 INDIVIDUAL_LISTING_PRICE_KES = int(os.getenv('INDIVIDUAL_LISTING_PRICE_KES','1000'))
 MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY','')
