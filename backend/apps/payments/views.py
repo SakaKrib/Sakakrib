@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.payment_events import publish_payment_status
 from apps.listings.models import ListingPaymentIntent
 from apps.listings.payment_services import process_listing_payment
 from .services import get_exchange_rate, get_provider
@@ -154,6 +155,16 @@ class MpesaListingCallbackView(APIView):
                     intent.status = 'FAILED'
                     intent.updated_at = timezone.now()
                     intent.save(update_fields=['status', 'updated_at'])
+                    transaction.on_commit(lambda: publish_payment_status(
+                        user_id=intent.user_id,
+                        invoice_id=intent.id,
+                        status='FAILED',
+                        message=callback.get('ResultDesc') or 'M-Pesa listing payment failed.',
+                        provider='MPESA',
+                        event_type='MPESA.STK.CALLBACK.FAILED',
+                        listing_id=intent.listing_id,
+                        details={'result_code': provider_result_code},
+                    ))
                     return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
                 if callback_result_code_int != 0:
                     return Response({'ResultCode': 1, 'ResultDesc': 'Provider callback/result mismatch.'}, status=500)
@@ -163,6 +174,16 @@ class MpesaListingCallbackView(APIView):
                     merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
                     phone_number=items.get('PhoneNumber'), result_code=0, result_description=callback.get('ResultDesc'),
                 )
+                transaction.on_commit(lambda: publish_payment_status(
+                    user_id=intent.user_id,
+                    invoice_id=intent.id,
+                    status='PAID',
+                    message='M-Pesa listing payment confirmed successfully.',
+                    provider='MPESA',
+                    event_type='MPESA.STK.CALLBACK.SUCCESS',
+                    listing_id=intent.listing_id,
+                    details={'mpesa_receipt': items.get('MpesaReceiptNumber')},
+                ))
         except Exception as exc:
             return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', 'listing_id': str(result['listing_id'])})
