@@ -5,12 +5,14 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from apps.payments.services import get_provider
-from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan
+from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan, SubscriptionListing
+
 
 def _period_end(start, billing_cycle): return start + (timedelta(days=365) if billing_cycle == 'ANNUAL' else timedelta(days=30))
 def _paypal_return_url(base_url, invoice_id):
     parts = urlsplit(base_url); query = dict(parse_qsl(parts.query, keep_blank_values=True)); query['invoice_id'] = str(invoice_id)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
 
 def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None):
     billing_cycle = str(billing_cycle or 'MONTHLY').upper(); provider = str(provider or '').lower()
@@ -55,6 +57,7 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     invoice.provider_reference = result.provider_reference; invoice.checkout_request_id = result.provider_reference; invoice.save(update_fields=['provider_reference', 'checkout_request_id'])
     return {'success': True, 'subscription_id': str(subscription.id), 'invoice_id': str(invoice.id), 'listing_id': str(draft.id) if draft else None, 'provider': 'mpesa', 'billing_cycle': billing_cycle, 'plan_id': str(plan.id), 'plan_name': plan.name, 'amount_kes': amount_kes, 'amount_usd': amount_usd, 'provider_reference': result.provider_reference, 'provider_response': result.raw, 'status': 'PENDING_PAYMENT'}
 
+
 def finalize_mpesa_subscription(invoice_id, result_code, result_description='', mpesa_receipt=None, checkout_request_id=None, merchant_request_id=None, phone_number=None, paid_amount=None):
     with transaction.atomic():
         invoice = SubscriptionInvoice.objects.select_for_update().filter(pk=invoice_id).first()
@@ -62,7 +65,7 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
         if invoice.status == 'PAID': return {'success': True, 'already_settled': True, 'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id), 'listing_id': str(invoice.listing_id) if invoice.listing_id else None}
         result_code_int = int(result_code) if result_code is not None else None; invoice.result_code = result_code_int; invoice.result_description = result_description; invoice.checkout_request_id = checkout_request_id or invoice.checkout_request_id; invoice.merchant_request_id = merchant_request_id; invoice.phone_number = phone_number or invoice.phone_number; invoice.mpesa_receipt = mpesa_receipt
         if result_code_int != 0:
-            invoice.status = 'FAILED'; invoice.save(update_fields=['result_code','result_description','checkout_request_id','merchant_request_id','phone_number','mpesa_receipt','status']);
+            invoice.status = 'FAILED'; invoice.save(update_fields=['result_code','result_description','checkout_request_id','merchant_request_id','phone_number','mpesa_receipt','status'])
             if invoice.landlord_subscription_id: LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
             if invoice.real_estate_subscription_id: RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
             return {'success': False, 'status': 'FAILED'}
@@ -75,16 +78,48 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
         if invoice.payment_provider != 'MPESA': raise ValueError('Invoice is not an M-Pesa invoice')
         return _activate_invoice(invoice, provider='MPESA', provider_reference=reference, transaction_id=mpesa_receipt)
 
+
 def finalize_paypal_subscription(invoice_id, subscription_id):
     if not subscription_id: raise ValueError('PayPal subscription ID is required')
     from .paypal_subscription_services import verify_and_finalize_initial_subscription
     return verify_and_finalize_initial_subscription(invoice_id, subscription_id)
 
+
 def _activate_invoice(invoice, provider, provider_reference, transaction_id=None):
-    now = timezone.now(); subscription = LandlordSubscription.objects.select_for_update().get(pk=invoice.landlord_subscription_id) if invoice.landlord_subscription_id else RealEstateSubscription.objects.select_for_update().get(pk=invoice.real_estate_subscription_id) if invoice.real_estate_subscription_id else None
+    now = timezone.now()
+    subscription = LandlordSubscription.objects.select_for_update().get(pk=invoice.landlord_subscription_id) if invoice.landlord_subscription_id else RealEstateSubscription.objects.select_for_update().get(pk=invoice.real_estate_subscription_id) if invoice.real_estate_subscription_id else None
     if subscription is None: raise ValueError('Subscription invoice is not linked to a subscription')
-    start = now; end = _period_end(start, subscription.billing_cycle); invoice.status = 'PAID'; invoice.payment_provider = provider; invoice.payment_method = provider; invoice.provider_reference = provider_reference; invoice.provider_transaction_id = transaction_id; invoice.paid_at = now; invoice.billing_period_start = start; invoice.billing_period_end = end; invoice.save(update_fields=['status','payment_provider','payment_method','provider_reference','provider_transaction_id','paid_at','billing_period_start','billing_period_end'])
+
+    # The invoice may originate from Post Listing. In that case the exact
+    # persisted draft is converted into a subscription-backed listing in the
+    # same transaction as subscription activation. No second Listing is made.
+    draft = None
+    if invoice.listing_id:
+        from apps.listings.models import Listing
+        owner_id = getattr(subscription, 'landlord_id', None) or getattr(subscription, 'real_estate_id', None)
+        draft = Listing.objects.select_for_update().filter(pk=invoice.listing_id, user_id=owner_id, is_draft=True).first()
+        if not draft:
+            raise ValueError('The subscription invoice is attached to an unavailable listing draft')
+        if not draft.is_property_management:
+            raise ValueError('Only property-management drafts can be activated by a subscription')
+        plan = SubscriptionPlan.objects.filter(pk=subscription.plan_id).first()
+        if not plan:
+            raise ValueError('Subscription plan not found')
+        listing_key = 'subscription_id' if invoice.landlord_subscription_id else 'real_estate_subscription_id'
+        usage = SubscriptionListing.objects.filter(**{listing_key: subscription.id, 'status': 'ACTIVE'}).count()
+        if plan.max_listings is not None and usage >= plan.max_listings:
+            raise ValueError('The selected subscription plan has no remaining listing capacity')
+
+    start = now; end = _period_end(start, subscription.billing_cycle)
+    invoice.status = 'PAID'; invoice.payment_provider = provider; invoice.payment_method = provider; invoice.provider_reference = provider_reference; invoice.provider_transaction_id = transaction_id; invoice.paid_at = now; invoice.billing_period_start = start; invoice.billing_period_end = end; invoice.save(update_fields=['status','payment_provider','payment_method','provider_reference','provider_transaction_id','paid_at','billing_period_start','billing_period_end'])
     subscription.status = 'ACTIVE'; subscription.current_period_start = start; subscription.current_period_end = end; subscription.grace_period_end = None
     if provider == 'PAYPAL': subscription.paypal_subscription_id = provider_reference; subscription.paypal_status = 'ACTIVE'; subscription.next_billing_at = end; subscription.auto_renew = True
     subscription.updated_at = now; subscription.save(update_fields=['status','current_period_start','current_period_end','grace_period_end','paypal_subscription_id','paypal_status','next_billing_at','auto_renew','updated_at'])
+
+    if draft is not None:
+        listing_key = 'subscription_id' if invoice.landlord_subscription_id else 'real_estate_subscription_id'
+        SubscriptionListing.objects.create(subscription_id=subscription.id if listing_key == 'subscription_id' else None, real_estate_subscription_id=subscription.id if listing_key == 'real_estate_subscription_id' else None, listing_id=draft.id, status='ACTIVE', activated_at=now, created_at=now)
+        draft.is_draft = False; draft.is_paid = True; draft.is_published = False; draft.approval_status = 'pending_review'; draft.is_approved = False; draft.status = 'pending'; draft.updated_at = now
+        draft.save(update_fields=['is_draft','is_paid','is_published','approval_status','is_approved','status','updated_at'])
+
     return {'success': True, 'status': 'PAID', 'subscription_id': str(subscription.id), 'listing_id': str(invoice.listing_id) if invoice.listing_id else None}
