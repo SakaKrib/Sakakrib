@@ -56,12 +56,12 @@ class ListingPaymentStartView(APIView):
 
             profile = request.user
             if provider_name == 'mpesa':
+                if not profile.phone:
+                    return Response({'detail': 'Profile phone number required.'}, status=400)
                 try:
                     phone_number = _normalize_kenyan_phone(profile.phone)
                 except ValueError as exc:
                     return Response({'detail': str(exc)}, status=400)
-                if not profile.phone:
-                    return Response({'detail': 'Profile phone number required.'}, status=400)
                 amount = intent.amount_kes
                 currency = 'KES'
                 fx_rate = None
@@ -86,8 +86,13 @@ class ListingPaymentStartView(APIView):
             intent.provider_amount = amount
             intent.provider_currency = currency
             intent.paypal_fx_rate = fx_rate
+            if provider_name == 'paypal':
+                intent.paypal_order_id = result.provider_reference
             intent.updated_at = timezone.now()
-            intent.save(update_fields=['provider', 'provider_reference', 'provider_amount', 'provider_currency', 'paypal_fx_rate', 'updated_at'])
+            update_fields = ['provider', 'provider_reference', 'provider_amount', 'provider_currency', 'paypal_fx_rate', 'updated_at']
+            if provider_name == 'paypal':
+                update_fields.append('paypal_order_id')
+            intent.save(update_fields=update_fields)
             return Response({'success': True, 'payment_intent_id': str(intent.id), 'provider': provider_name,
                              'provider_reference': result.provider_reference, 'provider_amount': str(amount),
                              'provider_currency': currency, 'paypal_fx_rate': str(fx_rate) if fx_rate else None,
@@ -137,13 +142,19 @@ class PayPalListingCaptureView(APIView):
         intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk, status='PENDING').first()
         if not intent:
             return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
-        result = get_provider('paypal').verify_payment(provider_reference=order_id)
-        if not result.success:
-            return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
-        if intent.provider != 'PAYPAL' or intent.provider_reference != order_id:
+        if intent.expires_at is not None and intent.expires_at <= timezone.now():
+            intent.status = 'EXPIRED'
+            intent.updated_at = timezone.now()
+            intent.save(update_fields=['status', 'updated_at'])
+            return Response({'detail': 'Payment intent has expired.'}, status=409)
+        if intent.provider != 'PAYPAL' or intent.provider_reference != order_id or intent.paypal_order_id != order_id:
             return Response({'success': False, 'message': 'PayPal order does not match the payment intent.'}, status=400)
         if not intent.provider_amount or intent.provider_currency != 'USD' or not intent.paypal_fx_rate:
             return Response({'success': False, 'message': 'Payment intent has no valid server-side USD/FX settlement data.'}, status=400)
+
+        result = get_provider('paypal').verify_payment(provider_reference=order_id)
+        if not result.success:
+            return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
 
         raw = result.raw or {}
         purchase_units = raw.get('purchase_units') or []
