@@ -1,6 +1,6 @@
 from django.urls import path
 from .moving_views import BookingEventView, BookingView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
-from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverQuoteView, MovingBookingCancelView
+from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, MoverQuoteView, MovingBookingCancelView
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
 from .chat_views import ChatConversationView, ChatMessageView
 from .chat_media_views import ChatMediaFileView, ChatMediaUploadView
@@ -25,7 +25,7 @@ urlpatterns = [
     path("moving-tracking-points/", MovingTrackingPointView.as_view(), name="moving-tracking-point-list"), path("moving-tracking-points/<int:object_id>/", MovingTrackingPointView.as_view(), name="moving-tracking-point-detail"),
     path("moving-cancellation-events/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-list"), path("moving-cancellation-events/<uuid:object_id>/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-detail"),
     path("movers/quote/", MoverQuoteView.as_view(), name="mover-quote"), path("bookings/request/", MoverBookingRequestView.as_view(), name="booking-request"),
-    path("bookings/<uuid:booking_id>/respond/", MoverBookingResponseView.as_view(), name="booking-response"), path("bookings/<uuid:booking_id>/cancel/", MovingBookingCancelView.as_view(), name="booking-cancel"),
+    path("bookings/<uuid:booking_id>/detail/", MoverBookingDetailView.as_view(), name="mover-booking-detail"), path("bookings/<uuid:booking_id>/respond/", MoverBookingResponseView.as_view(), name="booking-response"), path("bookings/<uuid:booking_id>/cancel/", MovingBookingCancelView.as_view(), name="booking-cancel"),
     path("bookings/<uuid:booking_id>/payment/mpesa/start/", MovingMpesaStartView.as_view(), name="moving-payment-mpesa-start"), path("payments/moving/mpesa/callback/", MovingMpesaCallbackView.as_view(), name="moving-payment-mpesa-callback"),
     path("bookings/<uuid:booking_id>/payment/paypal/start/", MovingPaypalStartView.as_view(), name="moving-payment-paypal-start"), path("payments/moving/paypal/webhook/", MovingPaypalWebhookView.as_view(), name="moving-payment-paypal-webhook"),
     path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"), path("payments/mover-payout/callback/", MoverPayoutCallbackView.as_view(), name="mover-payout-callback"),
