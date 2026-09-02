@@ -50,10 +50,6 @@ def review_listing(admin_user, listing_id, decision, note=''):
                 f"{listing.description or ''}\n\n🔑 Verified listing on Saka Krib."
             )
 
-        # The community post is the publication record for this listing. Keep the
-        # listing attached and publish the exact AI caption when one exists. If a
-        # prior post was created for the listing, refresh its content/caption so an
-        # earlier fallback caption cannot replace the current AI-generated caption.
         post = CommunityPost.objects.filter(listing_id=listing.id).order_by('created_at').first()
         post_defaults = {
             'user_id': listing.user_id,
@@ -68,14 +64,18 @@ def review_listing(admin_user, listing_id, decision, note=''):
         else:
             CommunityPost.objects.create(listing_id=listing.id, **post_defaults)
 
-        # Notification/email delivery must not be able to roll back an already
-        # committed admin approval or community publication.
         transaction.on_commit(lambda: dispatch_user_notification(
             user_id=listing.user_id,
             notification_type='LISTING_APPROVED',
             title='Listing Approved - Saka Krib',
             message=f'Your property listing "{listing.title}" has been approved and is now live.',
-            data={'listing_id': str(listing.id)},
+            data={
+                'listing_id': str(listing.id),
+                'listing_title': listing.title,
+                'city': listing.city,
+                'county': listing.county,
+                'full_name': getattr(listing.user, 'full_name', '') if hasattr(listing, 'user') else '',
+            },
             event_key=f'listing:approved:{listing.id}',
             send_email=True,
             email_template='listing_approved',
