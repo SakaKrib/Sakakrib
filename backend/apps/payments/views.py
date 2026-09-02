@@ -97,6 +97,8 @@ class ListingPaymentStartView(APIView):
             )
             if not result.success:
                 return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=502)
+            if not result.provider_reference:
+                return Response({'success': False, 'message': 'Payment provider did not return a transaction reference.'}, status=502)
 
             intent.provider = provider_name.upper()
             intent.provider_reference = result.provider_reference
@@ -126,21 +128,32 @@ class MpesaListingCallbackView(APIView):
         result_code = callback.get('ResultCode')
         if not checkout_id:
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
-        intent = ListingPaymentIntent.objects.filter(provider_reference=checkout_id, status='PENDING').first()
-        if not intent:
-            return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+        try:
+            result_code_int = int(result_code) if result_code is not None else 1
+        except (TypeError, ValueError):
+            result_code_int = 1
+
         items = {item.get('Name'): item.get('Value') for item in callback.get('CallbackMetadata', {}).get('Item', [])}
-        if int(result_code or 1) != 0:
-            intent.status = 'FAILED'; intent.updated_at = timezone.now()
-            intent.save(update_fields=['status','updated_at'])
-            return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
         try:
             with transaction.atomic():
+                intent = ListingPaymentIntent.objects.select_for_update().filter(
+                    provider='MPESA', provider_reference=checkout_id, status='PENDING'
+                ).first()
+                if not intent:
+                    return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+                if result_code_int != 0:
+                    intent.status = 'FAILED'
+                    intent.updated_at = timezone.now()
+                    intent.save(update_fields=['status', 'updated_at'])
+                    return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
                 result = process_listing_payment(
                     intent.id, provider='MPESA', payment_method='MPESA', provider_reference=checkout_id,
                     provider_amount=items.get('Amount'), provider_currency='KES', checkout_request_id=checkout_id,
                     merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
-                    phone_number=items.get('PhoneNumber'), result_code=result_code,
+                    phone_number=items.get('PhoneNumber'), result_code=result_code_int,
                     result_description=callback.get('ResultDesc'),
                 )
         except Exception as exc:
