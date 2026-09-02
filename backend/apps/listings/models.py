@@ -40,6 +40,7 @@ class Listing(models.Model):
     is_paid = models.BooleanField(default=False)
     is_published = models.BooleanField(default=False)
     is_draft = models.BooleanField(default=False)
+    draft_data = models.JSONField(default=dict)
     approval_status = models.TextField(default='pending_review')
     is_approved = models.BooleanField(default=False)
     status = models.TextField(default='pending')
