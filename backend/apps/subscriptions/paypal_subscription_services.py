@@ -9,6 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.domain_platform import PaymentWebhookEvent
+from apps.core.payment_events import publish_payment_status
 
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice
 
@@ -22,6 +23,7 @@ PAYPAL_SUBSCRIPTION_EVENTS = {
     'BILLING.SUBSCRIPTION.PAYMENT.FAILED',
     'PAYMENT.SALE.COMPLETED',
     'PAYMENT.SALE.REFUNDED',
+    'PAYMENT.SALE.REVERSED',
 }
 
 
@@ -87,8 +89,7 @@ def create_paypal_subscription(*, plan_id, custom_id, return_url, cancel_url):
     result = _paypal_json('/v1/billing/subscriptions', method='POST', body=payload, token=_paypal_token())
     subscription_id = str(result.get('id') or '').strip()
     approval_url = next(
-        (str(link.get('href')) for link in result.get('links', [])
-         if link.get('rel') == 'approve' and link.get('href')),
+        (str(link.get('href')) for link in result.get('links', []) if link.get('rel') == 'approve' and link.get('href')),
         None,
     )
     if not subscription_id or not approval_url:
@@ -110,8 +111,10 @@ def verify_paypal_webhook(payload, headers):
     if not all(required.values()):
         raise ValueError('Incomplete PayPal webhook signature headers')
     result = _paypal_json(
-        '/v1/notifications/verify-webhook-signature', method='POST',
-        body={**required, 'webhook_id': webhook_id, 'webhook_event': payload}, token=_paypal_token(),
+        '/v1/notifications/verify-webhook-signature',
+        method='POST',
+        body={**required, 'webhook_id': webhook_id, 'webhook_event': payload},
+        token=_paypal_token(),
     )
     if result.get('verification_status') != 'SUCCESS':
         raise ValueError('Invalid PayPal webhook signature')
@@ -154,42 +157,35 @@ def _period_end(subscription, now, resource):
     return now + (timedelta(days=365) if subscription.billing_cycle == 'ANNUAL' else timedelta(days=30))
 
 
-@transaction.atomic
-def verify_and_finalize_initial_subscription(invoice_id, paypal_subscription_id):
-    invoice = SubscriptionInvoice.objects.select_for_update().filter(
-        pk=invoice_id, status='PENDING', payment_provider='PAYPAL'
-    ).first()
-    if not invoice:
-        raise ValueError('Pending PayPal subscription invoice not found')
-    subscription_id = invoice.landlord_subscription_id or invoice.real_estate_subscription_id
-    subscription_model = LandlordSubscription if invoice.landlord_subscription_id else RealEstateSubscription
-    subscription = subscription_model.objects.select_for_update().get(pk=subscription_id)
-    if not subscription.paypal_plan_id:
-        raise ValueError('PayPal plan is not attached to this subscription')
-    details = _paypal_json(
-        f'/v1/billing/subscriptions/{urllib.parse.quote(str(paypal_subscription_id), safe="")}',
-        token=_paypal_token(),
-    )
-    if details.get('status') not in {'ACTIVE', 'APPROVED'}:
-        raise ValueError(f'PayPal subscription is not active: {details.get("status", "UNKNOWN")}')
-    remote_plan_id = (details.get('plan_id') or '').strip()
-    if remote_plan_id and remote_plan_id != subscription.paypal_plan_id:
-        raise ValueError('PayPal subscription plan does not match the selected SakaKrib plan')
-    now = timezone.now()
-    subscription.paypal_subscription_id = paypal_subscription_id
-    subscription.paypal_status = details.get('status')
-    subscription.auto_renew = True
-    subscription.next_billing_at = _next_billing_time(details)
-    subscription.updated_at = now
-    subscription.save(update_fields=['paypal_subscription_id', 'paypal_status', 'auto_renew', 'next_billing_at', 'updated_at'])
-    invoice.paypal_subscription_id = paypal_subscription_id
-    invoice.provider_reference = paypal_subscription_id
-    invoice.status = 'PAID'
-    invoice.payment_method = 'PAYPAL'
-    invoice.paid_at = now
-    invoice.save(update_fields=['paypal_subscription_id', 'provider_reference', 'status', 'payment_method', 'paid_at'])
-    from .payment_services import _activate_invoice
-    return _activate_invoice(invoice, provider='PAYPAL', provider_reference=paypal_subscription_id, transaction_id=paypal_subscription_id)
+def record_paypal_subscription_approval(invoice_id, paypal_subscription_id):
+    """Bind the PayPal subscription to the pending invoice without declaring payment success."""
+    if not paypal_subscription_id:
+        raise ValueError('PayPal subscription ID is required')
+    with transaction.atomic():
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(
+            pk=invoice_id, status='PENDING', payment_provider='PAYPAL'
+        ).first()
+        if not invoice:
+            raise ValueError('Pending PayPal subscription invoice not found')
+        subscription_id = invoice.landlord_subscription_id or invoice.real_estate_subscription_id
+        subscription_model = LandlordSubscription if invoice.landlord_subscription_id else RealEstateSubscription
+        subscription = subscription_model.objects.select_for_update().get(pk=subscription_id)
+        details = _paypal_json(
+            f'/v1/billing/subscriptions/{urllib.parse.quote(str(paypal_subscription_id), safe="")}',
+            token=_paypal_token(),
+        )
+        remote_plan_id = (details.get('plan_id') or '').strip()
+        if remote_plan_id and remote_plan_id != subscription.paypal_plan_id:
+            raise ValueError('PayPal subscription plan does not match the selected SakaKrib plan')
+        subscription.paypal_subscription_id = paypal_subscription_id
+        subscription.paypal_status = str(details.get('status') or 'APPROVAL_PENDING')
+        subscription.next_billing_at = _next_billing_time(details)
+        subscription.updated_at = timezone.now()
+        subscription.save(update_fields=['paypal_subscription_id', 'paypal_status', 'next_billing_at', 'updated_at'])
+        invoice.paypal_subscription_id = paypal_subscription_id
+        invoice.provider_reference = paypal_subscription_id
+        invoice.save(update_fields=['paypal_subscription_id', 'provider_reference'])
+        return {'success': True, 'status': 'PENDING_PAYMENT', 'invoice_id': str(invoice.id), 'subscription_id': str(subscription.id), 'paypal_subscription_id': paypal_subscription_id, 'listing_id': str(invoice.listing_id) if invoice.listing_id else None}
 
 
 @transaction.atomic
@@ -217,84 +213,120 @@ def process_paypal_subscription_webhook(payload):
     resource = payload.get('resource') or {}
     now = timezone.now()
 
-    try:
-        if subscription is None:
-            existing.status = 'IGNORED'
-            existing.processed_at = now
-            existing.save(update_fields=['status', 'processed_at'])
-            return {'status': 'IGNORED', 'reason': 'Unknown PayPal subscription', 'event_id': event_id}
+    if subscription is None:
+        existing.status = 'IGNORED'
+        existing.processed_at = now
+        existing.save(update_fields=['status', 'processed_at'])
+        return {'status': 'IGNORED', 'reason': 'Unknown PayPal subscription', 'event_id': event_id}
 
-        if event_type == 'BILLING.SUBSCRIPTION.ACTIVATED':
-            subscription.paypal_status = 'ACTIVE'
-            subscription.auto_renew = True
-            subscription.next_billing_at = _next_billing_time(resource) or subscription.next_billing_at
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'auto_renew', 'next_billing_at', 'updated_at'])
+    owner_id = subscription.landlord_id if audience == 'landlord' else subscription.real_estate_id
+    invoice = None
+    payment_status = None
+    message = None
+    listing_id = None
 
-        elif event_type == 'BILLING.SUBSCRIPTION.UPDATED':
-            status = str(resource.get('status') or '').upper()
-            subscription.paypal_status = status or subscription.paypal_status
-            subscription.next_billing_at = _next_billing_time(resource) or subscription.next_billing_at
-            subscription.auto_renew = status == 'ACTIVE' and not subscription.cancel_at_period_end
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'next_billing_at', 'auto_renew', 'updated_at'])
+    if event_type == 'BILLING.SUBSCRIPTION.ACTIVATED':
+        subscription.paypal_status = 'ACTIVE'
+        subscription.next_billing_at = _next_billing_time(resource) or subscription.next_billing_at
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'next_billing_at', 'updated_at'])
 
-        elif event_type == 'BILLING.SUBSCRIPTION.CANCELLED':
-            subscription.paypal_status = 'CANCELLED'
-            subscription.cancel_at_period_end = True
-            subscription.cancelled_at = now
-            subscription.auto_renew = False
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'cancel_at_period_end', 'cancelled_at', 'auto_renew', 'updated_at'])
+    elif event_type == 'BILLING.SUBSCRIPTION.UPDATED':
+        status = str(resource.get('status') or '').upper()
+        subscription.paypal_status = status or subscription.paypal_status
+        subscription.next_billing_at = _next_billing_time(resource) or subscription.next_billing_at
+        subscription.auto_renew = status == 'ACTIVE' and not subscription.cancel_at_period_end
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'next_billing_at', 'auto_renew', 'updated_at'])
 
-        elif event_type == 'BILLING.SUBSCRIPTION.SUSPENDED':
-            subscription.paypal_status = 'SUSPENDED'
-            subscription.auto_renew = False
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'auto_renew', 'updated_at'])
+    elif event_type == 'BILLING.SUBSCRIPTION.CANCELLED':
+        subscription.paypal_status = 'CANCELLED'
+        subscription.cancel_at_period_end = True
+        subscription.cancelled_at = now
+        subscription.auto_renew = False
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'cancel_at_period_end', 'cancelled_at', 'auto_renew', 'updated_at'])
 
-        elif event_type == 'BILLING.SUBSCRIPTION.EXPIRED':
-            subscription.paypal_status = 'EXPIRED'
-            subscription.status = 'EXPIRED'
-            subscription.auto_renew = False
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'status', 'auto_renew', 'updated_at'])
+    elif event_type == 'BILLING.SUBSCRIPTION.SUSPENDED':
+        subscription.paypal_status = 'SUSPENDED'
+        subscription.auto_renew = False
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'auto_renew', 'updated_at'])
 
-        elif event_type == 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
-            subscription.paypal_status = 'PAYMENT_FAILED'
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'updated_at'])
+    elif event_type == 'BILLING.SUBSCRIPTION.EXPIRED':
+        subscription.paypal_status = 'EXPIRED'
+        subscription.status = 'EXPIRED'
+        subscription.auto_renew = False
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'status', 'auto_renew', 'updated_at'])
 
-        elif event_type == 'PAYMENT.SALE.COMPLETED':
-            amount_data = resource.get('amount') or {}
-            try:
-                paid_usd = Decimal(str(amount_data.get('total') or amount_data.get('value')))
-            except (InvalidOperation, TypeError):
-                raise ValueError('PayPal recurring payment amount is invalid')
-            if paid_usd <= 0:
-                raise ValueError('PayPal recurring payment amount must be positive')
-            expected_usd = subscription.billing_amount_usd
-            if expected_usd is not None and abs(paid_usd - expected_usd) > Decimal('0.01'):
-                raise ValueError('PayPal recurring payment amount does not match the subscription price')
+    elif event_type == 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(
+            paypal_subscription_id=subscription_id, status='PENDING'
+        ).order_by('-created_at').first()
+        if invoice is None:
+            invoice = SubscriptionInvoice.objects.select_for_update().filter(
+                paypal_subscription_id=subscription_id
+            ).order_by('-created_at').first()
+        if invoice:
+            invoice.status = 'FAILED'
+            invoice.result_description = str(resource.get('status_change_note') or payload.get('summary') or 'PayPal subscription payment failed')[:2000]
+            invoice.webhook_event_id = event_id
+            invoice.save(update_fields=['status', 'result_description', 'webhook_event_id'])
+            listing_id = invoice.listing_id
+        subscription.paypal_status = 'PAYMENT_FAILED'
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'updated_at'])
+        payment_status = 'FAILED'
+        message = invoice.result_description if invoice else 'PayPal subscription payment failed.'
 
-            invoice = SubscriptionInvoice.objects.filter(webhook_event_id=event_id).first()
-            if invoice is None:
-                end = _period_end(subscription, now, resource)
-                invoice = SubscriptionInvoice.objects.create(
-                    amount_kes=subscription.billing_amount_kes or Decimal('0'), amount_usd=paid_usd,
-                    currency='USD', status='PAID', payment_provider='PAYPAL', payment_method='PAYPAL',
-                    provider_reference=str(resource.get('id') or subscription_id),
-                    provider_transaction_id=str(resource.get('id') or subscription_id), paypal_subscription_id=subscription_id,
-                    billing_period_start=subscription.current_period_end or now, billing_period_end=end, paid_at=now,
-                    created_at=now, webhook_event_id=event_id,
-                    landlord_subscription_id=subscription.id if audience == 'landlord' else None,
-                    real_estate_subscription_id=subscription.id if audience == 'real_estate' else None,
-                    pricing_snapshot_source='subscription_plans')
-            else:
-                invoice.status = 'PAID'
-                invoice.paid_at = invoice.paid_at or now
-                invoice.save(update_fields=['status', 'paid_at'])
+    elif event_type == 'PAYMENT.SALE.COMPLETED':
+        amount_data = resource.get('amount') or {}
+        try:
+            paid_usd = Decimal(str(amount_data.get('total') or amount_data.get('value')))
+        except (InvalidOperation, TypeError):
+            raise ValueError('PayPal recurring payment amount is invalid')
+        if paid_usd <= 0:
+            raise ValueError('PayPal recurring payment amount must be positive')
+        expected_usd = subscription.billing_amount_usd
+        if expected_usd is not None and abs(paid_usd - expected_usd) > Decimal('0.01'):
+            raise ValueError('PayPal recurring payment amount does not match the subscription price')
 
+        sale_reference = str(resource.get('id') or subscription_id)
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(
+            paypal_subscription_id=subscription_id, status='PENDING'
+        ).order_by('-created_at').first()
+        if invoice is not None:
+            invoice.amount_usd = paid_usd
+            invoice.currency = 'USD'
+            invoice.provider_transaction_id = sale_reference
+            invoice.webhook_event_id = event_id
+            invoice.result_description = str(payload.get('summary') or 'PayPal payment completed')[:2000]
+            invoice.save(update_fields=['amount_usd', 'currency', 'provider_transaction_id', 'webhook_event_id', 'result_description'])
+            from .payment_services import _activate_invoice
+            activated = _activate_invoice(invoice, provider='PAYPAL', provider_reference=subscription_id, transaction_id=sale_reference)
+            listing_id = activated.get('listing_id')
+        else:
+            end = _period_end(subscription, now, resource)
+            invoice = SubscriptionInvoice.objects.create(
+                amount_kes=subscription.billing_amount_kes or Decimal('0'),
+                amount_usd=paid_usd,
+                currency='USD',
+                status='PAID',
+                payment_provider='PAYPAL',
+                payment_method='PAYPAL',
+                provider_reference=sale_reference,
+                provider_transaction_id=sale_reference,
+                paypal_subscription_id=subscription_id,
+                billing_period_start=subscription.current_period_end or now,
+                billing_period_end=end,
+                paid_at=now,
+                created_at=now,
+                webhook_event_id=event_id,
+                landlord_subscription_id=subscription.id if audience == 'landlord' else None,
+                real_estate_subscription_id=subscription.id if audience == 'real_estate' else None,
+                pricing_snapshot_source='subscription_plans',
+            )
             subscription.status = 'ACTIVE'
             subscription.paypal_status = 'ACTIVE'
             subscription.auto_renew = not subscription.cancel_at_period_end
@@ -304,19 +336,50 @@ def process_paypal_subscription_webhook(payload):
             subscription.grace_period_end = None
             subscription.updated_at = now
             subscription.save(update_fields=['status', 'paypal_status', 'auto_renew', 'current_period_start', 'current_period_end', 'next_billing_at', 'grace_period_end', 'updated_at'])
+        payment_status = 'PAID'
+        message = 'PayPal payment confirmed successfully.'
+        listing_id = invoice.listing_id if invoice else None
 
-        elif event_type == 'PAYMENT.SALE.REFUNDED':
-            subscription.paypal_status = 'REFUNDED'
-            subscription.updated_at = now
-            subscription.save(update_fields=['paypal_status', 'updated_at'])
+    elif event_type in {'PAYMENT.SALE.REFUNDED', 'PAYMENT.SALE.REVERSED'}:
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(
+            paypal_subscription_id=subscription_id
+        ).order_by('-created_at').first()
+        if invoice:
+            invoice.status = 'REFUNDED' if event_type.endswith('REFUNDED') else 'FAILED'
+            invoice.result_description = str(payload.get('summary') or event_type.replace('.', ' ').title())[:2000]
+            invoice.webhook_event_id = event_id
+            invoice.save(update_fields=['status', 'result_description', 'webhook_event_id'])
+            listing_id = invoice.listing_id
+        subscription.paypal_status = 'REFUNDED' if event_type.endswith('REFUNDED') else 'REVERSED'
+        subscription.updated_at = now
+        subscription.save(update_fields=['paypal_status', 'updated_at'])
+        payment_status = 'FAILED'
+        message = invoice.result_description if invoice else 'The PayPal payment was reversed or refunded.'
 
-        existing.status = 'PROCESSED'
-        existing.processed_at = now
-        existing.save(update_fields=['status', 'processed_at'])
-        return {'status': 'PROCESSED', 'event_id': event_id, 'event_type': event_type, 'subscription_id': str(subscription.id)}
-    except Exception as exc:
-        existing.status = 'FAILED'
-        existing.error = str(exc)[:2000]
-        existing.processed_at = now
-        existing.save(update_fields=['status', 'error', 'processed_at'])
-        raise
+    existing.status = 'PROCESSED'
+    existing.processed_at = now
+    existing.save(update_fields=['status', 'processed_at'])
+
+    if payment_status:
+        transaction.on_commit(lambda: publish_payment_status(
+            user_id=owner_id,
+            invoice_id=invoice.id if invoice else existing.event_id,
+            status=payment_status,
+            message=message or 'PayPal payment status updated.',
+            provider='PAYPAL',
+            event_type=event_type,
+            listing_id=listing_id,
+            subscription_id=subscription.id,
+            subscription_status=subscription.status,
+            details={'paypal_event_id': event_id},
+        ))
+
+    return {
+        'status': 'PROCESSED',
+        'event_id': event_id,
+        'event_type': event_type,
+        'subscription_id': str(subscription.id),
+        'invoice_id': str(invoice.id) if invoice else None,
+        'listing_id': str(listing_id) if listing_id else None,
+        'payment_status': payment_status,
+    }
