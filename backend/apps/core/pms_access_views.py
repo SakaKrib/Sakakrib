@@ -19,7 +19,7 @@ class PMSDashboardView(LegacyPMSDashboardView):
 
     def get(self, request):
         access = pms_access(request.user)
-        if not access.get('allowed') or access.get('role') != 'landlord':
+        if not access.get('allowed') or (not is_admin(request.user) and access.get('role') != 'landlord'):
             return Response({'detail': 'Landlord PMS access is required.', 'pms_access': access}, status=403)
         response = super().get(request)
         if isinstance(response.data, dict):
@@ -37,7 +37,7 @@ class PMSActionView(LegacyPMSActionView):
 
     def post(self, request):
         access = pms_access(request.user)
-        if not access.get('allowed') or access.get('role') != 'landlord':
+        if not access.get('allowed') or (not is_admin(request.user) and access.get('role') != 'landlord'):
             return Response({'detail': 'Landlord PMS access is required.', 'pms_access': access}, status=403)
         if access.get('read_only') and not is_admin(request.user):
             return Response({'detail': 'PMS is read-only during the subscription grace period.', 'pms_access': access}, status=403)
