@@ -63,7 +63,8 @@ def get_exchange_rate(base: str, quote: str) -> Decimal:
 class PaymentProvider:
     name = 'base'
 
-    def create_payment(self, *, amount: Decimal, currency: str, reference: str, metadata: dict[str, Any]) -> PaymentResult:
+    def create_payment(self, *, amount: Decimal, currency: str, reference: str,
+                       metadata: dict[str, Any], request_id: str | None = None) -> PaymentResult:
         raise NotImplementedError
 
     def verify_payment(self, *, provider_reference: str) -> PaymentResult:
@@ -88,7 +89,8 @@ class MpesaProvider(PaymentProvider):
             raise RuntimeError('M-Pesa did not return an access token')
         return token
 
-    def create_payment(self, *, amount: Decimal, currency: str, reference: str, metadata: dict[str, Any]) -> PaymentResult:
+    def create_payment(self, *, amount: Decimal, currency: str, reference: str,
+                       metadata: dict[str, Any], request_id: str | None = None) -> PaymentResult:
         if currency.upper() != 'KES':
             return PaymentResult(False, message='M-Pesa only supports KES payments here')
         phone = metadata.get('phone_number')
@@ -149,15 +151,19 @@ class PayPalProvider(PaymentProvider):
             result = json.loads(response.read().decode())
         return result['access_token']
 
-    def create_payment(self, *, amount: Decimal, currency: str, reference: str, metadata: dict[str, Any]) -> PaymentResult:
+    def create_payment(self, *, amount: Decimal, currency: str, reference: str,
+                       metadata: dict[str, Any], request_id: str | None = None) -> PaymentResult:
         currency = currency.upper()
         if currency not in ('USD', 'EUR', 'GBP'):
             return PaymentResult(False, message='PayPal listing payments require a supported PayPal currency')
+        headers = {'Authorization': f'Bearer {self._access_token()}'}
+        if request_id:
+            headers['PayPal-Request-Id'] = request_id[:25]
         order = _request_json(
             f'{settings.PAYPAL_BASE_URL}/v2/checkout/orders', method='POST',
             data={'intent': 'CAPTURE', 'purchase_units': [{'reference_id': reference,
                 'amount': {'currency_code': currency, 'value': f'{Decimal(amount):.2f}'}}]},
-            headers={'Authorization': f'Bearer {self._access_token()}'},
+            headers=headers,
         )
         return PaymentResult(True, provider_reference=order.get('id'), message='PayPal order created', raw=order)
 
@@ -175,7 +181,7 @@ class PayPalProvider(PaymentProvider):
         """Capture an approved PayPal order with a stable idempotency key."""
         headers = {'Authorization': f'Bearer {self._access_token()}'}
         if request_id:
-            headers['PayPal-Request-Id'] = request_id
+            headers['PayPal-Request-Id'] = request_id[:25]
         result = _request_json(
             f'{settings.PAYPAL_BASE_URL}/v2/checkout/orders/{urllib.parse.quote(order_id, safe="")}/capture',
             method='POST', headers=headers,
