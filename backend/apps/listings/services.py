@@ -139,84 +139,29 @@ def finalize_listing_payment(intent_id, *, provider, provider_reference, provide
                             provider_currency=None, provider_transaction_id=None, checkout_request_id=None,
                             merchant_request_id=None, mpesa_receipt=None, phone_number=None, result_code=None,
                             result_description=None, paypal_order_id=None, paypal_fx_rate=None):
-    intent = ListingPaymentIntent.objects.select_for_update().filter(pk=intent_id).first()
-    if not intent:
-        raise ValidationError('Listing payment intent not found.')
-    if intent.status == 'PAID':
-        return {'success': True, 'already_processed': True, 'payment_intent_id': intent.id,
-                'listing_id': intent.listing_id, 'status': 'PAID'}
-    if intent.status != 'PENDING':
-        raise ValidationError('Payment intent is not pending.')
-    if intent.expires_at is not None and intent.expires_at <= timezone.now():
-        intent.status = 'EXPIRED'
-        intent.updated_at = timezone.now()
-        intent.save(update_fields=['status', 'updated_at'])
-        raise ValidationError('Payment intent has expired.')
+    """Compatibility wrapper for the single authoritative listing-payment finalizer.
 
-    profile = Profile.objects.select_for_update().get(pk=intent.user_id)
-    entitlement = get_listing_entitlement(profile)
-    if not entitlement.get('can_start_listing'):
-        raise ValidationError('Account is no longer eligible to create a listing.')
-    if entitlement.get('can_create'):
-        raise ValidationError('A free or subscription entitlement is now available; paid settlement is not required.')
+    New code must call ``apps.listings.payment_services.process_listing_payment``.
+    This wrapper deliberately does not contain a second settlement implementation.
+    ``provider_transaction_id`` is retained only for call compatibility because the
+    production-aligned ListingPayment model no longer stores that field.
+    """
+    from .payment_services import process_listing_payment
 
-    provider = (provider or '').upper()
-    if provider not in ('MPESA', 'PAYPAL'):
-        raise ValidationError('Unsupported individual listing payment provider.')
-
-    if provider == 'MPESA':
-        if result_code is not None and int(result_code) != 0:
-            raise ValidationError('M-Pesa payment was not successful.')
-        if provider_amount is None or round(float(provider_amount), 2) != 1000.00:
-            raise ValidationError('Individual listing payment must be exactly KES 1,000.')
-        if round(float(intent.amount_kes), 2) != round(float(provider_amount), 2):
-            raise ValidationError('Payment amount does not match payment intent.')
-        if not (mpesa_receipt or '').strip() or not (provider_reference or checkout_request_id or '').strip():
-            raise ValidationError('Valid M-Pesa receipt and provider reference are required.')
-        provider_currency = 'KES'
-        effective_reference = (provider_reference or checkout_request_id).strip()
-    else:
-        if not (paypal_order_id or provider_reference or '').strip():
-            raise ValidationError('Valid PayPal order is required.')
-        if provider_amount is None or provider_amount <= 0:
-            raise ValidationError('Valid PayPal amount is required.')
-        if (provider_currency or '').upper() != 'USD':
-            raise ValidationError('PayPal listing settlement must be denominated in USD.')
-        if intent.provider_currency and intent.provider_currency.upper() != 'USD':
-            raise ValidationError('PayPal currency does not match the payment intent.')
-        if intent.provider_amount is not None and round(float(intent.provider_amount), 2) != round(float(provider_amount), 2):
-            raise ValidationError('PayPal amount does not match the payment intent.')
-        effective_reference = (paypal_order_id or provider_reference).strip()
-
-    payment = ListingPayment.objects.create(
-        user_id=profile.id, listing_id=None, payment_intent_id=intent.id,
-        amount_kes=intent.amount_kes, status='PAID', payment_provider=provider,
-        payment_method=provider, provider_reference=effective_reference,
-        provider_transaction_id=provider_transaction_id, checkout_request_id=checkout_request_id,
-        merchant_request_id=merchant_request_id, mpesa_receipt=mpesa_receipt, phone_number=phone_number,
-        provider_amount=provider_amount, provider_currency=provider_currency,
-        paypal_order_id=paypal_order_id, paypal_fx_rate=paypal_fx_rate, result_code=result_code,
-        result_description=result_description, created_at=timezone.now(), paid_at=timezone.now(), updated_at=timezone.now(),
+    del provider_transaction_id
+    return process_listing_payment(
+        intent_id,
+        provider=provider,
+        payment_method=provider,
+        provider_reference=provider_reference,
+        checkout_request_id=checkout_request_id,
+        merchant_request_id=merchant_request_id,
+        mpesa_receipt=mpesa_receipt,
+        phone_number=phone_number,
+        result_code=result_code,
+        result_description=result_description,
+        provider_amount=provider_amount,
+        provider_currency=provider_currency,
+        paypal_order_id=paypal_order_id,
+        paypal_fx_rate=paypal_fx_rate,
     )
-    data = dict(intent.listing_data or {})
-    listing = _create_listing_from_data(profile, data, entitlement={**entitlement, 'free_listings_remaining': 0},
-                                        listing_entitlement='INDIVIDUAL_PAID')
-    payment.listing_id = listing['listing_id']
-    payment.updated_at = timezone.now()
-    payment.save(update_fields=['listing_id', 'updated_at'])
-    intent.status = 'PAID'
-    intent.paid_at = timezone.now()
-    intent.listing_id = listing['listing_id']
-    intent.updated_at = timezone.now()
-    intent.provider = provider
-    intent.provider_reference = effective_reference
-    intent.provider_amount = provider_amount
-    intent.provider_currency = provider_currency
-    intent.paypal_order_id = paypal_order_id
-    intent.paypal_fx_rate = paypal_fx_rate
-    intent.save(update_fields=['status', 'paid_at', 'listing_id', 'updated_at', 'provider',
-                               'provider_reference', 'provider_amount', 'provider_currency',
-                               'paypal_order_id', 'paypal_fx_rate'])
-    return {'success': True, 'already_processed': False, 'payment_intent_id': intent.id,
-            'payment_id': payment.id, 'listing_id': listing['listing_id'], 'status': 'PAID',
-            'listing_is_paid': True, 'listing_is_published': False, 'listing_approval_status': 'pending_review'}
