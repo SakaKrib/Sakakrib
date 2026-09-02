@@ -68,7 +68,7 @@ def get_listing_entitlement(profile):
     }
 
 
-def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitlement=None):
+def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitlement=None, notify=True):
     entitlement = entitlement or get_listing_entitlement(profile)
     listing = Listing.objects.create(
         user_id=profile.id, title=data.get('title', ''), description=data.get('description', ''),
@@ -105,16 +105,17 @@ def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitl
         result = {'success': True, 'listing_created': True, 'listing_entitlement': listing_entitlement, 'payment_required': False,
                   'is_published': False, 'approval_status': 'pending_review'}
 
-    dispatch_user_notification(
-        user_id=profile.id,
-        notification_type='LISTING_POSTED',
-        title='Listing Posted Successfully - Saka Krib',
-        message=f'Your property listing "{listing.title}" has been successfully created and is now awaiting administrator approval.',
-        data={'listing_id': str(listing.id)},
-        event_key=f'listing:posted:{listing.id}',
-        send_email=True,
-        email_template='listing_posted',
-    )
+    if notify:
+        dispatch_user_notification(
+            user_id=profile.id,
+            notification_type='LISTING_POSTED',
+            title='Listing Posted Successfully - Saka Krib',
+            message=f'Your property listing "{listing.title}" has been successfully created and is now awaiting administrator approval.',
+            data={'listing_id': str(listing.id)},
+            event_key=f'listing:posted:{listing.id}',
+            send_email=True,
+            email_template='listing_posted',
+        )
     return result
 
 
