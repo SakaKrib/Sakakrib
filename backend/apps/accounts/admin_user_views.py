@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
-from apps.core.domain_platform import Mover
+from apps.core.domain_platform import Mover, MoverApplication
 from apps.core.domain_property import ListingMedia
 from apps.listings.models import Listing
 from apps.listings.serializers import ListingSerializer
@@ -90,6 +90,17 @@ class AdminUserDetailView(APIView):
         )
         return {field: getattr(mover, field) for field in fields}
 
+    @classmethod
+    def _subscription_for_profile(cls, profile):
+        if profile.role == 'landlord':
+            subscription = LandlordSubscription.objects.filter(landlord_id=profile.id).order_by('-created_at').first()
+        elif profile.role == 'real_estate':
+            subscription = RealEstateSubscription.objects.filter(real_estate_id=profile.id).order_by('-created_at').first()
+        else:
+            return None
+        plan = SubscriptionPlan.objects.filter(pk=getattr(subscription, 'plan_id', None)).first() if subscription else None
+        return cls._subscription_payload(subscription, plan)
+
     def get(self, request, user_id):
         denied = self._require_admin(request)
         if denied:
@@ -137,6 +148,27 @@ class AdminUserDetailView(APIView):
         if note is not None:
             note = str(note).strip()
 
+        if not application_type:
+            allowed_fields = {
+                'full_name', 'email', 'phone', 'city', 'county', 'role',
+                'verification_status', 'landlord_application_status',
+                'mover_application_status', 'real_estate_application_status',
+            }
+            updates = {key: request.data[key] for key in allowed_fields if key in request.data}
+            if not updates:
+                return Response({'detail': 'No supported profile fields were supplied.'}, status=400)
+            if 'email' in updates:
+                updates['email'] = str(updates['email']).strip()
+            if 'role' in updates:
+                updates['role'] = str(updates['role']).strip().lower()
+            with transaction.atomic():
+                locked = Profile.objects.select_for_update().get(pk=profile.pk)
+                for key, value in updates.items():
+                    setattr(locked, key, value)
+                locked.updated_at = timezone.now()
+                locked.save(update_fields=[*updates.keys(), 'updated_at'])
+            return Response(ProfileSerializer(locked).data)
+
         if application_type not in APPLICATION_FIELDS:
             return Response({'detail': 'application_type must be landlord or real_estate.'}, status=400)
         if status_value not in ALLOWED_APPLICATION_STATUSES:
@@ -160,6 +192,44 @@ class AdminUserDetailView(APIView):
             locked.save(update_fields=[field, 'admin_review_note', 'verification_status', 'kyc_completed', 'updated_at'])
 
         return Response(ProfileSerializer(locked).data)
+
+
+class AdminDashboardDataView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not is_admin(request.user):
+            return Response({'detail': 'Administrator access is required.'}, status=403)
+
+        profiles = Profile.objects.all().order_by('-created_at')
+        subscriptions = {
+            profile.id: AdminUserDetailView._subscription_for_profile(profile)
+            for profile in profiles
+            if profile.role in {'landlord', 'real_estate'}
+        }
+        movers = {
+            mover.user_id: AdminUserDetailView._mover_payload(mover)
+            for mover in Mover.objects.all().order_by('-created_at')
+        }
+        mover_applications = {
+            application.applicant_id: {
+                'id': str(application.id),
+                'applicant_id': str(application.applicant_id),
+                'status': application.status,
+                'review_notes': application.review_notes,
+            }
+            for application in MoverApplication.objects.all().order_by('-created_at')
+        }
+
+        items = []
+        for profile in profiles:
+            item = ProfileSerializer(profile).data
+            item['subscription'] = subscriptions.get(profile.id)
+            item['moverApplication'] = mover_applications.get(profile.id)
+            item['moverRecord'] = movers.get(profile.id)
+            items.append(item)
+
+        return Response({'items': items})
 
 
 class AdminUserMoverView(APIView):
