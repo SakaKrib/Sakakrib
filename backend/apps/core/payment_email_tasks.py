@@ -1,9 +1,7 @@
 from celery import shared_task
-from django.db import transaction
 
-from .domain_platform import NotificationEmail
-from .email_services import send_notification_email
 from .payment_notification_services import queue_payment_success_email
+from .email_services import send_notification_email
 
 
 @shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={'max_retries': 5})
