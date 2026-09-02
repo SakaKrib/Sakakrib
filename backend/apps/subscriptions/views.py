@@ -120,8 +120,6 @@ class MpesaSubscriptionCallbackView(APIView):
             except (TypeError, ValueError):
                 callback_code = None
 
-            # The callback is an unauthenticated HTTP request. Provider query is
-            # authoritative; callback data must agree with it before settlement.
             if provider_result_code is None or callback_code != provider_result_code:
                 return Response({'ResultCode': 1, 'ResultDesc': 'Provider callback/result mismatch.'}, status=500)
 
@@ -149,6 +147,18 @@ class PayPalSubscriptionApproveView(APIView):
         invoice = SubscriptionInvoice.objects.filter(pk=invoice_id, status='PENDING', payment_provider='PAYPAL').first()
         if not invoice:
             return Response({'success': False, 'detail': 'Pending PayPal subscription invoice not found.'}, status=404)
+        owned = (
+            SubscriptionInvoice.objects.filter(
+                pk=invoice.id,
+                landlord_subscription__landlord_id=request.user.id,
+            ).exists()
+            or SubscriptionInvoice.objects.filter(
+                pk=invoice.id,
+                real_estate_subscription__real_estate_id=request.user.id,
+            ).exists()
+        )
+        if not owned:
+            return Response({'success': False, 'detail': 'You are not authorized to approve this subscription.'}, status=404)
         try:
             settled = verify_and_finalize_initial_subscription(invoice.id, paypal_subscription_id)
         except ValueError as exc:
