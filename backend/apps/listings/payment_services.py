@@ -58,11 +58,7 @@ def process_listing_payment(
     if intent is None:
         raise ValidationError("Listing payment intent not found")
     if intent.status == "PAID":
-        return {
-            "success": True, "already_processed": True,
-            "payment_intent_id": intent.id, "listing_id": intent.listing_id,
-            "status": "PAID",
-        }
+        return {"success": True, "already_processed": True, "payment_intent_id": intent.id, "listing_id": intent.listing_id, "status": "PAID"}
     if intent.status != "PENDING":
         raise ValidationError("Payment intent is not pending")
     if intent.expires_at is not None and intent.expires_at <= timezone.now():
@@ -125,14 +121,13 @@ def process_listing_payment(
 
     draft = None
     if intent.listing_id:
-        draft = Listing.objects.select_for_update().filter(
-            pk=intent.listing_id, user_id=profile.id, is_draft=True
-        ).first()
+        draft = Listing.objects.select_for_update().filter(pk=intent.listing_id, user_id=profile.id, is_draft=True).first()
         if not draft:
             raise ValidationError("The payment intent is not attached to an available draft")
         if bool(draft.is_property_management):
             raise ValidationError("Property-management listings require a PMS subscription")
         listing_id = draft.id
+        listing_title = draft.title or ""
         draft.is_draft = False
         draft.is_paid = True
         draft.is_published = False
@@ -140,40 +135,26 @@ def process_listing_payment(
         draft.is_approved = False
         draft.status = "pending"
         draft.updated_at = timezone.now()
-        draft.save(update_fields=[
-            "is_draft", "is_paid", "is_published", "approval_status",
-            "is_approved", "status", "updated_at"
-        ])
-        listing = {"listing_id": listing_id}
+        draft.save(update_fields=["is_draft", "is_paid", "is_published", "approval_status", "is_approved", "status", "updated_at"])
     else:
-        # Backward-compatible path for old intents created before DB drafts.
         listing = _create_listing_from_data(
             profile, dict(intent.listing_data or {}),
             entitlement={**entitlement, "free_listings_remaining": 0},
             listing_entitlement="INDIVIDUAL_PAID", notify=False,
         )
         listing_id = listing["listing_id"]
+        listing_title = str(dict(intent.listing_data or {}).get("title", ""))
 
     now = timezone.now()
     payment = ListingPayment.objects.create(
-        user_id=profile.id,
-        listing_id=listing_id,
-        amount_kes=intent.amount_kes,
-        status="PAID",
-        payment_provider=provider,
-        payment_method=payment_method,
-        provider_reference=reference,
-        checkout_request_id=checkout_request_id,
-        merchant_request_id=merchant_request_id,
-        mpesa_receipt=mpesa_receipt,
-        phone_number=phone_number,
-        provider_amount=provider_paid_amount,
-        provider_currency=currency,
-        paypal_order_id=paypal_order_id,
-        paypal_fx_rate=paypal_fx_rate,
-        result_code=result_code,
-        result_description=result_description,
-        paid_at=now,
+        user_id=profile.id, listing_id=listing_id, amount_kes=intent.amount_kes,
+        status="PAID", payment_provider=provider, payment_method=payment_method,
+        provider_reference=reference, checkout_request_id=checkout_request_id,
+        merchant_request_id=merchant_request_id, mpesa_receipt=mpesa_receipt,
+        phone_number=phone_number, provider_amount=provider_paid_amount,
+        provider_currency=currency, paypal_order_id=paypal_order_id,
+        paypal_fx_rate=paypal_fx_rate, result_code=result_code,
+        result_description=result_description, paid_at=now,
     )
 
     intent.status = "PAID"
@@ -186,13 +167,8 @@ def process_listing_payment(
     intent.listing_id = listing_id
     intent.paid_at = now
     intent.updated_at = now
-    intent.save(update_fields=[
-        "status", "provider", "provider_reference", "provider_amount",
-        "provider_currency", "paypal_order_id", "paypal_fx_rate", "listing_id",
-        "paid_at", "updated_at",
-    ])
+    intent.save(update_fields=["status", "provider", "provider_reference", "provider_amount", "provider_currency", "paypal_order_id", "paypal_fx_rate", "listing_id", "paid_at", "updated_at"])
 
-    listing_title = str((draft.title if draft else intent.listing_data or {}).get("title", "") if draft else dict(intent.listing_data or {}).get("title", ""))
     transaction.on_commit(lambda: dispatch_user_notification(
         user_id=profile.id, notification_type="LISTING_POSTED",
         title="Listing Posted Successfully - Saka Krib",
