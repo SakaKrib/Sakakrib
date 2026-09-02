@@ -8,8 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.listings.models import ListingPaymentIntent
+from apps.listings.payment_services import process_listing_payment
 from .services import get_exchange_rate, get_provider
-from apps.listings.services import finalize_listing_payment
 
 
 class PaymentProviderConfigView(APIView):
@@ -39,9 +39,6 @@ class ListingPaymentStartView(APIView):
             currency = 'KES'
             fx_rate = None
         else:
-            # The browser may choose the provider, but it must never choose the
-            # authoritative USD amount. Production derives this from KES 1,000
-            # using the server-side KES/USD rate before creating the PayPal order.
             try:
                 fx_rate = get_exchange_rate('KES', 'USD')
                 amount = (intent.amount_kes * fx_rate).quantize(Decimal('0.01'))
@@ -89,8 +86,8 @@ class MpesaListingCallbackView(APIView):
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
         try:
             with transaction.atomic():
-                result = finalize_listing_payment(
-                    intent.id, provider='MPESA', provider_reference=checkout_id,
+                result = process_listing_payment(
+                    intent.id, provider='MPESA', payment_method='MPESA', provider_reference=checkout_id,
                     provider_amount=items.get('Amount'), provider_currency='KES', checkout_request_id=checkout_id,
                     merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
                     phone_number=items.get('PhoneNumber'), result_code=result_code,
@@ -140,8 +137,8 @@ class PayPalListingCaptureView(APIView):
 
         try:
             with transaction.atomic():
-                settled = finalize_listing_payment(
-                    intent.id, provider='PAYPAL', provider_reference=capture_id,
+                settled = process_listing_payment(
+                    intent.id, provider='PAYPAL', payment_method='PAYPAL', provider_reference=capture_id,
                     provider_amount=captured_amount, provider_currency='USD',
                     paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
                     paid_amount_kes=intent.amount_kes,
