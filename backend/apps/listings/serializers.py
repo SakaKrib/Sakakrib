@@ -54,8 +54,11 @@ class ListingSerializer(serializers.ModelSerializer):
         profile = Profile.objects.filter(pk=obj.user_id).first()
         if not profile:
             return None
-        from apps.accounts.serializers import ProfileSerializer
-        return ProfileSerializer(profile).data
+        return {
+            'id': str(profile.id),
+            'full_name': profile.full_name or '',
+            'verification_status': profile.verification_status,
+        }
 
 
 class ListingUpdateSerializer(serializers.ModelSerializer):
