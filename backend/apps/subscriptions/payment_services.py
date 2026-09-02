@@ -9,7 +9,7 @@ from django.utils import timezone
 from apps.core.payment_events import publish_payment_status
 from apps.payments.services import get_provider
 
-from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan, SubscriptionListing
+from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan
 
 
 def _period_end(start, billing_cycle):
@@ -208,6 +208,8 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
             if invoice.real_estate_subscription_id:
                 RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
             owner_id = None
+            subscription_id = invoice.landlord_subscription_id or invoice.real_estate_subscription_id
+            subscription_status = 'CANCELLED'
             if invoice.landlord_subscription_id:
                 owner_id = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).values_list('landlord_id', flat=True).first()
             elif invoice.real_estate_subscription_id:
@@ -220,8 +222,8 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
                 provider='MPESA',
                 event_type='MPESA.STK.CALLBACK.FAILED',
                 listing_id=invoice.listing_id,
-                subscription_id=invoice.landlord_subscription_id or invoice.real_estate_subscription_id,
-                subscription_status='CANCELLED',
+                subscription_id=subscription_id,
+                subscription_status=subscription_status,
                 details={'result_code': result_code_int},
             ))
             return {'success': False, 'status': 'FAILED'}
@@ -242,6 +244,7 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
 
         result = _activate_invoice(invoice, provider='MPESA', provider_reference=reference, transaction_id=mpesa_receipt)
         owner_id = None
+        subscription_id = invoice.landlord_subscription_id or invoice.real_estate_subscription_id
         if invoice.landlord_subscription_id:
             owner_id = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).values_list('landlord_id', flat=True).first()
         elif invoice.real_estate_subscription_id:
@@ -254,7 +257,7 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
             provider='MPESA',
             event_type='MPESA.STK.CALLBACK.SUCCESS',
             listing_id=invoice.listing_id,
-            subscription_id=invoice.landlord_subscription_id or invoice.real_estate_subscription_id,
+            subscription_id=subscription_id,
             subscription_status='ACTIVE',
             details={'mpesa_receipt': mpesa_receipt},
         ))
@@ -269,6 +272,12 @@ def finalize_paypal_subscription(invoice_id, subscription_id):
 
 
 def _activate_invoice(invoice, provider, provider_reference, transaction_id=None):
+    """Settle the subscription invoice. A listing attached to the invoice remains a draft.
+
+    The user must still press the final Post/Submit action. Draft finalization is
+    handled by apps.listings.draft_finalization so entitlement capacity is consumed
+    exactly once at submission time.
+    """
     now = timezone.now()
     subscription = (
         LandlordSubscription.objects.select_for_update().get(pk=invoice.landlord_subscription_id)
@@ -280,7 +289,6 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
     if subscription is None:
         raise ValueError('Subscription invoice is not linked to a subscription')
 
-    draft = None
     if invoice.listing_id:
         from apps.listings.models import Listing
         owner_id = getattr(subscription, 'landlord_id', None) or getattr(subscription, 'real_estate_id', None)
@@ -288,14 +296,7 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
         if not draft:
             raise ValueError('The subscription invoice is attached to an unavailable listing draft')
         if not draft.is_property_management:
-            raise ValueError('Only property-management drafts can be activated by a subscription')
-        plan = SubscriptionPlan.objects.filter(pk=subscription.plan_id).first()
-        if not plan:
-            raise ValueError('Subscription plan not found')
-        listing_key = 'subscription_id' if invoice.landlord_subscription_id else 'real_estate_subscription_id'
-        usage = SubscriptionListing.objects.filter(**{listing_key: subscription.id, 'status': 'ACTIVE'}).count()
-        if plan.max_listings is not None and usage >= plan.max_listings:
-            raise ValueError('The selected subscription plan has no remaining listing capacity')
+            raise ValueError('Only property-management drafts can use a listing subscription checkout')
 
     start = now
     end = _period_end(start, subscription.billing_cycle)
@@ -320,25 +321,6 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
         subscription.auto_renew = True
     subscription.updated_at = now
     subscription.save(update_fields=['status', 'current_period_start', 'current_period_end', 'grace_period_end', 'paypal_subscription_id', 'paypal_status', 'next_billing_at', 'auto_renew', 'updated_at'])
-
-    if draft is not None:
-        listing_key = 'subscription_id' if invoice.landlord_subscription_id else 'real_estate_subscription_id'
-        SubscriptionListing.objects.create(
-            subscription_id=subscription.id if listing_key == 'subscription_id' else None,
-            real_estate_subscription_id=subscription.id if listing_key == 'real_estate_subscription_id' else None,
-            listing_id=draft.id,
-            status='ACTIVE',
-            activated_at=now,
-            created_at=now,
-        )
-        draft.is_draft = False
-        draft.is_paid = True
-        draft.is_published = False
-        draft.approval_status = 'pending_review'
-        draft.is_approved = False
-        draft.status = 'pending'
-        draft.updated_at = now
-        draft.save(update_fields=['is_draft', 'is_paid', 'is_published', 'approval_status', 'is_approved', 'status', 'updated_at'])
 
     return {
         'success': True,
