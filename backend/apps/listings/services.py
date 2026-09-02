@@ -102,8 +102,7 @@ def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitl
             listing_id=listing.id, status='ACTIVE', activated_at=timezone.now(),
         )
         listing_entitlement = 'SUBSCRIPTION'
-        result = {'success': True, 'listing_created': True, 'listing_id': listing.id,
-                  'listing_entitlement': listing_entitlement, 'payment_required': False,
+        result = {'success': True, 'listing_created': True, 'listing_entitlement': listing_entitlement, 'payment_required': False,
                   'is_published': False, 'approval_status': 'pending_review'}
 
     dispatch_user_notification(
@@ -160,7 +159,7 @@ def create_listing_payment_intent(profile, listing_data):
 
     ListingPaymentIntent.objects.filter(user_id=profile.id, status='PENDING').update(status='CANCELLED', updated_at=timezone.now())
     intent = ListingPaymentIntent.objects.create(user_id=profile.id, role=profile.role,
-        amount_kes=INDIVIDUAL_LISTING_PRICE_PRICE_KES if False else INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=validated_listing_data)
+        amount_kes=INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=validated_listing_data)
     return {'success': True, 'payment_intent_created': True, 'listing_created': False,
             'payment_intent_id': intent.id, 'amount_kes': INDIVIDUAL_LISTING_PRICE_KES, 'status': 'PENDING'}
 
