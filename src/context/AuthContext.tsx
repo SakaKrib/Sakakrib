@@ -1,30 +1,33 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { User } from '@supabase/supabase-js';
-import type { Profile, UserRole } from '@/lib/supabase';
 import { authGateway } from '@/lib/authGateway';
-import { protectedFunctionPost } from '@/lib/protectedApi';
 
-interface RegistrationEmailApplication {
-  email: string;
-  applicant_email?: string;
-  full_name?: string;
-  purpose?: string;
+type UserRole = 'renter' | 'landlord' | 'mover' | 'real_estate' | 'admin';
+
+export interface AppProfile {
+  id: string;
+  email: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  county?: string | null;
+  email_verified?: boolean;
+  role?: UserRole | string | null;
+  profile_photo_url?: string | null;
   [key: string]: unknown;
 }
 
-interface AuthSession {
-  /** UI compatibility object. Authentication tokens are deliberately excluded. */
-  user: Pick<User, 'id' | 'email' | 'user_metadata'>;
+interface AuthUser {
+  id: string;
+  email: string | null;
+  user_metadata: Record<string, unknown>;
 }
 
-interface AuthResult {
-  error: string | null;
-  requiresEmailVerification?: boolean;
-}
+interface AuthSession { user: AuthUser; }
+interface AuthResult { error: string | null; requiresEmailVerification?: boolean; }
 
 interface AuthContextValue {
   session: AuthSession | null;
-  profile: Profile | null;
+  profile: AppProfile | null;
   loading: boolean;
   needsRoleSelection: boolean;
   needsEmailVerification: boolean;
@@ -41,128 +44,47 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-
 const toAuthSession = (user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }): AuthSession => ({
-  user: {
-    id: user.id,
-    email: user.email ?? undefined,
-    user_metadata: user.user_metadata ?? {},
-  },
+  user: { id: user.id, email: user.email ?? null, user_metadata: user.user_metadata ?? {} },
 });
-
-const sendRegistrationEmail = async (
-  type: 'otp_verification' | 'sign_in_notification' | 'sign_up_welcome',
-  application: RegistrationEmailApplication,
-): Promise<void> => {
-  const baseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-  if (!baseUrl) throw new Error('VITE_SUPABASE_URL is not configured.');
-  if (!publishableKey) throw new Error('VITE_SUPABASE_ANON_KEY is not configured.');
-
-  const response = await fetch(
-    `${baseUrl.replace(/\/+$/, '')}/functions/v1/send-notification-emails`,
-    {
-      method: 'POST',
-      // This email function is intentionally public (verify_jwt=false) and
-      // does not need the application's HttpOnly authentication cookies.
-      // Sending credentials with the function's wildcard CORS response causes
-      // browsers to reject the request before a response can be read.
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: publishableKey,
-      },
-      body: JSON.stringify({ type, application }),
-    },
-  );
-
-  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-
-  if (!response.ok) {
-    const message =
-      typeof body.error === 'string'
-        ? body.error
-        : typeof body.message === 'string'
-          ? body.message
-          : 'Email delivery failed.';
-    throw new Error(message);
-  }
-
-  if (body.success === false) {
-    throw new Error(typeof body.error === 'string' ? body.error : 'Email delivery failed.');
-  }
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<AppProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
 
-  const clearAuthState = () => {
-    setSession(null);
-    setProfile(null);
-  };
-
-  const clearVerificationState = () => {
-    setNeedsEmailVerification(false);
-    setPendingVerificationEmail(null);
-  };
-
+  const clearAuthState = () => { setSession(null); setProfile(null); };
+  const clearVerificationState = () => { setNeedsEmailVerification(false); setPendingVerificationEmail(null); };
   const requireEmailVerification = (email: string | null) => {
-    clearAuthState();
-    setNeedsEmailVerification(true);
-    setPendingVerificationEmail(email ? normalizeEmail(email) : null);
+    clearAuthState(); setNeedsEmailVerification(true); setPendingVerificationEmail(email ? normalizeEmail(email) : null);
   };
-
-  const isProfileEmailVerified = (nextProfile: Profile | null) => nextProfile?.email_verified === true;
+  const isProfileEmailVerified = (nextProfile: AppProfile | null) => nextProfile?.email_verified === true;
 
   const applyGatewayAuth = (result: Awaited<ReturnType<typeof authGateway>>) => {
-    if (!result.authenticated || !result.user || !result.profile) {
-      clearAuthState();
-      return false;
-    }
-
-    if (!isProfileEmailVerified(result.profile as Profile)) {
-      requireEmailVerification(result.email ?? result.user.email ?? null);
-      return false;
-    }
-
-    setSession(toAuthSession(result.user));
-    setProfile(result.profile as Profile);
-    clearVerificationState();
-    return true;
+    if (!result.authenticated || !result.user || !result.profile) { clearAuthState(); return false; }
+    const nextProfile = result.profile as AppProfile;
+    if (!isProfileEmailVerified(nextProfile)) { requireEmailVerification(result.email ?? result.user.email ?? null); return false; }
+    setSession(toAuthSession(result.user)); setProfile(nextProfile); clearVerificationState(); return true;
   };
 
   useEffect(() => {
     let mounted = true;
-
     const initialize = async () => {
       try {
         const result = await authGateway('session');
         if (!mounted) return;
-
         if (result.authenticated) applyGatewayAuth(result);
         else if (result.requiresEmailVerification) requireEmailVerification(result.email ?? null);
-        else {
-          clearAuthState();
-          clearVerificationState();
-        }
+        else { clearAuthState(); clearVerificationState(); }
       } catch (error) {
         console.error('Auth initialization error:', error);
-        if (mounted) {
-          clearAuthState();
-          clearVerificationState();
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
+        if (mounted) { clearAuthState(); clearVerificationState(); }
+      } finally { if (mounted) setLoading(false); }
     };
-
     void initialize();
     return () => { mounted = false; };
   }, []);
@@ -171,245 +93,101 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const needsRoleSelection = Boolean(!loading && isAuthenticated && !profile?.role);
 
   const signUp = async (email: string, password: string, fullName: string): Promise<AuthResult> => {
-    const normalizedEmail = normalizeEmail(email);
-    const normalizedName = fullName.trim();
-
+    const normalizedEmail = normalizeEmail(email); const normalizedName = fullName.trim();
     if (!isValidEmail(normalizedEmail)) return { error: 'Please enter a valid email address.' };
     if (password.length < 6) return { error: 'Password must be at least 6 characters long.' };
     if (!normalizedName) return { error: 'Please enter your full name.' };
-
     try {
-      const result = await authGateway('signup', {
-        email: normalizedEmail,
-        password,
-        fullName: normalizedName,
-      });
-
-      if (result.error) {
-        clearAuthState();
-        return { error: result.error };
-      }
-
-      if (result.authenticated) {
-        applyGatewayAuth(result);
-        try {
-          await sendRegistrationEmail('sign_up_welcome', {
-            email: normalizedEmail,
-            applicant_email: normalizedEmail,
-            full_name: normalizedName,
-          });
-        } catch (error) {
-          console.error('Welcome email delivery failed:', error);
-        }
-        return { error: null, requiresEmailVerification: false };
-      }
-
+      const result = await authGateway('signup', { email: normalizedEmail, password, fullName: normalizedName });
+      if (result.error) { clearAuthState(); return { error: result.error }; }
+      if (result.authenticated) { applyGatewayAuth(result); return { error: null, requiresEmailVerification: false }; }
       requireEmailVerification(result.email ?? normalizedEmail);
-      try {
-        await sendRegistrationEmail('otp_verification', {
-          email: normalizedEmail,
-          applicant_email: normalizedEmail,
-          full_name: normalizedName,
-          purpose: 'verify your Saka Krib account',
-        });
-      } catch (error) {
-        console.error('OTP email delivery failed:', error);
-        return {
-          error: error instanceof Error
-            ? `Your account was created, but the verification email could not be sent: ${error.message}`
-            : 'Your account was created, but the verification email could not be sent.',
-          requiresEmailVerification: true,
-        };
-      }
-
       return { error: null, requiresEmailVerification: true };
     } catch (error) {
-      console.error('Signup gateway error:', error);
+      console.error('Signup error:', error);
       return { error: error instanceof Error ? error.message : 'Unable to create your account.' };
     }
   };
 
   const verifyEmailOtp = async (email: string, otp: string) => {
-    const normalizedEmail = normalizeEmail(email);
-    const normalizedOtp = otp.replace(/\D/g, '');
-
+    const normalizedEmail = normalizeEmail(email); const normalizedOtp = otp.replace(/\D/g, '');
     if (!isValidEmail(normalizedEmail)) return { error: 'Please enter a valid email address.' };
     if (normalizedOtp.length !== 6) return { error: 'Please enter the 6-digit verification code.' };
-
     try {
       const result = await authGateway('verify_otp', { email: normalizedEmail, otp: normalizedOtp });
-      if (!result.success || !result.authenticated || !result.user || !result.profile) {
-        return { error: result.error ?? 'Unable to establish your authenticated session after verification.' };
-      }
-
-      // OTP verification now returns the authenticated server session as
-      // HttpOnly cookies. Hydrate the same AuthContext state used by login.
-      if (!applyGatewayAuth(result)) {
-        return { error: 'Email verification succeeded, but your authenticated profile could not be loaded.' };
-      }
-
-      return { error: null };
-    } catch (error) {
-      console.error('Email OTP verification error:', error);
-      return { error: error instanceof Error ? error.message : 'Invalid or expired verification code.' };
-    }
+      if (!result.success || !result.authenticated || !result.user || !result.profile) return { error: result.error ?? 'Unable to establish your authenticated session after verification.' };
+      return applyGatewayAuth(result) ? { error: null } : { error: 'Email verification succeeded, but your authenticated profile could not be loaded.' };
+    } catch (error) { return { error: error instanceof Error ? error.message : 'Invalid or expired verification code.' }; }
   };
 
   const resendSignupOtp = async (email: string) => {
     const normalizedEmail = normalizeEmail(email);
     if (!isValidEmail(normalizedEmail)) return { error: 'Please enter a valid email address.' };
-
     requireEmailVerification(normalizedEmail);
-
     try {
-      await sendRegistrationEmail('otp_verification', {
-        email: normalizedEmail,
-        applicant_email: normalizedEmail,
-        purpose: 'verify your Saka Krib account',
-      });
-      return { error: null };
-    } catch (error) {
-      console.error('OTP resend error:', error);
-      return { error: error instanceof Error ? error.message : 'Unable to send a new verification code.' };
-    }
+      const result = await authGateway('resend_otp', { email: normalizedEmail });
+      return result.error ? { error: result.error } : { error: null };
+    } catch (error) { return { error: error instanceof Error ? error.message : 'Unable to send a new verification code.' }; }
   };
 
   const signIn = async (email: string, password: string): Promise<AuthResult> => {
     const normalizedEmail = normalizeEmail(email);
     if (!isValidEmail(normalizedEmail)) return { error: 'Please enter a valid email address.' };
     if (!password) return { error: 'Please enter your password.' };
-
     try {
       const result = await authGateway('login', { email: normalizedEmail, password });
-
       if (!result.authenticated) {
         if (result.requiresEmailVerification) {
           requireEmailVerification(result.email ?? normalizedEmail);
           const resendResult = await resendSignupOtp(normalizedEmail);
-          if (resendResult.error) return {
-            error: `Your email is not verified. ${resendResult.error}`,
-            requiresEmailVerification: true,
-          };
-          return {
-            error: 'Your email is not verified. A new verification code has been sent to your email.',
-            requiresEmailVerification: true,
-          };
+          if (resendResult.error) return { error: `Your email is not verified. ${resendResult.error}`, requiresEmailVerification: true };
+          return { error: 'Your email is not verified. A new verification code has been sent to your email.', requiresEmailVerification: true };
         }
-        clearAuthState();
-        return { error: result.error ?? 'Unable to sign in.' };
+        clearAuthState(); return { error: result.error ?? 'Unable to sign in.' };
       }
-
       applyGatewayAuth(result);
-
-      try {
-        await sendRegistrationEmail('sign_in_notification', {
-          email: normalizedEmail,
-          applicant_email: normalizedEmail,
-          full_name: result.profile?.full_name ?? undefined,
-        });
-      } catch (error) {
-        console.error('Sign-in notification email failed:', error);
-      }
-
       return { error: null };
     } catch (error) {
-      console.error('Sign-in gateway error:', error);
-      clearAuthState();
+      console.error('Sign-in error:', error); clearAuthState();
       return { error: error instanceof Error ? error.message : 'Unable to sign in.' };
     }
   };
 
   const signInWithGoogle = async (): Promise<void> => {
-    console.warn('Google OAuth HttpOnly migration is pending its server callback implementation.');
+    throw new Error('Google OAuth is not yet wired to the Django server callback.');
   };
 
-  const signOut = async (): Promise<void> => {
-    try {
-      await authGateway('logout');
-    } catch (error) {
-      console.error('Sign out gateway error:', error);
-    } finally {
-      clearAuthState();
-      clearVerificationState();
-    }
+  const signOut = async () => {
+    try { await authGateway('logout'); } catch (error) { console.error('Sign out error:', error); }
+    finally { clearAuthState(); clearVerificationState(); }
   };
 
-  const refreshProfile = async (): Promise<void> => {
-    if (!session?.user) {
-      clearAuthState();
-      return;
-    }
-
+  const refreshProfile = async () => {
+    if (!session?.user) { clearAuthState(); return; }
     try {
       const result = await authGateway('session');
-
       if (!result.authenticated) {
-        if (result.requiresEmailVerification) {
-          requireEmailVerification(result.email ?? session.user.email ?? null);
-        } else {
-          clearAuthState();
-        }
+        if (result.requiresEmailVerification) requireEmailVerification(result.email ?? session.user.email ?? null);
+        else clearAuthState();
         return;
       }
-
       applyGatewayAuth(result);
-    } catch (error) {
-      console.error('Session refresh error:', error);
-      clearAuthState();
-    }
+    } catch (error) { console.error('Session refresh error:', error); clearAuthState(); }
   };
 
   const setRole = async (role: UserRole) => {
     if (!session?.user) return { error: 'Not authenticated.' };
     if (!profile) return { error: 'Application profile is required.' };
-    if (!isProfileEmailVerified(profile)) {
-      return { error: 'Email verification is required before setting a role.' };
-    }
-
-    const allowedRoles: UserRole[] = ['renter', 'landlord', 'mover', 'real_estate', 'admin'];
-    if (!allowedRoles.includes(role)) return { error: 'Invalid role selected.' };
-
+    if (!isProfileEmailVerified(profile)) return { error: 'Email verification is required before setting a role.' };
+    if (!['renter', 'landlord', 'mover', 'real_estate', 'admin'].includes(role)) return { error: 'Invalid role selected.' };
     try {
-      // Role selection is an authenticated application mutation, not an auth action.
-      // The browser sends only the HttpOnly cookies through protected-api.
-      await protectedFunctionPost<{ success?: boolean; authenticated?: boolean }>(
-        '/set-role',
-        { role },
-      );
-
-      await refreshProfile();
-      return { error: null };
-    } catch (error) {
-      console.error('Set role protected-api error:', error);
-      return {
-        error: error instanceof Error ? error.message : 'Unable to save your role.',
-      };
-    }
+      const result = await authGateway('set_role', { role });
+      if (result.error || result.authenticated === false) return { error: result.error ?? 'Unable to save your role.' };
+      await refreshProfile(); return { error: null };
+    } catch (error) { return { error: error instanceof Error ? error.message : 'Unable to save your role.' }; }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        profile,
-        loading,
-        needsRoleSelection,
-        needsEmailVerification,
-        pendingVerificationEmail,
-        isAuthenticated,
-        signUp,
-        verifyEmailOtp,
-        resendSignupOtp,
-        signIn,
-        signInWithGoogle,
-        signOut,
-        setRole,
-        refreshProfile,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ session, profile, loading, needsRoleSelection, needsEmailVerification, pendingVerificationEmail, isAuthenticated, signUp, verifyEmailOtp, resendSignupOtp, signIn, signInWithGoogle, signOut, setRole, refreshProfile }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
