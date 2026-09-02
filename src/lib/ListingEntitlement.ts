@@ -21,6 +21,71 @@ export async function createRoleAwareListing(payload: ListingFormPayload) { retu
 export async function createListingPaymentIntent(payload: ListingFormPayload, draftId?: string): Promise<{ paymentIntentId: string; amountKes: number; listingId: string | null }> { const body = draftId ? { ...payload, listing_id: draftId } : payload; const data = await protectedPost<{ payment_intent_id?: string; amount_kes?: unknown; listing_id?: string | null }>('/api/listings/payment-intents/', body); if (!data?.payment_intent_id) throw new Error('The payment service did not return a payment intent.'); const amountKes = numberValue(data.amount_kes); if (amountKes <= 0) throw new Error('The payment service returned an invalid listing payment amount.'); return { paymentIntentId: String(data.payment_intent_id), amountKes, listingId: data.listing_id ? String(data.listing_id) : null }; }
 export type ListingPaymentIntentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
 export async function getListingPaymentIntent(paymentIntentId: string): Promise<{ id: string; status: ListingPaymentIntentStatus; listing_id: string | null }> { if (!paymentIntentId) throw new Error('A payment intent is required.'); return protectedGet(`/api/listings/payment-intents/${encodeURIComponent(paymentIntentId)}/`); }
-export async function waitForListingPaymentIntent(paymentIntentId: string, { maxAttempts = 30, intervalMs = 3000 }: { maxAttempts?: number; intervalMs?: number } = {}) { for (let attempt = 0; attempt < maxAttempts; attempt += 1) { try { const intent = await getListingPaymentIntent(paymentIntentId); if (intent.status === 'PAID') return true; if (['FAILED', 'CANCELLED', 'EXPIRED'].includes(intent.status)) return false; } catch (error) { console.warn('Unable to read listing payment intent status:', error); } await new Promise((resolve) => setTimeout(resolve, intervalMs)); } return false; }
+
+function getPaymentWebSocketBase() {
+  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined || window.location.origin).replace(/\/+$/, '');
+  const url = new URL(configured);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString().replace(/\/$/, '');
+}
+
+/**
+ * Wait primarily for the Django Channels event. A short REST check runs in
+ * parallel as a recovery path if the browser misses the WebSocket event.
+ */
+export async function waitForListingPaymentIntent(paymentIntentId: string, { maxAttempts = 30, intervalMs = 3000 }: { maxAttempts?: number; intervalMs?: number } = {}) {
+  if (!paymentIntentId) return false;
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let attempts = 0;
+    let timer: number | null = null;
+    let socket: WebSocket | null = null;
+
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      socket?.close();
+      resolve(value);
+    };
+
+    const check = async () => {
+      if (settled) return;
+      try {
+        const intent = await getListingPaymentIntent(paymentIntentId);
+        if (intent.status === 'PAID') return finish(true);
+        if (['FAILED', 'CANCELLED', 'EXPIRED'].includes(intent.status)) return finish(false);
+      } catch (error) {
+        console.warn('Unable to read listing payment intent status:', error);
+      }
+      attempts += 1;
+      if (attempts >= maxAttempts) return finish(false);
+      timer = window.setTimeout(check, intervalMs);
+    };
+
+    try {
+      socket = new WebSocket(`${getPaymentWebSocketBase()}/ws/payments/${encodeURIComponent(paymentIntentId)}/`);
+      socket.onmessage = (message) => {
+        try {
+          const event = JSON.parse(message.data) as { type?: string; status?: string };
+          if (event.type !== 'payment_status') return;
+          if (event.status === 'PAID') finish(true);
+          else if (['FAILED', 'CANCELLED', 'REFUNDED'].includes(event.status || '')) finish(false);
+        } catch {
+          // REST recovery below remains available.
+        }
+      };
+      socket.onerror = () => {
+        // Do not fail the payment just because the WebSocket is unavailable.
+      };
+    } catch {
+      // Fall back to REST status checks.
+    }
+
+    void check();
+  });
+}
+
 export async function getListingIdFromPaymentIntent(paymentIntentId: string) { try { const intent = await getListingPaymentIntent(paymentIntentId); return intent.status === 'PAID' ? intent.listing_id : null; } catch (error) { console.warn('Unable to read listing payment intent:', error); return null; } }
 /** @deprecated */ export async function findRecentlyPaidListing(_userId: string) { return null; }
