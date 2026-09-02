@@ -127,9 +127,24 @@ def create_listing_payment_intent(profile, listing_data):
         raise ValidationError('Identity verification and application approval are required before payment.')
     if entitlement.get('can_create'):
         raise ValidationError('A free or subscription listing entitlement is available.')
+
+    # A payment intent represents a listing that will be created after payment.
+    # Validate the listing payload before taking the user into a payment flow so a
+    # successful provider payment cannot be followed by a predictable bad-data DB failure.
+    from .serializers import ListingCreateSerializer
+    serializer = ListingCreateSerializer(data=listing_data)
+    serializer.is_valid(raise_exception=True)
+    validated_listing_data = serializer.validated_data
+
+    if validated_listing_data.get('is_property_management'):
+        if profile.role != 'landlord':
+            raise ValidationError('Property management listings are currently available only to landlord accounts.')
+        if entitlement.get('subscription_id') is None:
+            raise ValidationError('PMS subscription required for property management listings.')
+
     ListingPaymentIntent.objects.filter(user_id=profile.id, status='PENDING').update(status='CANCELLED', updated_at=timezone.now())
     intent = ListingPaymentIntent.objects.create(user_id=profile.id, role=profile.role,
-        amount_kes=INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=listing_data)
+        amount_kes=INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=validated_listing_data)
     return {'success': True, 'payment_intent_created': True, 'listing_created': False,
             'payment_intent_id': intent.id, 'amount_kes': INDIVIDUAL_LISTING_PRICE_KES, 'status': 'PENDING'}
 
