@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.payments.services import get_provider
-from .models import SubscriptionInvoice, SubscriptionPlan
+from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan
 from .paypal_subscription_services import (
     process_paypal_subscription_webhook,
     verify_and_finalize_initial_subscription,
@@ -62,7 +62,6 @@ class MySubscriptionInvoiceView(APIView):
             return Response({'detail': 'Subscription invoice not found.'}, status=404)
         owned = str(invoice.landlord_subscription_id) == str(getattr(get_current_subscription(request.user), 'id', ''))
         if not owned:
-            from .models import LandlordSubscription, RealEstateSubscription
             owned = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id, landlord_id=request.user.id).exists() or RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, real_estate_id=request.user.id).exists()
         if not owned:
             return Response({'detail': 'You are not authorized to view this invoice.'}, status=404)
@@ -109,12 +108,10 @@ class MpesaSubscriptionCallbackView(APIView):
         try:
             provider_result = get_provider('mpesa').verify_payment(provider_reference=checkout_id)
             provider_raw = provider_result.raw or {}
-            provider_code_raw = provider_raw.get('ResultCode')
             try:
-                provider_result_code = int(provider_code_raw)
+                provider_result_code = int(provider_raw.get('ResultCode'))
             except (TypeError, ValueError):
                 provider_result_code = None
-
             try:
                 callback_code = int(callback_result_code) if callback_result_code is not None else None
             except (TypeError, ValueError):
@@ -148,14 +145,8 @@ class PayPalSubscriptionApproveView(APIView):
         if not invoice:
             return Response({'success': False, 'detail': 'Pending PayPal subscription invoice not found.'}, status=404)
         owned = (
-            SubscriptionInvoice.objects.filter(
-                pk=invoice.id,
-                landlord_subscription__landlord_id=request.user.id,
-            ).exists()
-            or SubscriptionInvoice.objects.filter(
-                pk=invoice.id,
-                real_estate_subscription__real_estate_id=request.user.id,
-            ).exists()
+            LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id, landlord_id=request.user.id).exists()
+            or RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, real_estate_id=request.user.id).exists()
         )
         if not owned:
             return Response({'success': False, 'detail': 'You are not authorized to approve this subscription.'}, status=404)
