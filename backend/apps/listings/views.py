@@ -291,8 +291,26 @@ class ListingDetailView(APIView):
     def patch(self, request, listing_id):
         listing, error = self._get_listing(request, listing_id)
         if error: return error
-        if not (is_admin(request.user) or str(listing.user_id) == str(request.user.pk)):
-            return Response({'error': 'You may only update your own listing.'}, status=status.HTTP_403_FORBIDDEN)
+        if is_admin(request.user):
+            allowed_to_update = True
+        else:
+            role = str(getattr(request.user, 'role', '') or '').lower()
+            if role not in ('landlord', 'real_estate'):
+                return Response({'error': 'Only landlord and real estate accounts may update listings.'}, status=status.HTTP_403_FORBIDDEN)
+            if str(listing.user_id) != str(request.user.pk):
+                return Response({'error': 'You may only update your own listing.'}, status=status.HTTP_403_FORBIDDEN)
+            if not getattr(request.user, 'kyc_completed', False) or not getattr(request.user, 'email_verified', False):
+                return Response({'error': 'Identity verification and email verification are required.'}, status=status.HTTP_403_FORBIDDEN)
+            application_status = (
+                getattr(request.user, 'landlord_application_status', None)
+                if role == 'landlord'
+                else getattr(request.user, 'real_estate_application_status', None)
+            )
+            if application_status != 'approved':
+                return Response({'error': 'Application approval is required to update listings.'}, status=status.HTTP_403_FORBIDDEN)
+            allowed_to_update = True
+        if not allowed_to_update:
+            return Response({'error': 'You are not authorized to update this listing.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = ListingUpdateSerializer(listing, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(updated_at=timezone.now())
