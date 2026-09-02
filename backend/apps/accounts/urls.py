@@ -4,6 +4,7 @@ from .admin_application_notification_views import AdminApplicationNotificationVi
 from .admin_application_status_views import AdminApplicationStatusView
 from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverView
 from .application_review_views import AdminApplicationReviewView
+from .google_auth_views import GoogleLoginView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
 from .profile_media_views import ProfilePhotoView
@@ -13,6 +14,7 @@ urlpatterns = [
     path('csrf/', CsrfTokenView.as_view(), name='csrf'),
     path('signup/', SignupView.as_view(), name='signup'),
     path('login/', LoginView.as_view(), name='login'),
+    path('google/', GoogleLoginView.as_view(), name='google-login'),
     path('verify-otp/', VerifyOtpView.as_view(), name='verify-otp'),
     path('resend-otp/', ResendOtpView.as_view(), name='resend-otp'),
     path('refresh/', RefreshView.as_view(), name='refresh'),
