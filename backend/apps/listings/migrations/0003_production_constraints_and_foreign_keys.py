@@ -9,9 +9,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RenameField(
+            model_name='listing',
+            old_name='user_id',
+            new_name='user',
+        ),
         migrations.AlterField(
             model_name='listing',
-            name='user_id',
+            name='user',
             field=models.ForeignKey(
                 db_column='user_id',
                 on_delete=django.db.models.deletion.CASCADE,
@@ -19,9 +24,14 @@ class Migration(migrations.Migration):
                 to='accounts.profile',
             ),
         ),
+        migrations.RenameField(
+            model_name='listingpaymentintent',
+            old_name='user_id',
+            new_name='user',
+        ),
         migrations.AlterField(
             model_name='listingpaymentintent',
-            name='user_id',
+            name='user',
             field=models.ForeignKey(
                 db_column='user_id',
                 on_delete=django.db.models.deletion.CASCADE,
@@ -29,9 +39,14 @@ class Migration(migrations.Migration):
                 to='accounts.profile',
             ),
         ),
+        migrations.RenameField(
+            model_name='listingpaymentintent',
+            old_name='listing_id',
+            new_name='listing',
+        ),
         migrations.AlterField(
             model_name='listingpaymentintent',
-            name='listing_id',
+            name='listing',
             field=models.ForeignKey(
                 blank=True,
                 db_column='listing_id',
