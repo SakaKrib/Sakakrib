@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .admin_user_views import AdminUserDetailView, AdminUserMoverView
 from .application_review_views import AdminApplicationReviewView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
@@ -22,4 +23,6 @@ urlpatterns = [
     path('kyc/document/sign/', KycDocumentSignView.as_view(), name='kyc-document-sign'),
     path('kyc/document/<str:token>/', KycDocumentView.as_view(), name='kyc-document'),
     path('admin/applications/<uuid:user_id>/review/', AdminApplicationReviewView.as_view(), name='admin-application-review'),
+    path('admin/users/<uuid:user_id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
+    path('admin/movers/<uuid:mover_id>/', AdminUserMoverView.as_view(), name='admin-user-mover'),
 ]
