@@ -48,6 +48,11 @@ class LandlordSubscription(models.Model):
 
     class Meta:
         db_table = 'landlord_subscriptions'
+        constraints = [
+            models.UniqueConstraint(fields=['landlord_id'], condition=models.Q(status='PENDING_PAYMENT'), name='landlord_sub_pending_uidx'),
+            models.UniqueConstraint(fields=['landlord_id'], condition=models.Q(status__in=['ACTIVE', 'GRACE_PERIOD']), name='landlord_sub_current_uidx'),
+            models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='landlord_sub_paypal_uidx'),
+        ]
 
 
 class RealEstateSubscription(models.Model):
@@ -75,11 +80,16 @@ class RealEstateSubscription(models.Model):
 
     class Meta:
         db_table = 'real_estate_subscriptions'
+        constraints = [
+            models.UniqueConstraint(fields=['real_estate_id'], condition=models.Q(status='PENDING_PAYMENT'), name='realestate_sub_pending_uidx'),
+            models.UniqueConstraint(fields=['real_estate_id'], condition=models.Q(status__in=['ACTIVE', 'GRACE_PERIOD']), name='realestate_sub_current_uidx'),
+            models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='realestate_sub_paypal_uidx'),
+        ]
 
 
 class SubscriptionListing(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    subscription_id = models.UUIDField()
+    subscription_id = models.UUIDField(null=True, blank=True)
     listing_id = models.UUIDField()
     status = models.TextField(default='ACTIVE')
     activated_at = models.DateTimeField()
@@ -89,6 +99,10 @@ class SubscriptionListing(models.Model):
 
     class Meta:
         db_table = 'subscription_listings'
+        constraints = [
+            models.UniqueConstraint(fields=['subscription_id', 'listing_id'], condition=models.Q(subscription_id__isnull=False), name='subscription_listing_landlord_uidx'),
+            models.UniqueConstraint(fields=['real_estate_subscription_id', 'listing_id'], condition=models.Q(real_estate_subscription_id__isnull=False), name='subscription_listing_re_uidx'),
+        ]
 
 
 class SubscriptionInvoice(models.Model):
@@ -123,9 +137,8 @@ class SubscriptionInvoice(models.Model):
     class Meta:
         db_table = 'subscription_invoices'
         constraints = [
-            models.UniqueConstraint(
-                fields=['webhook_event_id'],
-                condition=models.Q(webhook_event_id__isnull=False),
-                name='subscription_invoices_webhook_event_uidx',
-            ),
+            models.UniqueConstraint(fields=['webhook_event_id'], condition=models.Q(webhook_event_id__isnull=False), name='subscription_invoices_webhook_event_uidx'),
+            models.UniqueConstraint(fields=['checkout_request_id'], condition=models.Q(checkout_request_id__isnull=False), name='subscription_invoice_checkout_uidx'),
+            models.UniqueConstraint(fields=['provider_reference'], condition=models.Q(provider_reference__isnull=False), name='subscription_invoice_provider_ref_uidx'),
+            models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='subscription_invoice_paypal_sub_uidx'),
         ]
