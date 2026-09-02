@@ -2,10 +2,12 @@ import uuid
 
 from django.db import models
 
+from apps.accounts.models import Profile
+
 
 class Listing(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_id = models.UUIDField()
+    user_id = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listings')
     title = models.TextField(default='')
     description = models.TextField(default='')
     city = models.TextField(default='')
@@ -50,25 +52,16 @@ class Listing(models.Model):
             models.Index(fields=['is_property_management'], name='listings_property_management_idx'),
         ]
         constraints = [
-            models.CheckConstraint(
-                condition=models.Q(listing_type__in=['rent', 'sale']),
-                name='listings_listing_type_valid',
-            ),
-            models.CheckConstraint(
-                condition=models.Q(deposit_structure__in=['fixed', 'installments'])
-                | models.Q(deposit_structure__isnull=True),
-                name='listings_deposit_structure_valid',
-            ),
-            models.CheckConstraint(
-                condition=models.Q(approval_status__in=['pending_review', 'approved', 'rejected']),
-                name='listings_approval_status_valid',
-            ),
+            models.CheckConstraint(condition=models.Q(listing_type__in=['rent', 'sale']), name='listings_listing_type_valid'),
+            models.CheckConstraint(condition=models.Q(deposit_structure__in=['fixed', 'installments']) | models.Q(deposit_structure__isnull=True), name='listings_deposit_structure_valid'),
+            models.CheckConstraint(condition=models.Q(approval_status__in=['pending_review', 'approved', 'rejected']), name='listings_approval_status_valid'),
+            models.CheckConstraint(condition=models.Q(status__in=['pending', 'approved', 'rejected']), name='listings_status_valid'),
         ]
 
 
 class ListingPaymentIntent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_id = models.UUIDField()
+    user_id = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_payment_intents')
     role = models.TextField()
     amount_kes = models.DecimalField(max_digits=12, decimal_places=2, default=1000)
     status = models.TextField(default='PENDING')
@@ -79,7 +72,7 @@ class ListingPaymentIntent(models.Model):
     updated_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
-    listing_id = models.UUIDField(null=True, blank=True)
+    listing_id = models.ForeignKey(Listing, on_delete=models.SET_NULL, db_column='listing_id', related_name='payment_intents', null=True, blank=True)
     provider_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     provider_currency = models.TextField(null=True, blank=True)
     paypal_order_id = models.TextField(null=True, blank=True)
@@ -88,16 +81,7 @@ class ListingPaymentIntent(models.Model):
     class Meta:
         db_table = 'listing_payment_intents'
         constraints = [
-            models.CheckConstraint(
-                condition=models.Q(role__in=['landlord', 'real_estate']),
-                name='listing_payment_intents_role_valid',
-            ),
-            models.CheckConstraint(
-                condition=models.Q(amount_kes=1000),
-                name='listing_payment_intents_amount_1000',
-            ),
-            models.CheckConstraint(
-                condition=models.Q(status__in=['PENDING', 'PAID', 'FAILED', 'CANCELLED', 'EXPIRED']),
-                name='listing_payment_intents_status_valid',
-            ),
+            models.CheckConstraint(condition=models.Q(role__in=['landlord', 'real_estate']), name='listing_payment_intents_role_valid'),
+            models.CheckConstraint(condition=models.Q(amount_kes=1000), name='listing_payment_intents_amount_1000'),
+            models.CheckConstraint(condition=models.Q(status__in=['PENDING', 'PAID', 'FAILED', 'CANCELLED', 'EXPIRED']), name='listing_payment_intents_status_valid'),
         ]
