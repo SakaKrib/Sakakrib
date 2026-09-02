@@ -5,9 +5,15 @@ import {
 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
-import { protectedGet } from '@/lib/protectedApi';
-import { formatKES, validatePhone, COMMISSION_RATE, cn } from '@/lib/utils';
+import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import { formatKES, COMMISSION_RATE, cn } from '@/lib/utils';
 import type { Mover, Review } from '@/lib/supabase';
+
+type SubmittedQuote = {
+  agreed_amount_kes: number | string;
+  platform_fee_kes: number | string;
+  renter_total_kes: number | string;
+};
 
 export default function MoverDetailPage() {
   const { selectedMoverId, navigate } = useNav();
@@ -17,6 +23,7 @@ export default function MoverDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showBooking, setShowBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [submittedQuote, setSubmittedQuote] = useState<SubmittedQuote | null>(null);
 
   // Booking form
   const [pickup, setPickup] = useState('');
@@ -31,21 +38,17 @@ export default function MoverDetailPage() {
     if (!selectedMoverId) return;
     const fetchData = async () => {
       setLoading(true);
+      setError(null);
       try {
-        const moverData = await protectedGet<Mover[]>(
-          `/rest/v1/movers?id=eq.${encodeURIComponent(selectedMoverId)}`
+        const moverData = await protectedGet<Mover>(
+          `/api/core/movers/${encodeURIComponent(selectedMoverId)}/`
         );
-        const loadedMover = Array.isArray(moverData) ? moverData[0] : undefined;
-        if (loadedMover) {
-          setMover(loadedMover);
-          const reviewData = await protectedGet<Review[]>(
-            `/rest/v1/reviews?mover_id=eq.${encodeURIComponent(selectedMoverId)}&review_type=eq.mover&order=created_at.desc`
-          );
-          if (Array.isArray(reviewData)) setReviews(reviewData);
-        } else {
-          setMover(null);
-          setReviews([]);
-        }
+        setMover(moverData);
+
+        const reviewData = await protectedGet<{ items: Review[] }>(
+          `/api/core/reviews/?mover_id=${encodeURIComponent(selectedMoverId)}`
+        );
+        setReviews(Array.isArray(reviewData?.items) ? reviewData.items : []);
       } catch (requestError) {
         console.error('Failed to load mover details:', requestError);
         setMover(null);
@@ -70,25 +73,29 @@ export default function MoverDetailPage() {
       setError('Please fill in all booking details.');
       return;
     }
+    if (paymentMethod !== 'mpesa' && paymentMethod !== 'paypal') {
+      setError('Please select M-Pesa or PayPal.');
+      return;
+    }
     setSubmitting(true);
     try {
-      const { error: bookingError } = await supabase.from('bookings').insert({
-        renter_id: profile.id,
-        mover_id: mover!.id,
-        pickup_address: pickup,
-        dropoff_address: dropoff,
+      const result = await protectedPost<{
+        booking_id: string;
+        status: string;
+        quote: SubmittedQuote;
+      }>('/api/core/bookings/request/', {
+        mover_id: mover.id,
+        pickup_address: pickup.trim(),
+        dropoff_address: dropoff.trim(),
         moving_date: movingDate,
-        booking_amount: bookingAmount,
-        commission_amount: commission,
-        total_amount: total,
-        status: 'pending',
-        payment_status: 'paid',
-        payment_method: paymentMethod,
+        agreed_amount: bookingAmount,
+        preferred_payment_method: paymentMethod,
       });
-      if (bookingError) throw bookingError;
+
+      setSubmittedQuote(result.quote);
       setBookingSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Booking failed.');
+      setError(err instanceof Error ? err.message : 'Booking request failed.');
     } finally {
       setSubmitting(false);
     }
@@ -115,15 +122,19 @@ export default function MoverDetailPage() {
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
 
   if (bookingSuccess) {
+    const submittedAmount = Number(submittedQuote?.agreed_amount_kes ?? bookingAmount);
+    const submittedCommission = Number(submittedQuote?.platform_fee_kes ?? commission);
+    const submittedTotal = Number(submittedQuote?.renter_total_kes ?? total);
+
     return (
       <div className="mx-auto max-w-2xl px-2 py-12">
         <div className="card p-8 text-center animate-scale-in">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30">
             <CheckCircle2 className="h-10 w-10 text-success-600 dark:text-success-400" />
           </div>
-          <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Booking Confirmed!</h2>
+          <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Moving Request Submitted</h2>
           <p className="mt-2 text-gray-500 dark:text-gray-400">
-            Your moving request has been submitted. The mover will confirm shortly.
+            Your moving request has been submitted. The mover will confirm shortly. Payment has not been taken yet.
           </p>
           <div className="mt-6 rounded-xl bg-gray-50 p-4 text-left dark:bg-brand-800/30">
             <div className="flex justify-between text-sm py-1">
@@ -131,16 +142,16 @@ export default function MoverDetailPage() {
               <span className="font-semibold text-gray-900 dark:text-white">{movingDate}</span>
             </div>
             <div className="flex justify-between text-sm py-1">
-              <span className="text-gray-500 dark:text-gray-400">Service Amount</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{formatKES(bookingAmount)}</span>
+              <span className="text-gray-500 dark:text-gray-400">Agreed Service Amount</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{formatKES(submittedAmount)}</span>
             </div>
             <div className="flex justify-between text-sm py-1">
-              <span className="text-gray-500 dark:text-gray-400">Platform Commission (10%)</span>
-              <span className="font-semibold text-brand-600 dark:text-brand-400">{formatKES(commission)}</span>
+              <span className="text-gray-500 dark:text-gray-400">Platform Commission</span>
+              <span className="font-semibold text-brand-600 dark:text-brand-400">{formatKES(submittedCommission)}</span>
             </div>
             <div className="mt-2 flex justify-between border-t border-gray-200 pt-2 dark:border-brand-700">
-              <span className="font-bold text-gray-900 dark:text-white">Total Paid</span>
-              <span className="font-bold text-brand-600 dark:text-brand-400">{formatKES(total)}</span>
+              <span className="font-bold text-gray-900 dark:text-white">Total Due After Confirmation</span>
+              <span className="font-bold text-brand-600 dark:text-brand-400">{formatKES(submittedTotal)}</span>
             </div>
           </div>
           <div className="mt-6 flex gap-3 justify-center">
@@ -258,12 +269,11 @@ export default function MoverDetailPage() {
 
           {/* Payment Method */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Payment Method</label>
-            <div className="grid grid-cols-3 gap-2">
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Preferred Payment Method</label>
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'mpesa', label: 'M-Pesa' },
-                { value: 'airtel', label: 'Airtel Money' },
-                { value: 'card', label: 'Card / PayPal' },
+                { value: 'paypal', label: 'PayPal' },
               ].map((p) => (
                 <button
                   key={p.value}
@@ -294,7 +304,7 @@ export default function MoverDetailPage() {
                 <span className="font-semibold text-brand-600 dark:text-brand-400">{formatKES(commission)}</span>
               </div>
               <div className="mt-2 flex justify-between border-t border-gray-200 pt-2 dark:border-brand-700">
-                <span className="font-bold text-gray-900 dark:text-white">Total</span>
+                <span className="font-bold text-gray-900 dark:text-white">Total Due After Confirmation</span>
                 <span className="font-bold text-brand-600 dark:text-brand-400">{formatKES(total)}</span>
               </div>
             </div>
@@ -305,7 +315,7 @@ export default function MoverDetailPage() {
           )}
 
           <button type="submit" disabled={submitting} className="btn-primary w-full">
-            {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing Payment...</> : <><CreditCard className="h-4 w-4" /> Confirm & Pay {bookingAmount > 0 ? formatKES(total) : ''}</>}
+            {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting Request...</> : <><CreditCard className="h-4 w-4" /> Submit Moving Request</>}
           </button>
         </form>
       )}
