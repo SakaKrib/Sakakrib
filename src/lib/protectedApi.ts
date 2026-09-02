@@ -81,12 +81,15 @@ const getInIds = (value: string | null): string[] => {
 const adminUser = <T>(userId: string) =>
   djangoRequest<T>(`/api/accounts/admin/users/${encodeURIComponent(userId)}/`);
 
+const adminDashboard = <T>() =>
+  djangoRequest<T>('/api/accounts/admin/users/');
+
 const isAdminDetailQuery = (query: URLSearchParams): boolean => {
   const select = query.get('select') || '';
   return select.includes('admin_review_note') && select.includes('national_id');
 };
 
-/** Transitional transport bridge for AdminUserDetails.tsx. */
+/** Transitional transport bridge for legacy admin pages. */
 const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ handled: boolean; data?: T }> => {
   const method = String(init.method || 'GET').toUpperCase();
   const resource = path.split('?')[0];
@@ -108,12 +111,26 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
         }
         return { handled: true, data: rows as T };
       }
+      const dashboard = await adminDashboard<{ items: T[] }>();
+      return { handled: true, data: dashboard.items as T };
     }
 
     if (method === 'PATCH') {
       const userId = getEqId(query.get('id'));
       if (!userId || !init.body) return { handled: false };
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+
+      const hasGeneralProfileFields = [
+        'full_name', 'email', 'phone', 'city', 'county', 'role',
+      ].some((field) => field in body);
+      if (hasGeneralProfileFields) {
+        const data = await djangoRequest<T>(
+          `/api/accounts/admin/users/${encodeURIComponent(userId)}/`,
+          { method: 'PATCH', body: JSON.stringify(body) },
+        );
+        return { handled: true, data };
+      }
+
       const applicationType =
         'landlord_application_status' in body ? 'landlord' :
         'real_estate_application_status' in body ? 'real_estate' :
@@ -137,6 +154,9 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
       const detail = await adminUser<{ landlord_subscription: T }>(userId);
       return { handled: true, data: (detail.landlord_subscription ? [detail.landlord_subscription] : []) as T };
     }
+    const dashboard = await adminDashboard<{ items: Array<{ subscription?: unknown }> }>();
+    const rows = dashboard.items.map((item) => item.subscription).filter(Boolean);
+    return { handled: true, data: rows as T };
   }
 
   if (resource === '/rest/v1/real_estate_subscriptions' && method === 'GET') {
@@ -145,6 +165,9 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
       const detail = await adminUser<{ real_estate_subscription: T }>(userId);
       return { handled: true, data: (detail.real_estate_subscription ? [detail.real_estate_subscription] : []) as T };
     }
+    const dashboard = await adminDashboard<{ items: Array<{ subscription?: { real_estate_id?: string } | null }> }>();
+    const rows = dashboard.items.map((item) => item.subscription).filter((subscription) => Boolean(subscription?.real_estate_id));
+    return { handled: true, data: rows as T };
   }
 
   if (resource === '/rest/v1/listings' && method === 'GET') {
@@ -179,6 +202,9 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
         const data = await djangoRequest<T>(`/api/accounts/admin/movers/${encodeURIComponent(moverId)}/`);
         return { handled: true, data: [data] as T };
       }
+      const dashboard = await adminDashboard<{ items: Array<{ moverRecord?: unknown }> }>();
+      const rows = dashboard.items.map((item) => item.moverRecord).filter(Boolean);
+      return { handled: true, data: rows as T };
     }
     if (method === 'PATCH') {
       const moverId = getEqId(query.get('id'));
@@ -190,6 +216,17 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
         return { handled: true, data };
       }
     }
+  }
+
+  if (resource === '/rest/v1/mover_applications' && method === 'GET') {
+    const applicantId = getEqId(query.get('applicant_id'));
+    const dashboard = await adminDashboard<{ items: Array<{ moverApplication?: unknown; id: string }> }>();
+    if (applicantId) {
+      const item = dashboard.items.find((candidate) => candidate.id === applicantId);
+      return { handled: true, data: item?.moverApplication ? [item.moverApplication] as T : [] as T };
+    }
+    const rows = dashboard.items.map((item) => item.moverApplication).filter(Boolean);
+    return { handled: true, data: rows as T };
   }
 
   return { handled: false };
