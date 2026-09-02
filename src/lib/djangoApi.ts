@@ -26,6 +26,37 @@ const readJson = async <T>(response: Response): Promise<T | null> => {
 };
 
 let refreshPromise: Promise<boolean> | null = null;
+let csrfTokenPromise: Promise<string> | null = null;
+
+/**
+ * Django's cookie-authenticated unsafe requests require a CSRF token.
+ * The token itself is intentionally non-secret and is obtained from Django;
+ * authentication JWTs remain HttpOnly and are never exposed to JavaScript.
+ */
+const getCsrfToken = async (forceRefresh = false): Promise<string> => {
+  if (forceRefresh) csrfTokenPromise = null;
+  if (csrfTokenPromise) return csrfTokenPromise;
+
+  csrfTokenPromise = (async () => {
+    const response = await fetch(`${getBaseUrl()}/api/accounts/csrf/`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    const body = await readJson<{ csrfToken?: string }>(response);
+    if (!response.ok || !body?.csrfToken) {
+      throw new Error(`Unable to obtain Django CSRF token (${response.status}).`);
+    }
+    return body.csrfToken;
+  })().finally(() => {
+    csrfTokenPromise = null;
+  });
+
+  return csrfTokenPromise;
+};
+
+const isUnsafeMethod = (method: string): boolean =>
+  !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method.toUpperCase());
 
 /**
  * Rotate the HttpOnly refresh cookie and let the browser store the new
@@ -38,11 +69,29 @@ const refreshAuthentication = async (): Promise<boolean> => {
 
   refreshPromise = (async () => {
     try {
+      const csrfToken = await getCsrfToken();
       const response = await fetch(`${getBaseUrl()}/api/accounts/refresh/`, {
         method: 'POST',
         credentials: 'include',
-        headers: { Accept: 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          'X-CSRFToken': csrfToken,
+        },
       });
+
+      if (response.status === 403) {
+        // The CSRF cookie/token may have rotated independently of the page.
+        const freshCsrfToken = await getCsrfToken(true);
+        const retry = await fetch(`${getBaseUrl()}/api/accounts/refresh/`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Accept: 'application/json',
+            'X-CSRFToken': freshCsrfToken,
+          },
+        });
+        return retry.ok;
+      }
 
       return response.ok;
     } catch (error) {
@@ -74,18 +123,37 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     throw new Error('Django API paths must target /api/.');
   }
 
+  const method = String(init.method || 'GET').toUpperCase();
   const headers = new Headers(init.headers);
+  headers.set('Accept', headers.get('Accept') || 'application/json');
   if (init.body != null && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
+  if (isUnsafeMethod(method)) {
+    headers.set('X-CSRFToken', await getCsrfToken());
+  }
+
   const execute = () => fetch(`${getBaseUrl()}${path}`, {
     ...init,
+    method,
     credentials: 'include',
     headers,
   });
 
   let response = await execute();
+
+  // If Django rejects the CSRF token, obtain a fresh one and retry the exact
+  // request once. This handles token rotation without creating an unsafe
+  // infinite retry loop.
+  if (response.status === 403 && isUnsafeMethod(method)) {
+    const body = await readJson<T | DjangoApiErrorBody>(response.clone());
+    const detail = body as DjangoApiErrorBody | null;
+    if (detail?.detail && /csrf/i.test(detail.detail)) {
+      headers.set('X-CSRFToken', await getCsrfToken(true));
+      response = await execute();
+    }
+  }
 
   // Access JWTs are intentionally short-lived. If an authenticated request
   // reaches Django after expiry, rotate the HttpOnly refresh cookie once and
@@ -93,6 +161,9 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   if (response.status === 401 && path !== '/api/accounts/refresh/') {
     const refreshed = await refreshAuthentication();
     if (refreshed) {
+      if (isUnsafeMethod(method)) {
+        headers.set('X-CSRFToken', await getCsrfToken());
+      }
       response = await execute();
     }
   }
@@ -116,20 +187,33 @@ const requestMultipart = async <T>(
     throw new Error('Django API paths must target /api/.');
   }
 
+  const csrfToken = await getCsrfToken();
+  const headers = new Headers({
+    Accept: 'application/json',
+    'X-CSRFToken': csrfToken,
+  });
+
   const execute = () => fetch(`${getBaseUrl()}${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
+    headers,
     body: formData,
   });
 
   let response = await execute();
 
-  if (response.status === 401 && path !== '/api/accounts/refresh/') {
+  if (response.status === 403) {
+    const body = await readJson<DjangoApiErrorBody>(response.clone());
+    if (body?.detail && /csrf/i.test(body.detail)) {
+      headers.set('X-CSRFToken', await getCsrfToken(true));
+      response = await execute();
+    }
+  }
+
+  if (response.status === 401) {
     const refreshed = await refreshAuthentication();
     if (refreshed) {
+      headers.set('X-CSRFToken', await getCsrfToken());
       response = await execute();
     }
   }
