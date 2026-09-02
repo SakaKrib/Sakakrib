@@ -54,5 +54,12 @@ export const renterApi = {
   getCalendar: async (userId?: string) => ({ invoices: await renterApi.getInvoices(userId), bookings: await renterApi.getBookings(userId) }),
   getMoverScheduleAvailability: (bookingId: string, from: string, to: string) => djangoApi.post<MoverScheduleAvailability>('/api/core/renter/mover-schedule-availability/', { booking_id: bookingId, from, to }),
   getNotifications: (_userId?: string) => djangoApi.get<RenterNotificationsResponse>('/api/core/renter-notifications/'),
-  getChat: async (): Promise<RenterChatResponse> => ({ messages: [] }),
+  startMpesaPayment: (bookingId: string) => djangoApi.post(`/api/core/bookings/${bookingId}/payment/mpesa/start/`),
+  startPaypalPayment: (bookingId: string) => djangoApi.post(`/api/core/bookings/${bookingId}/payment/paypal/start/`),
+  confirmDelivery: (bookingId: string) => djangoApi.post(`/api/core/bookings/${bookingId}/delivery/confirm/`),
+  openDispute: (bookingId: string, reasonCode: string, description: string) => djangoApi.post(`/api/core/bookings/${bookingId}/disputes/`, { reason_code: reasonCode, description }),
+  startMove: (bookingId: string) => djangoApi.post(`/api/core/bookings/${bookingId}/start/`),
+  cancelBooking: (bookingId: string, reasonCode: string, reasonText = '') => djangoApi.post(`/api/core/bookings/${bookingId}/cancel/`, { reason_code: reasonCode, reason_text: reasonText }),
+  tracking: (bookingId: string) => djangoApi.get(`/api/core/bookings/${bookingId}/tracking/`),
+  latestTracking: (bookingId: string) => djangoApi.get(`/api/core/bookings/${bookingId}/tracking/latest/`),
 };
