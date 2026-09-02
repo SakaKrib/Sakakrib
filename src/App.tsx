@@ -26,10 +26,19 @@ import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
 import RegisterMoverPage from './pages/RegisterMoverPage';
+import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 
 function AppContent() {
   const { view, selectedAdminUserId } = useNav();
   const { profile } = useAuth();
+
+  if (window.location.pathname === '/paypal/subscription/return') {
+    return <PayPalSubscriptionReturnPage />;
+  }
+
+  if (window.location.pathname === '/paypal/subscription/cancel') {
+    return <PMSSubscriptionPage />;
+  }
 
   const renderView = () => {
     switch (view) {
@@ -49,16 +58,11 @@ function AppContent() {
       case 'admin-user-details':
         return profile?.is_admin === true || profile?.role === 'admin'
           ? selectedAdminUserId
-            ? <AdminUserDetailsRoute
-                userId={selectedAdminUserId}
-                onBack={() => window.history.back()}
-              />
+            ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} />
             : <DashboardPage />
           : <DashboardPage />;
       case 'dashboard':
-        return profile?.role === 'renter'
-          ? <RenterDashboard />
-          : <DashboardPage />;
+        return profile?.role === 'renter' ? <RenterDashboard /> : <DashboardPage />;
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
