@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from django.db import migrations, models
 from django.utils import timezone
-from datetime import timedelta
+
+from apps.listings.models import _listing_payment_intent_expiry
 
 
 def backfill_payment_intent_timestamps(apps, schema_editor):
@@ -39,6 +42,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='listingpaymentintent',
             name='expires_at',
-            field=models.DateTimeField(default=timezone.now),
+            field=models.DateTimeField(default=_listing_payment_intent_expiry),
         ),
     ]
