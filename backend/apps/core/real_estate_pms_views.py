@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,13 +12,7 @@ from apps.subscriptions.services import get_current_subscription, get_pms_access
 
 
 class RealEstatePMSDashboardView(APIView):
-    """Dedicated Django boundary for the real-estate PMS dashboard.
-
-    This is intentionally separate from the landlord PMS dashboard because
-    real-estate subscriptions and subscription-listing associations have their
-    own ownership fields. Shared listing/entitlement services are reused only
-    where the ownership semantics are identical.
-    """
+    """Dedicated Django boundary for the real-estate PMS dashboard."""
 
     def get(self, request):
         profile = request.user
@@ -105,11 +100,10 @@ class RealEstatePMSDashboardView(APIView):
 
 
 class RealEstatePMSActionView(APIView):
-    """Real-estate-specific PMS mutations.
+    """Real-estate-specific PMS listing mutations.
 
-    The current real-estate PMS contract exposes subscription-listing
-    management. Rent/payment mutations are deliberately not routed here,
-    because the existing rent domain is explicitly landlord-owned.
+    Rent/payment mutations remain outside this boundary because the current
+    rent domain is explicitly landlord-owned.
     """
 
     def post(self, request):
@@ -131,12 +125,21 @@ class RealEstatePMSActionView(APIView):
 
         action = request.data.get('action')
         with transaction.atomic():
+            # Re-read and lock the subscription inside the transaction. The
+            # earlier access decision is not sufficient for a financial/capacity
+            # mutation because the subscription could expire between reads.
+            now = timezone.now()
             subscription = (
                 RealEstateSubscription.objects.select_for_update()
-                .filter(pk=getattr(get_current_subscription(profile), 'id', None))
+                .filter(
+                    real_estate_id=profile.id,
+                    status='ACTIVE',
+                )
+                .filter(current_period_end__gt=now)
+                .order_by('-created_at')
                 .first()
             )
-            if not subscription or subscription.status != 'ACTIVE':
+            if not subscription:
                 return Response({'detail': 'An active real-estate PMS subscription is required.'}, status=403)
 
             if action == 'add_listing':
