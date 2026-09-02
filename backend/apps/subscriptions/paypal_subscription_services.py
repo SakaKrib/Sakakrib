@@ -69,6 +69,33 @@ def _paypal_json(path, *, method='GET', body=None, token=None):
         raise RuntimeError('PayPal request failed') from exc
 
 
+def create_paypal_subscription(*, plan_id, custom_id, return_url, cancel_url):
+    if not plan_id:
+        raise ValueError('PayPal plan ID is required')
+    if not return_url or not cancel_url:
+        raise RuntimeError('PayPal subscription return/cancel URLs are not configured')
+    payload = {
+        'plan_id': str(plan_id),
+        'custom_id': str(custom_id)[:127],
+        'application_context': {
+            'brand_name': 'SakaKrib',
+            'user_action': 'SUBSCRIBE_NOW',
+            'return_url': return_url,
+            'cancel_url': cancel_url,
+        },
+    }
+    result = _paypal_json('/v1/billing/subscriptions', method='POST', body=payload, token=_paypal_token())
+    subscription_id = str(result.get('id') or '').strip()
+    approval_url = next(
+        (str(link.get('href')) for link in result.get('links', [])
+         if link.get('rel') == 'approve' and link.get('href')),
+        None,
+    )
+    if not subscription_id or not approval_url:
+        raise RuntimeError('PayPal did not return a subscription approval link')
+    return result
+
+
 def verify_paypal_webhook(payload, headers):
     webhook_id = getattr(settings, 'PAYPAL_WEBHOOK_ID', '')
     if not webhook_id:
@@ -83,10 +110,8 @@ def verify_paypal_webhook(payload, headers):
     if not all(required.values()):
         raise ValueError('Incomplete PayPal webhook signature headers')
     result = _paypal_json(
-        '/v1/notifications/verify-webhook-signature',
-        method='POST',
-        body={**required, 'webhook_id': webhook_id, 'webhook_event': payload},
-        token=_paypal_token(),
+        '/v1/notifications/verify-webhook-signature', method='POST',
+        body={**required, 'webhook_id': webhook_id, 'webhook_event': payload}, token=_paypal_token(),
     )
     if result.get('verification_status') != 'SUCCESS':
         raise ValueError('Invalid PayPal webhook signature')
@@ -180,10 +205,7 @@ def process_paypal_subscription_webhook(payload):
     if existing and existing.status == 'PROCESSED':
         return {'status': 'ALREADY_PROCESSED', 'event_id': event_id}
     if existing is None:
-        existing = PaymentWebhookEvent.objects.create(
-            provider='PAYPAL_SUBSCRIPTION', event_id=event_id, event_type=event_type,
-            status='PROCESSING', metadata=payload,
-        )
+        existing = PaymentWebhookEvent.objects.create(provider='PAYPAL_SUBSCRIPTION', event_id=event_id, event_type=event_type, status='PROCESSING', metadata=payload)
     else:
         existing.status = 'PROCESSING'
         existing.error = None
@@ -259,24 +281,15 @@ def process_paypal_subscription_webhook(payload):
             if invoice is None:
                 end = _period_end(subscription, now, resource)
                 invoice = SubscriptionInvoice.objects.create(
-                    amount_kes=subscription.billing_amount_kes or Decimal('0'),
-                    amount_usd=paid_usd,
-                    currency='USD',
-                    status='PAID',
-                    payment_provider='PAYPAL',
-                    payment_method='PAYPAL',
+                    amount_kes=subscription.billing_amount_kes or Decimal('0'), amount_usd=paid_usd,
+                    currency='USD', status='PAID', payment_provider='PAYPAL', payment_method='PAYPAL',
                     provider_reference=str(resource.get('id') or subscription_id),
-                    provider_transaction_id=str(resource.get('id') or subscription_id),
-                    paypal_subscription_id=subscription_id,
-                    billing_period_start=subscription.current_period_end or now,
-                    billing_period_end=end,
-                    paid_at=now,
-                    created_at=now,
-                    webhook_event_id=event_id,
+                    provider_transaction_id=str(resource.get('id') or subscription_id), paypal_subscription_id=subscription_id,
+                    billing_period_start=subscription.current_period_end or now, billing_period_end=end, paid_at=now,
+                    created_at=now, webhook_event_id=event_id,
                     landlord_subscription_id=subscription.id if audience == 'landlord' else None,
                     real_estate_subscription_id=subscription.id if audience == 'real_estate' else None,
-                    pricing_snapshot_source='subscription_plans',
-                )
+                    pricing_snapshot_source='subscription_plans')
             else:
                 invoice.status = 'PAID'
                 invoice.paid_at = invoice.paid_at or now
