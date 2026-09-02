@@ -54,6 +54,7 @@ def send_notification_email(email: NotificationEmail) -> dict:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "Idempotency-Key": f"sakakrib-notification-{email.id}",
         },
         method="POST",
     )
