@@ -48,13 +48,14 @@ JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 JWT_ALGORITHM = 'HS256'
 JWT_ISSUER = os.getenv('JWT_ISSUER', 'sakakrib-django')
 JWT_AUDIENCE = os.getenv('JWT_AUDIENCE', 'sakakrib-api')
-JWT_ACCESS_LIFETIME_SECONDS = int(os.getenv('JWT_ACCESS_LIFETIME_SECONDS','900'))
+JWT_ACCESS_LIFETIME_SECONDS = int(os.getenv('JWT_ACCESS_LIFETIME_SECONDS','300'))
 JWT_REFRESH_LIFETIME_SECONDS = int(os.getenv('JWT_REFRESH_LIFETIME_SECONDS','604800'))
 JWT_ACCESS_COOKIE = os.getenv('JWT_ACCESS_COOKIE','sakakrib_access')
 JWT_REFRESH_COOKIE = os.getenv('JWT_REFRESH_COOKIE','sakakrib_refresh')
 JWT_COOKIE_SECURE = os.getenv('JWT_COOKIE_SECURE','false').lower() == 'true'
 JWT_COOKIE_SAMESITE = os.getenv('JWT_COOKIE_SAMESITE','Lax')
 JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 REST_FRAMEWORK = {'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CookieJWTAuthentication'],'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],'DEFAULT_RENDERER_CLASSES':['rest_framework.renderers.JSONRenderer']}
 CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS','http://localhost:5173,http://127.0.0.1:5173').split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
