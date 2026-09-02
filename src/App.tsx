@@ -15,7 +15,7 @@ import MoverDetailPage from '@/pages/MoverDetailPage';
 import MoverBookingDetailPage from '@/pages/MoverBookingDetailPage';
 import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
-import PostListingPage from '@/pages/PostListingPage';
+import PostListingPage from '@/pages/PostListingPageV2';
 import RegisterMoverScheduleEnhancer from '@/pages/RegisterMoverScheduleEnhancer';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
@@ -32,13 +32,8 @@ function AppContent() {
   const { view, selectedAdminUserId } = useNav();
   const { profile } = useAuth();
 
-  if (window.location.pathname === '/paypal/subscription/return') {
-    return <PayPalSubscriptionReturnPage />;
-  }
-
-  if (window.location.pathname === '/paypal/subscription/cancel') {
-    return <PMSSubscriptionPage />;
-  }
+  if (window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
+  if (window.location.pathname === '/paypal/subscription/cancel') return <PMSSubscriptionPage />;
 
   const renderView = () => {
     switch (view) {
@@ -55,14 +50,8 @@ function AppContent() {
       case 'register-mover': return <RegisterMoverPage />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
-      case 'admin-user-details':
-        return profile?.is_admin === true || profile?.role === 'admin'
-          ? selectedAdminUserId
-            ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} />
-            : <DashboardPage />
-          : <DashboardPage />;
-      case 'dashboard':
-        return profile?.role === 'renter' ? <RenterDashboard /> : <DashboardPage />;
+      case 'admin-user-details': return profile?.is_admin === true || profile?.role === 'admin' ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
+      case 'dashboard': return profile?.role === 'renter' ? <RenterDashboard /> : <DashboardPage />;
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
@@ -71,29 +60,9 @@ function AppContent() {
     }
   };
 
-  return (
-    <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950">
-      <SecurityBanner />
-      <Header />
-      <main className="flex-1 pb-20 md:pb-0">
-        {renderView()}
-      </main>
-      <Footer />
-      <BottomBar />
-      <AuthModal />
-      <RoleSelectionModal />
-    </div>
-  );
+  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /></div>;
 }
 
 export default function App() {
-  return (
-    <ThemeProvider>
-      <AuthProvider>
-        <NavProvider>
-          <AppContent />
-        </NavProvider>
-      </AuthProvider>
-    </ThemeProvider>
-  );
+  return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
 }
