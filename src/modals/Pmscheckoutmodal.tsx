@@ -38,12 +38,11 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
     if (event.status === 'PAID') {
       setError(null);
       setStep('success');
-      onSuccess?.();
     } else if (event.status === 'FAILED' || event.status === 'CANCELLED' || event.status === 'REFUNDED') {
       setError(event.message || 'The payment was not completed.');
       setStep('failed');
     }
-  }, [event, onSuccess]);
+  }, [event]);
 
   if (!open || !plan) return null;
 
@@ -69,6 +68,11 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
     }
   };
 
+  const continueAfterSuccess = () => {
+    onSuccess?.();
+    onOpenChange(false);
+  };
+
   const handleClose = () => onOpenChange(false);
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true"><div className="card relative w-full max-w-md overflow-hidden rounded-2xl shadow-xl"><div className="flex items-start justify-between border-b border-gray-200 p-5 dark:border-gray-800"><div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Complete payment</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{plan.planName} · {plan.billingCycle === 'MONTHLY' ? 'Monthly' : 'Annual'} · {formatKES(plan.amountKes)}</p></div><button type="button" onClick={handleClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close"><X className="h-5 w-5" /></button></div><div className="p-5">
@@ -76,7 +80,7 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
 
     {step === 'mpesa-waiting' && <div className="flex flex-col items-center py-6 text-center"><Loader2 className="h-10 w-10 animate-spin" /><p className="mt-4 font-semibold">Waiting for M-Pesa confirmation</p><p className="mt-2 text-sm text-gray-500">{customerMessage}</p><p className="mt-3 text-xs text-gray-400">Live confirmation: {connected ? 'connected' : 'reconnecting…'}</p>{connectionError && <p className="mt-2 text-xs text-amber-600">{connectionError}</p>}{invoiceId && <p className="mt-3 text-xs text-gray-400">Payment reference: {invoiceId}</p>}</div>}
 
-    {step === 'success' && <div className="flex flex-col items-center py-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-success-100"><CheckCircle2 className="h-7 w-7" /></div><p className="mt-4 font-semibold">Payment successful</p><p className="mt-2 text-sm text-gray-500">Your {plan.planName} subscription has been confirmed. You can continue editing your listing.</p><button type="button" onClick={handleClose} className="btn-primary mt-6">Continue to Listing</button></div>}
+    {step === 'success' && <div className="flex flex-col items-center py-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-success-100"><CheckCircle2 className="h-7 w-7" /></div><p className="mt-4 font-semibold">Payment successful</p><p className="mt-2 text-sm text-gray-500">Your {plan.planName} subscription has been confirmed. Continue to your saved listing to finish the final review and post it.</p><button type="button" onClick={continueAfterSuccess} className="btn-primary mt-6">Continue to Listing</button></div>}
 
     {step === 'failed' && <div className="flex flex-col items-center py-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-error-100"><XCircle className="h-7 w-7" /></div><p className="mt-4 font-semibold">Payment unsuccessful</p>{error && <p className="mt-2 text-sm text-gray-500">{error}</p>}<div className="mt-6 flex gap-3"><button type="button" onClick={handleClose} className="btn-secondary">Close</button><button type="button" onClick={() => { setStep('select-method'); setError(null); setInvoiceId(null); }} className="btn-primary">Try again</button></div></div>}
   </div></div></div>;
