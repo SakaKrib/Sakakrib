@@ -65,6 +65,21 @@ class Listing(models.Model):
         ]
 
 
+class ListingDraft(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_drafts')
+    role = models.CharField(max_length=32)
+    data = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, default='DRAFT')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'listing_drafts'
+        ordering = ['-updated_at']
+        indexes = [models.Index(fields=['user', 'status', '-updated_at'], name='listing_draft_user_status_idx')]
+
+
 class ListingPaymentIntent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_payment_intents')
