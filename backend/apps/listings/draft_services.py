@@ -3,19 +3,21 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Profile
-from apps.core.domain_property import PropertyUnit
+from apps.core.domain_property import ListingMedia, PropertyUnit
 from .models import Listing
 
 
 @transaction.atomic
 def _sync_draft_units(owner, draft, data):
-    """Mirror the form's PMS units into property_units while the listing is a draft."""
+    """Mirror the form's PMS units and their persisted media into DB draft state."""
     draft_ui = data.get('draft_ui') if isinstance(data, dict) else None
     raw_units = draft_ui.get('units', []) if isinstance(draft_ui, dict) else []
     if not isinstance(raw_units, list):
         return
 
     incoming_ids = set()
+    incoming_media_by_unit = {}
+
     for position, raw in enumerate(raw_units):
         if not isinstance(raw, dict):
             continue
@@ -61,7 +63,37 @@ def _sync_draft_units(owner, draft, data):
             defaults=defaults,
         )
 
-    PropertyUnit.objects.filter(listing_id=draft.id, user_id=owner.id).exclude(id__in=incoming_ids).delete()
+        media_ids = []
+        for media in raw.get('photos') or []:
+            if isinstance(media, dict) and media.get('id'):
+                try:
+                    media_ids.append(__import__('uuid').UUID(str(media['id'])))
+                except (ValueError, AttributeError):
+                    continue
+        incoming_media_by_unit[unit_id] = media_ids
+
+    stale_unit_ids = set(
+        PropertyUnit.objects.filter(listing_id=draft.id, user_id=owner.id)
+        .exclude(id__in=incoming_ids)
+        .values_list('id', flat=True)
+    )
+    if stale_unit_ids:
+        ListingMedia.objects.filter(
+            listing_id=draft.id,
+            user_id=owner.id,
+            unit_id__in=stale_unit_ids,
+        ).delete()
+        PropertyUnit.objects.filter(id__in=stale_unit_ids, listing_id=draft.id, user_id=owner.id).delete()
+
+    # The browser can remove an already-uploaded unit photo from its draft state.
+    # Delete only media explicitly absent from that unit's persisted photo list.
+    for unit_id, media_ids in incoming_media_by_unit.items():
+        ListingMedia.objects.filter(
+            listing_id=draft.id,
+            user_id=owner.id,
+            unit_id=unit_id,
+            media_type='photo',
+        ).exclude(id__in=media_ids).delete()
 
 
 @transaction.atomic
@@ -119,7 +151,7 @@ def save_listing_draft(profile, data, draft_id=None):
     else:
         draft = Listing.objects.create(user_id=owner.id, **defaults)
 
-    if role == 'landlord' and draft.is_property_management or role == 'real_estate' and draft.is_property_management:
+    if draft.is_property_management:
         _sync_draft_units(owner, draft, data)
     return draft
 
@@ -137,5 +169,6 @@ def delete_listing_draft(profile, draft_id):
     draft = Listing.objects.select_for_update().filter(id=draft_id, user_id=profile.id, is_draft=True).first()
     if not draft:
         raise ValidationError('Draft not found.')
+    ListingMedia.objects.filter(listing_id=draft.id, user_id=profile.id).delete()
     PropertyUnit.objects.filter(listing_id=draft.id, user_id=profile.id).delete()
     draft.delete()
