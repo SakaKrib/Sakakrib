@@ -8,6 +8,7 @@ from .views import (
     ListingCreateView,
     ListingDetailView,
     ListingEntitlementView,
+    ListingListView,
     ListingMediaDetailView,
     ListingMediaView,
     ListingPaymentIntentView,
