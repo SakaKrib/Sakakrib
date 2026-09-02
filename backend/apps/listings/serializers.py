@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.accounts.models import Profile
 from apps.core.domain_property import ListingMedia
 
 from .models import Listing
@@ -25,6 +26,7 @@ class ListingMediaSerializer(serializers.ModelSerializer):
 
 class ListingSerializer(serializers.ModelSerializer):
     media = serializers.SerializerMethodField()
+    landlord = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -36,17 +38,24 @@ class ListingSerializer(serializers.ModelSerializer):
             'booking_enabled', 'payment_enabled', 'is_property_management', 'is_paid',
             'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at',
             'admin_review_note', 'ai_caption', 'ai_caption_generated_at', 'created_at',
-            'updated_at', 'media',
+            'updated_at', 'media', 'landlord',
         ]
         read_only_fields = [
             'id', 'user_id', 'is_paid', 'is_published', 'approval_status', 'is_approved',
             'status', 'admin_reviewed_at', 'admin_review_note', 'ai_caption',
-            'ai_caption_generated_at', 'created_at', 'updated_at', 'media',
+            'ai_caption_generated_at', 'created_at', 'updated_at', 'media', 'landlord',
         ]
 
     def get_media(self, obj):
         rows = ListingMedia.objects.filter(listing_id=obj.id).order_by('position', 'created_at')
         return ListingMediaSerializer(rows, many=True, context=self.context).data
+
+    def get_landlord(self, obj):
+        profile = Profile.objects.filter(pk=obj.user_id).first()
+        if not profile:
+            return None
+        from apps.accounts.serializers import ProfileSerializer
+        return ProfileSerializer(profile).data
 
 
 class ListingUpdateSerializer(serializers.ModelSerializer):
