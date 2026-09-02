@@ -54,6 +54,23 @@ class ListingPaymentStartView(APIView):
                 intent.save(update_fields=['status', 'updated_at'])
                 return Response({'detail': 'Payment intent has expired.'}, status=409)
 
+            existing_provider = (intent.provider or '').lower()
+            existing_reference = (intent.provider_reference or '').strip()
+            if existing_provider and existing_provider != provider_name:
+                return Response({'detail': f'Payment intent is already initialized with {existing_provider}.'}, status=409)
+            if existing_reference:
+                return Response({
+                    'success': True,
+                    'already_started': True,
+                    'payment_intent_id': str(intent.id),
+                    'provider': existing_provider or provider_name,
+                    'provider_reference': existing_reference,
+                    'provider_amount': str(intent.provider_amount) if intent.provider_amount is not None else None,
+                    'provider_currency': intent.provider_currency,
+                    'paypal_fx_rate': str(intent.paypal_fx_rate) if intent.paypal_fx_rate else None,
+                    'message': 'Payment request already started for this payment intent.',
+                })
+
             profile = request.user
             if provider_name == 'mpesa':
                 if not profile.phone:
