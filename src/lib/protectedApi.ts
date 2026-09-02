@@ -320,6 +320,13 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
         return { handled: true, data: [data] as T };
       }
 
+      if (moverId) {
+        const data = await djangoRequest<T>(
+          `/api/core/movers/${encodeURIComponent(moverId)}/`,
+        );
+        return { handled: true, data: [data] as T };
+      }
+
       const movers = await djangoRequest<Array<{
         id: string;
         is_available: boolean;
