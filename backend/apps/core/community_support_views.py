@@ -7,17 +7,51 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
+from apps.accounts.models import Profile
 from apps.listings.models import Listing
 
 from .domain_platform import SupportTicket, TermsAcceptance
-from .domain_property import CommunityPost, Review
+from .domain_property import CommunityPost, ListingMedia, Review
 
 
 def _serialize(instance):
-    return {
-        field.name: getattr(instance, field.name)
-        for field in instance._meta.fields
-    }
+    return {field.name: getattr(instance, field.name) for field in instance._meta.fields}
+
+
+def _serialize_community_post(request, post):
+    row = _serialize(post)
+    profile = Profile.objects.filter(pk=post.user_id).first()
+    row['author'] = {
+        'id': str(profile.id),
+        'full_name': profile.full_name or '',
+        'role': profile.role,
+        'verification_status': profile.verification_status,
+    } if profile else None
+
+    row['listing'] = None
+    row['media'] = []
+    if post.listing_id:
+        listing = Listing.objects.filter(pk=post.listing_id).first()
+        if listing:
+            row['listing'] = _serialize(listing)
+            media_rows = ListingMedia.objects.filter(
+                listing_id=listing.id,
+                media_type='photo',
+            ).order_by('position', 'created_at')
+            for media in media_rows:
+                value = media.url or ''
+                if value.startswith('django-media://'):
+                    value = request.build_absolute_uri(f'/api/listings/media/{media.id}/')
+                row['media'].append({
+                    'id': str(media.id),
+                    'listing_id': str(media.listing_id),
+                    'url': value,
+                    'label': media.label,
+                    'media_type': media.media_type,
+                    'position': media.position,
+                    'unit_id': str(media.unit_id) if media.unit_id else None,
+                })
+    return row
 
 
 class CommunityPostView(APIView):
@@ -37,7 +71,7 @@ class CommunityPostView(APIView):
                 ).exists()
                 if not visible and str(post.user_id) != str(request.user.id):
                     return Response({'detail': 'Post not found.'}, status=status.HTTP_404_NOT_FOUND)
-            return Response({'post': _serialize(post)})
+            return Response({'post': _serialize_community_post(request, post)})
 
         rows = []
         for post in qs[:100]:
@@ -46,7 +80,7 @@ class CommunityPostView(APIView):
             ).exists():
                 if str(post.user_id) != str(request.user.id):
                     continue
-            rows.append(_serialize(post))
+            rows.append(_serialize_community_post(request, post))
         return Response({'items': rows})
 
     def post(self, request):
@@ -68,9 +102,9 @@ class CommunityPostView(APIView):
             listing_id=listing_id or None,
             content=content,
             ai_caption=request.data.get('ai_caption') or None,
-            post_type=request.data.get('post_type') or 'listing',
+            post_type=request.data.get('post_type') or 'manual',
         )
-        return Response({'post': _serialize(post)}, status=status.HTTP_201_CREATED)
+        return Response({'post': _serialize_community_post(request, post)}, status=status.HTTP_201_CREATED)
 
     def patch(self, request, object_id):
         post = CommunityPost.objects.filter(id=object_id, user_id=request.user.id).first()
@@ -86,7 +120,7 @@ class CommunityPostView(APIView):
         if 'post_type' in request.data:
             post.post_type = str(request.data.get('post_type') or 'listing')
         post.save(update_fields=['content', 'ai_caption', 'post_type'])
-        return Response({'post': _serialize(post)})
+        return Response({'post': _serialize_community_post(request, post)})
 
     def delete(self, request, object_id):
         deleted, _ = CommunityPost.objects.filter(id=object_id, user_id=request.user.id).delete()
