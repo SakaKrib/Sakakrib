@@ -49,6 +49,9 @@ class MoverBookingRequestView(APIView):
                 pickup_longitude=request.data.get("pickup_longitude"),
                 dropoff_latitude=request.data.get("dropoff_latitude"),
                 dropoff_longitude=request.data.get("dropoff_longitude"),
+                agreed_amount=request.data.get("agreed_amount"),
+                moving_date=request.data.get("moving_date"),
+                preferred_payment_method=request.data.get("preferred_payment_method"),
             )
             return Response(result, status=201)
         except (ValidationError, TypeError, ValueError) as exc:
