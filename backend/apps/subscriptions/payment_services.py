@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -71,11 +72,47 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
             real_estate_subscription_id=subscription.id if profile.role == 'real_estate' else None,
             currency='KES' if provider == 'mpesa' else 'USD', amount_usd=amount_usd,
             billing_period_start=None, billing_period_end=None, pricing_snapshot_source='subscription_plans')
+
     if provider == 'paypal':
-        return {'success': True, 'subscription_id': str(subscription.id), 'invoice_id': str(invoice.id),
+        from .paypal_subscription_services import create_paypal_subscription
+        try:
+            return_url = settings.PAYPAL_SUBSCRIPTION_RETURN_URL
+            cancel_url = settings.PAYPAL_SUBSCRIPTION_CANCEL_URL
+            remote = create_paypal_subscription(
+                plan_id=paypal_plan_id,
+                custom_id=str(invoice.id),
+                return_url=return_url,
+                cancel_url=cancel_url,
+            )
+            paypal_subscription_id = str(remote['id'])
+            approval_url = next(
+                str(link['href']) for link in remote.get('links', [])
+                if link.get('rel') == 'approve' and link.get('href')
+            )
+            subscription.paypal_subscription_id = paypal_subscription_id
+            subscription.paypal_status = str(remote.get('status') or 'APPROVAL_PENDING')
+            subscription.auto_renew = False
+            subscription.updated_at = timezone.now()
+            subscription.save(update_fields=['paypal_subscription_id', 'paypal_status', 'auto_renew', 'updated_at'])
+            invoice.paypal_subscription_id = paypal_subscription_id
+            invoice.provider_reference = paypal_subscription_id
+            invoice.save(update_fields=['paypal_subscription_id', 'provider_reference'])
+            return {
+                'success': True, 'subscription_id': str(subscription.id), 'invoice_id': str(invoice.id),
                 'provider': 'paypal', 'billing_cycle': billing_cycle, 'plan_id': str(plan.id),
                 'plan_name': plan.name, 'paypal_plan_id': paypal_plan_id,
-                'status': 'PENDING_PAYMENT', 'payment_action': 'PAYPAL_SUBSCRIPTION_APPROVAL'}
+                'paypal_subscription_id': paypal_subscription_id, 'approval_url': approval_url,
+                'status': 'PENDING_PAYMENT', 'payment_action': 'PAYPAL_SUBSCRIPTION_APPROVAL',
+            }
+        except Exception:
+            invoice.status = 'FAILED'
+            invoice.result_description = 'Unable to create PayPal subscription checkout.'
+            invoice.save(update_fields=['status', 'result_description'])
+            subscription.status = 'CANCELLED'
+            subscription.updated_at = timezone.now()
+            subscription.save(update_fields=['status', 'updated_at'])
+            raise
+
     result = get_provider('mpesa').create_payment(
         amount=Decimal(amount_kes), currency='KES', reference=str(invoice.id),
         metadata={'phone_number': phone_number, 'description': 'SakaKrib subscription'})
@@ -83,6 +120,9 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
         invoice.status = 'FAILED'
         invoice.result_description = result.message
         invoice.save(update_fields=['status', 'result_description'])
+        subscription.status = 'CANCELLED'
+        subscription.updated_at = timezone.now()
+        subscription.save(update_fields=['status', 'updated_at'])
         raise RuntimeError(result.message)
     invoice.provider_reference = result.provider_reference
     invoice.checkout_request_id = result.provider_reference
@@ -137,8 +177,6 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
 def finalize_paypal_subscription(invoice_id, subscription_id):
     if not subscription_id:
         raise ValueError('PayPal subscription ID is required')
-    # The browser-supplied PayPal subscription ID is only an identifier. Never
-    # activate from it directly; verify its remote status and plan first.
     from .paypal_subscription_services import verify_and_finalize_initial_subscription
     return verify_and_finalize_initial_subscription(invoice_id, subscription_id)
 
