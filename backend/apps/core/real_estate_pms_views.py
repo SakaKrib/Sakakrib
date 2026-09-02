@@ -1,7 +1,8 @@
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.authorization import is_admin
+from apps.listings.models import Listing
 from apps.listings.serializers import ListingSerializer
 from apps.listings.services import get_listing_entitlement
 from apps.subscriptions.models import RealEstateSubscription, SubscriptionListing, SubscriptionPlan
@@ -11,40 +12,36 @@ from apps.subscriptions.services import get_current_subscription, get_pms_access
 class RealEstatePMSDashboardView(APIView):
     """Dedicated Django boundary for the real-estate PMS dashboard.
 
-    The endpoint deliberately does not reuse the landlord PMS dashboard.
-    Real-estate subscriptions are stored in ``real_estate_subscriptions`` and
-    their subscription-listing associations use ``real_estate_subscription_id``.
-    Shared listing and entitlement services are reused only where ownership
-    semantics are identical.
+    This is intentionally separate from the landlord PMS dashboard because
+    real-estate subscriptions and subscription-listing associations have their
+    own ownership fields. Shared listing/entitlement services are reused only
+    where the ownership semantics are identical.
     """
 
     def get(self, request):
         profile = request.user
         access = get_pms_access(profile)
         if not access.get('allowed') or access.get('role') != 'real_estate':
-            return Response({'detail': 'Real-estate PMS access is required.', 'pms_access': access}, status=403)
+            return Response(
+                {'detail': 'Real-estate PMS access is required.', 'pms_access': access},
+                status=403,
+            )
 
         subscription = get_current_subscription(profile)
         plan = get_subscription_plan(subscription)
         entitlement = get_listing_entitlement(profile)
-
-        listings = list(
-            ListingSerializer(
-                __import__('apps.listings.models', fromlist=['Listing']).Listing.objects.filter(user_id=profile.id).order_by('-created_at'),
-                many=True,
-                context={'request': request},
-            ).data
-        )
+        queryset = Listing.objects.filter(user_id=profile.id).order_by('-created_at')
+        listings = ListingSerializer(queryset, many=True, context={'request': request}).data
 
         managed_ids = set()
         if subscription:
-            managed_ids = set(
+            managed_ids = {
                 str(value)
                 for value in SubscriptionListing.objects.filter(
                     real_estate_subscription_id=subscription.id,
                     status='ACTIVE',
                 ).values_list('listing_id', flat=True)
-            )
+            }
 
         capacity_limit = plan.max_listings if plan else None
         managed_count = len(managed_ids)
@@ -109,27 +106,34 @@ class RealEstatePMSDashboardView(APIView):
 class RealEstatePMSActionView(APIView):
     """Real-estate-specific PMS mutations.
 
-    Only subscription-listing management is exposed here because those rows
-    have a distinct real-estate foreign-key contract. Grace-period accounts
-    remain read-only. Rent/payment operations are not routed through this
-    endpoint because the existing rent domain is landlord-owned.
+    The current real-estate PMS contract exposes subscription-listing
+    management. Rent/payment mutations are deliberately not routed here,
+    because the existing rent domain is explicitly landlord-owned.
     """
 
     def post(self, request):
         profile = request.user
         access = get_pms_access(profile)
         if not access.get('allowed') or access.get('role') != 'real_estate':
-            return Response({'detail': 'Real-estate PMS access is required.', 'pms_access': access}, status=403)
-        if access.get('read_only') and not is_admin(profile):
-            return Response({'detail': 'PMS is read-only during the subscription grace period.', 'pms_access': access}, status=403)
+            return Response(
+                {'detail': 'Real-estate PMS access is required.', 'pms_access': access},
+                status=403,
+            )
+        if access.get('read_only'):
+            return Response(
+                {
+                    'detail': 'PMS is read-only during the subscription grace period.',
+                    'pms_access': access,
+                },
+                status=403,
+            )
 
-        action = request.data.get('action')
         subscription = get_current_subscription(profile)
         if not subscription or not isinstance(subscription, RealEstateSubscription):
             return Response({'detail': 'An active real-estate PMS subscription is required.'}, status=403)
 
+        action = request.data.get('action')
         if action == 'add_listing':
-            from apps.listings.models import Listing
             listing_id = request.data.get('listing_id')
             listing = Listing.objects.filter(
                 id=listing_id,
@@ -150,24 +154,28 @@ class RealEstatePMSActionView(APIView):
                 listing_id=listing.id,
             ).first()
             if already and already.status == 'ACTIVE':
-                return Response({'success': True, 'subscription_listing_id': str(already.id), 'already_managed': True})
+                return Response({
+                    'success': True,
+                    'subscription_listing_id': str(already.id),
+                    'already_managed': True,
+                })
             if plan and plan.max_listings is not None and existing >= plan.max_listings:
                 return Response({'detail': 'Your subscription listing capacity has been reached.'}, status=409)
 
             if already:
                 already.status = 'ACTIVE'
-                already.activated_at = __import__('django.utils.timezone', fromlist=['timezone']).timezone.now()
+                already.activated_at = timezone.now()
                 already.deactivated_at = None
                 already.save(update_fields=['status', 'activated_at', 'deactivated_at'])
                 obj = already
             else:
-                from django.utils import timezone
+                now = timezone.now()
                 obj = SubscriptionListing.objects.create(
                     real_estate_subscription_id=subscription.id,
                     listing_id=listing.id,
                     status='ACTIVE',
-                    activated_at=timezone.now(),
-                    created_at=timezone.now(),
+                    activated_at=now,
+                    created_at=now,
                 )
             return Response({'success': True, 'subscription_listing_id': str(obj.id)})
 
@@ -180,7 +188,6 @@ class RealEstatePMSActionView(APIView):
             ).first()
             if not obj:
                 return Response({'detail': 'Managed listing not found.'}, status=404)
-            from django.utils import timezone
             obj.status = 'INACTIVE'
             obj.deactivated_at = timezone.now()
             obj.save(update_fields=['status', 'deactivated_at'])
