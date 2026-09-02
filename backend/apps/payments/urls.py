@@ -4,6 +4,7 @@ from .views import (
     ListingPaymentStartView,
     MpesaListingCallbackView,
     PayPalListingCaptureView,
+    PayPalListingWebhookView,
 )
 
 urlpatterns = [
@@ -11,4 +12,5 @@ urlpatterns = [
     path('listing/start/', ListingPaymentStartView.as_view(), name='listing-payment-start'),
     path('listing/mpesa/callback/', MpesaListingCallbackView.as_view(), name='listing-mpesa-callback'),
     path('listing/paypal/capture/', PayPalListingCaptureView.as_view(), name='listing-paypal-capture'),
+    path('callbacks/paypal/listing/', PayPalListingWebhookView.as_view(), name='listing-paypal-webhook'),
 ]
