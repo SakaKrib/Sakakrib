@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .ai_caption_views import ListingAiCaptionView
+from .draft_views import ListingDraftDetailView, ListingDraftListView
 from .views import (
     AdminListingReviewView,
     ListingCreateView,
@@ -14,6 +15,8 @@ from .views import (
 
 urlpatterns = [
     path('entitlement/', ListingEntitlementView.as_view(), name='listing-entitlement'),
+    path('drafts/', ListingDraftListView.as_view(), name='listing-draft-list-create'),
+    path('drafts/<uuid:draft_id>/', ListingDraftDetailView.as_view(), name='listing-draft-detail'),
     path('media/', ListingMediaView.as_view(), name='listing-media'),
     path('media/<uuid:media_id>/', ListingMediaDetailView.as_view(), name='listing-media-detail'),
     path('', ListingListView.as_view(), name='listing-list'),
