@@ -18,6 +18,10 @@ class Migration(migrations.Migration):
             model_name='listingpayment',
             name='provider_transaction_id',
         ),
+        migrations.RemoveField(
+            model_name='listingpayment',
+            name='updated_at',
+        ),
         migrations.RenameField(
             model_name='listingpayment',
             old_name='user_id',
@@ -52,6 +56,11 @@ class Migration(migrations.Migration):
             model_name='listingpayment',
             name='amount_kes',
             field=models.DecimalField(decimal_places=2, default=1000, max_digits=14),
+        ),
+        migrations.AlterField(
+            model_name='listingpayment',
+            name='created_at',
+            field=models.DateTimeField(auto_now_add=True),
         ),
         migrations.AddConstraint(
             model_name='listingpayment',
