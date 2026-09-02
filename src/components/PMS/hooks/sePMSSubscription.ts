@@ -115,9 +115,9 @@ export function usePMSSubscription() {
 
   const removeUnit = useCallback(
     async (listingId: string) => {
-      await protectedDelete("/api/subscriptions/me/pms-listings/membership/", {
-        listing_id: listingId,
-      });
+      await protectedDelete(
+        `/api/subscriptions/me/pms-listings/membership/?listing_id=${encodeURIComponent(listingId)}`,
+      );
       await loadSubscription();
     },
     [loadSubscription],
