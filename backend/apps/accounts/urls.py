@@ -6,6 +6,7 @@ from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, Admin
 from .application_review_views import AdminApplicationReviewView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
+from .profile_media_views import ProfilePhotoView
 from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, ResendOtpView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
 urlpatterns = [
@@ -19,6 +20,8 @@ urlpatterns = [
     path('set-role/', SetRoleView.as_view(), name='set-role'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('me/', MeView.as_view(), name='me'),
+    path('profile-photo/', ProfilePhotoView.as_view(), name='profile-photo-upload'),
+    path('profile-photo/<uuid:user_id>/', ProfilePhotoView.as_view(), name='profile-photo'),
     path('kyc/upload/', KycDocumentUploadView.as_view(), name='kyc-upload'),
     path('kyc/verify/', KycDocumentVerifyView.as_view(), name='kyc-verify'),
     path('kyc/submit/', KycSubmitView.as_view(), name='kyc-submit'),
