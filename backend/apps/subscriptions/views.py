@@ -6,7 +6,16 @@ from apps.payments.services import get_provider
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan
 from .paypal_subscription_services import record_paypal_subscription_approval, process_paypal_subscription_webhook, verify_paypal_webhook
 from .payment_services import create_subscription_checkout, finalize_mpesa_subscription
-from .services import get_current_subscription, get_subscription_access, get_subscription_plan
+from .services import (
+    add_listing_to_pms,
+    get_available_pms_listings,
+    get_current_subscription,
+    get_my_pms_listings,
+    get_pms_unit_count,
+    get_subscription_access,
+    get_subscription_plan,
+    remove_listing_from_pms,
+)
 
 
 class SubscriptionPlansView(APIView):
@@ -61,6 +70,37 @@ class MySubscriptionView(APIView):
 class MySubscriptionAccessView(APIView):
     def get(self, request):
         return Response(get_subscription_access(request.user))
+
+
+class MyPMSListingsView(APIView):
+    def get(self, request):
+        return Response(get_my_pms_listings(request.user))
+
+
+class MyAvailablePMSListingsView(APIView):
+    def get(self, request):
+        return Response(get_available_pms_listings(request.user))
+
+
+class MyPMSUnitCountView(APIView):
+    def get(self, request):
+        return Response(get_pms_unit_count(request.user))
+
+
+class PMSListingMembershipView(APIView):
+    def post(self, request):
+        try:
+            result = add_listing_to_pms(request.user, request.data.get('listing_id'))
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        return Response(result)
+
+    def delete(self, request):
+        try:
+            result = remove_listing_from_pms(request.user, request.data.get('listing_id') or request.query_params.get('listing_id'))
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        return Response(result)
 
 
 class MySubscriptionInvoiceView(APIView):
