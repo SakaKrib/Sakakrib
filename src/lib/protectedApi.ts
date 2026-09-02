@@ -4,7 +4,8 @@ const FUNCTION_NAME = 'protected-api';
 // TYPES
 // ============================================================
 
-export interface ProtectedApiErrorBody {
+export interface ProtectedApiErrorBody
+  extends Record<string, unknown> {
   error?: string;
   message?: string;
   authenticated?: boolean;
@@ -81,7 +82,15 @@ export const protectedApi = async <T = unknown>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> => {
-  if (!path.startsWith('/rest/v1/')) {
+  // Backward-compatible alias used by the existing PostListingPage
+  // media-record flow. Keep the page unchanged while normalizing the
+  // legacy path to the existing protected Supabase REST contract.
+  const normalizedPath =
+    path === 'listing_media_insert_response'
+      ? '/rest/v1/listing_media'
+      : path;
+
+  if (!normalizedPath.startsWith('/rest/v1/')) {
     throw new Error(
       'Protected API paths must target /rest/v1/.'
     );
@@ -106,7 +115,7 @@ export const protectedApi = async <T = unknown>(
   }
 
   const response = await fetch(
-    `${getFunctionUrl()}${path}`,
+    `${getFunctionUrl()}${normalizedPath}`,
     {
       ...init,
       credentials: 'include',
