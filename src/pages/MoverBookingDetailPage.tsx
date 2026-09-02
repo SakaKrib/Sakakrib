@@ -1,7 +1,7 @@
 import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Truck, User, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNav } from '@/context/NavContext';
-import { protectedPost } from '@/lib/protectedApi';
+import { protectedGet, protectedPost } from '@/lib/protectedApi';
 import { cn, formatKES } from '@/lib/utils';
 
 interface Booking { id: string; renter_id: string; mover_id: string; listing_id: string | null; pickup_address: string; dropoff_address: string; moving_date: string | null; booking_amount: number | null; commission_amount: number | null; total_amount: number | null; status: string | null; payment_status: string | null; payment_method: string | null; distance_km: number | null; rate_per_km_kes: number | null; base_rate_kes: number | null; pickup_latitude: number | null; pickup_longitude: number | null; dropoff_latitude: number | null; dropoff_longitude: number | null; requested_at: string | null; request_expires_at: string | null; confirmed_at: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; started_at: string | null; completed_at: string | null; cancelled_at: string | null; cancellation_reason: string | null; cancellation_details: string | null; tracking_number: string | null; renter_confirmed_delivery_at: string | null; mover_confirmed_delivery_at: string | null; contact_released_at: string | null; dispute_status: string | null; created_at: string | null; updated_at: string | null; }
@@ -37,7 +37,7 @@ export default function MoverBookingDetailPage() {
     silent ? setRefreshing(true) : setLoading(true);
     setError(null);
     try {
-      const result = await protectedPost<ResponseData>('/rest/v1/rpc/get_mover_booking_detail', { p_booking_id: bookingId });
+      const result = await protectedGet<ResponseData>(`/api/core/bookings/${encodeURIComponent(bookingId)}/detail/`);
       if (!result) throw new Error('Booking details were not returned.');
       setData(result);
     } catch (e) { console.error('Failed to load mover booking:', e); setError(errorText(e, 'Unable to load this moving booking.')); }
@@ -58,7 +58,7 @@ export default function MoverBookingDetailPage() {
     if (!bookingId || !decision || actionLoading) return;
     if ((decision === 'cancel' || decision === 'not_sure') && !reason.trim()) { setActionError(decision === 'cancel' ? 'Please provide a reason for declining this request.' : 'Please explain what you need to clarify before continuing.'); return; }
     setActionLoading(true); setActionError(null);
-    try { await protectedPost('/rest/v1/rpc/respond_to_mover_booking', { p_booking_id: bookingId, p_decision: decision, p_reason: reason.trim() || null }); setDecision(null); setReason(''); await loadBooking(true); }
+    try { await protectedPost(`/api/core/bookings/${encodeURIComponent(bookingId)}/respond/`, { decision, reason: reason.trim() || null }); setDecision(null); setReason(''); await loadBooking(true); }
     catch (e) { console.error('Mover booking response failed:', e); setActionError(errorText(e, 'Unable to update this booking.')); }
     finally { setActionLoading(false); }
   };
