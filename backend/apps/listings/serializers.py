@@ -96,16 +96,26 @@ class ListingCreateSerializer(serializers.Serializer):
     property_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     property_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     price_kes = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True)
-    listing_type = serializers.CharField(required=False)
-    deposit_required = serializers.BooleanField(required=False)
-    deposit_structure = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    deposit_amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False)
+    listing_type = serializers.CharField(required=False, default='rent')
+    deposit_required = serializers.BooleanField(required=False, default=False)
+    deposit_structure = serializers.CharField(required=False, allow_null=True, allow_blank=True, default='fixed')
+    deposit_amount = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, default=0)
     size = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    beds = serializers.IntegerField(required=False, min_value=0)
-    baths = serializers.IntegerField(required=False, min_value=0)
+    beds = serializers.IntegerField(required=False, min_value=0, default=0)
+    baths = serializers.IntegerField(required=False, min_value=0, default=0)
     contact_phone = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     contact_email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
-    social_links = serializers.JSONField(required=False)
-    booking_enabled = serializers.BooleanField(required=False)
-    payment_enabled = serializers.BooleanField(required=False)
-    is_property_management = serializers.BooleanField(required=False)
+    social_links = serializers.JSONField(required=False, default=list)
+    booking_enabled = serializers.BooleanField(required=False, default=False)
+    payment_enabled = serializers.BooleanField(required=False, default=False)
+    is_property_management = serializers.BooleanField(required=False, default=False)
+
+    def validate_listing_type(self, value):
+        if value not in {'rent', 'sale'}:
+            raise serializers.ValidationError('listing_type must be rent or sale.')
+        return value
+
+    def validate_deposit_structure(self, value):
+        if value is not None and value not in {'fixed', 'installments'}:
+            raise serializers.ValidationError('deposit_structure must be fixed or installments.')
+        return value
