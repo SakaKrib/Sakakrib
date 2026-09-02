@@ -114,8 +114,9 @@ def create_listing(profile, data):
     entitlement = get_listing_entitlement(profile, lock_subscription=True)
     if not entitlement.get('can_start_listing'):
         raise ValidationError('Identity verification, KYC completion, and application approval are required before creating a listing.')
-    if data.get('is_property_management') and (profile.role != 'landlord' or entitlement.get('subscription_status') != 'ACTIVE'):
-        raise ValidationError('An active landlord PMS subscription is required for property management listings.')
+    if data.get('is_property_management'):
+        if profile.role not in ROLES or entitlement.get('subscription_status') != 'ACTIVE':
+            raise ValidationError('An active PMS subscription is required for property management listings.')
     if not entitlement.get('can_create'):
         return {'success': False, 'listing_created': False, **entitlement}
     return _create_listing_from_data(profile, data, entitlement=entitlement)
