@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Crown, Loader2, Smartphone, X, XCircle } from 'lucide-react';
 import { initiateMpesaSubscriptionCheckout, type PMSBillingCycle, type PMSCheckoutAudience } from '@/lib/LandlordTs/Pmspayments';
 import { usePaymentStatusSocket } from '@/lib/usePaymentStatusSocket';
+import { protectedGet } from '@/lib/djangoApi';
 import PayPalPaymentButton from '@/components/payments/PayPalPaymentButton';
 
 type PaymentMethod = 'MPESA' | 'PAYPAL';
 type Step = 'select-method' | 'mpesa-waiting' | 'paypal-waiting' | 'success' | 'failed';
 export interface PMSCheckoutPlan { planId: string; planName: string; billingCycle: PMSBillingCycle; amountKes: number; }
 interface PMSCheckoutModalProps { open: boolean; onOpenChange: (open: boolean) => void; audience: PMSCheckoutAudience; plan: PMSCheckoutPlan | null; listingId?: string | null; onSuccess?: () => void; }
+interface InvoiceStatusResponse { id: string; status: string; result_description?: string | null; listing_id?: string | null; }
 
 function formatKES(value: number) { return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(value); }
 function normalizePhone(value: string) { return value.replace(/\s+/g, '').trim(); }
@@ -43,6 +45,33 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
       setStep('failed');
     }
   }, [event]);
+
+  useEffect(() => {
+    if (!invoiceId || step !== 'mpesa-waiting') return;
+    let cancelled = false;
+    const checkStatus = async () => {
+      try {
+        const invoice = await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
+        if (cancelled) return;
+        const status = invoice.status.toUpperCase();
+        if (status === 'PAID') {
+          setError(null);
+          setStep('success');
+        } else if (status === 'FAILED' || status === 'CANCELLED' || status === 'REFUNDED') {
+          setError(invoice.result_description || 'The M-Pesa payment was not completed.');
+          setStep('failed');
+        }
+      } catch {
+        // WebSocket is the primary live path; retry below for recovery.
+      }
+    };
+    void checkStatus();
+    const timer = window.setInterval(checkStatus, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [invoiceId, step]);
 
   if (!open || !plan) return null;
 
