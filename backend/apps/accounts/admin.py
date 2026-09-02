@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
-from .models import Profile
+from .models import Profile, RefreshToken
 
 
 class ProfileCreationForm(forms.ModelForm):
@@ -42,15 +42,23 @@ class ProfileAdmin(admin.ModelAdmin):
     form = ProfileChangeForm
     ordering = ('-created_at',)
     list_display = (
-        'email',
-        'role',
-        'verification_status',
-        'landlord_application_status',
-        'real_estate_application_status',
-        'mover_application_status',
-        'is_active',
-        'is_staff',
+        'email', 'role', 'verification_status', 'kyc_status',
+        'landlord_application_status', 'real_estate_application_status',
+        'mover_application_status', 'is_active', 'is_staff', 'created_at',
     )
-    list_filter = ('role', 'verification_status', 'is_active', 'is_staff', 'is_admin')
-    search_fields = ('email', 'full_name', 'phone', 'national_id')
+    list_filter = (
+        'role', 'verification_status', 'kyc_status', 'is_active',
+        'is_staff', 'is_superuser', 'is_admin', 'email_verified',
+        'landlord_application_status', 'real_estate_application_status',
+        'mover_application_status',
+    )
+    search_fields = ('email', 'full_name', 'phone', 'national_id', 'dl_number')
     readonly_fields = ('created_at', 'updated_at', 'date_joined', 'last_login')
+
+
+@admin.register(RefreshToken)
+class RefreshTokenAdmin(admin.ModelAdmin):
+    list_display = ('jti', 'user', 'created_at', 'expires_at', 'revoked_at', 'replaced_by')
+    list_filter = ('revoked_at',)
+    search_fields = ('jti', 'user__email')
+    readonly_fields = ('jti', 'user', 'created_at', 'expires_at', 'revoked_at', 'replaced_by')
