@@ -3,6 +3,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Profile
+from apps.core.domain_property import PropertyUnit
 from apps.payments.models import ListingPayment
 from apps.subscriptions.models import LandlordSubscription, RealEstateSubscription, SubscriptionListing
 from .models import Listing, ListingPaymentIntent
@@ -29,7 +30,14 @@ def finalize_listing_draft(profile, draft_id, *, payment_intent_id=None):
     if not entitlement.get('can_start_listing'):
         raise ValidationError('Identity verification, KYC completion, and application approval are required before submitting a listing.')
 
+    unit_count = 0
     if draft.is_property_management:
+        unit_count = PropertyUnit.objects.filter(listing_id=draft.id, user_id=owner.id).count()
+        if unit_count < 1:
+            raise ValidationError('At least one property unit is required for a property management listing.')
+        max_units = entitlement.get('subscription_max_units')
+        if max_units is not None and unit_count > int(max_units):
+            raise ValidationError(f'Your PMS plan allows at most {int(max_units)} units for this listing.')
         if entitlement.get('subscription_status') != 'ACTIVE':
             raise ValidationError('An active PMS subscription is required for property management listings.')
         remaining = entitlement.get('subscription_listings_remaining')
@@ -91,4 +99,5 @@ def finalize_listing_draft(profile, draft_id, *, payment_intent_id=None):
         'payment_required': False,
         'is_published': False,
         'approval_status': 'pending_review',
+        'property_unit_count': unit_count if draft.is_property_management else None,
     }
