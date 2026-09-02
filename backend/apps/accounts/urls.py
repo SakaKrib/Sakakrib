@@ -1,7 +1,6 @@
 from django.urls import path
 
 from .admin_application_status_views import AdminApplicationStatusView
-from .admin_mover_views import AdminMoverDetailView
 from .admin_user_views import AdminUserDetailView, AdminUserMoverView
 from .application_review_views import AdminApplicationReviewView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
@@ -28,5 +27,4 @@ urlpatterns = [
     path('admin/users/<uuid:user_id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('admin/users/<uuid:user_id>/application-status/', AdminApplicationStatusView.as_view(), name='admin-application-status'),
     path('admin/movers/<uuid:mover_id>/', AdminUserMoverView.as_view(), name='admin-user-mover'),
-    path('admin/mover-details/<uuid:mover_id>/', AdminMoverDetailView.as_view(), name='admin-mover-detail'),
 ]
