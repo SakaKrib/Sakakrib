@@ -39,8 +39,10 @@ def process_listing_payment(
     result_description: str | None = None,
     provider_amount: Decimal | int | float | None = None,
     provider_currency: str | None = None,
+    provider_transaction_id: str | None = None,
     paypal_order_id: str | None = None,
     paypal_fx_rate: Decimal | None = None,
+    paid_amount_kes: Decimal | int | float | None = None,
 ) -> dict[str, Any]:
     """Finalize an individual KES 1,000 listing payment exactly once."""
     provider = (provider or "").upper()
@@ -67,16 +69,16 @@ def process_listing_payment(
         intent.save(update_fields=["status", "updated_at"])
         raise ValidationError("Payment intent has expired")
 
-    paid_amount = Decimal(str(provider_amount)) if provider_amount is not None else None
-    if paid_amount is None or paid_amount.quantize(MONEY_QUANTUM) <= 0:
+    provider_paid_amount = Decimal(str(provider_amount)) if provider_amount is not None else None
+    if provider_paid_amount is None or provider_paid_amount.quantize(MONEY_QUANTUM) <= 0:
         raise ValidationError("A valid provider payment amount is required")
 
     if provider == "MPESA":
         if result_code is not None and int(result_code) != 0:
             raise ValidationError("M-Pesa payment was not successful")
-        if paid_amount.quantize(MONEY_QUANTUM) != LISTING_PRICE_KES:
+        if provider_paid_amount.quantize(MONEY_QUANTUM) != LISTING_PRICE_KES:
             raise ValidationError("Individual listing payment must be exactly KES 1,000")
-        if Decimal(intent.amount_kes).quantize(MONEY_QUANTUM) != paid_amount.quantize(MONEY_QUANTUM):
+        if Decimal(intent.amount_kes).quantize(MONEY_QUANTUM) != provider_paid_amount.quantize(MONEY_QUANTUM):
             raise ValidationError("Payment amount does not match payment intent")
         if not (mpesa_receipt or "").strip():
             raise ValidationError("Valid M-Pesa receipt and provider reference are required")
@@ -84,17 +86,21 @@ def process_listing_payment(
         if not reference:
             raise ValidationError("Valid M-Pesa receipt and provider reference are required")
         currency = "KES"
+        effective_paid_kes = provider_paid_amount
     else:
-        reference = (paypal_order_id or provider_reference or "").strip()
+        reference = (provider_reference or "").strip()
         if not reference or (provider_currency or "").upper() != "USD":
-            raise ValidationError("Valid PayPal order, USD amount and currency are required")
+            raise ValidationError("Valid PayPal capture reference, USD amount and currency are required")
         if not paypal_fx_rate or Decimal(str(paypal_fx_rate)) <= 0:
             raise ValidationError("A valid server exchange rate is required for PayPal settlement")
         fx_rate = Decimal(str(paypal_fx_rate))
-        settled_kes = (paid_amount / fx_rate).quantize(MONEY_QUANTUM)
-        if settled_kes != Decimal(intent.amount_kes).quantize(MONEY_QUANTUM):
-            raise ValidationError("PayPal amount does not match the KES payment intent at the recorded FX rate")
-        if intent.provider_amount is not None and Decimal(intent.provider_amount).quantize(MONEY_QUANTUM) != paid_amount.quantize(MONEY_QUANTUM):
+        effective_paid_kes = Decimal(str(paid_amount_kes)) if paid_amount_kes is not None else Decimal(intent.amount_kes)
+        if effective_paid_kes.quantize(MONEY_QUANTUM) != Decimal(intent.amount_kes).quantize(MONEY_QUANTUM):
+            raise ValidationError("Paid KES amount does not match payment intent")
+        converted_kes = (provider_paid_amount / fx_rate).quantize(MONEY_QUANTUM)
+        if converted_kes != effective_paid_kes.quantize(MONEY_QUANTUM):
+            raise ValidationError("PayPal captured amount does not match the KES payment intent at the recorded FX rate")
+        if intent.provider_amount is not None and Decimal(intent.provider_amount).quantize(MONEY_QUANTUM) != provider_paid_amount.quantize(MONEY_QUANTUM):
             raise ValidationError("PayPal amount does not match the payment intent")
         if intent.paypal_order_id and intent.paypal_order_id != paypal_order_id:
             raise ValidationError("PayPal order does not match payment intent")
@@ -125,12 +131,12 @@ def process_listing_payment(
         payment_provider=provider,
         payment_method=payment_method,
         provider_reference=reference,
-        provider_transaction_id=None,
+        provider_transaction_id=provider_transaction_id,
         checkout_request_id=checkout_request_id,
         merchant_request_id=merchant_request_id,
         mpesa_receipt=mpesa_receipt,
         phone_number=phone_number,
-        provider_amount=paid_amount,
+        provider_amount=provider_paid_amount,
         provider_currency=currency,
         paypal_order_id=paypal_order_id,
         paypal_fx_rate=paypal_fx_rate,
@@ -144,7 +150,7 @@ def process_listing_payment(
     intent.status = "PAID"
     intent.provider = provider
     intent.provider_reference = reference
-    intent.provider_amount = paid_amount
+    intent.provider_amount = provider_paid_amount
     intent.provider_currency = currency
     intent.paypal_order_id = paypal_order_id
     intent.paypal_fx_rate = paypal_fx_rate
