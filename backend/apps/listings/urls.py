@@ -2,6 +2,7 @@ from django.urls import path
 
 from .ai_caption_views import ListingAiCaptionView
 from .draft_views import ListingDraftDetailView, ListingDraftListView
+from .media_delete_views import ListingMediaDeleteView
 from .views import (
     AdminListingReviewView,
     ListingCreateView,
@@ -17,7 +18,7 @@ urlpatterns = [
     path('drafts/', ListingDraftListView.as_view(), name='listing-draft-list-create'),
     path('drafts/<uuid:draft_id>/', ListingDraftDetailView.as_view(), name='listing-draft-detail'),
     path('media/', ListingMediaView.as_view(), name='listing-media'),
-    path('media/<uuid:media_id>/delete/', ListingMediaDetailView.as_view(), name='listing-media-delete'),
+    path('media/<uuid:media_id>/delete/', ListingMediaDeleteView.as_view(), name='listing-media-delete'),
     path('media/<uuid:media_id>/', ListingMediaDetailView.as_view(), name='listing-media-detail'),
     path('', ListingListView.as_view(), name='listing-list'),
     path('create/', ListingCreateView.as_view(), name='listing-create'),
