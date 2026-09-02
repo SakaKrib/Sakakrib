@@ -49,6 +49,30 @@ class ListingSerializer(serializers.ModelSerializer):
         return ListingMediaSerializer(rows, many=True, context=self.context).data
 
 
+class ListingUpdateSerializer(serializers.ModelSerializer):
+    """Editable listing fields only; workflow/approval fields remain server-controlled."""
+
+    class Meta:
+        model = Listing
+        fields = [
+            'title', 'description', 'city', 'county', 'location_search', 'latitude', 'longitude',
+            'property_name', 'property_type', 'price_kes', 'listing_type', 'deposit_required',
+            'deposit_structure', 'deposit_amount', 'size', 'beds', 'baths', 'contact_phone',
+            'contact_email', 'social_links', 'booking_enabled', 'payment_enabled',
+            'is_property_management',
+        ]
+
+    def validate_listing_type(self, value):
+        if value not in {'rent', 'sale'}:
+            raise serializers.ValidationError('listing_type must be rent or sale.')
+        return value
+
+    def validate_deposit_structure(self, value):
+        if value is not None and value not in {'fixed', 'installments'}:
+            raise serializers.ValidationError('deposit_structure must be fixed or installments.')
+        return value
+
+
 class ListingCreateSerializer(serializers.Serializer):
     title = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
