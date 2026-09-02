@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.conf import settings
 from django.db import transaction
@@ -11,6 +12,13 @@ from .models import LandlordSubscription, RealEstateSubscription, SubscriptionIn
 
 def _period_end(start, billing_cycle):
     return start + (timedelta(days=365) if billing_cycle == 'ANNUAL' else timedelta(days=30))
+
+
+def _paypal_return_url(base_url, invoice_id):
+    parts = urlsplit(base_url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query['invoice_id'] = str(invoice_id)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None):
@@ -46,17 +54,10 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     with transaction.atomic():
         subscription_model.objects.filter(**{owner_field: profile.id}, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=now)
         create_kwargs = {
-            owner_field: profile.id,
-            'plan_id': plan.id,
-            'billing_cycle': billing_cycle,
-            'status': 'PENDING_PAYMENT',
-            'grace_period_end': None,
-            'auto_renew': False,
-            'created_at': now,
-            'updated_at': now,
-            'billing_amount_kes': amount_kes,
-            'billing_amount_usd': amount_usd,
-            'paypal_plan_id': paypal_plan_id if provider == 'paypal' else None,
+            owner_field: profile.id, 'plan_id': plan.id, 'billing_cycle': billing_cycle,
+            'status': 'PENDING_PAYMENT', 'grace_period_end': None, 'auto_renew': False,
+            'created_at': now, 'updated_at': now, 'billing_amount_kes': amount_kes,
+            'billing_amount_usd': amount_usd, 'paypal_plan_id': paypal_plan_id if provider == 'paypal' else None,
         }
         if profile.role == 'landlord':
             create_kwargs['current_period_start'] = now
@@ -76,13 +77,11 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     if provider == 'paypal':
         from .paypal_subscription_services import create_paypal_subscription
         try:
-            return_url = settings.PAYPAL_SUBSCRIPTION_RETURN_URL
-            cancel_url = settings.PAYPAL_SUBSCRIPTION_CANCEL_URL
             remote = create_paypal_subscription(
                 plan_id=paypal_plan_id,
                 custom_id=str(invoice.id),
-                return_url=return_url,
-                cancel_url=cancel_url,
+                return_url=_paypal_return_url(settings.PAYPAL_SUBSCRIPTION_RETURN_URL, invoice.id),
+                cancel_url=_paypal_return_url(settings.PAYPAL_SUBSCRIPTION_CANCEL_URL, invoice.id),
             )
             paypal_subscription_id = str(remote['id'])
             approval_url = next(
