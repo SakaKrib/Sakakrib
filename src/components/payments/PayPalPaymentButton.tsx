@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   PayPalProvider,
   PayPalOneTimePaymentButton,
@@ -26,14 +26,11 @@ interface ListingStartResponse {
   detail?: string;
   message?: string;
   provider_reference?: string;
-  provider_amount?: string;
-  provider_currency?: string;
 }
 
 interface ListingCaptureResponse {
   success?: boolean;
   status?: string;
-  listing_id?: string;
   detail?: string;
   message?: string;
 }
@@ -68,6 +65,7 @@ export default function PayPalPaymentButton({
   disabled = false,
 }: PayPalPaymentButtonProps) {
   const [working, setWorking] = useState(false);
+  const subscriptionInvoiceIdRef = useRef<string | null>(null);
 
   if (!clientId) {
     return (
@@ -127,31 +125,18 @@ export default function PayPalPaymentButton({
       provider: 'paypal',
     });
 
-    if (!response?.success || !response.paypal_subscription_id) {
+    if (!response?.success || !response.paypal_subscription_id || !response.invoice_id) {
       setWorking(false);
       throw new Error(errorMessage(response, 'Unable to start PayPal subscription checkout.'));
     }
 
-    try {
-      sessionStorage.setItem('pendingPaypalInvoiceId', response.invoice_id || '');
-    } catch {
-      // Non-fatal: Django still receives the subscription ID during approval.
-    }
-
+    subscriptionInvoiceIdRef.current = response.invoice_id;
     return { subscriptionId: response.paypal_subscription_id };
   };
 
   const approveSubscription = async ({ subscriptionId }: OnApproveDataSubscriptions) => {
-    let invoiceId = '';
-    try {
-      invoiceId = sessionStorage.getItem('pendingPaypalInvoiceId') || '';
-    } catch {
-      // Fall through to the explicit error below.
-    }
-
-    if (!invoiceId) {
-      return fail('The PayPal subscription invoice reference is missing.');
-    }
+    const invoiceId = subscriptionInvoiceIdRef.current;
+    if (!invoiceId) return fail('The PayPal subscription invoice reference is missing.');
 
     try {
       const response = await protectedPost<SubscriptionApproveResponse>('/api/subscriptions/paypal/approve/', {
@@ -161,23 +146,12 @@ export default function PayPalPaymentButton({
       if (!response?.success) {
         throw new Error(errorMessage(response, 'PayPal subscription could not be confirmed.'));
       }
-      try {
-        sessionStorage.removeItem('pendingPaypalInvoiceId');
-      } catch {
-        // Non-fatal.
-      }
+      subscriptionInvoiceIdRef.current = null;
       setWorking(false);
       await onSuccess();
     } catch (error) {
       fail(error instanceof Error ? error.message : 'Unable to confirm PayPal subscription.');
     }
-  };
-
-  const commonStyle = {
-    layout: 'vertical' as const,
-    shape: 'rect' as const,
-    height: 44,
-    tagline: false,
   };
 
   return (
@@ -196,7 +170,7 @@ export default function PayPalPaymentButton({
             onError={(error) => fail(error.message || 'PayPal payment failed.')}
             presentationMode="auto"
             disabled={disabled || working}
-            style={commonStyle}
+            type="pay"
           />
         ) : (
           <PayPalSubscriptionButton
@@ -207,15 +181,10 @@ export default function PayPalPaymentButton({
             presentationMode="auto"
             disabled={disabled || working}
             type="subscribe"
-            style={commonStyle}
           />
         )}
       </PayPalProvider>
-      {working && (
-        <p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">
-          Confirming your payment securely…
-        </p>
-      )}
+      {working && <p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">Confirming your payment securely…</p>}
     </div>
   );
 }
