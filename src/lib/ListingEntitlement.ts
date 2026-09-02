@@ -72,7 +72,7 @@ interface RawEntitlement {
 function normalizeStatus(raw: unknown): SubscriptionStatus {
   const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
   if (value === 'trial') return 'trial';
-  if (['active'].includes(value)) return 'active';
+  if (value === 'active') return 'active';
   if (['pending_payment', 'pending payment', 'pending-payment'].includes(value)) return 'pending_payment';
   if (['grace_period', 'grace period', 'grace-period'].includes(value)) return 'grace_period';
   if (value === 'expired') return 'expired';
@@ -213,7 +213,7 @@ export async function createRoleAwareListing(payload: ListingFormPayload): Promi
 }
 
 export async function createListingPaymentIntent(payload: ListingFormPayload): Promise<{ paymentIntentId: string; amountKes: number }> {
-  const data = await protectedPost<{ payment_intent_id?: string; amount_kes?: unknown }(
+  const data = await protectedPost<{ payment_intent_id?: string; amount_kes?: unknown }>(
     '/api/listings/payment-intents/',
     payload,
   );
