@@ -81,8 +81,16 @@ const getInIds = (value: string | null): string[] => {
 const adminUser = <T>(userId: string) =>
   djangoRequest<T>(`/api/accounts/admin/users/${encodeURIComponent(userId)}/`);
 
-const adminDashboard = <T>() =>
-  djangoRequest<T>('/api/accounts/admin/users/');
+let adminDashboardPromise: Promise<unknown> | null = null;
+
+const adminDashboard = <T>() => {
+  if (!adminDashboardPromise) {
+    adminDashboardPromise = djangoRequest<T>('/api/accounts/admin/users/').finally(() => {
+      adminDashboardPromise = null;
+    });
+  }
+  return adminDashboardPromise as Promise<T>;
+};
 
 const isAdminDetailQuery = (query: URLSearchParams): boolean => {
   const select = query.get('select') || '';
