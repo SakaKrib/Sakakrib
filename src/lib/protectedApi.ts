@@ -221,9 +221,45 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
 
   if (resource === '/rest/v1/real_estate_subscriptions' && method === 'GET') {
     const userId = getEqId(query.get('real_estate_id'));
-    if (userId) {
+    if (userId && isAdminDetailQuery(query)) {
       const detail = await adminUser<{ real_estate_subscription: T }>(userId);
       return { handled: true, data: (detail.real_estate_subscription ? [detail.real_estate_subscription] : []) as T };
+    }
+    if (userId) {
+      const data = await djangoRequest<{
+        subscription_id: string | null;
+        plan_id: string | null;
+        plan_name: string | null;
+        subscription_status: string | null;
+        billing_cycle: string | null;
+        current_period_start: string | null;
+        current_period_end: string | null;
+        grace_period_end: string | null;
+        auto_renew: boolean;
+        max_listings: number | null;
+        max_units_per_listing: number | null;
+      }>('/api/subscriptions/me/');
+      if (!data.subscription_id) return { handled: true, data: [] as T };
+      return {
+        handled: true,
+        data: [{
+          id: data.subscription_id,
+          real_estate_id: userId,
+          plan_id: data.plan_id,
+          billing_cycle: data.billing_cycle,
+          status: data.subscription_status,
+          current_period_start: data.current_period_start,
+          current_period_end: data.current_period_end,
+          grace_period_end: data.grace_period_end,
+          auto_renew: data.auto_renew,
+          plan: data.plan_id ? {
+            id: data.plan_id,
+            name: data.plan_name,
+            max_listings: data.max_listings,
+            max_units_per_listing: data.max_units_per_listing,
+          } : null,
+        }] as T,
+      };
     }
     const dashboard = await adminDashboard<{ items: Array<{ subscription?: { real_estate_id?: string } | null }> }>();
     const rows = dashboard.items.map((item) => item.subscription).filter((subscription) => Boolean(subscription?.real_estate_id));
