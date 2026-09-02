@@ -87,6 +87,25 @@ def _pms_listing_key(profile):
     raise ValueError('PMS is available only to landlord and real-estate accounts.')
 
 
+def _listing_payload(listing, link=None):
+    return {
+        'id': str(listing.id),
+        'title': listing.title,
+        'city': listing.city,
+        'county': listing.county,
+        'price_kes': listing.price_kes,
+        'is_published': listing.is_published,
+        'status': listing.status,
+        'approval_status': listing.approval_status,
+        'is_approved': listing.is_approved,
+        'is_property_management': listing.is_property_management,
+        'subscription_listing_id': str(link.id) if link else None,
+        'subscription_id': str(link.subscription_id) if link and link.subscription_id else None,
+        'activated_at': link.activated_at if link else None,
+        'deactivated_at': link.deactivated_at if link else None,
+    }
+
+
 def get_my_pms_listings(profile):
     subscription = get_current_subscription(profile)
     if not subscription:
@@ -94,22 +113,9 @@ def get_my_pms_listings(profile):
     key = _pms_listing_key(profile)
     links = SubscriptionListing.objects.filter(**{key: subscription.id}, status='ACTIVE')
     listing_ids = links.values_list('listing_id', flat=True)
-    listings = Listing.objects.filter(id__in=listing_ids, user_id=profile.id).order_by('-updated_at', '-created_at')
+    listings = Listing.objects.filter(id__in=listing_ids, user_id=profile.id).order_by('created_at')
     link_by_listing = {str(link.listing_id): link for link in links}
-    return [
-        {
-            'id': str(listing.id),
-            'title': listing.title,
-            'city': listing.city,
-            'county': listing.county,
-            'price_kes': listing.price_kes,
-            'is_published': listing.is_published,
-            'status': listing.status,
-            'activated_at': link_by_listing[str(listing.id)].activated_at,
-            'deactivated_at': link_by_listing[str(listing.id)].deactivated_at,
-        }
-        for listing in listings
-    ]
+    return [_listing_payload(listing, link_by_listing.get(str(listing.id))) for listing in listings]
 
 
 def get_available_pms_listings(profile):
@@ -118,19 +124,11 @@ def get_available_pms_listings(profile):
         return []
     key = _pms_listing_key(profile)
     linked_ids = SubscriptionListing.objects.filter(**{key: subscription.id}, status='ACTIVE').values('listing_id')
-    listings = Listing.objects.filter(user_id=profile.id, is_property_management=True).exclude(id__in=linked_ids).order_by('-updated_at', '-created_at')
-    return [
-        {
-            'id': str(listing.id),
-            'title': listing.title,
-            'city': listing.city,
-            'county': listing.county,
-            'price_kes': listing.price_kes,
-            'is_published': listing.is_published,
-            'status': listing.status,
-        }
-        for listing in listings
-    ]
+    # Match the legacy contract: available PMS candidates are the owner's
+    # listings that are not already attached to this subscription and are not
+    # already flagged as property-management managed.
+    listings = Listing.objects.filter(user_id=profile.id, is_property_management=False).exclude(id__in=linked_ids).order_by('-created_at')
+    return [_listing_payload(listing) for listing in listings]
 
 
 def get_pms_unit_count(profile):
@@ -138,16 +136,15 @@ def get_pms_unit_count(profile):
     if not subscription:
         return {'unit_count': 0, 'max_units': None, 'remaining_units': None}
     plan = get_subscription_plan(subscription)
-    max_units = plan.max_units_per_listing if plan else None
-    listing_ids = SubscriptionListing.objects.filter(
-        **{_pms_listing_key(profile): subscription.id}, status='ACTIVE'
-    ).values_list('listing_id', flat=True)
-    from apps.core.domain_property import PropertyUnit
-    unit_count = PropertyUnit.objects.filter(listing_id__in=listing_ids).count()
+    key = _pms_listing_key(profile)
+    managed_count = SubscriptionListing.objects.filter(**{key: subscription.id}, status='ACTIVE').count()
+    max_listings = plan.max_listings if plan else None
     return {
-        'unit_count': unit_count,
-        'max_units': max_units,
-        'remaining_units': None if max_units is None else max(0, max_units - unit_count),
+        # The existing frontend names this value unit_count, but the
+        # production PMS contract counts managed listings/properties.
+        'unit_count': managed_count,
+        'max_units': max_listings,
+        'remaining_units': None if max_listings is None else max(0, max_listings - managed_count),
     }
 
 
@@ -157,30 +154,56 @@ def add_listing_to_pms(profile, listing_id):
         raise ValueError(access.get('reason', 'PMS access denied.'))
     if access.get('read_only'):
         raise ValueError('PMS is read-only during the grace period.')
-    subscription = get_current_subscription(profile)
-    plan = get_subscription_plan(subscription)
-    if not subscription or not plan:
-        raise ValueError('Active PMS subscription not found.')
+    if profile.role != 'landlord':
+        raise ValueError('PMS listing management is currently available only to landlord accounts.')
+
     try:
-        listing = Listing.objects.get(pk=listing_id, user_id=profile.id, is_property_management=True)
+        listing = Listing.objects.get(pk=listing_id, user_id=profile.id)
     except Listing.DoesNotExist as exc:
-        raise ValueError('Property-management listing not found or not owned by you.') from exc
+        raise ValueError('Listing not found or not owned by you.') from exc
+
     key = _pms_listing_key(profile)
     with transaction.atomic():
-        if SubscriptionListing.objects.filter(**{key: subscription.id, 'listing_id': listing.id, 'status': 'ACTIVE'}).exists():
-            raise ValueError('Listing is already in PMS.')
+        subscription = LandlordSubscription.objects.select_for_update().filter(pk=access['subscription_id'], landlord_id=profile.id).first()
+        if not subscription or subscription.status not in {'ACTIVE', 'GRACE_PERIOD'}:
+            raise ValueError('PMS subscription is not active.')
+        plan = get_subscription_plan(subscription)
+        if not plan:
+            raise ValueError('PMS subscription plan not found.')
+
+        existing = SubscriptionListing.objects.filter(**{key: subscription.id, 'listing_id': listing.id}).first()
+        if existing and existing.status == 'ACTIVE':
+            raise ValueError('Listing is already managed by this PMS subscription.')
+
         active_count = SubscriptionListing.objects.filter(**{key: subscription.id}, status='ACTIVE').count()
         if plan.max_listings is not None and active_count >= plan.max_listings:
-            raise ValueError('Your PMS subscription listing limit has been reached.')
-        values = {
-            key: subscription.id,
-            'listing_id': listing.id,
-            'status': 'ACTIVE',
-            'activated_at': timezone.now(),
-            'created_at': timezone.now(),
-        }
-        link = SubscriptionListing.objects.create(**values)
-    return {'success': True, 'listing_id': str(listing.id), 'subscription_id': str(subscription.id), 'subscription_listing_id': str(link.id)}
+            raise ValueError(f'Your {plan.name} PMS plan supports a maximum of {plan.max_listings} managed listings. Please upgrade your PMS plan.')
+
+        now = timezone.now()
+        if existing:
+            existing.status = 'ACTIVE'
+            existing.activated_at = now
+            existing.deactivated_at = None
+            existing.save(update_fields=['status', 'activated_at', 'deactivated_at'])
+            link = existing
+        else:
+            link = SubscriptionListing.objects.create(
+                subscription_id=subscription.id,
+                listing_id=listing.id,
+                status='ACTIVE',
+                activated_at=now,
+                created_at=now,
+            )
+
+    return {
+        'success': True,
+        'subscription_id': str(subscription.id),
+        'listing_id': str(listing.id),
+        'plan': plan.name,
+        'managed_listings': active_count + 1,
+        'max_listings': plan.max_listings,
+        'subscription_listing_id': str(link.id),
+    }
 
 
 def remove_listing_from_pms(profile, listing_id):
@@ -189,17 +212,26 @@ def remove_listing_from_pms(profile, listing_id):
         raise ValueError(access.get('reason', 'PMS access denied.'))
     if access.get('read_only'):
         raise ValueError('PMS is read-only during the grace period.')
-    subscription = get_current_subscription(profile)
+    if profile.role != 'landlord':
+        raise ValueError('PMS listing management is currently available only to landlord accounts.')
+
+    subscription = LandlordSubscription.objects.filter(pk=access['subscription_id'], landlord_id=profile.id).first()
     if not subscription:
-        raise ValueError('Active PMS subscription not found.')
-    key = _pms_listing_key(profile)
+        raise ValueError('PMS subscription is not active.')
+
     with transaction.atomic():
-        link = SubscriptionListing.objects.filter(**{key: subscription.id}, listing_id=listing_id, status='ACTIVE').first()
+        link = SubscriptionListing.objects.filter(subscription_id=subscription.id, listing_id=listing_id, status='ACTIVE').first()
         if not link:
-            raise ValueError('PMS listing not found.')
+            raise ValueError('Listing is not currently managed by this PMS subscription.')
         if not Listing.objects.filter(pk=listing_id, user_id=profile.id).exists():
             raise ValueError('Listing not found or not owned by you.')
         link.status = 'INACTIVE'
         link.deactivated_at = timezone.now()
         link.save(update_fields=['status', 'deactivated_at'])
-    return {'success': True, 'listing_id': str(listing_id), 'subscription_id': str(subscription.id)}
+
+    return {
+        'success': True,
+        'subscription_id': str(subscription.id),
+        'listing_id': str(listing_id),
+        'status': 'INACTIVE',
+    }
