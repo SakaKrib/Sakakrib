@@ -149,5 +149,5 @@ def process_paypal_listing_webhook(payload):
 
 
 def verify_and_process_paypal_listing_webhook(payload, headers):
-    verify_paypal_webhook(payload, headers)
+    verify_paypal_webhook(payload, headers, webhook_id_setting='PAYPAL_LISTING_WEBHOOK_ID')
     return process_paypal_listing_webhook(payload)
