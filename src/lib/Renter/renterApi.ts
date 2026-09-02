@@ -1,4 +1,4 @@
-import { protectedGet, protectedPost } from '@/lib/protectedApi';
+import { djangoApi } from '@/lib/djangoApi';
 
 export interface RenterAssociation {
   id: string; renter_user_id: string | null; unit_id: string; landlord_id: string; status: string;
@@ -23,6 +23,7 @@ export interface MovingInvoice {
   provider_reference: string | null; provider_transaction_id: string | null; paid_at: string | null; released_at: string | null;
   mover_name_snapshot: string; mover_phone_snapshot: string | null; vehicle_type_snapshot: string | null;
   number_plate_snapshot: string | null; mover_profile_photo_snapshot: string | null; created_at: string; updated_at: string;
+  platform_fee_kes?: number; mover_net_kes?: number;
 }
 export interface RentPaymentSubmission {
   id: string; invoice_id: string; renter_user_id: string; landlord_id: string; renter_assoc_id: string; unit_id: string;
@@ -43,6 +44,7 @@ export interface Booking {
 export interface RequestMoverBookingInput {
   moverId: string; pickupAddress: string; dropoffAddress: string; pickupLatitude: number; pickupLongitude: number;
   dropoffLatitude: number; dropoffLongitude: number; distanceKm: number; listingId?: string | null;
+  movingDate?: string; paymentMethod?: string | null;
 }
 export interface RequestMoverBookingResponse {
   booking_id: string; conversation_id: string; status: 'pending' | string; request_expires_at: string;
@@ -59,87 +61,79 @@ export interface RenterNotificationsResponse { notifications: Array<{ id: string
 export interface RenterChatResponse { messages: unknown[]; }
 export interface MoverScheduleAvailability { booking_id: string; mover_id: string; working_days: string[] | null; start_time: string | null; end_time: string | null; blocked_intervals: Array<{ starts_at: string; ends_at: string; status: string | null }>; }
 
-const encode = (value: string) => encodeURIComponent(value);
-const invoiceSelect = 'id,invoice_number,landlord_id,renter_user_id,renter_assoc_id,listing_id,unit_id,billing_period_start,billing_period_end,due_date,amount_kes,currency,status,payment_method_id,payment_destination_snapshot,paid_at,confirmed_by,confirmed_at,created_at,updated_at';
-const movingInvoiceSelect = 'id,booking_id,invoice_number,renter_id,mover_id,amount_kes,currency,status,payment_provider,provider_reference,provider_transaction_id,paid_at,released_at,mover_name_snapshot,mover_phone_snapshot,vehicle_type_snapshot,number_plate_snapshot,mover_profile_photo_snapshot,created_at,updated_at';
-const bookingSelect = 'id,renter_id,mover_id,listing_id,pickup_address,dropoff_address,moving_date,booking_amount,commission_amount,total_amount,status,payment_status,payment_method,distance_km,rate_per_km_kes,base_rate_kes,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,requested_at,request_expires_at,confirmed_at,tracking_number,last_known_latitude,last_known_longitude,last_location_at,scheduled_start_at,scheduled_end_at,started_at,renter_confirmed_delivery_at,mover_confirmed_delivery_at,contact_released_at,dispute_status,completed_at,cancelled_at,cancellation_reason,cancellation_details,created_at,updated_at';
 const mapInvoice = (invoice: RentInvoice): RentInvoice => ({ ...invoice, amount: invoice.amount_kes, total_amount: invoice.amount_kes });
+const mapBooking = (row: Record<string, unknown>): Booking => row as unknown as Booking;
 
 export const renterApi = {
-  getDashboard: async (userId?: string): Promise<RenterDashboardResponse> => {
-    if (!userId) throw new Error('Authenticated renter identity is required.');
-    const associations = await protectedGet<RenterAssociation[]>(`/rest/v1/renter_unit_associations?renter_user_id=eq.${encode(userId)}&status=eq.ACTIVE&select=id,renter_user_id,unit_id,landlord_id,status,rent_amount,lease_start,lease_end&order=created_at.desc&limit=1`);
-    const association = associations?.[0] ?? null;
-    const [invoices, bookings] = await Promise.all([renterApi.getInvoices(userId), renterApi.getBookings(userId)]);
-    if (!association) return { association: null, unit: null, property: null, invoices, bookings };
-    const units = await protectedGet<RenterUnit[]>(`/rest/v1/property_units?id=eq.${encode(association.unit_id)}&select=id,listing_id,unit_number,unit_type,rent,deposit_amount,size,beds,baths,availability,description,rent_due_day,rent_paid_in_advance,rent_paid_through_month&limit=1`);
-    const unit = units?.[0] ?? null;
-    let property: RenterProperty | null = null;
-    if (unit?.listing_id) {
-      const properties = await protectedGet<RenterProperty[]>(`/rest/v1/listings?id=eq.${encode(unit.listing_id)}&select=id,title,city,county,address,cover_image_url&limit=1`);
-      property = properties?.[0] ?? null;
-    }
-    return { association, unit, property, invoices, bookings };
+  getDashboard: async (_userId?: string): Promise<RenterDashboardResponse> => {
+    return djangoApi.get<RenterDashboardResponse>('/api/core/renter/dashboard/');
   },
-  getInvoices: async (userId?: string): Promise<RentInvoice[]> => {
-    if (!userId) throw new Error('Authenticated renter identity is required.');
-    const invoices = await protectedGet<RentInvoice[]>(`/rest/v1/rent_invoices?renter_user_id=eq.${encode(userId)}&select=${invoiceSelect}&order=due_date.desc`);
+  getInvoices: async (_userId?: string): Promise<RentInvoice[]> => {
+    const invoices = await djangoApi.get<RentInvoice[]>('/api/core/renter/invoices/');
     return (invoices ?? []).map(mapInvoice);
   },
   getInvoice: async (id: string): Promise<RentInvoice> => {
-    const invoices = await protectedGet<RentInvoice[]>(`/rest/v1/rent_invoices?id=eq.${encode(id)}&select=${invoiceSelect}&limit=1`);
-    const invoice = invoices?.[0];
-    if (!invoice) throw new Error('Invoice not found.');
-    return mapInvoice(invoice);
+    return mapInvoice(await djangoApi.get<RentInvoice>(`/api/core/renter/invoices/${id}/`));
   },
   getMovingInvoice: async (bookingId: string): Promise<MovingInvoice | null> => {
     if (!bookingId) return null;
-    const invoices = await protectedGet<MovingInvoice[]>(`/rest/v1/moving_invoices?booking_id=eq.${encode(bookingId)}&select=${movingInvoiceSelect}&limit=1`);
+    const invoices = await djangoApi.get<MovingInvoice[]>(`/api/core/moving-invoices/?booking_id=${encodeURIComponent(bookingId)}`);
     return invoices?.[0] ?? null;
   },
   getPaymentSubmissions: async (invoiceId: string): Promise<RentPaymentSubmission[]> => {
-    const rows = await protectedGet<RentPaymentSubmission[]>(`/rest/v1/rent_payment_submissions?invoice_id=eq.${encode(invoiceId)}&select=id,invoice_id,renter_user_id,landlord_id,renter_assoc_id,unit_id,transaction_reference,status,submitted_at,confirmed_by,confirmed_at,rejection_reason,created_at,updated_at&order=submitted_at.desc`);
-    return rows ?? [];
+    return djangoApi.get<RentPaymentSubmission[]>(`/api/core/renter/invoices/${invoiceId}/submissions/`);
   },
-  submitRentPayment: async (invoiceId: string, transactionReference: string) => {
+  submitRentPayment: async (invoiceId: string, transactionReference: string, paymentMethod?: string, paymentDate?: string) => {
     const reference = transactionReference.trim();
     if (!reference) throw new Error('Transaction ID is required.');
-    return protectedPost<{ success: boolean; submission_id?: string; invoice_id?: string; status?: string }>('/rest/v1/rpc/submit_rent_payment', { p_invoice_id: invoiceId, p_transaction_reference: reference });
+    return djangoApi.post<{ success?: boolean; submission_id?: string; invoice_id?: string; status?: string }>(
+      `/api/core/invoices/${invoiceId}/submit-payment/`,
+      { transaction_reference: reference, payment_method: paymentMethod, payment_date: paymentDate },
+    );
   },
-  getPaymentDestination: (paymentMethodId: string, unitId: string) => protectedPost<RentPaymentDestination | null>('/rest/v1/rpc/get_rent_payment_destination', { p_payment_method_id: paymentMethodId, p_unit_id: unitId }),
-  getRentSummary: (associationId: string) => protectedPost<Record<string, unknown>>('/rest/v1/rpc/get_renter_rent_summary', { p_renter_assoc_id: associationId }),
-  getPaymentHistory: (associationId: string) => protectedPost<Array<{ id: string; amount_kes: number; period_year: number; period_month: number; status: string; payment_provider: string | null; payment_method: string | null; mpesa_receipt: string | null; paid_at: string | null; created_at: string }>>('/rest/v1/rpc/get_renter_payment_history', { p_assoc_id: associationId }),
-  getBookings: async (userId?: string): Promise<Booking[]> => {
-    if (!userId) throw new Error('Authenticated renter identity is required.');
-    return protectedGet<Booking[]>(`/rest/v1/bookings?renter_id=eq.${encode(userId)}&select=${bookingSelect}&order=moving_date.asc`);
+  getPaymentDestination: (paymentMethodId: string, unitId: string) =>
+    djangoApi.post<RentPaymentDestination>('/api/core/renter/payment-destination/', { payment_method_id: paymentMethodId, unit_id: unitId }),
+  getRentSummary: (associationId: string) =>
+    djangoApi.post<Record<string, unknown>>('/api/core/renter/rent-summary/', { renter_assoc_id: associationId }),
+  getPaymentHistory: (associationId: string) =>
+    djangoApi.post<Array<{ id: string; amount_kes: number; period_year: number; period_month: number; status: string; payment_provider: string | null; payment_method: string | null; mpesa_receipt: string | null; paid_at: string | null; created_at: string }>>('/api/core/renter/payment-history/', { assoc_id: associationId }),
+  getBookings: async (_userId?: string): Promise<Booking[]> => {
+    const rows = await djangoApi.get<Record<string, unknown>[]>('/api/core/bookings/');
+    return (rows ?? []).map(mapBooking);
   },
   getBooking: async (id: string): Promise<Booking> => {
-    const bookings = await protectedGet<Booking[]>(`/rest/v1/bookings?id=eq.${encode(id)}&select=${bookingSelect}&limit=1`);
-    const booking = bookings?.[0];
-    if (!booking) throw new Error('Booking not found.');
-    return booking;
+    return mapBooking(await djangoApi.get<Record<string, unknown>>(`/api/core/bookings/${id}/`));
   },
   getMoverQuote: async (moverId: string, distanceKm: number): Promise<MoverQuoteResponse> => {
     if (!moverId) throw new Error('Mover is required.');
     if (!Number.isFinite(distanceKm) || distanceKm < 0) throw new Error('Invalid route distance.');
-    return protectedPost<MoverQuoteResponse>('/rest/v1/rpc/get_mover_quote', {
-      p_mover_id: moverId,
-      p_distance_km: distanceKm,
-    });
+    const quote = await djangoApi.post<Record<string, unknown>>('/api/core/movers/quote/', { mover_id: moverId, distance_km: distanceKm });
+    return {
+      moverId: String(quote.mover_id ?? moverId), distanceKm: Number(quote.distance_km ?? distanceKm),
+      baseRateKes: Number(quote.base_rate_kes ?? 0), ratePerKmKes: Number(quote.rate_per_km_kes ?? 0),
+      moverChargeKes: Number(quote.mover_charge_kes ?? quote.renter_total_kes ?? 0),
+      operationalMarkupRate: Number(quote.operational_markup_rate ?? 0), operationalMarkupKes: Number(quote.operational_markup_kes ?? 0),
+      commissionRate: Number(quote.platform_commission_rate ?? quote.commission_rate ?? 0), commissionKes: Number(quote.platform_fee_kes ?? quote.commission_kes ?? 0),
+      renterTotalKes: Number(quote.renter_total_kes ?? 0), netMoverPayableKes: Number(quote.mover_net_kes ?? quote.net_mover_payable_kes ?? 0),
+      currency: String(quote.currency ?? 'KES'),
+    };
   },
   requestMoverBooking: async (input: RequestMoverBookingInput): Promise<RequestMoverBookingResponse> => {
-    const pickupAddress = input.pickupAddress.trim();
-    const dropoffAddress = input.dropoffAddress.trim();
     if (!input.moverId) throw new Error('Mover is required.');
-    if (!pickupAddress) throw new Error('Pickup address is required.');
-    if (!dropoffAddress) throw new Error('Drop-off address is required.');
-    if (!Number.isFinite(input.pickupLatitude) || !Number.isFinite(input.pickupLongitude) || !Number.isFinite(input.dropoffLatitude) || !Number.isFinite(input.dropoffLongitude)) throw new Error('Please select valid pickup and drop-off locations.');
-    if (!Number.isFinite(input.distanceKm) || input.distanceKm < 0) throw new Error('Invalid route distance.');
-    const result = await protectedPost<RequestMoverBookingResponse>('/rest/v1/rpc/request_mover_booking', {
-      p_mover_id: input.moverId, p_pickup_address: pickupAddress, p_dropoff_address: dropoffAddress,
-      p_pickup_latitude: input.pickupLatitude, p_pickup_longitude: input.pickupLongitude,
-      p_dropoff_latitude: input.dropoffLatitude, p_dropoff_longitude: input.dropoffLongitude,
-      p_distance_km: input.distanceKm, p_listing_id: input.listingId ?? null,
+    if (!input.pickupAddress.trim()) throw new Error('Pickup address is required.');
+    if (!input.dropoffAddress.trim()) throw new Error('Drop-off address is required.');
+    const result = await djangoApi.post<RequestMoverBookingResponse>('/api/core/bookings/request/', {
+      mover_id: input.moverId,
+      pickup_address: input.pickupAddress.trim(),
+      dropoff_address: input.dropoffAddress.trim(),
+      pickup_latitude: input.pickupLatitude,
+      pickup_longitude: input.pickupLongitude,
+      dropoff_latitude: input.dropoffLatitude,
+      dropoff_longitude: input.dropoffLongitude,
+      distance_km: input.distanceKm,
+      listing_id: input.listingId ?? null,
+      moving_date: input.movingDate,
+      preferred_payment_method: input.paymentMethod ?? null,
     });
     if (!result?.booking_id) throw new Error('The mover request was not created.');
     return result;
@@ -148,11 +142,10 @@ export const renterApi = {
     const [invoices, bookings] = await Promise.all([renterApi.getInvoices(userId), renterApi.getBookings(userId)]);
     return { invoices, bookings };
   },
-  getMoverScheduleAvailability: (bookingId: string, from: string, to: string) => protectedPost<MoverScheduleAvailability>('/rest/v1/rpc/get_mover_schedule_availability', { p_booking_id: bookingId, p_from: from, p_to: to }),
-  getNotifications: async (userId?: string): Promise<RenterNotificationsResponse> => {
-    if (!userId) throw new Error('Authenticated renter identity is required.');
-    const notifications = await protectedGet<RenterNotificationsResponse['notifications']>(`/rest/v1/renter_notifications?renter_user_id=eq.${encode(userId)}&select=id,renter_user_id,renter_assoc_id,landlord_id,notification_type,title,body,action_type,action_payload,read_at,created_at&order=created_at.desc`);
-    return { notifications: notifications ?? [] };
+  getMoverScheduleAvailability: (bookingId: string, from: string, to: string) =>
+    djangoApi.post<MoverScheduleAvailability>('/api/core/renter/mover-schedule-availability/', { booking_id: bookingId, from, to }),
+  getNotifications: async (_userId?: string): Promise<RenterNotificationsResponse> => {
+    return djangoApi.get<RenterNotificationsResponse>('/api/core/renter-notifications/');
   },
   getChat: async (): Promise<RenterChatResponse> => ({ messages: [] }),
 };
