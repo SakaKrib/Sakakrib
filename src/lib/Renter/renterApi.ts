@@ -24,6 +24,14 @@ export interface MovingInvoice {
   mover_name_snapshot: string; mover_phone_snapshot: string | null; vehicle_type_snapshot: string | null;
   number_plate_snapshot: string | null; mover_profile_photo_snapshot: string | null; created_at: string; updated_at: string;
 }
+export interface MovingMpesaStartResponse {
+  success: boolean; booking_id: string; payment_id: string; invoice_id: string;
+  checkout_request_id: string; amount_kes: number; status: string; customer_message?: string | null;
+}
+export interface MovingPaypalStartResponse {
+  success: boolean; booking_id: string; payment_id: string; order_id: string;
+  amount_kes: number; amount_usd: number; currency: string; fx_rate: number; approval_url?: string | null;
+}
 export interface RentPaymentSubmission {
   id: string; invoice_id: string; renter_user_id: string; landlord_id: string; renter_assoc_id: string; unit_id: string;
   transaction_reference: string; status: string; submitted_at: string; confirmed_by: string | null; confirmed_at: string | null;
@@ -120,6 +128,18 @@ export const renterApi = {
     if (!bookingId) return null;
     const invoices = await protectedGet<MovingInvoice[]>('/api/core/moving-invoices/');
     return (invoices ?? []).find((invoice) => invoice.booking_id === bookingId) ?? null;
+  },
+
+  startMovingMpesaPayment: (bookingId: string): Promise<MovingMpesaStartResponse> =>
+    protectedPost<MovingMpesaStartResponse>(`/api/core/bookings/${encodeURIComponent(bookingId)}/payment/mpesa/start/`, {}),
+
+  startMovingPaypalPayment: (bookingId: string): Promise<MovingPaypalStartResponse> =>
+    protectedPost<MovingPaypalStartResponse>(`/api/core/bookings/${encodeURIComponent(bookingId)}/payment/paypal/start/`, {}),
+
+  getMovingPayment: async (bookingId: string): Promise<Record<string, unknown> | null> => {
+    if (!bookingId) return null;
+    const payments = await protectedGet<Array<Record<string, unknown>>>('/api/core/moving-payments/');
+    return (payments ?? []).find((payment) => String(payment.booking_id ?? '') === bookingId) ?? null;
   },
 
   getPaymentSubmissions: async (invoiceId: string): Promise<RentPaymentSubmission[]> => {
