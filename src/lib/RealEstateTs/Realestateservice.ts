@@ -45,6 +45,7 @@ export interface RealEstateListingSummary {
   is_approved: boolean;
   is_published: boolean;
   is_paid: boolean;
+  pms_managed: boolean;
   created_at: string;
   cover_photo_url: string | null;
   media?: unknown[];
@@ -86,22 +87,34 @@ interface DashboardResponse {
     is_approved: boolean | null;
     is_published: boolean | null;
     is_paid: boolean | null;
+    pms_managed?: boolean;
     created_at: string;
     media?: Array<{ url?: string | null }>;
   }>;
 }
 
-export async function getRealEstatePMSAccess(): Promise<RealEstatePMSAccess> {
-  const response = await protectedGet<{ pms_access?: RealEstatePMSAccess }>('/api/pms/entitlement/');
-  return response.pms_access ?? {
-    allowed: false,
-    reason: 'PMS_ACCESS_UNAVAILABLE',
-    read_only: false,
+function mapListing(listing: NonNullable<DashboardResponse['listings']>[number]): RealEstateListingSummary {
+  return {
+    id: listing.id,
+    user_id: listing.user_id,
+    title: listing.title,
+    description: listing.description ?? null,
+    city: listing.city,
+    county: listing.county,
+    price_kes: listing.price_kes === null ? null : Number(listing.price_kes),
+    listing_type: listing.listing_type,
+    approval_status: listing.approval_status,
+    is_approved: Boolean(listing.is_approved),
+    is_published: Boolean(listing.is_published),
+    is_paid: Boolean(listing.is_paid),
+    pms_managed: Boolean(listing.pms_managed),
+    created_at: listing.created_at,
+    cover_photo_url: listing.media?.[0]?.url ?? null,
+    media: listing.media ?? [],
   };
 }
 
-export async function getCurrentRealEstateSubscription(): Promise<RealEstateSubscription | null> {
-  const row = await protectedGet<DashboardResponse['subscription']>('/api/subscriptions/me/');
+function mapSubscription(row: DashboardResponse['subscription']): RealEstateSubscription | null {
   if (!row?.subscription_id) return null;
   return {
     subscription_id: String(row.subscription_id),
@@ -117,8 +130,7 @@ export async function getCurrentRealEstateSubscription(): Promise<RealEstateSubs
   };
 }
 
-export async function getRealEstateListingEntitlement(_userId: string): Promise<RealEstateListingEntitlement> {
-  const raw = await protectedGet<NonNullable<DashboardResponse['entitlement']>>('/api/listings/entitlement/');
+function mapEntitlement(raw: NonNullable<DashboardResponse['entitlement']>): RealEstateListingEntitlement {
   return {
     canStartListing: Boolean(raw.can_start_listing),
     canCreate: Boolean(raw.can_create),
@@ -130,26 +142,30 @@ export async function getRealEstateListingEntitlement(_userId: string): Promise<
   };
 }
 
+export async function getRealEstatePMSAccess(): Promise<RealEstatePMSAccess> {
+  const response = await protectedGet<{ pms_access?: RealEstatePMSAccess }>('/api/pms/entitlement/');
+  return response.pms_access ?? {
+    allowed: false,
+    reason: 'PMS_ACCESS_UNAVAILABLE',
+    read_only: false,
+  };
+}
+
+export async function getCurrentRealEstateSubscription(): Promise<RealEstateSubscription | null> {
+  const row = await protectedGet<DashboardResponse['subscription']>('/api/subscriptions/me/');
+  return mapSubscription(row);
+}
+
+export async function getRealEstateListingEntitlement(_userId: string): Promise<RealEstateListingEntitlement> {
+  const raw = await protectedGet<NonNullable<DashboardResponse['entitlement']>>('/api/listings/entitlement/');
+  return mapEntitlement(raw);
+}
+
 export async function getMyRealEstateListings(userId?: string): Promise<RealEstateListingSummary[]> {
   const data = await protectedGet<DashboardResponse>('/api/pms/real-estate/dashboard/');
-  const listings = (data.listings ?? []).filter((listing) => !userId || listing.user_id === userId);
-  return listings.map((listing) => ({
-    id: listing.id,
-    user_id: listing.user_id,
-    title: listing.title,
-    description: listing.description ?? null,
-    city: listing.city,
-    county: listing.county,
-    price_kes: listing.price_kes === null ? null : Number(listing.price_kes),
-    listing_type: listing.listing_type,
-    approval_status: listing.approval_status,
-    is_approved: Boolean(listing.is_approved),
-    is_published: Boolean(listing.is_published),
-    is_paid: Boolean(listing.is_paid),
-    created_at: listing.created_at,
-    cover_photo_url: listing.media?.[0]?.url ?? null,
-    media: listing.media ?? [],
-  }));
+  return (data.listings ?? [])
+    .filter((listing) => !userId || listing.user_id === userId)
+    .map(mapListing);
 }
 
 export async function manageRealEstatePMSListing(action: 'add_listing' | 'remove_listing', listingId: string) {
@@ -167,48 +183,10 @@ export interface RealEstateDashboardData {
 
 export async function loadRealEstateDashboardData(_userId: string): Promise<RealEstateDashboardData> {
   const data = await protectedGet<DashboardResponse>('/api/pms/real-estate/dashboard/');
-  const rawSubscription = data.subscription;
-  const rawEntitlement = data.entitlement ?? {};
-  const listings = (data.listings ?? []).map((listing) => ({
-    id: listing.id,
-    user_id: listing.user_id,
-    title: listing.title,
-    description: listing.description ?? null,
-    city: listing.city,
-    county: listing.county,
-    price_kes: listing.price_kes === null ? null : Number(listing.price_kes),
-    listing_type: listing.listing_type,
-    approval_status: listing.approval_status,
-    is_approved: Boolean(listing.is_approved),
-    is_published: Boolean(listing.is_published),
-    is_paid: Boolean(listing.is_paid),
-    created_at: listing.created_at,
-    cover_photo_url: listing.media?.[0]?.url ?? null,
-    media: listing.media ?? [],
-  }));
 
   return {
-    subscription: rawSubscription?.subscription_id ? {
-      subscription_id: String(rawSubscription.subscription_id),
-      plan_id: String(rawSubscription.plan_id ?? ''),
-      plan_name: String(rawSubscription.plan_name ?? ''),
-      subscription_status: String(rawSubscription.subscription_status ?? ''),
-      billing_cycle: (rawSubscription.billing_cycle ?? 'MONTHLY') as 'MONTHLY' | 'ANNUAL',
-      max_listings: rawSubscription.max_listings == null ? null : Number(rawSubscription.max_listings),
-      max_units_per_listing: rawSubscription.max_units_per_listing == null ? null : Number(rawSubscription.max_units_per_listing),
-      current_period_start: String(rawSubscription.current_period_start ?? ''),
-      current_period_end: String(rawSubscription.current_period_end ?? ''),
-      grace_period_end: rawSubscription.grace_period_end ? String(rawSubscription.grace_period_end) : null,
-    } : null,
-    entitlement: {
-      canStartListing: Boolean(rawEntitlement.can_start_listing),
-      canCreate: Boolean(rawEntitlement.can_create),
-      requiresSubscription: Boolean(rawEntitlement.requires_subscription),
-      requiresIndividualPayment: Boolean(rawEntitlement.requires_individual_payment),
-      freeListingsRemaining: Number(rawEntitlement.free_listings_remaining ?? 0),
-      freeLimit: Number(rawEntitlement.free_limit ?? 0),
-      individualListingPriceKes: Number(rawEntitlement.individual_listing_price_kes ?? 1000),
-    },
-    listings,
+    subscription: mapSubscription(data.subscription),
+    entitlement: mapEntitlement(data.entitlement ?? {}),
+    listings: (data.listings ?? []).map(mapListing),
   };
 }
