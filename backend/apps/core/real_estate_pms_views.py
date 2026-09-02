@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -128,69 +129,79 @@ class RealEstatePMSActionView(APIView):
                 status=403,
             )
 
-        subscription = get_current_subscription(profile)
-        if not subscription or not isinstance(subscription, RealEstateSubscription):
-            return Response({'detail': 'An active real-estate PMS subscription is required.'}, status=403)
-
         action = request.data.get('action')
-        if action == 'add_listing':
-            listing_id = request.data.get('listing_id')
-            listing = Listing.objects.filter(
-                id=listing_id,
-                user_id=profile.id,
-                is_property_management=True,
-                is_approved=True,
-            ).first()
-            if not listing:
-                return Response({'detail': 'Approved property-management listing not found.'}, status=404)
+        with transaction.atomic():
+            subscription = (
+                RealEstateSubscription.objects.select_for_update()
+                .filter(pk=getattr(get_current_subscription(profile), 'id', None))
+                .first()
+            )
+            if not subscription or subscription.status != 'ACTIVE':
+                return Response({'detail': 'An active real-estate PMS subscription is required.'}, status=403)
 
-            plan = get_subscription_plan(subscription)
-            existing = SubscriptionListing.objects.filter(
-                real_estate_subscription_id=subscription.id,
-                status='ACTIVE',
-            ).count()
-            already = SubscriptionListing.objects.filter(
-                real_estate_subscription_id=subscription.id,
-                listing_id=listing.id,
-            ).first()
-            if already and already.status == 'ACTIVE':
-                return Response({
-                    'success': True,
-                    'subscription_listing_id': str(already.id),
-                    'already_managed': True,
-                })
-            if plan and plan.max_listings is not None and existing >= plan.max_listings:
-                return Response({'detail': 'Your subscription listing capacity has been reached.'}, status=409)
+            if action == 'add_listing':
+                listing_id = request.data.get('listing_id')
+                listing = Listing.objects.filter(
+                    id=listing_id,
+                    user_id=profile.id,
+                    is_property_management=True,
+                    is_approved=True,
+                ).first()
+                if not listing:
+                    return Response({'detail': 'Approved property-management listing not found.'}, status=404)
 
-            if already:
-                already.status = 'ACTIVE'
-                already.activated_at = timezone.now()
-                already.deactivated_at = None
-                already.save(update_fields=['status', 'activated_at', 'deactivated_at'])
-                obj = already
-            else:
-                now = timezone.now()
-                obj = SubscriptionListing.objects.create(
+                plan = get_subscription_plan(subscription)
+                already = SubscriptionListing.objects.filter(
                     real_estate_subscription_id=subscription.id,
                     listing_id=listing.id,
                     status='ACTIVE',
-                    activated_at=now,
-                    created_at=now,
-                )
-            return Response({'success': True, 'subscription_listing_id': str(obj.id)})
+                ).first()
+                if already:
+                    return Response({
+                        'success': True,
+                        'subscription_listing_id': str(already.id),
+                        'already_managed': True,
+                    })
 
-        if action == 'remove_listing':
-            listing_id = request.data.get('listing_id')
-            obj = SubscriptionListing.objects.filter(
-                real_estate_subscription_id=subscription.id,
-                listing_id=listing_id,
-                status='ACTIVE',
-            ).first()
-            if not obj:
-                return Response({'detail': 'Managed listing not found.'}, status=404)
-            obj.status = 'INACTIVE'
-            obj.deactivated_at = timezone.now()
-            obj.save(update_fields=['status', 'deactivated_at'])
-            return Response({'success': True})
+                existing = SubscriptionListing.objects.filter(
+                    real_estate_subscription_id=subscription.id,
+                    status='ACTIVE',
+                ).count()
+                if plan and plan.max_listings is not None and existing >= plan.max_listings:
+                    return Response({'detail': 'Your subscription listing capacity has been reached.'}, status=409)
+
+                now = timezone.now()
+                obj = SubscriptionListing.objects.filter(
+                    real_estate_subscription_id=subscription.id,
+                    listing_id=listing.id,
+                ).first()
+                if obj:
+                    obj.status = 'ACTIVE'
+                    obj.activated_at = now
+                    obj.deactivated_at = None
+                    obj.save(update_fields=['status', 'activated_at', 'deactivated_at'])
+                else:
+                    obj = SubscriptionListing.objects.create(
+                        real_estate_subscription_id=subscription.id,
+                        listing_id=listing.id,
+                        status='ACTIVE',
+                        activated_at=now,
+                        created_at=now,
+                    )
+                return Response({'success': True, 'subscription_listing_id': str(obj.id)})
+
+            if action == 'remove_listing':
+                listing_id = request.data.get('listing_id')
+                obj = SubscriptionListing.objects.filter(
+                    real_estate_subscription_id=subscription.id,
+                    listing_id=listing_id,
+                    status='ACTIVE',
+                ).first()
+                if not obj:
+                    return Response({'detail': 'Managed listing not found.'}, status=404)
+                obj.status = 'INACTIVE'
+                obj.deactivated_at = timezone.now()
+                obj.save(update_fields=['status', 'deactivated_at'])
+                return Response({'success': True})
 
         return Response({'detail': 'Unsupported real-estate PMS action.'}, status=400)
