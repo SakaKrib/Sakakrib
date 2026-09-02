@@ -47,7 +47,12 @@ def process_listing_payment(
     paypal_fx_rate: Decimal | None = None,
     paid_amount_kes: Decimal | int | float | None = None,
 ) -> dict[str, Any]:
-    """Finalize an individual KES 1,000 listing payment exactly once."""
+    """Finalize an individual KES 1,000 listing payment exactly once.
+
+    The payment intent is the authorization snapshot. Once a provider has
+    successfully paid that intent, later entitlement changes must not turn a
+    successful external payment into an un-settleable local transaction.
+    """
     provider = (provider or "").upper()
     payment_method = (payment_method or "").upper()
     if provider not in {"MPESA", "PAYPAL"} or payment_method not in {"MPESA", "PAYPAL"} or provider != payment_method:
@@ -100,10 +105,6 @@ def process_listing_payment(
         expected_kes = _money(intent.amount_kes)
         if effective_paid_kes != expected_kes:
             raise ValidationError("Paid KES amount does not match payment intent")
-
-        # Reconcile against the exact USD amount the server authorized when
-        # creating this intent. Do not reverse-convert a rounded provider amount
-        # because that can introduce a false match or false rejection.
         expected_usd = _money(expected_kes * fx_rate)
         if provider_paid_amount != expected_usd:
             raise ValidationError("PayPal captured amount does not match the server-calculated USD payment amount")
@@ -120,11 +121,16 @@ def process_listing_payment(
     profile = Profile.objects.select_for_update().filter(pk=intent.user_id).first()
     if profile is None:
         raise ValidationError("Profile not found")
+
+    # Do not recalculate whether the user currently has a free/subscription
+    # entitlement here. That entitlement was checked when this payment intent
+    # was created. Rechecking it after provider payment can strand a genuinely
+    # paid transaction if another listing consumed the entitlement in the
+    # meantime. The intent is deliberately the server-side authorization
+    # snapshot for this paid listing.
     entitlement = get_listing_entitlement(profile)
-    if not entitlement.get("can_start_listing"):
-        raise ValidationError("Account is no longer eligible to create a listing")
-    if entitlement.get("can_create"):
-        raise ValidationError("An existing free or subscription entitlement is available; individual payment is not required")
+    if not entitlement.get("authorized"):
+        raise ValidationError("Account is not authorized to own listings")
 
     listing = _create_listing_from_data(
         profile,
