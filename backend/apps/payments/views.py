@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.listings.models import ListingPaymentIntent
-from .services import get_provider
+from .services import get_exchange_rate, get_provider
 from .models import ListingPayment
 from apps.listings.services import finalize_listing_payment
 
@@ -32,28 +32,40 @@ class ListingPaymentStartView(APIView):
         intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk, status='PENDING').first()
         if not intent:
             return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
-        currency = 'KES' if provider_name == 'mpesa' else 'USD'
+
         if provider_name == 'mpesa':
             amount = intent.amount_kes
+            currency = 'KES'
+            fx_rate = None
         else:
-            amount = request.data.get('amount_usd')
-            if amount is None:
-                return Response({'detail': 'amount_usd is required for PayPal.'}, status=400)
+            # The browser may choose the provider, but it must never choose the
+            # authoritative USD amount. Production derives this from KES 1,000
+            # using the server-side KES/USD rate before creating the PayPal order.
+            try:
+                fx_rate = get_exchange_rate('KES', 'USD')
+                amount = (intent.amount_kes * fx_rate).quantize(__import__('decimal').Decimal('0.01'))
+            except Exception as exc:
+                return Response({'success': False, 'message': str(exc)}, status=503)
+            currency = 'USD'
+
         result = get_provider(provider_name).create_payment(
             amount=amount, currency=currency, reference=str(intent.id),
             metadata={'phone_number': request.data.get('phone_number'), 'description': 'SakaKrib listing'},
         )
         if not result.success:
             return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=502)
+
         intent.provider = provider_name.upper()
         intent.provider_reference = result.provider_reference
         intent.provider_amount = amount
         intent.provider_currency = currency
+        intent.paypal_fx_rate = fx_rate
         intent.updated_at = timezone.now()
-        intent.save(update_fields=['provider','provider_reference','provider_amount','provider_currency','updated_at'])
+        intent.save(update_fields=['provider','provider_reference','provider_amount','provider_currency','paypal_fx_rate','updated_at'])
         return Response({'success': True, 'payment_intent_id': str(intent.id), 'provider': provider_name,
-                         'provider_reference': result.provider_reference, 'message': result.message,
-                         'provider_response': result.raw})
+                         'provider_reference': result.provider_reference, 'provider_amount': str(amount),
+                         'provider_currency': currency, 'paypal_fx_rate': str(fx_rate) if fx_rate else None,
+                         'message': result.message, 'provider_response': result.raw})
 
 
 class MpesaListingCallbackView(APIView):
@@ -104,14 +116,15 @@ class PayPalListingCaptureView(APIView):
             return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=402)
         if intent.provider != 'PAYPAL' or intent.provider_reference != order_id:
             return Response({'success': False, 'message': 'PayPal order does not match the payment intent.'}, status=400)
-        if not intent.provider_amount or intent.provider_currency != 'USD':
-            return Response({'success': False, 'message': 'Payment intent has no valid USD PayPal amount.'}, status=400)
+        if not intent.provider_amount or intent.provider_currency != 'USD' or not intent.paypal_fx_rate:
+            return Response({'success': False, 'message': 'Payment intent has no valid server-side USD/FX settlement data.'}, status=400)
         try:
             with transaction.atomic():
                 settled = finalize_listing_payment(
                     intent.id, provider='PAYPAL', provider_reference=order_id,
                     provider_amount=intent.provider_amount, provider_currency='USD',
-                    paypal_order_id=order_id, result_description=result.message,
+                    paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
+                    result_description=result.message,
                 )
         except Exception as exc:
             return Response({'success': False, 'message': f'Payment captured but settlement failed: {exc}'}, status=500)
