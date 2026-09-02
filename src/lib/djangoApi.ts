@@ -25,6 +25,50 @@ const readJson = async <T>(response: Response): Promise<T | null> => {
   }
 };
 
+let refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Rotate the HttpOnly refresh cookie and let the browser store the new
+ * access/refresh cookies. The refresh token itself is never exposed to JS.
+ * A shared promise prevents concurrent 401 responses from rotating the same
+ * refresh token multiple times.
+ */
+const refreshAuthentication = async (): Promise<boolean> => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${getBaseUrl()}/api/accounts/refresh/`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Django authentication refresh failed:', error);
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
+const createApiError = (
+  response: Response,
+  body: DjangoApiErrorBody | null,
+): DjangoApiException => {
+  const error = new Error(
+    body?.detail || body?.error || body?.message ||
+      `Django API request failed (${response.status}).`,
+  ) as DjangoApiException;
+  error.status = response.status;
+  error.authenticated = body?.authenticated;
+  return error;
+};
+
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   if (!path.startsWith('/api/')) {
     throw new Error('Django API paths must target /api/.');
@@ -35,22 +79,27 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${getBaseUrl()}${path}`, {
+  const execute = () => fetch(`${getBaseUrl()}${path}`, {
     ...init,
     credentials: 'include',
     headers,
   });
 
+  let response = await execute();
+
+  // Access JWTs are intentionally short-lived. If an authenticated request
+  // reaches Django after expiry, rotate the HttpOnly refresh cookie once and
+  // retry the exact original request. Never retry more than once.
+  if (response.status === 401 && path !== '/api/accounts/refresh/') {
+    const refreshed = await refreshAuthentication();
+    if (refreshed) {
+      response = await execute();
+    }
+  }
+
   const body = await readJson<T | DjangoApiErrorBody>(response);
   if (!response.ok) {
-    const errorBody = body as DjangoApiErrorBody | null;
-    const error = new Error(
-      errorBody?.detail || errorBody?.error || errorBody?.message ||
-        `Django API request failed (${response.status}).`,
-    ) as DjangoApiException;
-    error.status = response.status;
-    error.authenticated = errorBody?.authenticated;
-    throw error;
+    throw createApiError(response, body as DjangoApiErrorBody | null);
   }
 
   return body as T;
@@ -64,7 +113,7 @@ const requestMultipart = async <T>(
     throw new Error('Django API paths must target /api/.');
   }
 
-  const response = await fetch(`${getBaseUrl()}${path}`, {
+  const execute = () => fetch(`${getBaseUrl()}${path}`, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -73,16 +122,18 @@ const requestMultipart = async <T>(
     body: formData,
   });
 
+  let response = await execute();
+
+  if (response.status === 401 && path !== '/api/accounts/refresh/') {
+    const refreshed = await refreshAuthentication();
+    if (refreshed) {
+      response = await execute();
+    }
+  }
+
   const body = await readJson<T | DjangoApiErrorBody>(response);
   if (!response.ok) {
-    const errorBody = body as DjangoApiErrorBody | null;
-    const error = new Error(
-      errorBody?.detail || errorBody?.error || errorBody?.message ||
-        `Django API request failed (${response.status}).`,
-    ) as DjangoApiException;
-    error.status = response.status;
-    error.authenticated = errorBody?.authenticated;
-    throw error;
+    throw createApiError(response, body as DjangoApiErrorBody | null);
   }
 
   return body as T;
