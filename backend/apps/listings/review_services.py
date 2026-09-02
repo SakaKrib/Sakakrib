@@ -54,15 +54,19 @@ def review_listing(admin_user, listing_id, decision, note=''):
         # listing attached and publish the exact AI caption when one exists. If a
         # prior post was created for the listing, refresh its content/caption so an
         # earlier fallback caption cannot replace the current AI-generated caption.
-        CommunityPost.objects.update_or_create(
-            listing_id=listing.id,
-            defaults={
-                'user_id': listing.user_id,
-                'content': caption,
-                'ai_caption': listing.ai_caption.strip() if listing.ai_caption else None,
-                'post_type': 'listing',
-            },
-        )
+        post = CommunityPost.objects.filter(listing_id=listing.id).order_by('created_at').first()
+        post_defaults = {
+            'user_id': listing.user_id,
+            'content': caption,
+            'ai_caption': listing.ai_caption.strip() if listing.ai_caption else None,
+            'post_type': 'listing',
+        }
+        if post:
+            for field, value in post_defaults.items():
+                setattr(post, field, value)
+            post.save(update_fields=['user_id', 'content', 'ai_caption', 'post_type'])
+        else:
+            CommunityPost.objects.create(listing_id=listing.id, **post_defaults)
 
         # Notification/email delivery must not be able to roll back an already
         # committed admin approval or community publication.
