@@ -97,10 +97,10 @@ def create_paypal_subscription(*, plan_id, custom_id, return_url, cancel_url):
     return result
 
 
-def verify_paypal_webhook(payload, headers):
-    webhook_id = getattr(settings, 'PAYPAL_WEBHOOK_ID', '')
+def verify_paypal_webhook(payload, headers, *, webhook_id_setting='PAYPAL_WEBHOOK_ID'):
+    webhook_id = getattr(settings, webhook_id_setting, '')
     if not webhook_id:
-        raise RuntimeError('PayPal subscription webhook is not configured')
+        raise RuntimeError(f'{webhook_id_setting} is not configured')
     required = {
         'transmission_id': headers.get('PAYPAL-TRANSMISSION-ID'),
         'transmission_time': headers.get('PAYPAL-TRANSMISSION-TIME'),
@@ -353,8 +353,8 @@ def process_paypal_subscription_webhook(payload):
         subscription.paypal_status = 'REFUNDED' if event_type.endswith('REFUNDED') else 'REVERSED'
         subscription.updated_at = now
         subscription.save(update_fields=['paypal_status', 'updated_at'])
-        payment_status = 'FAILED'
-        message = invoice.result_description if invoice else 'The PayPal payment was reversed or refunded.'
+        payment_status = 'REFUNDED' if event_type.endswith('REFUNDED') else 'FAILED'
+        message = str(payload.get('summary') or event_type.replace('.', ' ').title())
 
     existing.status = 'PROCESSED'
     existing.processed_at = now
@@ -363,7 +363,7 @@ def process_paypal_subscription_webhook(payload):
     if payment_status:
         transaction.on_commit(lambda: publish_payment_status(
             user_id=owner_id,
-            invoice_id=invoice.id if invoice else existing.event_id,
+            invoice_id=invoice.id if invoice else existing.id,
             status=payment_status,
             message=message or 'PayPal payment status updated.',
             provider='PAYPAL',
@@ -371,15 +371,12 @@ def process_paypal_subscription_webhook(payload):
             listing_id=listing_id,
             subscription_id=subscription.id,
             subscription_status=subscription.status,
-            details={'paypal_event_id': event_id},
         ))
 
     return {
-        'status': 'PROCESSED',
+        'status': payment_status or 'PROCESSED',
         'event_id': event_id,
         'event_type': event_type,
-        'subscription_id': str(subscription.id),
         'invoice_id': str(invoice.id) if invoice else None,
         'listing_id': str(listing_id) if listing_id else None,
-        'payment_status': payment_status,
     }
