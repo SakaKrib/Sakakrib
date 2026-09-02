@@ -48,7 +48,12 @@ def process_listing_payment(
     paypal_fx_rate: Decimal | None = None,
     paid_amount_kes: Decimal | int | float | None = None,
 ) -> dict[str, Any]:
-    """Finalize an individual KES 1,000 payment exactly once."""
+    """Settle an individual KES 1,000 payment exactly once.
+
+    When a payment intent is attached to a DB-backed draft, payment settlement
+    records the paid entitlement but deliberately leaves the draft intact. The
+    listing is finalized only when the owner explicitly posts the draft.
+    """
     provider = (provider or "").upper()
     payment_method = (payment_method or "").upper()
     if provider not in {"MPESA", "PAYPAL"} or payment_method not in {"MPESA", "PAYPAL"} or provider != payment_method:
@@ -120,7 +125,8 @@ def process_listing_payment(
         raise ValidationError("Account is not authorized to own listings")
 
     draft = None
-    if intent.listing_id:
+    attached_to_draft = bool(intent.listing_id)
+    if attached_to_draft:
         draft = Listing.objects.select_for_update().filter(pk=intent.listing_id, user_id=profile.id, is_draft=True).first()
         if not draft:
             raise ValidationError("The payment intent is not attached to an available draft")
@@ -128,14 +134,9 @@ def process_listing_payment(
             raise ValidationError("Property-management listings require a PMS subscription")
         listing_id = draft.id
         listing_title = draft.title or ""
-        draft.is_draft = False
-        draft.is_paid = True
-        draft.is_published = False
-        draft.approval_status = "pending_review"
-        draft.is_approved = False
-        draft.status = "pending"
-        draft.updated_at = timezone.now()
-        draft.save(update_fields=["is_draft", "is_paid", "is_published", "approval_status", "is_approved", "status", "updated_at"])
+        # Do not finalize the draft here. Payment grants the individual-paid
+        # entitlement; the owner's explicit final-post action performs the
+        # irreversible draft -> listing transition.
     else:
         listing = _create_listing_from_data(
             profile, dict(intent.listing_data or {}),
@@ -169,18 +170,25 @@ def process_listing_payment(
     intent.updated_at = now
     intent.save(update_fields=["status", "provider", "provider_reference", "provider_amount", "provider_currency", "paypal_order_id", "paypal_fx_rate", "listing_id", "paid_at", "updated_at"])
 
-    transaction.on_commit(lambda: dispatch_user_notification(
-        user_id=profile.id, notification_type="LISTING_POSTED",
-        title="Listing Posted Successfully - Saka Krib",
-        message=f'Your property listing "{listing_title}" has been successfully created and is now awaiting administrator approval.',
-        data={"listing_id": str(listing_id)}, event_key=f"listing:posted:{listing_id}",
-        send_email=True, email_template="listing_posted",
-    ))
+    # The receipt email is queued by the ListingPayment PAID signal. Only the
+    # legacy no-draft path is already a posted listing and should emit the old
+    # listing-posted notification here.
+    if not attached_to_draft:
+        transaction.on_commit(lambda: dispatch_user_notification(
+            user_id=profile.id, notification_type="LISTING_POSTED",
+            title="Listing Posted Successfully - Saka Krib",
+            message=f'Your property listing "{listing_title}" has been successfully created and is now awaiting administrator approval.',
+            data={"listing_id": str(listing_id)}, event_key=f"listing:posted:{listing_id}",
+            send_email=True, email_template="listing_posted",
+        ))
 
     return {
         "success": True, "already_processed": False,
         "payment_intent_id": intent.id, "payment_id": payment.id,
         "listing_id": listing_id, "status": "PAID",
-        "listing_is_paid": True, "listing_is_published": False,
-        "listing_approval_status": "pending_review",
+        "listing_is_paid": not attached_to_draft,
+        "listing_is_published": False,
+        "listing_is_draft": attached_to_draft,
+        "listing_approval_status": "pending_review" if not attached_to_draft else draft.approval_status,
+        "property_unit_count": None,
     }
