@@ -136,7 +136,7 @@ class MpesaListingCallbackView(APIView):
 
     def post(self, request):
         callback = request.data.get('Body', {}).get('stkCallback', {})
-        checkout_id = callback.get('CheckoutRequestID')
+        checkout_id = str(callback.get('CheckoutRequestID') or '').strip()
         result_code = callback.get('ResultCode')
         if not checkout_id:
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
@@ -160,6 +160,14 @@ class MpesaListingCallbackView(APIView):
                     intent.updated_at = timezone.now()
                     intent.save(update_fields=['status', 'updated_at'])
                     return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
+                # Daraja callbacks are unauthenticated HTTP requests. A forged
+                # callback must never be enough to create a paid listing. Query
+                # Daraja directly using the checkout request ID and only settle
+                # when the provider itself confirms ResultCode 0.
+                provider_result = get_provider('mpesa').verify_payment(provider_reference=checkout_id)
+                if not provider_result.success:
+                    return Response({'ResultCode': 1, 'ResultDesc': 'Provider payment verification is not yet successful.'}, status=500)
 
                 result = process_listing_payment(
                     intent.id, provider='MPESA', payment_method='MPESA', provider_reference=checkout_id,
@@ -186,13 +194,8 @@ class PayPalListingCaptureView(APIView):
         if not intent:
             return Response({'detail': 'Listing payment intent not found.'}, status=404)
         if intent.status == 'PAID':
-            return Response({
-                'success': True,
-                'already_processed': True,
-                'payment_intent_id': str(intent.id),
-                'listing_id': str(intent.listing_id) if intent.listing_id else None,
-                'status': 'PAID',
-            })
+            return Response({'success': True, 'already_processed': True, 'payment_intent_id': str(intent.id),
+                             'listing_id': str(intent.listing_id) if intent.listing_id else None, 'status': 'PAID'})
         if intent.status != 'PENDING':
             return Response({'detail': 'Payment intent is not pending.'}, status=409)
         if intent.expires_at is not None and intent.expires_at <= timezone.now():
@@ -226,9 +229,8 @@ class PayPalListingCaptureView(APIView):
             with transaction.atomic():
                 settled = process_listing_payment(
                     intent.id, provider='PAYPAL', payment_method='PAYPAL', provider_reference=capture_id,
-                    provider_amount=captured_amount, provider_currency='USD',
-                    paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
-                    paid_amount_kes=intent.amount_kes,
+                    provider_amount=captured_amount, provider_currency='USD', paypal_order_id=order_id,
+                    paypal_fx_rate=intent.paypal_fx_rate, paid_amount_kes=intent.amount_kes,
                     result_description=f'PayPal order {order_id} status {provider_status}',
                 )
         except Exception as exc:
