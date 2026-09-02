@@ -210,32 +210,37 @@ class AdminDashboardDataView(APIView):
         real_estate_subscriptions = list(
             RealEstateSubscription.objects.filter(real_estate_id__in=profile_ids).order_by('-created_at')
         )
+        all_subscriptions = [*landlord_subscriptions, *real_estate_subscriptions]
         plans = {
             plan.id: plan
             for plan in SubscriptionPlan.objects.filter(
-                id__in=[subscription.plan_id for subscription in [*landlord_subscriptions, *real_estate_subscriptions]]
+                id__in=[subscription.plan_id for subscription in all_subscriptions]
             )
         }
 
         subscriptions = {}
-        for subscription in [*landlord_subscriptions, *real_estate_subscriptions]:
+        for subscription in all_subscriptions:
             owner_id = getattr(subscription, 'landlord_id', None) or getattr(subscription, 'real_estate_id', None)
             if owner_id not in subscriptions:
-                subscriptions[owner_id] = AdminUserDetailView._subscription_payload(subscription, plans.get(subscription.plan_id))
+                subscriptions[owner_id] = AdminUserDetailView._subscription_payload(
+                    subscription,
+                    plans.get(subscription.plan_id),
+                )
 
-        movers = {
-            mover.user_id: AdminUserDetailView._mover_payload(mover)
-            for mover in Mover.objects.filter(user_id__in=profile_ids).order_by('-created_at')
-        }
-        mover_applications = {
-            application.applicant_id: {
-                'id': str(application.id),
-                'applicant_id': str(application.applicant_id),
-                'status': application.status,
-                'review_notes': application.review_notes,
-            }
-            for application in MoverApplication.objects.filter(applicant_id__in=profile_ids).order_by('-created_at')
-        }
+        movers = {}
+        for mover in Mover.objects.filter(user_id__in=profile_ids).order_by('-created_at'):
+            if mover.user_id not in movers:
+                movers[mover.user_id] = AdminUserDetailView._mover_payload(mover)
+
+        mover_applications = {}
+        for application in MoverApplication.objects.filter(applicant_id__in=profile_ids).order_by('-created_at'):
+            if application.applicant_id not in mover_applications:
+                mover_applications[application.applicant_id] = {
+                    'id': str(application.id),
+                    'applicant_id': str(application.applicant_id),
+                    'status': application.status,
+                    'review_notes': application.review_notes,
+                }
 
         items = []
         for profile in profiles:
