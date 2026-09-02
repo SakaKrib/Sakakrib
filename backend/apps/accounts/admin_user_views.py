@@ -201,15 +201,31 @@ class AdminDashboardDataView(APIView):
         if not is_admin(request.user):
             return Response({'detail': 'Administrator access is required.'}, status=403)
 
-        profiles = Profile.objects.all().order_by('-created_at')
-        subscriptions = {
-            profile.id: AdminUserDetailView._subscription_for_profile(profile)
-            for profile in profiles
-            if profile.role in {'landlord', 'real_estate'}
+        profiles = list(Profile.objects.all().order_by('-created_at'))
+        profile_ids = [profile.id for profile in profiles]
+
+        landlord_subscriptions = list(
+            LandlordSubscription.objects.filter(landlord_id__in=profile_ids).order_by('-created_at')
+        )
+        real_estate_subscriptions = list(
+            RealEstateSubscription.objects.filter(real_estate_id__in=profile_ids).order_by('-created_at')
+        )
+        plans = {
+            plan.id: plan
+            for plan in SubscriptionPlan.objects.filter(
+                id__in=[subscription.plan_id for subscription in [*landlord_subscriptions, *real_estate_subscriptions]]
+            )
         }
+
+        subscriptions = {}
+        for subscription in [*landlord_subscriptions, *real_estate_subscriptions]:
+            owner_id = getattr(subscription, 'landlord_id', None) or getattr(subscription, 'real_estate_id', None)
+            if owner_id not in subscriptions:
+                subscriptions[owner_id] = AdminUserDetailView._subscription_payload(subscription, plans.get(subscription.plan_id))
+
         movers = {
             mover.user_id: AdminUserDetailView._mover_payload(mover)
-            for mover in Mover.objects.all().order_by('-created_at')
+            for mover in Mover.objects.filter(user_id__in=profile_ids).order_by('-created_at')
         }
         mover_applications = {
             application.applicant_id: {
@@ -218,7 +234,7 @@ class AdminDashboardDataView(APIView):
                 'status': application.status,
                 'review_notes': application.review_notes,
             }
-            for application in MoverApplication.objects.all().order_by('-created_at')
+            for application in MoverApplication.objects.filter(applicant_id__in=profile_ids).order_by('-created_at')
         }
 
         items = []
