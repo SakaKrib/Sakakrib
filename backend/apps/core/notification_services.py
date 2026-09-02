@@ -5,6 +5,8 @@ from django.utils.html import escape
 from apps.accounts.models import Profile
 
 from .domain_platform import NotificationEmail, UserNotification
+from .email_services import queue_email
+from .email_templates import EMAIL_TEMPLATES
 
 
 @transaction.atomic
@@ -56,14 +58,24 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
 
     email = None
     if send_email and str(profile.email or "").strip():
-        safe_message = escape(str(message))
-        email = NotificationEmail.objects.create(
-            recipient=profile.email,
-            subject=str(title),
-            html_body=f"<p>{safe_message}</p>",
-            template_type=email_template or "generic",
-            status="pending",
-        )
+        template_type = str(email_template or "generic").strip()
+        if template_type in EMAIL_TEMPLATES:
+            payload = dict(data or {})
+            payload.setdefault("email", profile.email)
+            payload.setdefault("full_name", getattr(profile, "full_name", ""))
+            email = queue_email(
+                recipient=profile.email,
+                template_type=template_type,
+                payload=payload,
+            )
+        else:
+            email = NotificationEmail.objects.create(
+                recipient=profile.email,
+                subject=str(title),
+                html_body=f"<p>{escape(str(message))}</p>",
+                template_type=template_type,
+                status="pending",
+            )
 
     return {
         "status": "QUEUED",
