@@ -1,8 +1,14 @@
 import uuid
+from datetime import timedelta
 
 from django.db import models
+from django.utils import timezone
 
 from apps.accounts.models import Profile
+
+
+def _listing_payment_intent_expiry():
+    return timezone.now() + timedelta(minutes=15)
 
 
 class Listing(models.Model):
@@ -23,8 +29,8 @@ class Listing(models.Model):
     deposit_structure = models.TextField(default='fixed', null=True, blank=True)
     deposit_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0, null=True, blank=True)
     size = models.TextField(default='', null=True, blank=True)
-    beds = models.IntegerField(default=0, null=True)
-    baths = models.IntegerField(default=0, null=True)
+    beds = models.IntegerField(default=0, null=True, blank=True)
+    baths = models.IntegerField(default=0, null=True, blank=True)
     contact_phone = models.TextField(default='', null=True, blank=True)
     contact_email = models.TextField(default='', null=True, blank=True)
     social_links = models.JSONField(default=list)
@@ -68,10 +74,10 @@ class ListingPaymentIntent(models.Model):
     listing_data = models.JSONField()
     provider = models.TextField(null=True, blank=True)
     provider_reference = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField(null=True, blank=True)
-    updated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     paid_at = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(default=_listing_payment_intent_expiry)
     listing = models.ForeignKey(Listing, on_delete=models.SET_NULL, db_column='listing_id', related_name='payment_intents', null=True, blank=True)
     provider_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     provider_currency = models.TextField(null=True, blank=True)
