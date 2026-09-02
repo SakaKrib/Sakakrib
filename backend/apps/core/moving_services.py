@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+import math
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -12,6 +13,7 @@ from .domain_platform import Mover, NotificationEmail, UserNotification
 from .domain_property import PlatformSettings
 
 TWOPLACES = Decimal("0.01")
+EARTH_RADIUS_KM = 6371.0088
 
 
 def _money(value):
@@ -35,6 +37,31 @@ def _platform_settings():
     if settings_row is None:
         raise ValidationError("Platform settings are not configured")
     return settings_row
+
+
+def calculate_mover_distance(*, pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude):
+    coordinates = [
+        (pickup_latitude, "pickup latitude", -90, 90),
+        (dropoff_latitude, "dropoff latitude", -90, 90),
+        (pickup_longitude, "pickup longitude", -180, 180),
+        (dropoff_longitude, "dropoff longitude", -180, 180),
+    ]
+    for value, name, low, high in coordinates:
+        if value is None or not low <= float(value) <= high:
+            raise ValidationError(f"Invalid {name}")
+
+    lat1 = math.radians(float(pickup_latitude))
+    lon1 = math.radians(float(pickup_longitude))
+    lat2 = math.radians(float(dropoff_latitude))
+    lon2 = math.radians(float(dropoff_longitude))
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    haversine = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
+    haversine = min(1.0, max(0.0, haversine))
+    return Decimal(str(round(EARTH_RADIUS_KM * 2 * math.asin(math.sqrt(haversine)), 2)))
 
 
 def calculate_mover_quote(*, mover_id, distance_km):
@@ -67,7 +94,7 @@ def calculate_mover_quote(*, mover_id, distance_km):
 def request_mover_booking(*, renter_id, mover_id, pickup_address, dropoff_address,
                           distance_km=None, pickup_latitude=None, pickup_longitude=None,
                           dropoff_latitude=None, dropoff_longitude=None, listing_id=None,
-                          agreed_amount=None, moving_date=None, preferred_payment_method=None):
+                          moving_date=None, preferred_payment_method=None):
     renter = _profile(renter_id)
     if renter.role != "renter":
         raise ValidationError("Only renters can request a mover")
@@ -85,13 +112,13 @@ def request_mover_booking(*, renter_id, mover_id, pickup_address, dropoff_addres
     if mover_profile.verification_status != "verified" or getattr(mover_profile, "mover_application_status", None) != "approved":
         raise ValidationError("Mover is not verified and approved")
 
-    amount = _money(agreed_amount)
-    if amount <= 0:
-        raise ValidationError("Agreed service amount must be greater than zero")
-
-    platform = _platform_settings()
-    fee = _money(amount * platform.mover_commission_rate)
-    total = _money(amount + fee)
+    distance = calculate_mover_distance(
+        pickup_latitude=pickup_latitude,
+        pickup_longitude=pickup_longitude,
+        dropoff_latitude=dropoff_latitude,
+        dropoff_longitude=dropoff_longitude,
+    )
+    quote = calculate_mover_quote(mover_id=mover_id, distance_km=distance)
 
     requested_moving_date = timezone.localdate()
     if moving_date:
@@ -106,52 +133,35 @@ def request_mover_booking(*, renter_id, mover_id, pickup_address, dropoff_addres
     if preferred not in {"", "mpesa", "paypal"}:
         raise ValidationError("Payment method must be M-Pesa or PayPal")
 
-    distance = None
-    if distance_km not in (None, ""):
-        distance = Decimal(str(distance_km))
-        if distance < 0:
-            raise ValidationError("Invalid distance")
-
-    coordinates = [
-        (pickup_latitude, "pickup latitude", -90, 90),
-        (dropoff_latitude, "dropoff latitude", -90, 90),
-        (pickup_longitude, "pickup longitude", -180, 180),
-        (dropoff_longitude, "dropoff longitude", -180, 180),
-    ]
-    for value, name, low, high in coordinates:
-        if value is not None and not low <= float(value) <= high:
-            raise ValidationError(f"Invalid {name}")
-
     now = timezone.now()
     deadline = now + timezone.timedelta(minutes=30)
     booking = Booking.objects.create(
         renter_id=renter_id, mover_id=mover_id, listing_id=listing_id,
         pickup_address=str(pickup_address), dropoff_address=str(dropoff_address),
-        moving_date=requested_moving_date, booking_amount=amount,
-        commission_amount=fee, total_amount=total,
+        moving_date=requested_moving_date, booking_amount=quote["renter_total_kes"],
+        commission_amount=quote["platform_fee_kes"], total_amount=quote["renter_total_kes"],
         status="pending", payment_status="unpaid", payment_method=preferred,
-        distance_km=distance, rate_per_km_kes=_money(mover.rate_per_km_kes),
-        base_rate_kes=_money(mover.base_rate_kes), pickup_latitude=pickup_latitude,
+        distance_km=distance, rate_per_km_kes=quote["rate_per_km_kes"],
+        base_rate_kes=quote["base_rate_kes"], pickup_latitude=pickup_latitude,
         pickup_longitude=pickup_longitude, dropoff_latitude=dropoff_latitude,
         dropoff_longitude=dropoff_longitude, requested_at=now,
         request_expires_at=deadline, created_at=now, updated_at=now,
     )
     conversation = _conversation(renter_id, mover.user_id)
-    distance_text = f"{float(distance):.2f} km" if distance is not None else "not specified"
     ChatMessage.objects.create(
         conversation_id=conversation, sender_id=renter_id, receiver_id=mover.user_id,
         content=(f"Moving request received. Please respond within 30 minutes. Pickup: {pickup_address}. "
-                 f"Destination: {dropoff_address}. Distance: {distance_text}. "
-                 f"Estimated total: KES {total:,.2f}."),
+                 f"Destination: {dropoff_address}. Distance: {float(distance):.2f} km. "
+                 f"Estimated total: KES {quote['renter_total_kes']:,.2f}."),
         message_type="booking_request",
         event_data={
-            "booking_id": str(booking.id),
-            "distance_km": float(distance) if distance is not None else None,
-            "rate_per_km_kes": str(mover.rate_per_km_kes),
-            "agreed_amount_kes": str(amount),
-            "platform_fee_kes": str(fee),
-            "renter_total_kes": str(total),
-            "mover_net_kes": str(_money(total - fee)),
+            "booking_id": str(booking.id), "distance_km": float(distance),
+            "rate_per_km_kes": str(quote["rate_per_km_kes"]),
+            "renter_total_kes": str(quote["renter_total_kes"]),
+            "platform_fee_kes": str(quote["platform_fee_kes"]),
+            "mover_net_kes": str(quote["mover_net_kes"]),
+            "pickup_latitude": float(pickup_latitude), "pickup_longitude": float(pickup_longitude),
+            "dropoff_latitude": float(dropoff_latitude), "dropoff_longitude": float(dropoff_longitude),
             "preferred_payment_method": preferred or None,
             "request_expires_at": deadline.isoformat(),
         },
@@ -170,17 +180,7 @@ def request_mover_booking(*, renter_id, mover_id, pickup_address, dropoff_addres
     return {
         "booking_id": str(booking.id), "conversation_id": conversation,
         "status": "pending", "request_expires_at": deadline,
-        "quote": {
-            "mover_id": str(mover.id),
-            "distance_km": round(float(distance), 2) if distance is not None else None,
-            "base_rate_kes": _money(mover.base_rate_kes),
-            "rate_per_km_kes": _money(mover.rate_per_km_kes),
-            "agreed_amount_kes": amount,
-            "renter_total_kes": total,
-            "platform_fee_kes": fee,
-            "platform_commission_rate": platform.mover_commission_rate,
-            "mover_net_kes": _money(total - fee),
-        },
+        "quote": quote, "distance_km": float(distance),
     }
 
 
