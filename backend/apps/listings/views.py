@@ -204,7 +204,12 @@ class ListingListView(APIView):
         if not getattr(user, 'email_verified', False):
             return Response({'error': 'Email verification is required.'}, status=status.HTTP_403_FORBIDDEN)
         queryset = Listing.objects.all()
-        if not is_admin(user):
+        requested_user_id = request.query_params.get('user_id')
+        if requested_user_id:
+            if not is_admin(user) and str(requested_user_id) != str(user.pk):
+                return Response({'error': 'You may only query your own listings.'}, status=status.HTTP_403_FORBIDDEN)
+            queryset = queryset.filter(user_id=requested_user_id)
+        elif not is_admin(user):
             queryset = queryset.filter(Q(user_id=user.pk) | Q(approval_status='approved', is_published=True))
         queryset = self._apply_filters(queryset, request.query_params)
         total = queryset.count()
