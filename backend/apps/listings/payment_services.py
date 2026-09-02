@@ -22,6 +22,7 @@ from .services import _create_listing_from_data, get_listing_entitlement
 
 LISTING_PRICE_KES = Decimal("1000.00")
 MONEY_QUANTUM = Decimal("0.01")
+ALLOWED_LISTING_ROLES = {"landlord", "real_estate"}
 
 
 def _money(value: Decimal | int | float | str) -> Decimal:
@@ -47,12 +48,7 @@ def process_listing_payment(
     paypal_fx_rate: Decimal | None = None,
     paid_amount_kes: Decimal | int | float | None = None,
 ) -> dict[str, Any]:
-    """Finalize an individual KES 1,000 listing payment exactly once.
-
-    The payment intent is the authorization snapshot. Once a provider has
-    successfully paid that intent, later entitlement changes must not turn a
-    successful external payment into an un-settleable local transaction.
-    """
+    """Finalize an individual KES 1,000 listing payment exactly once."""
     provider = (provider or "").upper()
     payment_method = (payment_method or "").upper()
     if provider not in {"MPESA", "PAYPAL"} or payment_method not in {"MPESA", "PAYPAL"} or provider != payment_method:
@@ -76,6 +72,10 @@ def process_listing_payment(
         intent.updated_at = timezone.now()
         intent.save(update_fields=["status", "updated_at"])
         raise ValidationError("Payment intent has expired")
+
+    intent_role = str(intent.role or "").strip().lower()
+    if intent_role not in ALLOWED_LISTING_ROLES:
+        raise ValidationError("Listing payment intent has an invalid role")
 
     provider_paid_amount = _money(provider_amount) if provider_amount is not None else None
     if provider_paid_amount is None or provider_paid_amount <= 0:
@@ -122,12 +122,12 @@ def process_listing_payment(
     if profile is None:
         raise ValidationError("Profile not found")
 
-    # Do not recalculate whether the user currently has a free/subscription
-    # entitlement here. That entitlement was checked when this payment intent
-    # was created. Rechecking it after provider payment can strand a genuinely
-    # paid transaction if another listing consumed the entitlement in the
-    # meantime. The intent is deliberately the server-side authorization
-    # snapshot for this paid listing.
+    profile_role = str(getattr(profile, "role", "") or "").strip().lower()
+    if profile_role != intent_role:
+        raise ValidationError("The payment intent role no longer matches the account role")
+
+    # The payment intent is the entitlement snapshot for the paid listing.
+    # Do not re-consume a current free slot after the provider has paid.
     entitlement = get_listing_entitlement(profile)
     if not entitlement.get("authorized"):
         raise ValidationError("Account is not authorized to own listings")
