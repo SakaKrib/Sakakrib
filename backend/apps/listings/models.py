@@ -80,8 +80,15 @@ class ListingPaymentIntent(models.Model):
 
     class Meta:
         db_table = 'listing_payment_intents'
+        indexes = [
+            models.Index(fields=['listing'], name='idx_listing_payment_intents_listing_id'),
+            models.Index(fields=['user', 'status', '-created_at'], name='listing_payment_intents_user_status_idx'),
+            models.Index(fields=['provider', 'provider_reference'], name='listing_payment_intents_provider_reference_idx', condition=models.Q(provider_reference__isnull=False)),
+        ]
         constraints = [
             models.CheckConstraint(condition=models.Q(role__in=['landlord', 'real_estate']), name='listing_payment_intents_role_valid'),
             models.CheckConstraint(condition=models.Q(amount_kes=1000), name='listing_payment_intents_amount_1000'),
             models.CheckConstraint(condition=models.Q(status__in=['PENDING', 'PAID', 'FAILED', 'CANCELLED', 'EXPIRED']), name='listing_payment_intents_status_valid'),
+            models.UniqueConstraint(fields=['provider_reference'], condition=models.Q(provider_reference__isnull=False), name='listing_payment_intents_provider_reference_key'),
+            models.UniqueConstraint(fields=['paypal_order_id'], condition=models.Q(paypal_order_id__isnull=False), name='listing_payment_intents_paypal_order_id_key'),
         ]
