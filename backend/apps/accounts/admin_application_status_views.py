@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
+from apps.core.domain_platform import Mover, MoverApplication
 
 from .models import Profile
 from .serializers import ProfileSerializer
@@ -55,5 +56,22 @@ class AdminApplicationStatusView(APIView):
                 locked.kyc_completed = False
             locked.updated_at = timezone.now()
             locked.save(update_fields=[field, 'admin_review_note', 'verification_status', 'kyc_completed', 'updated_at'])
+
+            if application_type == 'mover':
+                mover_status = 'pending_review' if status_value == 'pending' else status_value
+                mover = Mover.objects.select_for_update().filter(user_id=locked.id).first()
+                if mover:
+                    mover.approval_status = mover_status
+                    mover.updated_at = timezone.now()
+                    mover.save(update_fields=['approval_status', 'updated_at'])
+
+                mover_application = MoverApplication.objects.select_for_update().filter(applicant_id=locked.id).order_by('-created_at').first()
+                if mover_application:
+                    mover_application.status = status_value
+                    mover_application.review_notes = note or None
+                    mover_application.reviewed_by = request.user.id
+                    mover_application.reviewed_at = timezone.now()
+                    mover_application.updated_at = timezone.now()
+                    mover_application.save(update_fields=['status', 'review_notes', 'reviewed_by', 'reviewed_at', 'updated_at'])
 
         return Response(ProfileSerializer(locked).data)
