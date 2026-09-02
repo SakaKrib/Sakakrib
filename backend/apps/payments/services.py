@@ -162,12 +162,26 @@ class PayPalProvider(PaymentProvider):
         return PaymentResult(True, provider_reference=order.get('id'), message='PayPal order created', raw=order)
 
     def verify_payment(self, *, provider_reference: str) -> PaymentResult:
+        """Read the PayPal order state without mutating provider state."""
         result = _request_json(
-            f'{settings.PAYPAL_BASE_URL}/v2/checkout/orders/{urllib.parse.quote(provider_reference)}/capture',
-            method='POST', headers={'Authorization': f'Bearer {self._access_token()}'},
+            f'{settings.PAYPAL_BASE_URL}/v2/checkout/orders/{urllib.parse.quote(provider_reference, safe="")}',
+            method='GET', headers={'Authorization': f'Bearer {self._access_token()}'},
         )
         status = result.get('status')
-        return PaymentResult(status == 'COMPLETED', provider_reference=provider_reference,
+        return PaymentResult(status in ('APPROVED', 'COMPLETED'), provider_reference=provider_reference,
+                             message=f'PayPal order status: {status}', raw=result)
+
+    def capture_payment(self, *, order_id: str, request_id: str | None = None) -> PaymentResult:
+        """Capture an approved PayPal order with a stable idempotency key."""
+        headers = {'Authorization': f'Bearer {self._access_token()}'}
+        if request_id:
+            headers['PayPal-Request-Id'] = request_id
+        result = _request_json(
+            f'{settings.PAYPAL_BASE_URL}/v2/checkout/orders/{urllib.parse.quote(order_id, safe="")}/capture',
+            method='POST', headers=headers,
+        )
+        status = result.get('status')
+        return PaymentResult(status == 'COMPLETED', provider_reference=order_id,
                              message=f'PayPal order status: {status}', raw=result)
 
 
