@@ -51,6 +51,7 @@ def save_listing_draft(profile, data, draft_id=None):
         'approval_status': 'pending_review',
         'is_approved': False,
         'status': 'pending',
+        'draft_data': data,
         'updated_at': timezone.now(),
     }
     if draft:
