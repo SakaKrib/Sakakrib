@@ -89,6 +89,11 @@ class MpesaProvider(PaymentProvider):
             raise RuntimeError('M-Pesa did not return an access token')
         return token
 
+    def _timestamp_password(self, shortcode: str, passkey: str) -> tuple[str, str]:
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        password = base64.b64encode(f'{shortcode}{passkey}{timestamp}'.encode()).decode()
+        return timestamp, password
+
     def create_payment(self, *, amount: Decimal, currency: str, reference: str,
                        metadata: dict[str, Any], request_id: str | None = None) -> PaymentResult:
         if currency.upper() != 'KES':
@@ -101,8 +106,7 @@ class MpesaProvider(PaymentProvider):
         callback = settings.MPESA_CALLBACK_URL
         if not all((shortcode, passkey, callback)):
             return PaymentResult(False, message='M-Pesa shortcode, passkey and callback URL must be configured')
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        password = base64.b64encode(f'{shortcode}{passkey}{timestamp}'.encode()).decode()
+        timestamp, password = self._timestamp_password(shortcode, passkey)
         payload = {
             'BusinessShortCode': shortcode,
             'Password': password,
@@ -130,8 +134,30 @@ class MpesaProvider(PaymentProvider):
         )
 
     def verify_payment(self, *, provider_reference: str) -> PaymentResult:
-        return PaymentResult(False, provider_reference=provider_reference,
-                             message='M-Pesa payment must be finalized from the signed/provider callback; do not infer success from STK acceptance.')
+        """Verify an STK result directly with Daraja rather than trusting a browser/callback payload."""
+        shortcode = settings.MPESA_SHORTCODE
+        passkey = settings.MPESA_PASSKEY
+        if not shortcode or not passkey:
+            raise RuntimeError('M-Pesa shortcode and passkey are not configured')
+        timestamp, password = self._timestamp_password(shortcode, passkey)
+        result = _request_json(
+            f'{settings.MPESA_BASE_URL}/mpesa/stkpushquery/v1/query',
+            method='POST',
+            data={
+                'BusinessShortCode': shortcode,
+                'Password': password,
+                'Timestamp': timestamp,
+                'CheckoutRequestID': provider_reference,
+            },
+            headers={'Authorization': f'Bearer {self._access_token()}'},
+        )
+        result_code = str(result.get('ResultCode', ''))
+        return PaymentResult(
+            success=result_code == '0',
+            provider_reference=provider_reference,
+            message=result.get('ResultDesc', 'M-Pesa STK query completed'),
+            raw=result,
+        )
 
 
 class PayPalProvider(PaymentProvider):
