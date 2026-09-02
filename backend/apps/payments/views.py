@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 from django.conf import settings
@@ -137,14 +138,14 @@ class MpesaListingCallbackView(APIView):
     def post(self, request):
         callback = request.data.get('Body', {}).get('stkCallback', {})
         checkout_id = str(callback.get('CheckoutRequestID') or '').strip()
-        result_code = callback.get('ResultCode')
+        callback_result_code = callback.get('ResultCode')
         if not checkout_id:
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
         try:
-            result_code_int = int(result_code) if result_code is not None else 1
+            callback_result_code_int = int(callback_result_code) if callback_result_code is not None else None
         except (TypeError, ValueError):
-            result_code_int = 1
+            callback_result_code_int = None
 
         items = {item.get('Name'): item.get('Value') for item in callback.get('CallbackMetadata', {}).get('Item', [])}
         try:
@@ -155,25 +156,38 @@ class MpesaListingCallbackView(APIView):
                 if not intent:
                     return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
-                if result_code_int != 0:
+                # Daraja callbacks are unauthenticated HTTP requests. Do not let a
+                # forged success OR failure callback mutate the payment intent. The
+                # provider's STK query is the authoritative state check.
+                provider_result = get_provider('mpesa').verify_payment(provider_reference=checkout_id)
+                provider_raw = provider_result.raw or {}
+                try:
+                    provider_result_code = int(provider_raw.get('ResultCode'))
+                except (TypeError, ValueError):
+                    provider_result_code = None
+
+                if provider_result_code is None:
+                    return Response({'ResultCode': 1, 'ResultDesc': 'Provider payment verification is unavailable.'}, status=500)
+
+                if provider_result_code != 0:
+                    # A failure callback is only accepted when the provider query
+                    # independently reports the same terminal result. This blocks
+                    # a forged failure from cancelling a legitimate pending payment.
+                    if callback_result_code_int != provider_result_code:
+                        return Response({'ResultCode': 1, 'ResultDesc': 'Provider callback/result mismatch.'}, status=500)
                     intent.status = 'FAILED'
                     intent.updated_at = timezone.now()
                     intent.save(update_fields=['status', 'updated_at'])
                     return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
 
-                # Daraja callbacks are unauthenticated HTTP requests. A forged
-                # callback must never be enough to create a paid listing. Query
-                # Daraja directly using the checkout request ID and only settle
-                # when the provider itself confirms ResultCode 0.
-                provider_result = get_provider('mpesa').verify_payment(provider_reference=checkout_id)
-                if not provider_result.success:
-                    return Response({'ResultCode': 1, 'ResultDesc': 'Provider payment verification is not yet successful.'}, status=500)
+                if callback_result_code_int != 0:
+                    return Response({'ResultCode': 1, 'ResultDesc': 'Provider callback/result mismatch.'}, status=500)
 
                 result = process_listing_payment(
                     intent.id, provider='MPESA', payment_method='MPESA', provider_reference=checkout_id,
                     provider_amount=items.get('Amount'), provider_currency='KES', checkout_request_id=checkout_id,
                     merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
-                    phone_number=items.get('PhoneNumber'), result_code=result_code_int,
+                    phone_number=items.get('PhoneNumber'), result_code=0,
                     result_description=callback.get('ResultDesc'),
                 )
         except Exception as exc:
@@ -229,8 +243,9 @@ class PayPalListingCaptureView(APIView):
             with transaction.atomic():
                 settled = process_listing_payment(
                     intent.id, provider='PAYPAL', payment_method='PAYPAL', provider_reference=capture_id,
-                    provider_amount=captured_amount, provider_currency='USD', paypal_order_id=order_id,
-                    paypal_fx_rate=intent.paypal_fx_rate, paid_amount_kes=intent.amount_kes,
+                    provider_amount=captured_amount, provider_currency='USD',
+                    paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
+                    paid_amount_kes=intent.amount_kes,
                     result_description=f'PayPal order {order_id} status {provider_status}',
                 )
         except Exception as exc:
