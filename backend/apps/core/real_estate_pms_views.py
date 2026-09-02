@@ -39,6 +39,18 @@ class RealEstatePMSDashboardView(APIView):
                 ).values_list('listing_id', flat=True)
             }
 
+        # `is_paid` means an individual listing payment was verified; it does
+        # not mean a subscription-managed PMS listing is unpaid. Expose the
+        # authoritative management state separately so the frontend cannot
+        # mistake subscription capacity for a missing KES 1,000 payment.
+        listings = [
+            {
+                **row,
+                'pms_managed': str(row.get('id')) in managed_ids,
+            }
+            for row in listings
+        ]
+
         capacity_limit = plan.max_listings if plan else None
         managed_count = len(managed_ids)
         return Response({
