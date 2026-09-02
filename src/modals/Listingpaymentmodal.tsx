@@ -1,391 +1,46 @@
 import { useEffect, useState } from 'react';
-import {
-  X,
-  DollarSign,
-  CheckCircle2,
-  Loader2,
-  ArrowRight,
-  Sparkles,
-} from 'lucide-react';
-
+import { X, DollarSign, CheckCircle2, Loader2, ArrowRight, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ListingRole } from '@/lib/ListingEntitlement';
+import PayPalPaymentButton from '@/components/payments/PayPalPaymentButton';
 
-export interface SubscriptionPlan {
-  id: string;
-  name: string;
-  audience: 'LANDLORD' | 'REAL_ESTATE';
-  monthly_price_kes: number;
-  annual_price_kes: number;
-  max_listings: number | null;
-  max_units_per_listing: number | null;
-}
-
+export interface SubscriptionPlan { id: string; name: string; audience: 'LANDLORD' | 'REAL_ESTATE'; monthly_price_kes: number; annual_price_kes: number; max_listings: number | null; max_units_per_listing: number | null; }
 type ModalTab = 'pay' | 'subscribe';
 type PaymentMethod = 'MPESA' | 'PAYPAL';
-
 interface ListingPaymentModalProps {
-  open: boolean;
-  onClose: () => void;
-  role: ListingRole | null;
-  amountKes: number;
-
-  paymentLoading: boolean;
-  paymentCompleted: boolean;
-  selectedPaymentMethod: PaymentMethod | null;
-  onSelectPaymentMethod: (method: PaymentMethod) => void;
-  onPayNow: () => Promise<boolean>;
-
-  subscriptionPlans: SubscriptionPlan[];
-  subscriptionPlansLoading?: boolean;
-  subscriptionPlansError?: string | null;
-
-  onContinueToSubscription: (
-    plan: SubscriptionPlan,
-    billingCycle: 'monthly' | 'annual'
-  ) => void;
-
-  // ADD THESE
-  selectedSubscriptionPlan?: SubscriptionPlan | null;
-  selectedSubscriptionBillingCycle?: 'monthly' | 'annual' | null;
-
-  paypalAvailable?: boolean;
-  error?: string | null;
+  open: boolean; onClose: () => void; role: ListingRole | null; amountKes: number;
+  paymentLoading: boolean; paymentCompleted: boolean; selectedPaymentMethod: PaymentMethod | null; onSelectPaymentMethod: (method: PaymentMethod) => void; onPayNow: () => Promise<boolean>;
+  subscriptionPlans: SubscriptionPlan[]; subscriptionPlansLoading?: boolean; subscriptionPlansError?: string | null;
+  onContinueToSubscription: (plan: SubscriptionPlan, billingCycle: 'monthly' | 'annual') => void;
+  selectedSubscriptionPlan?: SubscriptionPlan | null; selectedSubscriptionBillingCycle?: 'monthly' | 'annual' | null;
+  paypalAvailable?: boolean; paymentIntentId?: string | null; onPreparePayPalPayment?: () => Promise<string>; onPayPalSuccess?: () => Promise<void> | void; error?: string | null;
 }
-
-function formatKES(amount: number): string {
-  return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: 'KES',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-export default function ListingPaymentModal({
-  open,
-  onClose,
-  role,
-  amountKes,
-  paymentLoading,
-  paymentCompleted,
-  selectedPaymentMethod,
-  onSelectPaymentMethod,
-  onPayNow,
-  subscriptionPlans,
-  subscriptionPlansLoading = false,
-  subscriptionPlansError = null,
-  selectedSubscriptionPlan = null,
-  selectedSubscriptionBillingCycle = null,
-  onContinueToSubscription,
-  paypalAvailable = false,
-  error,
-}: ListingPaymentModalProps) {
-  const [tab, setTab] = useState<ModalTab>('pay');
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      setTab('pay');
-      setSelectedPlanId(null);
-    }
-  }, [open]);
-
+function formatKES(amount: number) { return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(amount); }
+export default function ListingPaymentModal({ open, onClose, role, amountKes, paymentLoading, paymentCompleted, selectedPaymentMethod, onSelectPaymentMethod, onPayNow, subscriptionPlans, subscriptionPlansLoading = false, subscriptionPlansError = null, onContinueToSubscription, paypalAvailable = false, paymentIntentId = null, onPreparePayPalPayment, onPayPalSuccess, error }: ListingPaymentModalProps) {
+  const [tab, setTab] = useState<ModalTab>('pay'); const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly'); const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  useEffect(() => { if (open) { setTab('pay'); setSelectedPlanId(null); } }, [open]);
   if (!open) return null;
-
-  const selectedPlan = subscriptionPlans.find((plan) => plan.id === selectedPlanId) || null;
-  const roleLabel = role === 'real_estate' ? 'Real Estate' : 'Landlord';
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="listing-payment-title"
-    >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-xl dark:bg-brand-950 sm:rounded-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4 dark:border-brand-800 dark:bg-brand-950">
-          <h3 id="listing-payment-title" className="text-lg font-semibold text-gray-900 dark:text-white">
-            Listing Payment Options
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-brand-800"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex border-b border-gray-200 px-5 dark:border-brand-800">
-          <button
-            type="button"
-            onClick={() => setTab('pay')}
-            className={cn(
-              'border-b-2 px-3 py-3 text-sm font-semibold transition-colors',
-              tab === 'pay'
-                ? 'border-brand-600 text-brand-600 dark:text-brand-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
-            )}
-          >
-            Pay for this listing
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('subscribe')}
-            className={cn(
-              'border-b-2 px-3 py-3 text-sm font-semibold transition-colors',
-              tab === 'subscribe'
-                ? 'border-brand-600 text-brand-600 dark:text-brand-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
-            )}
-          >
-            Subscribe instead
-          </button>
-        </div>
-
-        <div className="p-5">
-          {tab === 'pay' && (
-            <div className="space-y-5">
-              <div className="rounded-2xl border border-warning-200 bg-warning-50 p-5 dark:border-warning-800 dark:bg-warning-900/20">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="font-semibold text-warning-800 dark:text-warning-300">
-                      One-time listing payment
-                    </h4>
-                    <p className="mt-1 text-sm text-warning-700 dark:text-warning-400">
-                      Pay once to publish this individual listing.
-                    </p>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {formatKES(amountKes)}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-                  Choose payment method
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    disabled={paymentLoading || paymentCompleted}
-                    onClick={() => onSelectPaymentMethod('MPESA')}
-                    className={cn(
-                      'rounded-xl border-2 p-4 text-left transition',
-                      selectedPaymentMethod === 'MPESA'
-                        ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
-                        : 'border-gray-200 hover:border-brand-400 dark:border-brand-700',
-                      (paymentLoading || paymentCompleted) && 'cursor-not-allowed opacity-60'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-900 dark:text-white">M-Pesa</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Pay using an M-Pesa STK prompt.
-                        </p>
-                      </div>
-                      {selectedPaymentMethod === 'MPESA' && (
-                        <CheckCircle2 className="h-5 w-5 text-brand-600" />
-                      )}
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!paypalAvailable || paymentLoading || paymentCompleted}
-                    onClick={() => onSelectPaymentMethod('PAYPAL')}
-                    title={!paypalAvailable ? 'PayPal is not currently configured for individual listing payments.' : undefined}
-                    className={cn(
-                      'rounded-xl border-2 p-4 text-left transition',
-                      selectedPaymentMethod === 'PAYPAL'
-                        ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
-                        : 'border-gray-200 hover:border-brand-400 dark:border-brand-700',
-                      (!paypalAvailable || paymentLoading || paymentCompleted) && 'cursor-not-allowed opacity-50'
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-900 dark:text-white">PayPal</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          {paypalAvailable ? 'Pay securely with PayPal.' : 'Currently unavailable'}
-                        </p>
-                      </div>
-                      {selectedPaymentMethod === 'PAYPAL' && paypalAvailable && (
-                        <CheckCircle2 className="h-5 w-5 text-brand-600" />
-                      )}
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {error && (
-                <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
-                  {error}
-                </div>
-              )}
-
-              {paymentCompleted ? (
-                <div className="flex items-center gap-2 rounded-lg bg-success-50 px-2 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Payment confirmed. Your listing can now continue to submission.
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onPayNow}
-                  disabled={!selectedPaymentMethod || paymentLoading}
-                  className={cn(
-                    'btn-primary w-full',
-                    (!selectedPaymentMethod || paymentLoading) && 'cursor-not-allowed opacity-50'
-                  )}
-                >
-                  {paymentLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Processing payment...
-                    </>
-                  ) : (
-                    <>
-                      <DollarSign className="h-4 w-4" />
-                      Pay {formatKES(amountKes)}
-                    </>
-                  )}
-                </button>
-              )}
-
-              {paymentLoading && (
-                <p className="text-center text-xs text-gray-500 dark:text-gray-400">
-                  Your payment is being confirmed securely. Please do not close the payment flow.
-                </p>
-              )}
-            </div>
-          )}
-
-          {tab === 'subscribe' && (
-            <div className="space-y-5">
-              <div className="flex items-start gap-3 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-700 dark:bg-brand-900/20">
-                <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-                <div>
-                  <p className="font-semibold text-brand-800 dark:text-brand-200">
-                    {roleLabel} subscription
-                  </p>
-                  <p className="mt-1 text-sm text-brand-700 dark:text-brand-400">
-                    Choose a {roleLabel.toLowerCase()} plan that fits your listing needs.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setBillingCycle('monthly')}
-                  className={cn(
-                    'flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors',
-                    billingCycle === 'monthly'
-                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
-                      : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400'
-                  )}
-                >
-                  Monthly
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBillingCycle('annual')}
-                  className={cn(
-                    'flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors',
-                    billingCycle === 'annual'
-                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
-                      : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400'
-                  )}
-                >
-                  Annual
-                </button>
-              </div>
-
-              {subscriptionPlansLoading && (
-                <div className="flex items-center justify-center gap-2 py-8 text-gray-500 dark:text-gray-400">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Loading plans...
-                </div>
-              )}
-
-              {subscriptionPlansError && (
-                <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">
-                  {subscriptionPlansError}
-                </div>
-              )}
-
-              {!subscriptionPlansLoading && !subscriptionPlansError && (
-                <div className="space-y-3">
-                  {subscriptionPlans.map((plan) => {
-                    const price = billingCycle === 'monthly'
-                      ? plan.monthly_price_kes
-                      : plan.annual_price_kes;
-                    const isSelected = selectedPlanId === plan.id;
-
-                    return (
-                      <button
-                        key={plan.id}
-                        type="button"
-                        onClick={() => setSelectedPlanId(isSelected ? null : plan.id)}
-                        className={cn(
-                          'w-full rounded-xl border-2 p-4 text-left transition',
-                          isSelected
-                            ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20'
-                            : 'border-gray-200 hover:border-brand-400 dark:border-brand-700'
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="font-semibold capitalize text-gray-900 dark:text-white">
-                              {plan.name.toLowerCase()}
-                            </p>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {plan.max_listings === null ? 'Unlimited listings' : `Up to ${plan.max_listings} listings`}
-                              {plan.max_units_per_listing !== null
-                                ? ` · up to ${plan.max_units_per_listing} units each`
-                                : ''}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-gray-900 dark:text-white">{formatKES(price)}</p>
-                            <p className="text-xs text-gray-400">/{billingCycle === 'monthly' ? 'mo' : 'yr'}</p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-
-                  {subscriptionPlans.length === 0 && (
-                    <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                      No {roleLabel.toLowerCase()} subscription plans are available right now.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <button
-                type="button"
-                disabled={!selectedPlan || subscriptionPlansLoading}
-                onClick={() => {
-                  if (selectedPlan) onContinueToSubscription(selectedPlan, billingCycle);
-                }}
-                className={cn(
-                  'btn-primary w-full',
-                  (!selectedPlan || subscriptionPlansLoading) && 'cursor-not-allowed opacity-50'
-                )}
-              >
-                Continue to subscription
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
+  const selectedPlan = subscriptionPlans.find((plan) => plan.id === selectedPlanId) || null; const roleLabel = role === 'real_estate' ? 'Real Estate' : 'Landlord';
+  const paypalEnabled = paypalAvailable && Boolean(onPreparePayPalPayment) && Boolean(onPayPalSuccess);
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="listing-payment-title">
+    <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-xl dark:bg-brand-950 sm:rounded-2xl">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4 dark:border-brand-800 dark:bg-brand-950"><h3 id="listing-payment-title" className="text-lg font-semibold text-gray-900 dark:text-white">Listing Payment Options</h3><button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-brand-800" aria-label="Close"><X className="h-5 w-5" /></button></div>
+      <div className="flex border-b border-gray-200 px-5 dark:border-brand-800"><button type="button" onClick={() => setTab('pay')} className={cn('border-b-2 px-3 py-3 text-sm font-semibold transition-colors', tab === 'pay' ? 'border-brand-600 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400')}>Pay for this listing</button><button type="button" onClick={() => setTab('subscribe')} className={cn('border-b-2 px-3 py-3 text-sm font-semibold transition-colors', tab === 'subscribe' ? 'border-brand-600 text-brand-600 dark:text-brand-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400')}>Subscribe instead</button></div>
+      <div className="p-5">
+        {tab === 'pay' && <div className="space-y-5"><div className="rounded-2xl border border-warning-200 bg-warning-50 p-5 dark:border-warning-800 dark:bg-warning-900/20"><div className="flex items-start justify-between gap-4"><div><h4 className="font-semibold text-warning-800 dark:text-warning-300">One-time listing payment</h4><p className="mt-1 text-sm text-warning-700 dark:text-warning-400">Pay once to publish this individual listing.</p></div><p className="text-2xl font-bold text-gray-900 dark:text-white">{formatKES(amountKes)}</p></div></div>
+          <div><p className="mb-3 text-sm font-semibold text-gray-900 dark:text-white">Choose payment method</p><div className="grid gap-3 sm:grid-cols-2"><button type="button" disabled={paymentLoading || paymentCompleted} onClick={() => onSelectPaymentMethod('MPESA')} className={cn('rounded-xl border-2 p-4 text-left transition', selectedPaymentMethod === 'MPESA' ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20' : 'border-gray-200 hover:border-brand-400 dark:border-brand-700', (paymentLoading || paymentCompleted) && 'cursor-not-allowed opacity-60')}><div className="flex items-center justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">M-Pesa</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Pay using an M-Pesa STK prompt.</p></div>{selectedPaymentMethod === 'MPESA' && <CheckCircle2 className="h-5 w-5 text-brand-600" />}</div></button>
+            <button type="button" disabled={!paypalEnabled || paymentLoading || paymentCompleted} onClick={() => onSelectPaymentMethod('PAYPAL')} title={!paypalEnabled ? 'PayPal is not configured for this environment.' : undefined} className={cn('rounded-xl border-2 p-4 text-left transition', selectedPaymentMethod === 'PAYPAL' ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20' : 'border-gray-200 hover:border-brand-400 dark:border-brand-700', (!paypalEnabled || paymentLoading || paymentCompleted) && 'cursor-not-allowed opacity-50')}><div className="flex items-center justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">PayPal</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{paypalEnabled ? 'Pay securely with PayPal.' : 'Currently unavailable'}</p></div>{selectedPaymentMethod === 'PAYPAL' && paypalEnabled && <CheckCircle2 className="h-5 w-5 text-brand-600" />}</div></button></div></div>
+          {error && <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>}
+          {selectedPaymentMethod === 'PAYPAL' && paypalEnabled ? <div className="rounded-xl border border-gray-200 p-3 dark:border-brand-700"><PayPalPaymentButton mode="ONE_TIME" paymentIntentId={paymentIntentId} onSuccess={onPayPalSuccess!} onError={(message) => onSelectPaymentMethod('PAYPAL')} disabled={paymentLoading || paymentCompleted} /><p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">PayPal will confirm the payment before your listing is submitted.</p></div> : paymentCompleted ? <div className="flex items-center gap-2 rounded-lg bg-success-50 px-2 py-3 text-sm font-medium text-success-700 dark:bg-success-900/20 dark:text-success-400"><CheckCircle2 className="h-4 w-4" />Payment confirmed. Your listing can now continue to submission.</div> : <button type="button" onClick={onPayNow} disabled={!selectedPaymentMethod || selectedPaymentMethod === 'PAYPAL' || paymentLoading} className={cn('btn-primary w-full', (!selectedPaymentMethod || selectedPaymentMethod === 'PAYPAL' || paymentLoading) && 'cursor-not-allowed opacity-50')}>{paymentLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Processing payment...</> : <><DollarSign className="h-4 w-4" />Pay {formatKES(amountKes)}</>}</button>}
+          {paymentLoading && <p className="text-center text-xs text-gray-500 dark:text-gray-400">Your payment is being confirmed securely. Please do not close the payment flow.</p>}
+        </div>}
+        {tab === 'subscribe' && <div className="space-y-5"><div className="flex items-start gap-3 rounded-2xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-700 dark:bg-brand-900/20"><Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" /><div><p className="font-semibold text-brand-800 dark:text-brand-200">{roleLabel} subscription</p><p className="mt-1 text-sm text-brand-700 dark:text-brand-400">Choose a {roleLabel.toLowerCase()} plan that fits your listing needs.</p></div></div>
+          <div className="flex gap-2"><button type="button" onClick={() => setBillingCycle('monthly')} className={cn('flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors', billingCycle === 'monthly' ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>Monthly</button><button type="button" onClick={() => setBillingCycle('annual')} className={cn('flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors', billingCycle === 'annual' ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400')}>Annual</button></div>
+          {subscriptionPlansLoading && <div className="flex items-center justify-center gap-2 py-8 text-gray-500 dark:text-gray-400"><Loader2 className="h-5 w-5 animate-spin" />Loading plans...</div>}{subscriptionPlansError && <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{subscriptionPlansError}</div>}
+          {!subscriptionPlansLoading && !subscriptionPlansError && <div className="space-y-3">{subscriptionPlans.map((plan) => { const price = billingCycle === 'monthly' ? plan.monthly_price_kes : plan.annual_price_kes; const isSelected = selectedPlanId === plan.id; return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(isSelected ? null : plan.id)} className={cn('w-full rounded-xl border-2 p-4 text-left transition', isSelected ? 'border-brand-600 bg-brand-50 dark:border-brand-500 dark:bg-brand-900/20' : 'border-gray-200 hover:border-brand-400 dark:border-brand-700')}><div className="flex items-start justify-between gap-4"><div><p className="font-semibold capitalize text-gray-900 dark:text-white">{plan.name.toLowerCase()}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{plan.max_listings === null ? 'Unlimited listings' : `Up to ${plan.max_listings} listings`}{plan.max_units_per_listing !== null ? ` · up to ${plan.max_units_per_listing} units each` : ''}</p></div><div className="text-right"><p className="font-bold text-gray-900 dark:text-white">{formatKES(price)}</p><p className="text-xs text-gray-400">/{billingCycle === 'monthly' ? 'mo' : 'yr'}</p></div></div></button>; })}{subscriptionPlans.length === 0 && <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No {roleLabel.toLowerCase()} subscription plans are available right now.</p>}</div>}
+          <button type="button" disabled={!selectedPlan || subscriptionPlansLoading} onClick={() => { if (selectedPlan) onContinueToSubscription(selectedPlan, billingCycle); }} className={cn('btn-primary w-full', (!selectedPlan || subscriptionPlansLoading) && 'cursor-not-allowed opacity-50')}>Continue to subscription<ArrowRight className="h-4 w-4" /></button>
+        </div>}
       </div>
     </div>
-  );
+  </div>;
 }
