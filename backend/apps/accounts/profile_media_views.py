@@ -71,4 +71,6 @@ class ProfilePhotoView(APIView):
                 default_storage.delete(saved_path)
             raise
 
-        return Response({'profile_photo_url': f'/api/accounts/profile-photo/{profile.id}/'})
+        return Response({
+            'profile_photo_url': request.build_absolute_uri(f'/api/accounts/profile-photo/{profile.id}/'),
+        })
