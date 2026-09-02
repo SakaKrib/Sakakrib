@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 import math
 import uuid
+from zoneinfo import ZoneInfo
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -9,12 +10,13 @@ from django.utils import timezone
 
 from apps.accounts.models import Profile
 
-from .domain_bookings import Booking, ChatMessage, MovingCancellationEvent, MovingInvoice
+from .domain_bookings import Booking, ChatMessage, MovingCancellationEvent, MovingInvoice, MoverScheduleEvent
 from .domain_platform import Mover, NotificationEmail, UserNotification
 from .domain_property import PlatformSettings
 
 TWOPLACES = Decimal("0.01")
 EARTH_RADIUS_KM = 6371.0088
+NAIROBI_TZ = ZoneInfo("Africa/Nairobi")
 
 
 def _money(value):
@@ -117,6 +119,141 @@ def _ensure_moving_invoice(booking, mover):
         number_plate_snapshot=mover.number_plate,
         mover_profile_photo_snapshot=mover.profile_photo_url,
     )
+
+
+def _schedule_datetime(value):
+    try:
+        parsed = timezone.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("Schedule times must be valid ISO datetimes") from exc
+    if parsed.tzinfo is None:
+        parsed = timezone.make_aware(parsed, NAIROBI_TZ)
+    return parsed
+
+
+def _mover_schedule_window(mover, starts_at, ends_at):
+    local_start = starts_at.astimezone(NAIROBI_TZ)
+    local_end = ends_at.astimezone(NAIROBI_TZ)
+    if local_start.date() != local_end.date():
+        raise ValidationError("Moving schedule must start and end on the same Nairobi calendar day")
+    if mover.working_days:
+        weekday = local_start.strftime("%A").lower()
+        allowed = {str(day).strip().lower() for day in mover.working_days}
+        if weekday not in allowed:
+            raise ValidationError(f"Mover does not work on {weekday}")
+    if mover.start_time is not None and local_start.time() < mover.start_time:
+        raise ValidationError("Start time is outside mover working hours")
+    if mover.end_time is not None and local_end.time() > mover.end_time:
+        raise ValidationError("End time is outside mover working hours")
+
+
+def _ensure_no_schedule_conflict(mover_id, booking_id, starts_at, ends_at, *, confirmed_only=False):
+    statuses = ["CONFIRMED"] if confirmed_only else ["TENTATIVE", "CONFIRMED"]
+    if MoverScheduleEvent.objects.filter(
+        mover_id=mover_id,
+        status__in=statuses,
+        starts_at__lt=ends_at,
+        ends_at__gt=starts_at,
+    ).exclude(booking_id=booking_id).exists():
+        raise ValidationError("Mover already has another scheduled job at that time")
+
+
+@transaction.atomic
+def propose_moving_schedule(*, renter_id, booking_id, starts_at, ends_at):
+    starts = _schedule_datetime(starts_at)
+    ends = _schedule_datetime(ends_at)
+    now = timezone.now()
+    if ends <= starts:
+        raise ValidationError("End time must be after start time")
+    if starts <= now:
+        raise ValidationError("Moving time must be in the future")
+
+    booking = Booking.objects.select_for_update().filter(pk=booking_id, renter_id=renter_id).first()
+    if booking is None:
+        raise ValidationError("Booking not found or unauthorized")
+    if booking.status != "confirmed":
+        raise ValidationError("Mover must confirm before scheduling")
+    if booking.scheduled_start_at is not None or booking.scheduled_end_at is not None:
+        raise ValidationError("A moving schedule is already confirmed")
+
+    mover = Mover.objects.select_for_update().filter(pk=booking.mover_id).first()
+    if mover is None:
+        raise ValidationError("Mover not found")
+    _mover_schedule_window(mover, starts, ends)
+    _ensure_no_schedule_conflict(mover.id, booking.id, starts, ends)
+
+    event = MoverScheduleEvent.objects.filter(booking_id=booking.id).first()
+    if event is None:
+        event = MoverScheduleEvent.objects.create(
+            mover_id=mover.id,
+            booking_id=booking.id,
+            starts_at=starts,
+            ends_at=ends,
+            status="TENTATIVE",
+            title="Moving service",
+        )
+    else:
+        event.starts_at = starts
+        event.ends_at = ends
+        event.status = "TENTATIVE"
+        event.title = "Moving service"
+        event.save(update_fields=["starts_at", "ends_at", "status", "title", "updated_at"])
+
+    return {
+        "booking_id": str(booking.id),
+        "schedule_id": str(event.id),
+        "starts_at": event.starts_at,
+        "ends_at": event.ends_at,
+        "status": event.status,
+    }
+
+
+@transaction.atomic
+def confirm_moving_schedule(*, mover_user_id, booking_id):
+    booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
+    if booking is None:
+        raise ValidationError("Booking not found or unauthorized")
+    mover = Mover.objects.filter(pk=booking.mover_id, user_id=mover_user_id).first()
+    if mover is None:
+        raise ValidationError("Booking not found or unauthorized")
+    if booking.status != "confirmed":
+        raise ValidationError("Booking must be confirmed before scheduling")
+
+    event = MoverScheduleEvent.objects.select_for_update().filter(booking_id=booking.id).first()
+    if event is None:
+        raise ValidationError("No schedule proposal exists")
+    if event.status != "TENTATIVE":
+        raise ValidationError("Schedule is no longer awaiting confirmation")
+    now = timezone.now()
+    if event.starts_at <= now:
+        raise ValidationError("Schedule is in the past")
+    if event.ends_at <= event.starts_at:
+        raise ValidationError("Invalid schedule duration")
+
+    _mover_schedule_window(mover, event.starts_at, event.ends_at)
+    _ensure_no_schedule_conflict(mover.id, booking.id, event.starts_at, event.ends_at, confirmed_only=True)
+
+    event.status = "CONFIRMED"
+    event.save(update_fields=["status", "updated_at"])
+    booking.scheduled_start_at = event.starts_at
+    booking.scheduled_end_at = event.ends_at
+    booking.updated_at = now
+    booking.save(update_fields=["scheduled_start_at", "scheduled_end_at", "updated_at"])
+
+    UserNotification.objects.create(
+        user_id=booking.renter_id,
+        notification_type="MOVER_SCHEDULE_CONFIRMED",
+        title="Moving schedule confirmed",
+        message="Your mover confirmed the proposed moving date and time.",
+        data={"booking_id": str(booking.id), "schedule_id": str(event.id), "starts_at": event.starts_at.isoformat(), "ends_at": event.ends_at.isoformat()},
+    )
+    return {
+        "booking_id": str(booking.id),
+        "schedule_id": str(event.id),
+        "status": "CONFIRMED",
+        "starts_at": event.starts_at,
+        "ends_at": event.ends_at,
+    }
 
 
 @transaction.atomic
