@@ -176,7 +176,7 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
       }
       const moverId = getEqId(query.get('id'));
       if (moverId && isAdminDetailQuery(query)) {
-        const data = await djangoRequest<T>(`/api/accounts/admin/mover-details/${encodeURIComponent(moverId)}/`);
+        const data = await djangoRequest<T>(`/api/accounts/admin/movers/${encodeURIComponent(moverId)}/`);
         return { handled: true, data: [data] as T };
       }
     }
@@ -184,7 +184,7 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
       const moverId = getEqId(query.get('id'));
       if (moverId) {
         const data = await djangoRequest<T>(
-          `/api/accounts/admin/mover-details/${encodeURIComponent(moverId)}/`,
+          `/api/accounts/admin/movers/${encodeURIComponent(moverId)}/`,
           { method: 'PATCH', body: init.body },
         );
         return { handled: true, data };
@@ -198,14 +198,12 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
 export const protectedApi = async <T = unknown>(path: string, init: RequestInit = {}): Promise<T> => {
   const normalizedPath = path === 'listing_media_insert_response' ? '/rest/v1/listing_media' : path;
   if (!normalizedPath.startsWith('/rest/v1/')) throw new Error('Protected API paths must target /rest/v1/.');
-
   const bridge = await tryAdminBridge<T>(normalizedPath, init);
   if (bridge.handled) return bridge.data as T;
 
   const headers = new Headers(init.headers);
   headers.set('apikey', getPublishableKey());
   if (init.body !== undefined && init.body !== null && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-
   const response = await fetch(`${getFunctionUrl()}${normalizedPath}`, { ...init, credentials: 'include', headers });
   const body = await readJson<T | ProtectedApiErrorBody>(response);
   if (!response.ok) {
@@ -220,6 +218,12 @@ export const protectedApi = async <T = unknown>(path: string, init: RequestInit 
 };
 
 export const protectedFunctionPost = async <T = unknown>(functionPath: string, body: unknown): Promise<T> => {
+  if (functionPath === '/send-notification-emails') {
+    return djangoRequest<T>('/api/accounts/admin/application-notifications/', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
   if (!functionPath.startsWith('/')) throw new Error('Protected function paths must start with /. ');
   const response = await fetch(`${getFunctionUrl()}${functionPath}`, {
     method: 'POST', credentials: 'include',
