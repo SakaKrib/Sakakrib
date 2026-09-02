@@ -22,6 +22,7 @@ from .domain_bookings import (
     MovingInvoice,
     MovingPayment,
     MovingTrackingPoint,
+    MoverPayout,
     MoverScheduleEvent,
 )
 from .domain_platform import Mover
