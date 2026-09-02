@@ -2,22 +2,12 @@ from django.core.exceptions import PermissionDenied
 
 from .models import Profile
 
-
 ADMIN_ROLES = {'admin'}
 CONTENT_ROLES = {'landlord', 'real_estate'}
 
 
 def is_admin(user):
-    return bool(
-        user
-        and user.is_authenticated
-        and (
-            user.is_staff
-            or user.is_superuser
-            or getattr(user, 'is_admin', False)
-            or getattr(user, 'role', None) in ADMIN_ROLES
-        )
-    )
+    return bool(user and user.is_authenticated and (user.is_staff or user.is_superuser or getattr(user, 'is_admin', False) or getattr(user, 'role', None) in ADMIN_ROLES))
 
 
 def require_admin(user):
@@ -37,7 +27,6 @@ def require_owner(user, owner_id):
 
 
 def can_manage_listings(user):
-    """Mirror the verified/approved production listing-management gate."""
     if not user or not user.is_authenticated:
         return False
     if is_admin(user):
@@ -47,11 +36,27 @@ def can_manage_listings(user):
         return False
     if not getattr(user, 'email_verified', False) or not getattr(user, 'kyc_completed', False):
         return False
-    if role == 'landlord':
-        return getattr(user, 'landlord_application_status', None) == 'approved'
-    if role == 'real_estate':
-        return getattr(user, 'real_estate_application_status', None) == 'approved'
-    return False
+    field = 'landlord_application_status' if role == 'landlord' else 'real_estate_application_status'
+    return getattr(user, field, None) == 'approved'
+
+
+def can_access_pms(user):
+    """Return whether this account may enter the landlord PMS boundary."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_admin(user):
+        return True
+    from apps.subscriptions.services import get_pms_access
+    return bool(get_pms_access(user).get('allowed'))
+
+
+def pms_access(user):
+    if not user or not user.is_authenticated:
+        return {'allowed': False, 'reason': 'AUTHENTICATION_REQUIRED', 'read_only': False}
+    if is_admin(user):
+        return {'allowed': True, 'reason': 'ADMIN', 'read_only': False}
+    from apps.subscriptions.services import get_pms_access
+    return get_pms_access(user)
 
 
 def can_view_public_listings(user):
@@ -83,11 +88,7 @@ def can_access_moving_invoice(user, invoice, mover_user_ids=None):
 
 
 def can_access_chat(user, message):
-    return bool(
-        user
-        and user.is_authenticated
-        and (is_admin(user) or owns(user, message.sender_id) or owns(user, message.receiver_id))
-    )
+    return bool(user and user.is_authenticated and (is_admin(user) or owns(user, message.sender_id) or owns(user, message.receiver_id)))
 
 
 def can_modify_own(user, owner_id):
