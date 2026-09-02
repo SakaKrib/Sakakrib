@@ -6,9 +6,17 @@ import {
 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { protectedGet } from '@/lib/djangoApi';
 import { formatKES, timeAgo, cn } from '@/lib/utils';
 import type { Listing, ListingMedia, Review, Profile } from '@/lib/supabase';
+
+type ListingDetailResponse = Listing & {
+  landlord: Profile | null;
+};
+
+type ReviewListResponse = {
+  items: Review[];
+};
 
 export default function ListingDetailPage() {
   const { selectedListingId, navigate } = useNav();
@@ -25,33 +33,27 @@ export default function ListingDetailPage() {
     if (!selectedListingId) return;
     const fetchData = async () => {
       setLoading(true);
-      const { data: listingData } = await supabase
-        .from('listings')
-        .select('*')
-        .eq('id', selectedListingId)
-        .maybeSingle();
-      if (listingData) {
-        setListing(listingData as Listing);
-        const { data: mediaData } = await supabase
-          .from('listing_media')
-          .select('*')
-          .eq('listing_id', selectedListingId)
-          .order('position');
-        if (mediaData) setMedia(mediaData as ListingMedia[]);
-        const { data: landlordData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', (listingData as Listing).user_id)
-          .maybeSingle();
-        if (landlordData) setLandlord(landlordData as Profile);
-        const { data: reviewData } = await supabase
-          .from('reviews')
-          .select('*')
-          .eq('listing_id', selectedListingId)
-          .order('created_at', { ascending: false });
-        if (reviewData) setReviews(reviewData as Review[]);
+      try {
+        const listingData = await protectedGet<ListingDetailResponse>(
+          `/api/listings/${selectedListingId}/`,
+        );
+
+        setListing(listingData);
+        setMedia(listingData.media ?? []);
+        setLandlord(listingData.landlord ?? null);
+
+        const reviewData = await protectedGet<ReviewListResponse>(
+          `/api/core/reviews/?listing_id=${encodeURIComponent(selectedListingId)}`,
+        );
+        setReviews(reviewData.items ?? []);
+      } catch {
+        setListing(null);
+        setMedia([]);
+        setLandlord(null);
+        setReviews([]);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     fetchData();
   }, [selectedListingId]);
