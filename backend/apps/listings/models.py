@@ -39,6 +39,7 @@ class Listing(models.Model):
     is_property_management = models.BooleanField(default=False)
     is_paid = models.BooleanField(default=False)
     is_published = models.BooleanField(default=False)
+    is_draft = models.BooleanField(default=False)
     approval_status = models.TextField(default='pending_review')
     is_approved = models.BooleanField(default=False)
     status = models.TextField(default='pending')
@@ -56,6 +57,7 @@ class Listing(models.Model):
             models.Index(fields=['-created_at'], name='idx_listings_created_at'),
             models.Index(fields=['user'], name='idx_listings_user_id'),
             models.Index(fields=['is_property_management'], name='listings_property_management_idx'),
+            models.Index(fields=['user', 'is_draft', '-updated_at'], name='listings_user_draft_idx'),
         ]
         constraints = [
             models.CheckConstraint(condition=models.Q(listing_type__in=['rent', 'sale']), name='listings_listing_type_valid'),
@@ -63,21 +65,6 @@ class Listing(models.Model):
             models.CheckConstraint(condition=models.Q(approval_status__in=['pending_review', 'approved', 'rejected']), name='listings_approval_status_valid'),
             models.CheckConstraint(condition=models.Q(status__in=['pending', 'approved', 'rejected']), name='listings_status_valid'),
         ]
-
-
-class ListingDraft(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_drafts')
-    role = models.CharField(max_length=32)
-    data = models.JSONField(default=dict)
-    status = models.CharField(max_length=16, default='DRAFT')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'listing_drafts'
-        ordering = ['-updated_at']
-        indexes = [models.Index(fields=['user', 'status', '-updated_at'], name='listing_draft_user_status_idx')]
 
 
 class ListingPaymentIntent(models.Model):
