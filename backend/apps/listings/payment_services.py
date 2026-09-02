@@ -16,6 +16,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Profile
+from apps.core.notification_services import dispatch_user_notification
 from apps.payments.models import ListingPayment
 from .models import ListingPaymentIntent
 from .services import _create_listing_from_data, get_listing_entitlement
@@ -137,6 +138,7 @@ def process_listing_payment(
         dict(intent.listing_data or {}),
         entitlement={**entitlement, "free_listings_remaining": 0},
         listing_entitlement="INDIVIDUAL_PAID",
+        notify=False,
     )
     now = timezone.now()
     payment = ListingPayment.objects.create(
@@ -176,12 +178,25 @@ def process_listing_payment(
         "paid_at", "updated_at",
     ])
 
+    listing_id = listing["listing_id"]
+    listing_title = str(dict(intent.listing_data or {}).get("title") or "")
+    transaction.on_commit(lambda: dispatch_user_notification(
+        user_id=profile.id,
+        notification_type="LISTING_POSTED",
+        title="Listing Posted Successfully - Saka Krib",
+        message=f'Your property listing "{listing_title}" has been successfully created and is now awaiting administrator approval.',
+        data={"listing_id": str(listing_id)},
+        event_key=f"listing:posted:{listing_id}",
+        send_email=True,
+        email_template="listing_posted",
+    ))
+
     return {
         "success": True,
         "already_processed": False,
         "payment_intent_id": intent.id,
         "payment_id": payment.id,
-        "listing_id": listing["listing_id"],
+        "listing_id": listing_id,
         "status": "PAID",
         "listing_is_paid": True,
         "listing_is_published": False,
