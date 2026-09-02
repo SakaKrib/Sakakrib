@@ -17,4 +17,5 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(model_name='subscriptioninvoice', constraint=models.UniqueConstraint(condition=models.Q(checkout_request_id__isnull=False), fields=('checkout_request_id',), name='subscription_invoice_checkout_uidx')),
         migrations.AddConstraint(model_name='subscriptioninvoice', constraint=models.UniqueConstraint(condition=models.Q(provider_reference__isnull=False), fields=('provider_reference',), name='subscription_invoice_provider_ref_uidx')),
         migrations.AddConstraint(model_name='subscriptioninvoice', constraint=models.UniqueConstraint(condition=models.Q(paypal_subscription_id__isnull=False), fields=('paypal_subscription_id',), name='subscription_invoice_paypal_sub_uidx')),
+        migrations.AddConstraint(model_name='subscriptioninvoice', constraint=models.UniqueConstraint(condition=models.Q(webhook_event_id__isnull=False), fields=('webhook_event_id',), name='subscription_invoices_webhook_event_uidx')),
     ]
