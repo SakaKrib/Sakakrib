@@ -24,11 +24,12 @@ def verify_google_credential(credential: str) -> dict:
             signing_key.key,
             algorithms=['RS256'],
             audience=client_id,
-            issuer=list(GOOGLE_ISSUERS),
         )
     except jwt.PyJWTError as exc:
         raise exceptions.AuthenticationFailed('Invalid Google credential.') from exc
 
+    if claims.get('iss') not in GOOGLE_ISSUERS:
+        raise exceptions.AuthenticationFailed('Invalid Google token issuer.')
     if not claims.get('sub'):
         raise exceptions.AuthenticationFailed('Google account identifier is missing.')
     email = str(claims.get('email') or '').strip().lower()
