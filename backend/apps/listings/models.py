@@ -7,7 +7,7 @@ from apps.accounts.models import Profile
 
 class Listing(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_id = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listings')
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listings')
     title = models.TextField(default='')
     description = models.TextField(default='')
     city = models.TextField(default='')
@@ -48,7 +48,7 @@ class Listing(models.Model):
         indexes = [
             models.Index(fields=['city'], name='idx_listings_city'),
             models.Index(fields=['-created_at'], name='idx_listings_created_at'),
-            models.Index(fields=['user_id'], name='idx_listings_user_id'),
+            models.Index(fields=['user'], name='idx_listings_user_id'),
             models.Index(fields=['is_property_management'], name='listings_property_management_idx'),
         ]
         constraints = [
@@ -61,7 +61,7 @@ class Listing(models.Model):
 
 class ListingPaymentIntent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user_id = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_payment_intents')
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_payment_intents')
     role = models.TextField()
     amount_kes = models.DecimalField(max_digits=12, decimal_places=2, default=1000)
     status = models.TextField(default='PENDING')
@@ -72,7 +72,7 @@ class ListingPaymentIntent(models.Model):
     updated_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
-    listing_id = models.ForeignKey(Listing, on_delete=models.SET_NULL, db_column='listing_id', related_name='payment_intents', null=True, blank=True)
+    listing = models.ForeignKey(Listing, on_delete=models.SET_NULL, db_column='listing_id', related_name='payment_intents', null=True, blank=True)
     provider_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     provider_currency = models.TextField(null=True, blank=True)
     paypal_order_id = models.TextField(null=True, blank=True)
