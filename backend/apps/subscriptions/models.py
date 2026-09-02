@@ -18,10 +18,8 @@ class SubscriptionPlan(models.Model):
     paypal_annual_price_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     paypal_fx_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     paypal_fx_rate_timestamp = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         db_table = 'subscription_plans'
-
 
 class LandlordSubscription(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -45,15 +43,9 @@ class LandlordSubscription(models.Model):
     billing_amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     billing_exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     billing_exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         db_table = 'landlord_subscriptions'
-        constraints = [
-            models.UniqueConstraint(fields=['landlord_id'], condition=models.Q(status='PENDING_PAYMENT'), name='landlord_sub_pending_uidx'),
-            models.UniqueConstraint(fields=['landlord_id'], condition=models.Q(status__in=['ACTIVE', 'GRACE_PERIOD']), name='landlord_sub_current_uidx'),
-            models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='landlord_sub_paypal_uidx'),
-        ]
-
+        constraints = [models.UniqueConstraint(fields=['landlord_id'], condition=models.Q(status='PENDING_PAYMENT'), name='landlord_sub_pending_uidx'), models.UniqueConstraint(fields=['landlord_id'], condition=models.Q(status__in=['ACTIVE', 'GRACE_PERIOD']), name='landlord_sub_current_uidx'), models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='landlord_sub_paypal_uidx')]
 
 class RealEstateSubscription(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -77,15 +69,9 @@ class RealEstateSubscription(models.Model):
     billing_amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     billing_exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     billing_exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
-
     class Meta:
         db_table = 'real_estate_subscriptions'
-        constraints = [
-            models.UniqueConstraint(fields=['real_estate_id'], condition=models.Q(status='PENDING_PAYMENT'), name='realestate_sub_pending_uidx'),
-            models.UniqueConstraint(fields=['real_estate_id'], condition=models.Q(status__in=['ACTIVE', 'GRACE_PERIOD']), name='realestate_sub_current_uidx'),
-            models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='realestate_sub_paypal_uidx'),
-        ]
-
+        constraints = [models.UniqueConstraint(fields=['real_estate_id'], condition=models.Q(status='PENDING_PAYMENT'), name='realestate_sub_pending_uidx'), models.UniqueConstraint(fields=['real_estate_id'], condition=models.Q(status__in=['ACTIVE', 'GRACE_PERIOD']), name='realestate_sub_current_uidx'), models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='realestate_sub_paypal_uidx')]
 
 class SubscriptionListing(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -96,14 +82,9 @@ class SubscriptionListing(models.Model):
     deactivated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField()
     real_estate_subscription_id = models.UUIDField(null=True, blank=True)
-
     class Meta:
         db_table = 'subscription_listings'
-        constraints = [
-            models.UniqueConstraint(fields=['subscription_id', 'listing_id'], condition=models.Q(subscription_id__isnull=False), name='subscription_listing_landlord_uidx'),
-            models.UniqueConstraint(fields=['real_estate_subscription_id', 'listing_id'], condition=models.Q(real_estate_subscription_id__isnull=False), name='subscription_listing_re_uidx'),
-        ]
-
+        constraints = [models.UniqueConstraint(fields=['subscription_id', 'listing_id'], condition=models.Q(subscription_id__isnull=False), name='subscription_listing_landlord_uidx'), models.UniqueConstraint(fields=['real_estate_subscription_id', 'listing_id'], condition=models.Q(real_estate_subscription_id__isnull=False), name='subscription_listing_re_uidx')]
 
 class SubscriptionInvoice(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -133,12 +114,7 @@ class SubscriptionInvoice(models.Model):
     billing_period_end = models.DateTimeField(null=True, blank=True)
     webhook_event_id = models.TextField(null=True, blank=True)
     pricing_snapshot_source = models.TextField(null=True, blank=True)
-
+    listing = models.ForeignKey('listings.Listing', on_delete=models.SET_NULL, null=True, blank=True, related_name='subscription_invoices', db_column='listing_id')
     class Meta:
         db_table = 'subscription_invoices'
-        constraints = [
-            models.UniqueConstraint(fields=['webhook_event_id'], condition=models.Q(webhook_event_id__isnull=False), name='subscription_invoices_webhook_event_uidx'),
-            models.UniqueConstraint(fields=['checkout_request_id'], condition=models.Q(checkout_request_id__isnull=False), name='subscription_invoice_checkout_uidx'),
-            models.UniqueConstraint(fields=['provider_reference'], condition=models.Q(provider_reference__isnull=False), name='subscription_invoice_provider_ref_uidx'),
-            models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='subscription_invoice_paypal_sub_uidx'),
-        ]
+        constraints = [models.UniqueConstraint(fields=['webhook_event_id'], condition=models.Q(webhook_event_id__isnull=False), name='subscription_invoices_webhook_event_uidx'), models.UniqueConstraint(fields=['checkout_request_id'], condition=models.Q(checkout_request_id__isnull=False), name='subscription_invoice_checkout_uidx'), models.UniqueConstraint(fields=['provider_reference'], condition=models.Q(provider_reference__isnull=False), name='subscription_invoice_provider_ref_uidx'), models.UniqueConstraint(fields=['paypal_subscription_id'], condition=models.Q(paypal_subscription_id__isnull=False), name='subscription_invoice_paypal_sub_uidx')]
