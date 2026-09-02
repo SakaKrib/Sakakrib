@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from apps.core.payment_events import publish_payment_status
 from apps.listings.models import ListingPaymentIntent
 from apps.listings.payment_services import process_listing_payment
+from .paypal_listing_webhook import verify_and_process_paypal_listing_webhook
 from .services import get_exchange_rate, get_provider
 
 
@@ -228,13 +229,33 @@ class PayPalListingCaptureView(APIView):
             capture_id, captured_amount, captured_currency = _paypal_capture_details(raw)
             if not capture_id or captured_amount is None or captured_currency != 'USD':
                 return Response({'success': False, 'message': 'PayPal order does not contain a valid USD capture.'}, status=409)
-            with transaction.atomic():
-                settled = process_listing_payment(
-                    intent.id, provider='PAYPAL', payment_method='PAYPAL', provider_reference=capture_id,
-                    provider_amount=captured_amount, provider_currency='USD', paypal_order_id=order_id,
-                    paypal_fx_rate=intent.paypal_fx_rate, paid_amount_kes=intent.amount_kes,
-                    result_description=f'PayPal order {order_id} status {provider_status}',
-                )
+            # Capture is deliberately not treated as the authoritative settlement.
+            # The PayPal PAYMENT.CAPTURE.COMPLETED webhook settles the intent and
+            # publishes the WebSocket event. Returning the provider capture details
+            # lets the UI navigate to the waiting page without trusting this response
+            # as proof of payment.
+            return Response({
+                'success': True,
+                'status': 'PENDING',
+                'payment_intent_id': str(intent.id),
+                'listing_id': str(intent.listing_id) if intent.listing_id else None,
+                'paypal_order_id': order_id,
+                'paypal_capture_id': capture_id,
+                'message': 'PayPal capture initiated. Waiting for verified webhook confirmation.',
+            })
         except Exception as exc:
             return Response({'success': False, 'message': f'Payment provider verification/settlement failed: {exc}'}, status=500)
-        return Response({**settled, 'payment_captured': True, 'provider_reference': capture_id, 'paypal_order_id': order_id, 'paypal_capture_id': capture_id})
+
+
+class PayPalListingWebhookView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        try:
+            result = verify_and_process_paypal_listing_webhook(request.data, request.headers)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        except Exception:
+            return Response({'detail': 'Unable to verify or process PayPal listing webhook.'}, status=500)
+        return Response(result, status=200)
