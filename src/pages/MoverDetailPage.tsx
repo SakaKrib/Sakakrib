@@ -265,22 +265,32 @@ export default function MoverDetailPage() {
                 { value: 'airtel', label: 'Airtel Money' },
                 { value: 'card', label: 'Card / PayPal' },
               ].map((p) => (
-                <button key={p.value} type="button" onClick={() => setPaymentMethod(p.value)} className={cn('rounded-lg border px-3 py-2 text-sm font-medium transition-colors', paymentMethod === p.value ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300' : 'border-gray-200 text-gray-600 dark:border-brand-700 dark:text-gray-300')}>
-                  <CreditCard className="mx-auto mb-1 h-4 w-4" />
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setPaymentMethod(p.value)}
+                  className={cn(
+                    'rounded-lg border-2 py-2.5 text-sm font-semibold transition-colors',
+                    paymentMethod === p.value
+                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200'
+                      : 'border-gray-200 text-gray-500 dark:border-brand-700 dark:text-gray-400'
+                  )}
+                >
                   {p.label}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Cost Summary */}
           {bookingAmount > 0 && (
             <div className="rounded-xl bg-gray-50 p-4 dark:bg-brand-800/30">
-              <div className="flex justify-between text-sm py-1">
+              <div className="flex justify-between py-1 text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Service Amount</span>
                 <span className="font-semibold text-gray-900 dark:text-white">{formatKES(bookingAmount)}</span>
               </div>
-              <div className="flex justify-between text-sm py-1">
-                <span className="text-gray-500 dark:text-gray-400">Platform Commission</span>
+              <div className="flex justify-between py-1 text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Platform Commission (10%)</span>
                 <span className="font-semibold text-brand-600 dark:text-brand-400">{formatKES(commission)}</span>
               </div>
               <div className="mt-2 flex justify-between border-t border-gray-200 pt-2 dark:border-brand-700">
@@ -290,29 +300,31 @@ export default function MoverDetailPage() {
             </div>
           )}
 
-          {error && <p className="text-sm text-error-600">{error}</p>}
+          {error && (
+            <div className="rounded-lg bg-error-50 px-2 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>
+          )}
 
           <button type="submit" disabled={submitting} className="btn-primary w-full">
-            {submitting ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Submit Booking Request'}
+            {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing Payment...</> : <><CreditCard className="h-4 w-4" /> Confirm & Pay {bookingAmount > 0 ? formatKES(total) : ''}</>}
           </button>
         </form>
       )}
 
       {/* Reviews */}
       {reviews.length > 0 && (
-        <div className="mt-6 card p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Reviews</h2>
+        <div className="card mt-6 p-6">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+            <Star className="h-5 w-5 text-brand-600" /> Reviews ({avgRating.toFixed(1)})
+          </h3>
           <div className="mt-4 space-y-4">
             {reviews.map((review) => (
-              <div key={review.id} className="border-b border-gray-100 pb-4 last:border-0 dark:border-brand-800">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 fill-warning-500 text-warning-500" />
-                    <span className="font-semibold text-gray-900 dark:text-white">{review.rating}/5</span>
-                  </div>
-                  <span className="text-xs text-gray-400">{new Date(review.created_at).toLocaleDateString()}</span>
+              <div key={review.id} className="border-l-2 border-brand-200 pl-4 dark:border-brand-700">
+                <div className="flex">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star key={s} className={cn('h-4 w-4', s <= review.rating ? 'fill-warning-500 text-warning-500' : 'text-gray-300 dark:text-brand-700')} />
+                  ))}
                 </div>
-                {review.comment && <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{review.comment}</p>}
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{review.comment}</p>
               </div>
             ))}
           </div>
