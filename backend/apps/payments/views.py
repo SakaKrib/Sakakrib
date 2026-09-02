@@ -105,6 +105,7 @@ class ListingPaymentStartView(APIView):
             result = get_provider(provider_name).create_payment(
                 amount=amount, currency=currency, reference=str(intent.id),
                 metadata={'phone_number': phone_number, 'description': 'SakaKrib listing'},
+                request_id=str(intent.id) if provider_name == 'paypal' else None,
             )
             if not result.success:
                 return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=502)
@@ -206,8 +207,6 @@ class PayPalListingCaptureView(APIView):
 
         provider = get_provider('paypal')
         try:
-            # Verification is read-only. This is important when a previous request
-            # captured the PayPal order but failed before local settlement completed.
             order_result = provider.verify_payment(provider_reference=order_id)
             raw = order_result.raw or {}
             provider_status = raw.get('status')
