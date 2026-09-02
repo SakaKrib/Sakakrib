@@ -12,6 +12,17 @@ from apps.listings.payment_services import process_listing_payment
 from .services import get_exchange_rate, get_provider
 
 
+def _normalize_kenyan_phone(phone: str) -> str:
+    value = ''.join(str(phone).strip().split())
+    if value.startswith('+254'):
+        return value[1:]
+    if value.startswith('254'):
+        return value
+    if value.startswith('07') or value.startswith('01'):
+        return f'254{value[1:]}'
+    raise ValueError('Invalid Kenyan phone number')
+
+
 class PaymentProviderConfigView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -30,40 +41,57 @@ class ListingPaymentStartView(APIView):
         provider_name = str(request.data.get('provider', '')).lower()
         if not intent_id or provider_name not in ('mpesa', 'paypal'):
             return Response({'detail': 'payment_intent_id and provider (mpesa or paypal) are required.'}, status=400)
-        intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk, status='PENDING').first()
-        if not intent:
-            return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
 
-        if provider_name == 'mpesa':
-            amount = intent.amount_kes
-            currency = 'KES'
-            fx_rate = None
-        else:
-            try:
-                fx_rate = get_exchange_rate('KES', 'USD')
-                amount = (intent.amount_kes * fx_rate).quantize(Decimal('0.01'))
-            except Exception as exc:
-                return Response({'success': False, 'message': str(exc)}, status=503)
-            currency = 'USD'
+        with transaction.atomic():
+            intent = ListingPaymentIntent.objects.select_for_update().filter(
+                pk=intent_id, user_id=request.user.pk, status='PENDING'
+            ).first()
+            if not intent:
+                return Response({'detail': 'Pending listing payment intent not found.'}, status=404)
+            if intent.expires_at is not None and intent.expires_at <= timezone.now():
+                intent.status = 'EXPIRED'
+                intent.updated_at = timezone.now()
+                intent.save(update_fields=['status', 'updated_at'])
+                return Response({'detail': 'Payment intent has expired.'}, status=409)
 
-        result = get_provider(provider_name).create_payment(
-            amount=amount, currency=currency, reference=str(intent.id),
-            metadata={'phone_number': request.data.get('phone_number'), 'description': 'SakaKrib listing'},
-        )
-        if not result.success:
-            return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=502)
+            profile = request.user
+            if provider_name == 'mpesa':
+                try:
+                    phone_number = _normalize_kenyan_phone(profile.phone)
+                except ValueError as exc:
+                    return Response({'detail': str(exc)}, status=400)
+                if not profile.phone:
+                    return Response({'detail': 'Profile phone number required.'}, status=400)
+                amount = intent.amount_kes
+                currency = 'KES'
+                fx_rate = None
+            else:
+                phone_number = None
+                try:
+                    fx_rate = get_exchange_rate('KES', 'USD')
+                    amount = (intent.amount_kes * fx_rate).quantize(Decimal('0.01'))
+                except Exception as exc:
+                    return Response({'success': False, 'message': str(exc)}, status=503)
+                currency = 'USD'
 
-        intent.provider = provider_name.upper()
-        intent.provider_reference = result.provider_reference
-        intent.provider_amount = amount
-        intent.provider_currency = currency
-        intent.paypal_fx_rate = fx_rate
-        intent.updated_at = timezone.now()
-        intent.save(update_fields=['provider','provider_reference','provider_amount','provider_currency','paypal_fx_rate','updated_at'])
-        return Response({'success': True, 'payment_intent_id': str(intent.id), 'provider': provider_name,
-                         'provider_reference': result.provider_reference, 'provider_amount': str(amount),
-                         'provider_currency': currency, 'paypal_fx_rate': str(fx_rate) if fx_rate else None,
-                         'message': result.message, 'provider_response': result.raw})
+            result = get_provider(provider_name).create_payment(
+                amount=amount, currency=currency, reference=str(intent.id),
+                metadata={'phone_number': phone_number, 'description': 'SakaKrib listing'},
+            )
+            if not result.success:
+                return Response({'success': False, 'message': result.message, 'provider_response': result.raw}, status=502)
+
+            intent.provider = provider_name.upper()
+            intent.provider_reference = result.provider_reference
+            intent.provider_amount = amount
+            intent.provider_currency = currency
+            intent.paypal_fx_rate = fx_rate
+            intent.updated_at = timezone.now()
+            intent.save(update_fields=['provider', 'provider_reference', 'provider_amount', 'provider_currency', 'paypal_fx_rate', 'updated_at'])
+            return Response({'success': True, 'payment_intent_id': str(intent.id), 'provider': provider_name,
+                             'provider_reference': result.provider_reference, 'provider_amount': str(amount),
+                             'provider_currency': currency, 'paypal_fx_rate': str(fx_rate) if fx_rate else None,
+                             'message': result.message, 'provider_response': result.raw})
 
 
 class MpesaListingCallbackView(APIView):
@@ -91,7 +119,7 @@ class MpesaListingCallbackView(APIView):
                     provider_amount=items.get('Amount'), provider_currency='KES', checkout_request_id=checkout_id,
                     merchant_request_id=callback.get('MerchantRequestID'), mpesa_receipt=items.get('MpesaReceiptNumber'),
                     phone_number=items.get('PhoneNumber'), result_code=result_code,
-                    result_description=callback.get('ResultDesc'), provider_transaction_id=items.get('MpesaReceiptNumber'),
+                    result_description=callback.get('ResultDesc'),
                 )
         except Exception as exc:
             return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
@@ -117,21 +145,14 @@ class PayPalListingCaptureView(APIView):
         if not intent.provider_amount or intent.provider_currency != 'USD' or not intent.paypal_fx_rate:
             return Response({'success': False, 'message': 'Payment intent has no valid server-side USD/FX settlement data.'}, status=400)
 
-        capture_id = None
         raw = result.raw or {}
         purchase_units = raw.get('purchase_units') or []
-        if purchase_units:
-            captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or []
-            if captures:
-                capture_id = captures[0].get('id')
-        captured_amount = None
-        captured_currency = None
-        if purchase_units:
-            captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or []
-            if captures:
-                amount_data = (captures[0] or {}).get('amount') or {}
-                captured_amount = amount_data.get('value')
-                captured_currency = amount_data.get('currency_code')
+        captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or [] if purchase_units else []
+        capture = captures[0] if captures else {}
+        capture_id = capture.get('id')
+        amount_data = capture.get('amount') or {}
+        captured_amount = amount_data.get('value')
+        captured_currency = amount_data.get('currency_code')
         if not capture_id or captured_amount is None or captured_currency != 'USD':
             return Response({'success': False, 'message': 'PayPal capture response is missing a valid USD capture.'}, status=409)
 
@@ -142,7 +163,6 @@ class PayPalListingCaptureView(APIView):
                     provider_amount=captured_amount, provider_currency='USD',
                     paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
                     paid_amount_kes=intent.amount_kes,
-                    provider_transaction_id=capture_id,
                     result_description=result.message,
                 )
         except Exception as exc:
