@@ -1,15 +1,9 @@
-import json
-import os
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
 from .domain_platform import NotificationEmail
 from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES
-
-
-RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def queue_email(*, recipient: str, template_type: str, payload: dict) -> NotificationEmail:
@@ -21,54 +15,43 @@ def queue_email(*, recipient: str, template_type: str, payload: dict) -> Notific
     subject = EMAIL_SUBJECTS.get(template_type, payload.get("subject") or "Saka Krib notification")
     if template is None:
         raise ValueError(f"Unknown email template: {template_type}")
+
     html_body = template(payload)
     if not html_body.strip():
         raise ValueError("Email template returned empty HTML")
-    email = NotificationEmail.objects.create(
+
+    return NotificationEmail.objects.create(
         recipient=recipient,
         subject=subject,
         html_body=html_body,
         template_type=template_type,
         status="pending",
     )
-    return email
 
 
 def send_notification_email(email: NotificationEmail) -> dict:
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    from_address = os.getenv("EMAIL_FROM", "").strip() or os.getenv("DEFAULT_FROM_EMAIL", "").strip()
-    if not api_key:
-        raise RuntimeError("RESEND_API_KEY is not configured")
+    from_address = str(
+        getattr(settings, "EMAIL_FROM", "")
+        or getattr(settings, "DEFAULT_FROM_EMAIL", "")
+        or getattr(settings, "EMAIL_HOST_USER", "")
+        or ""
+    ).strip()
     if not from_address:
-        raise RuntimeError("EMAIL_FROM or DEFAULT_FROM_EMAIL is not configured")
+        raise RuntimeError("EMAIL_FROM, DEFAULT_FROM_EMAIL, or EMAIL_HOST_USER is not configured")
 
-    payload = json.dumps({
-        "from": from_address,
-        "to": [email.recipient],
-        "subject": email.subject,
-        "html": email.html_body,
-    }).encode("utf-8")
-    request = Request(
-        RESEND_API_URL,
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Idempotency-Key": f"sakakrib-notification-{email.id}",
-        },
-        method="POST",
+    message = EmailMultiAlternatives(
+        subject=email.subject,
+        body=email.html_body,
+        from_email=from_address,
+        to=[email.recipient],
+        reply_to=[from_address],
     )
-    try:
-        with urlopen(request, timeout=20) as response:
-            raw = response.read().decode("utf-8")
-            data = json.loads(raw) if raw else {}
-    except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:1000]
-        raise RuntimeError(f"Resend failed with status {exc.code}: {detail}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Unable to reach Resend: {exc.reason}") from exc
+    message.attach_alternative(email.html_body, "text/html")
+    sent = message.send(fail_silently=False)
+    if sent != 1:
+        raise RuntimeError("SMTP server did not accept the email")
 
     email.status = "sent"
     email.sent_at = timezone.now()
     email.save(update_fields=["status", "sent_at"])
-    return {"sent": True, "notification_id": str(email.id), "resend_id": data.get("id")}
+    return {"sent": True, "notification_id": str(email.id)}
