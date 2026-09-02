@@ -105,6 +105,9 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   return body as T;
 };
 
+/** Generic Django transport for transitional compatibility bridges. */
+export const djangoRequest = request;
+
 const requestMultipart = async <T>(
   path: string,
   formData: FormData,
