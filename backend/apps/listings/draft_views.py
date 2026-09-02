@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .draft_finalization import finalize_listing_draft
 from .draft_services import delete_listing_draft, get_listing_draft, list_listing_drafts, save_listing_draft
 
 
@@ -60,6 +61,24 @@ class ListingDraftDetailView(APIView):
         if not draft:
             return Response({'detail': 'Draft not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(_draft_payload(draft))
+
+    def patch(self, request, draft_id):
+        draft = save_listing_draft(request.user, request.data.get('data', request.data), draft_id)
+        return Response({'success': True, **_draft_payload(draft)})
+
+    def post(self, request, draft_id):
+        try:
+            result = finalize_listing_draft(
+                request.user,
+                draft_id,
+                payment_intent_id=request.data.get('payment_intent_id'),
+            )
+        except Exception as exc:
+            detail = getattr(exc, 'detail', str(exc))
+            if isinstance(detail, (list, dict)):
+                detail = str(detail)
+            return Response({'success': False, 'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result, status=status.HTTP_201_CREATED)
 
     def delete(self, request, draft_id):
         delete_listing_draft(request.user, draft_id)
