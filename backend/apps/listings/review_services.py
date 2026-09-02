@@ -27,8 +27,8 @@ def review_listing(admin_user, listing_id, decision, note=''):
 
     was_approved = listing.approval_status == 'approved'
     listing.approval_status = decision
-    # Mirrors production admin_review_listing: approval controls publication;
-    # the legacy is_approved field is intentionally left unchanged.
+    # Approval controls publication; the legacy is_approved field is intentionally
+    # left unchanged to match the production workflow contract.
     listing.is_published = decision == 'approved'
     listing.admin_reviewed_at = timezone.now()
     listing.admin_review_note = note
@@ -49,16 +49,24 @@ def review_listing(admin_user, listing_id, decision, note=''):
                 f"💰 KES {listing.price_kes or 0}{'/month' if listing.listing_type == 'rent' else ''}\n\n"
                 f"{listing.description or ''}\n\n🔑 Verified listing on Saka Krib."
             )
-        CommunityPost.objects.get_or_create(
+
+        # The community post is the publication record for this listing. Keep the
+        # listing attached and publish the exact AI caption when one exists. If a
+        # prior post was created for the listing, refresh its content/caption so an
+        # earlier fallback caption cannot replace the current AI-generated caption.
+        CommunityPost.objects.update_or_create(
             listing_id=listing.id,
             defaults={
                 'user_id': listing.user_id,
                 'content': caption,
-                'ai_caption': listing.ai_caption or None,
+                'ai_caption': listing.ai_caption.strip() if listing.ai_caption else None,
                 'post_type': 'listing',
             },
         )
-        dispatch_user_notification(
+
+        # Notification/email delivery must not be able to roll back an already
+        # committed admin approval or community publication.
+        transaction.on_commit(lambda: dispatch_user_notification(
             user_id=listing.user_id,
             notification_type='LISTING_APPROVED',
             title='Listing Approved - Saka Krib',
@@ -67,6 +75,6 @@ def review_listing(admin_user, listing_id, decision, note=''):
             event_key=f'listing:approved:{listing.id}',
             send_email=True,
             email_template='listing_approved',
-        )
+        ))
 
     return listing
