@@ -97,7 +97,12 @@ const isAdminDetailQuery = (query: URLSearchParams): boolean => {
   return select.includes('admin_review_note') && select.includes('national_id');
 };
 
-/** Transitional transport bridge for legacy admin pages. */
+const isLandlordDashboardProfileQuery = (query: URLSearchParams): boolean => {
+  const select = query.get('select') || '';
+  return select.includes('national_id') && select.includes('landlord_application_status') && !select.includes('admin_review_note');
+};
+
+/** Transitional transport bridge for legacy pages. */
 const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ handled: boolean; data?: T }> => {
   const method = String(init.method || 'GET').toUpperCase();
   const resource = path.split('?')[0];
@@ -156,11 +161,58 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
     }
   }
 
+  if (resource === '/rest/v1/profiles' && isLandlordDashboardProfileQuery(query)) {
+    if (method === 'GET') {
+      const data = await djangoRequest<T>('/api/accounts/me/');
+      return { handled: true, data: [data] as T };
+    }
+    if (method === 'PATCH') {
+      if (!init.body) return { handled: false };
+      const data = await djangoRequest<T>('/api/accounts/me/', {
+        method: 'PATCH',
+        body: init.body,
+      });
+      return { handled: true, data };
+    }
+  }
+
   if (resource === '/rest/v1/landlord_subscriptions' && method === 'GET') {
     const userId = getEqId(query.get('landlord_id'));
     if (userId) {
-      const detail = await adminUser<{ landlord_subscription: T }>(userId);
-      return { handled: true, data: (detail.landlord_subscription ? [detail.landlord_subscription] : []) as T };
+      const data = await djangoRequest<{
+        subscription_id: string | null;
+        plan_id: string | null;
+        plan_name: string | null;
+        subscription_status: string | null;
+        billing_cycle: string | null;
+        current_period_start: string | null;
+        current_period_end: string | null;
+        grace_period_end: string | null;
+        auto_renew: boolean;
+        max_listings: number | null;
+        max_units_per_listing: number | null;
+      }>('/api/subscriptions/me/');
+      if (!data.subscription_id) return { handled: true, data: [] as T };
+      return {
+        handled: true,
+        data: [{
+          id: data.subscription_id,
+          landlord_id: userId,
+          plan_id: data.plan_id,
+          billing_cycle: data.billing_cycle,
+          status: data.subscription_status,
+          current_period_start: data.current_period_start,
+          current_period_end: data.current_period_end,
+          grace_period_end: data.grace_period_end,
+          auto_renew: data.auto_renew,
+          plan: data.plan_id ? {
+            id: data.plan_id,
+            name: data.plan_name,
+            max_listings: data.max_listings,
+            max_units_per_listing: data.max_units_per_listing,
+          } : null,
+        }] as T,
+      };
     }
     const dashboard = await adminDashboard<{ items: Array<{ subscription?: unknown }> }>();
     const rows = dashboard.items.map((item) => item.subscription).filter(Boolean);
@@ -180,6 +232,12 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
 
   if (resource === '/rest/v1/listings' && method === 'GET') {
     const userId = getEqId(query.get('user_id'));
+    if (userId && !isAdminDetailQuery(query)) {
+      const data = await djangoRequest<{
+        results: T;
+      }>(`/api/listings/?user_id=${encodeURIComponent(userId)}&limit=100&offset=0`);
+      return { handled: true, data: data.results };
+    }
     if (userId && isAdminDetailQuery(query)) {
       const detail = await adminUser<{ listings: T }>(userId);
       return { handled: true, data: detail.listings };
