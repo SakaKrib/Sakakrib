@@ -11,6 +11,8 @@ from .domain_platform import Mover
 from .moving_services import (
     calculate_mover_quote,
     cancel_moving_booking,
+    confirm_moving_schedule,
+    propose_moving_schedule,
     request_mover_booking,
     respond_to_mover_booking,
 )
@@ -177,6 +179,35 @@ class MoverBookingResponseView(APIView):
                 reason=request.data.get("reason"),
             )
             return Response(result)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class RenterMovingScheduleProposalView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, booking_id):
+        try:
+            result = propose_moving_schedule(
+                renter_id=request.user.id,
+                booking_id=booking_id,
+                starts_at=request.data.get("starts_at"),
+                ends_at=request.data.get("ends_at"),
+            )
+            return Response(result, status=201)
+        except (ValidationError, TypeError, ValueError) as exc:
+            return _error(exc)
+
+
+class MoverMovingScheduleConfirmView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, booking_id):
+        try:
+            return Response(confirm_moving_schedule(
+                mover_user_id=request.user.id,
+                booking_id=booking_id,
+            ))
         except (ValidationError, TypeError, ValueError) as exc:
             return _error(exc)
 
