@@ -8,8 +8,11 @@ from apps.listings.models import Listing
 
 class ListingPayment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, db_column='listing_id', related_name='listing_payments')
-    user = models.ForeignKey(Profile, on_delete=models.CASCADE, db_column='user_id', related_name='listing_payments')
+    # Preserve the financial ledger if a listing is later removed. A paid
+    # listing must be explicitly archived/handled rather than cascading away
+    # its payment history.
+    listing = models.ForeignKey(Listing, on_delete=models.PROTECT, db_column='listing_id', related_name='listing_payments')
+    user = models.ForeignKey(Profile, on_delete=models.PROTECT, db_column='user_id', related_name='listing_payments')
     amount_kes = models.DecimalField(max_digits=14, decimal_places=2, default=1000)
     mpesa_receipt = models.TextField(null=True, blank=True)
     checkout_request_id = models.TextField(null=True, blank=True)
