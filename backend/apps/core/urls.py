@@ -1,4 +1,5 @@
 from django.urls import path
+from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
 from .moving_views import BookingEventView, BookingView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
 from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, MoverQuoteView, MovingBookingCancelView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
@@ -29,6 +30,10 @@ urlpatterns = [
     path("movers/quote/", MoverQuoteView.as_view(), name="mover-quote"), path("bookings/request/", MoverBookingRequestView.as_view(), name="booking-request"),
     path("bookings/<uuid:booking_id>/detail/", MoverBookingDetailView.as_view(), name="mover-booking-detail"), path("bookings/<uuid:booking_id>/respond/", MoverBookingResponseView.as_view(), name="booking-response"), path("bookings/<uuid:booking_id>/cancel/", MovingBookingCancelView.as_view(), name="booking-cancel"),
     path("bookings/<uuid:booking_id>/schedule/propose/", RenterMovingScheduleProposalView.as_view(), name="moving-schedule-propose"), path("bookings/<uuid:booking_id>/schedule/confirm/", MoverMovingScheduleConfirmView.as_view(), name="moving-schedule-confirm"),
+    path("bookings/<uuid:booking_id>/start/", MovingJourneyStartView.as_view(), name="moving-journey-start"),
+    path("bookings/<uuid:booking_id>/tracking/", MovingTrackingView.as_view(), name="moving-tracking"),
+    path("bookings/<uuid:booking_id>/tracking/latest/", ActiveMovingLocationView.as_view(), name="moving-tracking-latest"),
+    path("bookings/<uuid:booking_id>/review-mover/", MoverReviewAfterDeliveryView.as_view(), name="mover-review-after-delivery"),
     path("bookings/<uuid:booking_id>/payment/mpesa/start/", MovingMpesaStartView.as_view(), name="moving-payment-mpesa-start"), path("payments/moving/mpesa/callback/", MovingMpesaCallbackView.as_view(), name="moving-payment-mpesa-callback"),
     path("bookings/<uuid:booking_id>/payment/paypal/start/", MovingPaypalStartView.as_view(), name="moving-payment-paypal-start"), path("payments/moving/paypal/webhook/", MovingPaypalWebhookView.as_view(), name="moving-payment-paypal-webhook"),
     path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"), path("payments/mover-payout/callback/", MoverPayoutCallbackView.as_view(), name="mover-payout-callback"),
