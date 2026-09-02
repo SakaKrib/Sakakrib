@@ -9,7 +9,6 @@ from rest_framework.views import APIView
 
 from apps.listings.models import ListingPaymentIntent
 from .services import get_exchange_rate, get_provider
-from .models import ListingPayment
 from apps.listings.services import finalize_listing_payment
 
 
@@ -120,14 +119,36 @@ class PayPalListingCaptureView(APIView):
             return Response({'success': False, 'message': 'PayPal order does not match the payment intent.'}, status=400)
         if not intent.provider_amount or intent.provider_currency != 'USD' or not intent.paypal_fx_rate:
             return Response({'success': False, 'message': 'Payment intent has no valid server-side USD/FX settlement data.'}, status=400)
+
+        capture_id = None
+        raw = result.raw or {}
+        purchase_units = raw.get('purchase_units') or []
+        if purchase_units:
+            captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or []
+            if captures:
+                capture_id = captures[0].get('id')
+        captured_amount = None
+        captured_currency = None
+        if purchase_units:
+            captures = ((purchase_units[0] or {}).get('payments') or {}).get('captures') or []
+            if captures:
+                amount_data = (captures[0] or {}).get('amount') or {}
+                captured_amount = amount_data.get('value')
+                captured_currency = amount_data.get('currency_code')
+        if not capture_id or captured_amount is None or captured_currency != 'USD':
+            return Response({'success': False, 'message': 'PayPal capture response is missing a valid USD capture.'}, status=409)
+
         try:
             with transaction.atomic():
                 settled = finalize_listing_payment(
-                    intent.id, provider='PAYPAL', provider_reference=order_id,
-                    provider_amount=intent.provider_amount, provider_currency='USD',
+                    intent.id, provider='PAYPAL', provider_reference=capture_id,
+                    provider_amount=captured_amount, provider_currency='USD',
                     paypal_order_id=order_id, paypal_fx_rate=intent.paypal_fx_rate,
+                    paid_amount_kes=intent.amount_kes,
+                    provider_transaction_id=capture_id,
                     result_description=result.message,
                 )
         except Exception as exc:
             return Response({'success': False, 'message': f'Payment captured but settlement failed: {exc}'}, status=500)
-        return Response({**settled, 'payment_captured': True, 'provider_reference': order_id})
+        return Response({**settled, 'payment_captured': True, 'provider_reference': capture_id,
+                         'paypal_order_id': order_id, 'paypal_capture_id': capture_id})
