@@ -74,6 +74,21 @@ def application_review(application: dict) -> str:
     return _layout("Your Application Is Under Review", body)
 
 
+def listing_approved(notification: dict) -> str:
+    name = _first_name(notification)
+    title = _text(notification.get("listing_title"), "Your property listing")
+    listing_id = notification.get("listing_id") or notification.get("id")
+    city = _text(notification.get("city"))
+    county = _text(notification.get("county"))
+    location = ", ".join(part for part in (city, county) if part)
+    body = _status_panel("Listing Approved", f"Your property listing has been approved and is now live.", "#e8f5e9")
+    body += f"<div style='padding:30px'><p>Hello {escape(name)},</p><p style='line-height:1.7;color:#444'>Your listing <strong>{escape(title)}</strong> has been reviewed and approved by the Saka Krib administration team.</p>"
+    body += _details([("Listing", title), ("Location", location), ("Listing ID", listing_id), ("Status", "Approved and Published")])
+    listing_url = _text(notification.get("listing_url"), f"{SITE_URL}/listing/{listing_id}" if listing_id else SITE_URL)
+    body += f"<div style='text-align:center;margin:30px 0'><a href='{escape(listing_url)}' style='display:inline-block;padding:14px 28px;background:#255d3a;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold'>View Listing</a></div></div>"
+    return _layout("Listing Approved", body)
+
+
 def landlord_application_submitted(application: dict) -> str:
     kind = "Real Estate" if _text(application.get("application_type")).lower() == "realestate" else "Landlord"
     name = _first_name(application)
@@ -139,6 +154,7 @@ EMAIL_TEMPLATES = {
     "application_approved": application_approved,
     "application_declined": application_declined,
     "application_review": application_review,
+    "listing_approved": listing_approved,
     "landlord_application_submitted": landlord_application_submitted,
     "mover_application_submitted": mover_application_submitted,
     "landlord_admin_notification": landlord_admin_notification,
@@ -152,6 +168,7 @@ EMAIL_SUBJECTS = {
     "application_approved": "Your Saka Krib application has been approved",
     "application_declined": "Update regarding your Saka Krib application",
     "application_review": "Your Saka Krib application is under review",
+    "listing_approved": "Your Saka Krib listing has been approved",
     "landlord_application_submitted": "Landlord application submitted - Saka Krib",
     "mover_application_submitted": "Mover application submitted - Saka Krib",
     "landlord_admin_notification": "New landlord application requires review - Saka Krib",
