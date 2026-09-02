@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
-from apps.accounts.models import Profile
 from apps.core.email_services import queue_email
 
 
