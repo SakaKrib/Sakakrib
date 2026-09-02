@@ -69,8 +69,12 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
   };
 
   const continueAfterSuccess = () => {
-    onSuccess?.();
     onOpenChange(false);
+    if (listingId) {
+      window.location.hash = `post-listing/${encodeURIComponent(listingId)}`;
+      return;
+    }
+    onSuccess?.();
   };
 
   const handleClose = () => onOpenChange(false);
