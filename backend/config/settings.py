@@ -22,8 +22,6 @@ if REDIS_URL:
 else:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
 
-# Shared Celery infrastructure. The same Redis deployment used by Channels can
-# also act as the Celery broker/result backend; dedicated URLs remain supported.
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
 CELERY_TIMEZONE = TIME_ZONE = os.getenv('CELERY_TIMEZONE', 'Africa/Nairobi')
@@ -33,9 +31,6 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
-# Rent reminders are materialized daily and dispatched every minute. The
-# generation job creates the current and next billing periods so pre-due
-# offsets are available before their scheduled send time.
 CELERY_BEAT_SCHEDULE = {
     'generate-recurring-rent-reminders-daily': {
         'task': 'apps.core.tasks.generate_recurring_rent_reminders',
@@ -43,6 +38,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     'process-due-rent-reminders-every-minute': {
         'task': 'apps.core.tasks.process_due_rent_reminders',
+        'schedule': 60.0,
+    },
+    'process-notification-email-queue-every-minute': {
+        'task': 'apps.core.email_tasks.process_notification_email_queue',
         'schedule': 60.0,
     },
 }
