@@ -10,20 +10,21 @@ from .models import ListingDraft
 def save_listing_draft(profile, data, draft_id=None):
     """Persist an in-progress listing entirely in PostgreSQL.
 
-    Drafts belong to the authenticated profile. They never consume listing
+    Drafts are owned by the authenticated Profile. They never consume listing
     entitlement and never create a marketplace listing until final submission.
     """
     owner = Profile.objects.select_for_update().get(pk=profile.id)
     role = str(getattr(owner, 'role', '') or '').strip().lower()
     if role not in {'landlord', 'real_estate'}:
         raise ValidationError('Only landlord and real-estate accounts can save listing drafts.')
+    if not isinstance(data, dict):
+        raise ValidationError('Draft data must be an object.')
 
     if draft_id:
-        draft = ListingDraft.objects.select_for_update().filter(id=draft_id, user_id=owner.id).first()
+        draft = ListingDraft.objects.select_for_update().filter(id=draft_id, user_id=owner.id, status='DRAFT').first()
         if not draft:
             raise ValidationError('Draft not found.')
         draft.data = data
-        draft.updated_at = timezone.now()
         draft.save(update_fields=['data', 'updated_at'])
     else:
         draft = ListingDraft.objects.create(user_id=owner.id, role=role, data=data, status='DRAFT')
