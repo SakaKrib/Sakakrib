@@ -28,6 +28,9 @@ def _serialize_user(row):
 def _serialize_renter(row):
     return {
         "id": str(row.id),
+        "renter_user_id": str(row.renter_user_id),
+        "renter_assoc_id": str(row.renter_assoc_id) if row.renter_assoc_id else None,
+        "landlord_id": str(row.landlord_id) if row.landlord_id else None,
         "notification_type": row.notification_type,
         "title": row.title,
         "body": row.body,
