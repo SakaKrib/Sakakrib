@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -43,7 +45,7 @@ class ListingPaymentStartView(APIView):
             # using the server-side KES/USD rate before creating the PayPal order.
             try:
                 fx_rate = get_exchange_rate('KES', 'USD')
-                amount = (intent.amount_kes * fx_rate).quantize(__import__('decimal').Decimal('0.01'))
+                amount = (intent.amount_kes * fx_rate).quantize(Decimal('0.01'))
             except Exception as exc:
                 return Response({'success': False, 'message': str(exc)}, status=503)
             currency = 'USD'
