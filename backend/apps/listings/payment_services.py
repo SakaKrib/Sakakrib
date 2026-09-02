@@ -138,9 +138,7 @@ def process_listing_payment(
         paypal_fx_rate=paypal_fx_rate,
         result_code=result_code,
         result_description=result_description,
-        created_at=now,
         paid_at=now,
-        updated_at=now,
     )
 
     intent.status = "PAID"
