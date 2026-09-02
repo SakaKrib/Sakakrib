@@ -4,7 +4,6 @@ from .moving_action_views import MoverBookingRequestView, MoverBookingResponseVi
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
 from .chat_views import ChatConversationView, ChatMessageView
 from .chat_media_views import ChatMediaFileView, ChatMediaUploadView
-from .notification_views import ChatConversationView, ChatMessageView
 from .notification_views import UserNotificationView, RenterNotificationView
 from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfirmView, LandlordRentPaymentRejectView, RenterInvoicePaymentSubmitView, RenterPaidInvoiceCreateView
 from .rent_reminder_views import RentPaymentReminderView
