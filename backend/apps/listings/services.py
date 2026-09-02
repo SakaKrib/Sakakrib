@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Profile
+from apps.core.notification_services import dispatch_user_notification
 from apps.subscriptions.models import LandlordSubscription, RealEstateSubscription, SubscriptionListing
 from apps.payments.models import ListingPayment
 from .models import Listing, ListingPaymentIntent
@@ -82,13 +83,16 @@ def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitl
         approval_status='pending_review', is_approved=False, status='pending',
     )
     if listing_entitlement == 'INDIVIDUAL_PAID':
-        return {'success': True, 'listing_created': True, 'listing_id': listing.id,
-                'listing_entitlement': 'INDIVIDUAL_PAID', 'payment_required': False,
-                'is_published': False, 'approval_status': 'pending_review'}
-    if entitlement['free_listings_remaining'] > 0:
+        result = {'success': True, 'listing_created': True, 'listing_id': listing.id,
+                  'listing_entitlement': 'INDIVIDUAL_PAID', 'payment_required': False,
+                  'is_published': False, 'approval_status': 'pending_review'}
+    elif entitlement['free_listings_remaining'] > 0:
         profile.free_listings_used = (profile.free_listings_used or 0) + 1
         profile.save(update_fields=['free_listings_used'])
         listing_entitlement = 'FREE'
+        result = {'success': True, 'listing_created': True, 'listing_id': listing.id,
+                  'listing_entitlement': listing_entitlement, 'payment_required': False,
+                  'is_published': False, 'approval_status': 'pending_review'}
     else:
         if not entitlement.get('subscription_id'):
             raise ValidationError('No active subscription entitlement is available for this listing.')
@@ -98,9 +102,21 @@ def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitl
             listing_id=listing.id, status='ACTIVE', activated_at=timezone.now(),
         )
         listing_entitlement = 'SUBSCRIPTION'
-    return {'success': True, 'listing_created': True, 'listing_id': listing.id,
-            'listing_entitlement': listing_entitlement, 'payment_required': False,
-            'is_published': False, 'approval_status': 'pending_review'}
+        result = {'success': True, 'listing_created': True, 'listing_id': listing.id,
+                  'listing_entitlement': listing_entitlement, 'payment_required': False,
+                  'is_published': False, 'approval_status': 'pending_review'}
+
+    dispatch_user_notification(
+        user_id=profile.id,
+        notification_type='LISTING_POSTED',
+        title='Listing Posted Successfully - Saka Krib',
+        message=f'Your property listing "{listing.title}" has been successfully created and is now awaiting administrator approval.',
+        data={'listing_id': str(listing.id)},
+        event_key=f'listing:posted:{listing.id}',
+        send_email=True,
+        email_template='listing_posted',
+    )
+    return result
 
 
 @transaction.atomic
@@ -144,7 +160,7 @@ def create_listing_payment_intent(profile, listing_data):
 
     ListingPaymentIntent.objects.filter(user_id=profile.id, status='PENDING').update(status='CANCELLED', updated_at=timezone.now())
     intent = ListingPaymentIntent.objects.create(user_id=profile.id, role=profile.role,
-        amount_kes=INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=validated_listing_data)
+        amount_kes=INDIVIDUAL_LISTING_PRICE_PRICE_KES if False else INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=validated_listing_data)
     return {'success': True, 'payment_intent_created': True, 'listing_created': False,
             'payment_intent_id': intent.id, 'amount_kes': INDIVIDUAL_LISTING_PRICE_KES, 'status': 'PENDING'}
 
