@@ -5,7 +5,7 @@ import { protectedPost } from '@/lib/djangoApi';
 export type PayPalButtonMode = 'ONE_TIME' | 'SUBSCRIPTION';
 interface PayPalPaymentButtonProps { mode: PayPalButtonMode; paymentIntentId?: string | null; planId?: string | null; billingCycle?: 'MONTHLY' | 'ANNUAL'; listingId?: string | null; onPreparePayPalPayment?: () => Promise<string>; onSuccess: () => Promise<void> | void; onError?: (message: string) => void; disabled?: boolean; }
 interface ListingStartResponse { success?: boolean; detail?: string; message?: string; provider_reference?: string; }
-interface ListingCaptureResponse { success?: boolean; status?: string; detail?: string; message?: string; }
+interface ListingCaptureResponse { success?: boolean; status?: string; detail?: string; message?: string; payment_intent_id?: string; listing_id?: string | null; }
 interface SubscriptionCheckoutResponse { success?: boolean; detail?: string; message?: string; paypal_subscription_id?: string; invoice_id?: string; }
 interface SubscriptionApproveResponse { success?: boolean; detail?: string; message?: string; status?: string; invoice_id?: string; listing_id?: string | null; }
 
@@ -49,12 +49,14 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
     if (!intentId) return fail('The listing payment intent is missing.');
     try {
       const response = await protectedPost<ListingCaptureResponse>('/api/payments/listing/paypal/capture/', { payment_intent_id: intentId, order_id: orderId });
-      if (!response?.success || response.status !== 'PAID') throw new Error(errorMessage(response, 'PayPal payment could not be confirmed.'));
+      if (!response?.success || response.status !== 'PENDING') throw new Error(errorMessage(response, 'PayPal payment could not be started.'));
       setWorking(false);
       setError(null);
-      await onSuccess();
+      const confirmationIntentId = response.payment_intent_id || intentId;
+      const params = new URLSearchParams({ payment_intent_id: confirmationIntentId, order_id: orderId });
+      window.location.assign(`/listing/payment/return?${params.toString()}`);
     } catch (error) {
-      fail(error instanceof Error ? error.message : 'Unable to confirm PayPal payment.');
+      fail(error instanceof Error ? error.message : 'Unable to start PayPal payment confirmation.');
     }
   };
 
@@ -80,20 +82,14 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
     const invoiceId = subscriptionInvoiceIdRef.current;
     if (!invoiceId) return fail('The PayPal subscription invoice reference is missing.');
     try {
-      // This endpoint only binds the PayPal subscription ID to our pending
-      // invoice. Payment success is established later by the PayPal webhook.
       const response = await protectedPost<SubscriptionApproveResponse>('/api/subscriptions/paypal/approve/', {
         invoice_id: invoiceId,
         paypal_subscription_id: subscriptionId,
       });
       if (!response?.success) throw new Error(errorMessage(response, 'Unable to register the PayPal subscription.'));
-
       subscriptionInvoiceIdRef.current = null;
       setWorking(false);
       setError(null);
-
-      // The browser redirect is navigation only. The return page waits for
-      // the authoritative webhook-driven WebSocket event before showing success.
       const params = new URLSearchParams({ invoice_id: invoiceId, subscription_id: subscriptionId });
       window.location.assign(`/paypal/subscription/return?${params.toString()}`);
     } catch (error) {
