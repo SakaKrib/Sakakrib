@@ -14,13 +14,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
-from apps.core.domain_property import ListingMedia
+from apps.core.domain_property import ListingMedia, PropertyUnit
 
 from .models import Listing, ListingPaymentIntent
 from .review_services import review_listing
 from .serializers import ListingCreateSerializer, ListingMediaSerializer, ListingSerializer, ListingUpdateSerializer
 from .services import create_listing, create_listing_payment_intent, get_listing_entitlement
 
+MAX_LISTING_PHOTOS = 7
 MAX_LISTING_PHOTO_BYTES = 10 * 1024 * 1024
 MAX_LISTING_VIDEO_BYTES = 100 * 1024 * 1024
 ALLOWED_PHOTO_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
@@ -81,6 +82,8 @@ class ListingMediaView(APIView):
         if media_type == 'photo':
             allowed_types = ALLOWED_PHOTO_TYPES
             max_bytes = MAX_LISTING_PHOTO_BYTES
+            if ListingMedia.objects.filter(listing_id=listing.id, media_type='photo').count() >= MAX_LISTING_PHOTOS:
+                return Response({'detail': f'A listing may have at most {MAX_LISTING_PHOTOS} photos.'}, status=status.HTTP_400_BAD_REQUEST)
         elif media_type == 'video':
             allowed_types = ALLOWED_VIDEO_TYPES
             max_bytes = MAX_LISTING_VIDEO_BYTES
@@ -93,6 +96,12 @@ class ListingMediaView(APIView):
         if int(getattr(file, 'size', 0) or 0) <= 0 or int(file.size) > max_bytes:
             return Response({'detail': 'Media file is too large.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        unit_id = request.data.get('unit_id') or None
+        if unit_id:
+            unit = PropertyUnit.objects.filter(id=unit_id, listing_id=listing.id, user_id=request.user.pk).first()
+            if not unit:
+                return Response({'detail': 'The selected property unit does not belong to this listing.'}, status=status.HTTP_400_BAD_REQUEST)
+
         extension = allowed_types[content_type]
         original_name = Path(getattr(file, 'name', '') or 'media').stem
         safe_name = ''.join(char if char.isalnum() or char in '-_' else '-' for char in original_name)
@@ -101,17 +110,22 @@ class ListingMediaView(APIView):
         storage_path = f'listing-media/{request.user.pk}/{listing.id}/{media_type}/{media_id}-{safe_name}{extension}'
 
         saved_path = default_storage.save(storage_path, file)
-        media = ListingMedia.objects.create(
-            id=media_id,
-            listing_id=listing.id,
-            user_id=request.user.pk,
-            url=f'django-media://{saved_path}',
-            label=str(request.data.get('label') or '').strip(),
-            media_type=media_type,
-            position=int(request.data.get('position') or 0),
-            unit_id=request.data.get('unit_id') or None,
-            created_at=timezone.now(),
-        )
+        try:
+            media = ListingMedia.objects.create(
+                id=media_id,
+                listing_id=listing.id,
+                user_id=request.user.pk,
+                url=f'django-media://{saved_path}',
+                label=str(request.data.get('label') or '').strip(),
+                media_type=media_type,
+                position=int(request.data.get('position') or 0),
+                unit_id=unit_id,
+                created_at=timezone.now(),
+            )
+        except Exception:
+            if default_storage.exists(saved_path):
+                default_storage.delete(saved_path)
+            raise
         return Response(ListingMediaSerializer(media, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
