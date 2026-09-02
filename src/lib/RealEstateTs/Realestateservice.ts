@@ -1,5 +1,14 @@
 import { protectedGet } from '@/lib/djangoApi';
 
+export interface RealEstatePMSAccess {
+  allowed: boolean;
+  reason: string;
+  read_only: boolean;
+  role?: 'landlord' | 'real_estate';
+  subscription_id?: string;
+  subscription_status?: 'ACTIVE' | 'GRACE_PERIOD';
+}
+
 export interface RealEstateSubscription {
   subscription_id: string;
   plan_id: string;
@@ -74,6 +83,15 @@ interface ListingRow {
   is_published: boolean | null;
   is_paid: boolean | null;
   created_at: string;
+}
+
+export async function getRealEstatePMSAccess(): Promise<RealEstatePMSAccess> {
+  const response = await protectedGet<{ pms_access?: RealEstatePMSAccess }>('/api/pms/entitlement/');
+  return response.pms_access ?? {
+    allowed: false,
+    reason: 'PMS_ACCESS_UNAVAILABLE',
+    read_only: false,
+  };
 }
 
 export async function getCurrentRealEstateSubscription(): Promise<RealEstateSubscription | null> {
