@@ -114,7 +114,10 @@ function normalizeEntitlement(role: ListingRole, raw: RawEntitlement): ListingEn
     subscriptionListingsRemaining: nullableNumber(raw.subscription_listings_remaining),
     individualPaidListings: numberValue(raw.individual_paid_listings),
     individualListingPriceKes: numberValue(raw.individual_listing_price_kes),
-    pmsAccess: role === 'landlord' ? Boolean(raw.pms_access || raw.subscription_id) : false,
+    // PMS is deliberately derived only from the backend decision. A
+    // subscription ID alone is not proof of PMS access because the account
+    // may be pending approval, in grace, expired, or otherwise ineligible.
+    pmsAccess: Boolean(raw.pms_access),
     upgradeAvailable: Boolean(raw.upgrade_available),
     upgradeTarget: nullableString(raw.upgrade_target),
   };
@@ -210,7 +213,7 @@ export async function createRoleAwareListing(payload: ListingFormPayload): Promi
 }
 
 export async function createListingPaymentIntent(payload: ListingFormPayload): Promise<{ paymentIntentId: string; amountKes: number }> {
-  const data = await protectedPost<{ payment_intent_id?: string; amount_kes?: unknown }>(
+  const data = await protectedPost<{ payment_intent_id?: string; amount_kes?: unknown }(
     '/api/listings/payment-intents/',
     payload,
   );
