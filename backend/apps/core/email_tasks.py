@@ -8,11 +8,11 @@ from .email_services import send_notification_email
 
 @shared_task(bind=True, autoretry_for=(), max_retries=0)
 def process_notification_email_queue(self, batch_size: int = 25):
-    """Send pending notification emails through Resend.
+    """Send pending notification emails through the configured SMTP server.
 
     Rows remain in the production-compatible pending/sent/failed state model.
-    A row is locked while its provider request is made so two workers cannot
-    send the same notification concurrently.
+    A pending row is locked while it is being processed so two workers do not
+    intentionally process the same notification at the same time.
     """
     pending_ids = list(
         NotificationEmail.objects.filter(status="pending")
@@ -34,7 +34,7 @@ def process_notification_email_queue(self, batch_size: int = 25):
                 try:
                     send_notification_email(email)
                     sent += 1
-                except Exception as exc:
+                except Exception:
                     email.status = "failed"
                     email.save(update_fields=["status"])
                     failed += 1
