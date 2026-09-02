@@ -78,6 +78,17 @@ const getInIds = (value: string | null): string[] => {
   return match ? match[1].split(',').map((id) => decodeURIComponent(id.trim())).filter(Boolean) : [];
 };
 
+const getIlikeTerms = (value: string | null): string[] => {
+  if (!value) return [];
+  const match = value.match(/^\((.*)\)$/);
+  if (!match) return [];
+  return match[1]
+    .split(',')
+    .map((term) => term.replace(/^[^.]+\.ilike\.\*/, '').replace(/\*$/, '').trim())
+    .filter(Boolean)
+    .map((term) => decodeURIComponent(term).toLowerCase());
+};
+
 const adminUser = <T>(userId: string) =>
   djangoRequest<T>(`/api/accounts/admin/users/${encodeURIComponent(userId)}/`);
 
@@ -269,9 +280,9 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
   if (resource === '/rest/v1/listings' && method === 'GET') {
     const userId = getEqId(query.get('user_id'));
     if (userId && !isAdminDetailQuery(query)) {
-      const data = await djangoRequest<{
-        results: T;
-      }>(`/api/listings/?user_id=${encodeURIComponent(userId)}&limit=100&offset=0`);
+      const data = await djangoRequest<{ results: T }>(
+        `/api/listings/?user_id=${encodeURIComponent(userId)}&limit=100&offset=0`,
+      );
       return { handled: true, data: data.results };
     }
     if (userId && isAdminDetailQuery(query)) {
@@ -285,7 +296,9 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
     if (listingIds.length) {
       const rows: unknown[] = [];
       for (const listingId of listingIds) {
-        const media = await djangoRequest<unknown[]>(`/api/listings/media/?listing_id=${encodeURIComponent(listingId)}`);
+        const media = await djangoRequest<unknown[]>(
+          `/api/listings/media/?listing_id=${encodeURIComponent(listingId)}`,
+        );
         rows.push(...media);
       }
       return { handled: true, data: rows as T };
@@ -301,11 +314,44 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
       }
       const moverId = getEqId(query.get('id'));
       if (moverId && isAdminDetailQuery(query)) {
-        const data = await djangoRequest<T>(`/api/accounts/admin/movers/${encodeURIComponent(moverId)}/`);
+        const data = await djangoRequest<T>(
+          `/api/accounts/admin/movers/${encodeURIComponent(moverId)}/`,
+        );
         return { handled: true, data: [data] as T };
       }
-      const dashboard = await adminDashboard<{ items: Array<{ moverRecord?: unknown }> }>();
-      const rows = dashboard.items.map((item) => item.moverRecord).filter(Boolean);
+
+      const movers = await djangoRequest<Array<{
+        id: string;
+        is_available: boolean;
+        approval_status: string;
+        driver_full_name: string;
+        operating_city: string;
+        vehicle_type: string;
+        [key: string]: unknown;
+      }>>('/api/core/movers/');
+
+      let rows = movers.filter((mover) => mover.approval_status === 'approved' && mover.is_available);
+
+      const availableFilter = query.get('is_available');
+      if (availableFilter === 'eq.false') rows = rows.filter((mover) => !mover.is_available);
+      if (availableFilter === 'eq.true') rows = rows.filter((mover) => mover.is_available);
+
+      const city = getEqId(query.get('operating_city'));
+      if (city) rows = rows.filter((mover) => mover.operating_city === city);
+
+      const vehicle = getEqId(query.get('vehicle_type'));
+      if (vehicle) rows = rows.filter((mover) => mover.vehicle_type === vehicle);
+
+      const searchTerms = getIlikeTerms(query.get('or'));
+      if (searchTerms.length) {
+        rows = rows.filter((mover) => {
+          const name = String(mover.driver_full_name || '').toLowerCase();
+          const operatingCity = String(mover.operating_city || '').toLowerCase();
+          return searchTerms.some((term) => name.includes(term) || operatingCity.includes(term));
+        });
+      }
+
+      rows.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
       return { handled: true, data: rows as T };
     }
     if (method === 'PATCH') {
@@ -318,6 +364,30 @@ const tryAdminBridge = async <T>(path: string, init: RequestInit): Promise<{ han
         return { handled: true, data };
       }
     }
+  }
+
+  if (resource === '/rest/v1/reviews' && method === 'GET') {
+    const moverIds = getInIds(query.get('mover_id'));
+    const listingId = getEqId(query.get('listing_id'));
+    const revieweeId = getEqId(query.get('reviewee_id'));
+    const moverId = getEqId(query.get('mover_id'));
+    const reviewType = getEqId(query.get('review_type'));
+    const params = new URLSearchParams();
+    if (moverId) params.set('mover_id', moverId);
+    if (listingId) params.set('listing_id', listingId);
+    if (revieweeId) params.set('reviewee_id', revieweeId);
+    const data = await djangoRequest<{ items: Array<Record<string, unknown>> }>(
+      `/api/core/reviews/${params.toString() ? `?${params.toString()}` : ''}`,
+    );
+    let rows = data.items || [];
+    if (moverIds.length) rows = rows.filter((row) => moverIds.includes(String(row.mover_id)));
+    if (reviewType) rows = rows.filter((row) => String(row.review_type) === reviewType);
+    const select = query.get('select');
+    if (select) {
+      const fields = select.split(',').map((field) => field.trim()).filter(Boolean);
+      rows = rows.map((row) => Object.fromEntries(fields.map((field) => [field, row[field]])));
+    }
+    return { handled: true, data: rows as T };
   }
 
   if (resource === '/rest/v1/mover_applications' && method === 'GET') {
