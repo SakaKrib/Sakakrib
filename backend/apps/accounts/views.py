@@ -174,3 +174,21 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(ProfileSerializer(request.user).data)
+
+    def patch(self, request):
+        allowed_fields = {'full_name', 'phone', 'city', 'county', 'profile_photo_url'}
+        updates = {key: request.data[key] for key in allowed_fields if key in request.data}
+        if not updates:
+            return Response({'detail': 'No supported profile fields were supplied.'}, status=status.HTTP_400_BAD_REQUEST)
+        if 'full_name' in updates:
+            updates['full_name'] = str(updates['full_name']).strip()
+        for key in ('phone', 'city', 'county'):
+            if key in updates:
+                updates[key] = str(updates[key]).strip()
+        with transaction.atomic():
+            profile = Profile.objects.select_for_update().get(pk=request.user.pk)
+            for key, value in updates.items():
+                setattr(profile, key, value)
+            profile.updated_at = timezone.now()
+            profile.save(update_fields=[*updates.keys(), 'updated_at'])
+        return Response(ProfileSerializer(profile).data)
