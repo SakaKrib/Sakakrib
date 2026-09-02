@@ -2,6 +2,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.payments.services import get_provider
 from .models import SubscriptionInvoice, SubscriptionPlan
 from .paypal_subscription_services import (
     process_paypal_subscription_webhook,
@@ -61,7 +62,6 @@ class MySubscriptionInvoiceView(APIView):
             return Response({'detail': 'Subscription invoice not found.'}, status=404)
         owned = str(invoice.landlord_subscription_id) == str(getattr(get_current_subscription(request.user), 'id', ''))
         if not owned:
-            # Also allow a pending/paid invoice belonging to the user's subscription history.
             from .models import LandlordSubscription, RealEstateSubscription
             owned = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id, landlord_id=request.user.id).exists() or RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, real_estate_id=request.user.id).exists()
         if not owned:
@@ -93,20 +93,48 @@ class MpesaSubscriptionCallbackView(APIView):
 
     def post(self, request):
         callback = request.data.get('Body', {}).get('stkCallback', {})
-        checkout_id = callback.get('CheckoutRequestID')
-        result_code = callback.get('ResultCode')
+        checkout_id = str(callback.get('CheckoutRequestID') or '').strip()
+        callback_result_code = callback.get('ResultCode')
         if not checkout_id:
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
-        invoice = SubscriptionInvoice.objects.filter(checkout_request_id=checkout_id).first()
+
+        invoice = SubscriptionInvoice.objects.filter(
+            checkout_request_id=checkout_id,
+            payment_provider='MPESA',
+        ).first()
         if not invoice:
             return Response({'ResultCode': 0, 'ResultDesc': 'Accepted'})
+
         items = {item.get('Name'): item.get('Value') for item in callback.get('CallbackMetadata', {}).get('Item', [])}
         try:
+            provider_result = get_provider('mpesa').verify_payment(provider_reference=checkout_id)
+            provider_raw = provider_result.raw or {}
+            provider_code_raw = provider_raw.get('ResultCode')
+            try:
+                provider_result_code = int(provider_code_raw)
+            except (TypeError, ValueError):
+                provider_result_code = None
+
+            try:
+                callback_code = int(callback_result_code) if callback_result_code is not None else None
+            except (TypeError, ValueError):
+                callback_code = None
+
+            # The callback is an unauthenticated HTTP request. Provider query is
+            # authoritative; callback data must agree with it before settlement.
+            if provider_result_code is None or callback_code != provider_result_code:
+                return Response({'ResultCode': 1, 'ResultDesc': 'Provider callback/result mismatch.'}, status=500)
+
             result = finalize_mpesa_subscription(
-                invoice.id, result_code, callback.get('ResultDesc', ''),
-                mpesa_receipt=items.get('MpesaReceiptNumber'), checkout_request_id=checkout_id,
-                merchant_request_id=callback.get('MerchantRequestID'), phone_number=items.get('PhoneNumber'),
-                paid_amount=items.get('Amount'))
+                invoice.id,
+                provider_result_code,
+                provider_raw.get('ResultDesc') or callback.get('ResultDesc', ''),
+                mpesa_receipt=items.get('MpesaReceiptNumber'),
+                checkout_request_id=checkout_id,
+                merchant_request_id=callback.get('MerchantRequestID'),
+                phone_number=items.get('PhoneNumber'),
+                paid_amount=items.get('Amount'),
+            )
         except Exception as exc:
             return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', **result})
