@@ -117,8 +117,6 @@ def create_listing(profile, data):
 
     is_pms_listing = bool(data.get('is_property_management'))
     if is_pms_listing:
-        # PMS listings are subscription capacity, never one of the three free
-        # marketplace listings and never the KES 1,000 individual-listing path.
         if profile.role not in ROLES or entitlement.get('subscription_status') != 'ACTIVE':
             raise ValidationError('An active PMS subscription is required for property management listings.')
         remaining = entitlement.get('subscription_listings_remaining')
@@ -133,7 +131,7 @@ def create_listing(profile, data):
 
 
 @transaction.atomic
-def create_listing_payment_intent(profile, listing_data):
+def create_listing_payment_intent(profile, listing_data, listing_id=None):
     profile = Profile.objects.select_for_update().get(pk=profile.id)
     entitlement = get_listing_entitlement(profile, lock_subscription=True)
     if not entitlement.get('can_start_listing'):
@@ -146,9 +144,30 @@ def create_listing_payment_intent(profile, listing_data):
     validated = serializer.validated_data
     if validated.get('is_property_management'):
         raise ValidationError('An active PMS subscription is required for property management listings.')
+
+    draft = None
+    if listing_id:
+        draft = Listing.objects.select_for_update().filter(pk=listing_id, user_id=profile.id, is_draft=True).first()
+        if not draft:
+            raise ValidationError('Listing draft not found or not owned by this account.')
+        if draft.is_property_management:
+            raise ValidationError('Property-management listings require a PMS subscription.')
+        validated.update({
+            'title': draft.title, 'description': draft.description, 'city': draft.city, 'county': draft.county,
+            'location_search': draft.location_search, 'latitude': draft.latitude, 'longitude': draft.longitude,
+            'property_name': draft.property_name, 'property_type': draft.property_type, 'price_kes': draft.price_kes,
+            'listing_type': draft.listing_type, 'deposit_required': draft.deposit_required, 'deposit_structure': draft.deposit_structure,
+            'deposit_amount': draft.deposit_amount, 'size': draft.size, 'beds': draft.beds, 'baths': draft.baths,
+            'contact_phone': draft.contact_phone, 'contact_email': draft.contact_email, 'social_links': draft.social_links,
+            'booking_enabled': draft.booking_enabled, 'payment_enabled': draft.payment_enabled, 'is_property_management': False,
+        })
+
     ListingPaymentIntent.objects.filter(user_id=profile.id, status='PENDING').update(status='CANCELLED', updated_at=timezone.now())
-    intent = ListingPaymentIntent.objects.create(user_id=profile.id, role=profile.role, amount_kes=INDIVIDUAL_LISTING_PRICE_KES, status='PENDING', listing_data=validated)
-    return {'success': True, 'payment_intent_created': True, 'listing_created': False, 'payment_intent_id': intent.id, 'amount_kes': INDIVIDUAL_LISTING_PRICE_KES, 'status': 'PENDING'}
+    intent = ListingPaymentIntent.objects.create(
+        user_id=profile.id, role=profile.role, amount_kes=INDIVIDUAL_LISTING_PRICE_KES,
+        status='PENDING', listing_data=validated, listing=draft,
+    )
+    return {'success': True, 'payment_intent_created': True, 'listing_created': False, 'payment_intent_id': intent.id, 'listing_id': draft.id if draft else None, 'amount_kes': INDIVIDUAL_LISTING_PRICE_KES, 'status': 'PENDING'}
 
 
 @transaction.atomic
