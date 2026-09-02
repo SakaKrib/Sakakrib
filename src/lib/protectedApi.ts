@@ -1,3 +1,5 @@
+import { djangoRequest } from '@/lib/djangoApi';
+
 const FUNCTION_NAME = 'protected-api';
 
 export interface ProtectedApiErrorBody extends Record<string, unknown> {
@@ -35,30 +37,6 @@ const readJson = async <T>(response: Response): Promise<T | null> => {
   const text = await response.text();
   if (!text) return null;
   try { return JSON.parse(text) as T; } catch { return null; }
-};
-
-const djangoRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-  const response = await fetch(`${getDjangoBaseUrl()}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
-      ...(init.headers || {}),
-    },
-  });
-  const body = await readJson<T | ProtectedApiErrorBody>(response);
-  if (!response.ok) {
-    const errorBody = body as ProtectedApiErrorBody | null;
-    const error = new Error(
-      errorBody?.error || errorBody?.message || `Django API request failed (${response.status}).`,
-    ) as ProtectedApiException;
-    error.status = response.status;
-    error.authenticated = errorBody?.authenticated;
-    error.authorized = errorBody?.authorized;
-    throw error;
-  }
-  return body as T;
 };
 
 const getQuery = (path: string): URLSearchParams => {
