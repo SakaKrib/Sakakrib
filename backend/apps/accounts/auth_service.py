@@ -1,11 +1,11 @@
 import secrets
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
-from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
+
+from apps.core.email_services import queue_email
 
 from .models import Profile
 
@@ -42,17 +42,23 @@ def send_signup_otp(user: Profile, *, now=None):
         'signup_verification_deadline_at', 'updated_at',
     ])
 
-    send_mail(
-        subject='SakaKrib email verification code',
-        message=f'Your SakaKrib verification code is {otp}. It expires in {OTP_EXPIRY_MINUTES} minutes.',
-        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
-        recipient_list=[user.email],
-        fail_silently=False,
+    # Queue the OTP with the same Django email infrastructure used by the rest
+    # of the platform. The OTP itself is only rendered into the email body and
+    # the database stores only its password hash.
+    queue_email(
+        recipient=user.email,
+        template_type='otp_verification',
+        payload={
+            'full_name': user.full_name,
+            'email': user.email,
+            'otp': otp,
+            'purpose': 'verify your Saka Krib account',
+        },
     )
 
-    # Start the three-minute cleanup clock only after the OTP email has been
-    # successfully handed to Django's configured email backend. The task
-    # re-checks email_verified at execution time before deleting anything.
+    # Start the three-minute cleanup clock after the email queue row is safely
+    # part of the surrounding transaction. The task re-checks email_verified
+    # before deleting anything.
     if is_first_verification_send:
         from .tasks import delete_unverified_account_after_3_minutes
 
