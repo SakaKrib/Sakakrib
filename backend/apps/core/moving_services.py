@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 import math
+import uuid
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -8,7 +9,7 @@ from django.utils import timezone
 
 from apps.accounts.models import Profile
 
-from .domain_bookings import Booking, ChatMessage, MovingCancellationEvent
+from .domain_bookings import Booking, ChatMessage, MovingCancellationEvent, MovingInvoice
 from .domain_platform import Mover, NotificationEmail, UserNotification
 from .domain_property import PlatformSettings
 
@@ -88,6 +89,34 @@ def calculate_mover_quote(*, mover_id, distance_km):
         "platform_commission_rate": platform.mover_commission_rate,
         "mover_net_kes": _money(total - fee),
     }
+
+
+def _invoice_number():
+    return f"SK-MOV-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _ensure_moving_invoice(booking, mover):
+    invoice = MovingInvoice.objects.filter(booking_id=booking.id).first()
+    if invoice is not None:
+        if _money(invoice.amount_kes) != _money(booking.total_amount):
+            raise ValidationError("Existing moving invoice does not match booking total")
+        return invoice
+    return MovingInvoice.objects.create(
+        booking_id=booking.id,
+        invoice_number=_invoice_number(),
+        renter_id=booking.renter_id,
+        mover_id=booking.mover_id,
+        amount_kes=_money(booking.total_amount),
+        platform_fee_kes=_money(booking.commission_amount),
+        mover_net_kes=_money(booking.total_amount - booking.commission_amount),
+        currency="KES",
+        status="ISSUED",
+        mover_name_snapshot=mover.driver_full_name or "",
+        mover_phone_snapshot=mover.phone,
+        vehicle_type_snapshot=mover.vehicle_type,
+        number_plate_snapshot=mover.number_plate,
+        mover_profile_photo_snapshot=mover.profile_photo_url,
+    )
 
 
 @transaction.atomic
@@ -212,11 +241,15 @@ def respond_to_mover_booking(*, mover_user_id, booking_id, decision, reason=None
         booking.confirmed_at = now
         booking.updated_at = now
         booking.save(update_fields=["status", "confirmed_at", "updated_at"])
+        mover = Mover.objects.filter(pk=booking.mover_id).first()
+        if mover is None:
+            raise ValidationError("Mover not found")
+        invoice = _ensure_moving_invoice(booking, mover)
         content = "The mover has accepted your request. Please select a moving date and time."
         UserNotification.objects.create(
             user_id=booking.renter_id, notification_type="MOVER_CONFIRMED",
             title="Mover confirmed your request", message="Your selected mover accepted the request. Choose a date and time in chat.",
-            data={"booking_id": str(booking.id)},
+            data={"booking_id": str(booking.id), "invoice_id": str(invoice.id), "invoice_number": invoice.invoice_number},
         )
     elif decision == "not_sure":
         content = f"The mover is not sure about this request yet: {reason}"
