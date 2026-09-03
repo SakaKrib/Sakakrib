@@ -1,5 +1,7 @@
 from pathlib import Path
+import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -10,6 +12,8 @@ from apps.core.email_services import queue_email
 
 from .models import Profile
 from .serializers import ProfileSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class LandlordApplicationSubmitView(APIView):
@@ -72,12 +76,13 @@ class LandlordApplicationSubmitView(APIView):
             'id_document_type', 'id_document_url', 'landlord_application_status', 'updated_at',
         ])
 
+        full_name = ' '.join(part for part in (first_name, middle_name, last_name) if part)
         application = {
             'application_id': str(profile.id),
             'id': str(profile.id),
             'applicant_id': str(profile.id),
-            'applicant_name': ' '.join(part for part in (first_name, middle_name, last_name) if part),
-            'full_name': ' '.join(part for part in (first_name, middle_name, last_name) if part),
+            'applicant_name': full_name,
+            'full_name': full_name,
             'applicant_email': profile.email,
             'email': profile.email,
             'phone': phone,
@@ -98,24 +103,21 @@ class LandlordApplicationSubmitView(APIView):
             )
             notification_status['applicant_queued'] = True
         except Exception:
-            import logging
-            logging.getLogger(__name__).exception('Failed to queue landlord applicant notification for %s', profile.email)
+            logger.exception('Failed to queue landlord applicant notification for %s', profile.email)
 
-        try:
-            from django.conf import settings
-            admin_email = str(getattr(settings, 'ADMIN_EMAIL', '') or '').strip().lower()
-            if admin_email:
+        admin_email = str(getattr(settings, 'ADMIN_EMAIL', '') or '').strip().lower()
+        if admin_email:
+            try:
                 queue_email(
                     recipient=admin_email,
                     template_type='landlord_admin_notification',
                     payload=application,
                 )
                 notification_status['admin_queued'] = True
-            else:
-                logging.getLogger(__name__).error('ADMIN_EMAIL is not configured; landlord admin notification was not queued')
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception('Failed to queue landlord admin notification for %s', profile.email)
+            except Exception:
+                logger.exception('Failed to queue landlord admin notification for %s', profile.email)
+        else:
+            logger.error('ADMIN_EMAIL is not configured; landlord admin notification was not queued')
 
         return Response({
             'success': True,
