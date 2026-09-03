@@ -189,6 +189,17 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
     const applicationId = getEq(query, 'id');
     const applicantId = getEq(query, 'applicant_id');
     if (method === 'GET') {
+      if (applicantId) {
+        const ownProfile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
+        if (String(ownProfile.id) === applicantId) {
+          const response = await djangoGet<{ application?: T }>('/api/accounts/mover/application/');
+          return response?.application ? [response.application] as T : [] as T;
+        }
+      } else {
+        const response = await djangoGet<{ application?: T }>('/api/accounts/mover/application/');
+        return response?.application ? [response.application] as T : [] as T;
+      }
+
       const dashboard = await getAdminDashboard();
       if (applicationId) {
         return dashboard.items
@@ -217,6 +228,11 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
   if (resource === 'rpc/submit_landlord_application' && method === 'POST') {
     const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
     return djangoPost<T>('/api/accounts/landlord/application/submit/', body);
+  }
+
+  if (resource === 'rpc/submit_mover_application' && method === 'POST') {
+    const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+    return djangoPost<T>('/api/accounts/mover/application/submit/', body);
   }
 
   throw new Error(`No Django mapping exists for legacy endpoint: ${path}`);
