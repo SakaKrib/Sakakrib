@@ -7,8 +7,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="ALTER INDEX IF EXISTS idx_rent_reminders_due_schedule RENAME TO rent_reminders_due_idx;",
-            reverse_sql="ALTER INDEX IF EXISTS rent_reminders_due_idx RENAME TO idx_rent_reminders_due_schedule;",
+        migrations.RenameIndex(
+            model_name='rentreminder',
+            old_name='idx_rent_reminders_due_schedule',
+            new_name='rent_reminders_due_idx',
         ),
     ]
