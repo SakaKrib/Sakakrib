@@ -195,3 +195,13 @@ class MeView(APIView):
             profile.updated_at = timezone.now()
             profile.save(update_fields=[*updates.keys(), 'updated_at'])
         return Response(ProfileSerializer(profile).data)
+
+    @transaction.atomic
+    def delete(self, request):
+        """Permanently delete the authenticated Django account and revoke its auth state."""
+        user = Profile.objects.select_for_update().get(pk=request.user.pk)
+        user_id = str(user.id)
+        user.delete()
+        response = Response({'success': True, 'authenticated': False, 'deleted_user_id': user_id}, status=status.HTTP_200_OK)
+        clear_auth_cookies(response)
+        return response
