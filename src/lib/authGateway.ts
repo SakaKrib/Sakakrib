@@ -61,6 +61,30 @@ const readJson = async <T>(response: Response): Promise<T | null> => {
   }
 };
 
+let csrfTokenPromise: Promise<string> | null = null;
+
+const getCsrfToken = async (forceRefresh = false): Promise<string> => {
+  if (forceRefresh) csrfTokenPromise = null;
+  if (csrfTokenPromise) return csrfTokenPromise;
+
+  csrfTokenPromise = (async () => {
+    const response = await fetch(`${getBaseUrl()}/api/accounts/csrf/`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    const body = await readJson<{ csrfToken?: string }>(response);
+    if (!response.ok || !body?.csrfToken) {
+      throw new Error(`Unable to obtain Django CSRF token (${response.status}).`);
+    }
+    return body.csrfToken;
+  })().finally(() => {
+    csrfTokenPromise = null;
+  });
+
+  return csrfTokenPromise;
+};
+
 /** Browser authentication transport. Tokens are HttpOnly Django cookies. */
 export const authGateway = async (
   action: AuthGatewayAction,
@@ -68,13 +92,30 @@ export const authGateway = async (
 ): Promise<GatewaySessionResponse> => {
   const isSession = action === 'session';
   const path = isSession ? '/api/accounts/session/' : actionPath[action];
+  const method = isSession ? 'GET' : 'POST';
+  const headers = new Headers({ Accept: 'application/json' });
 
-  const response = await fetch(`${getBaseUrl()}${path}`, {
-    method: isSession ? 'GET' : 'POST',
+  if (!isSession) {
+    headers.set('Content-Type', 'application/json');
+    headers.set('X-CSRFToken', await getCsrfToken());
+  }
+
+  const execute = () => fetch(`${getBaseUrl()}${path}`, {
+    method,
     credentials: 'include',
-    headers: isSession ? undefined : { 'Content-Type': 'application/json' },
+    headers,
     ...(isSession ? {} : { body: JSON.stringify(payload) }),
   });
+
+  let response = await execute();
+
+  if (response.status === 403 && !isSession) {
+    const body = await readJson<GatewaySessionResponse & { detail?: string }>(response.clone());
+    if (body?.detail && /csrf/i.test(body.detail)) {
+      headers.set('X-CSRFToken', await getCsrfToken(true));
+      response = await execute();
+    }
+  }
 
   const body = await readJson<GatewaySessionResponse>(response) ?? {};
 
