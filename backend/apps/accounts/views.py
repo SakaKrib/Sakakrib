@@ -8,6 +8,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.email_services import queue_email
+
 from .auth_service import send_signup_otp, verify_signup_otp
 from .jwt_service import clear_auth_cookies, issue_token_pair, revoke_refresh_token, rotate_refresh_token, set_auth_cookies
 from .models import Profile
@@ -18,11 +20,6 @@ class CsrfTokenView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        # get_token() marks the CSRF cookie for update; Django's CSRF middleware
-        # writes it to the response. Do not apply ensure_csrf_cookie directly to
-        # an APIView method: a normal function decorator receives `self` as its
-        # first argument when used on a class method, which breaks Django 6's
-        # CSRF middleware with: CsrfTokenView has no attribute COOKIES.
         return JsonResponse({'csrfToken': get_token(request)})
 
 
@@ -113,9 +110,32 @@ class LoginView(APIView):
             return Response({'error': 'This account is inactive.'}, status=status.HTTP_403_FORBIDDEN)
         if not user.email_verified:
             return Response({'authenticated': False, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id), 'error': 'Please verify your email before signing in.'}, status=status.HTTP_403_FORBIDDEN)
+
         access, refresh = issue_token_pair(user)
         response = Response({'success': True, 'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
         set_auth_cookies(response, access, refresh)
+
+        # Login must succeed even if the notification queue is temporarily
+        # unavailable. The email is queued for the existing Celery worker/beat
+        # delivery pipeline and never exposes authentication tokens.
+        try:
+            queue_email(
+                recipient=user.email,
+                template_type='sign_in_notification',
+                payload={
+                    'email': user.email,
+                    'sign_in_time': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
+                    'device': request.META.get('HTTP_USER_AGENT', 'Unknown device')[:255],
+                    'location': request.META.get('REMOTE_ADDR', 'Unknown location'),
+                    'security_url': f"{getattr(settings, 'PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5173')}",
+                },
+            )
+        except Exception:
+            # Authentication is more important than optional notification
+            # delivery. The failure is visible in server logs for diagnosis.
+            import logging
+            logging.getLogger(__name__).exception('Failed to queue sign-in notification for %s', user.email)
+
         return response
 
 
@@ -201,7 +221,6 @@ class MeView(APIView):
 
     @transaction.atomic
     def delete(self, request):
-        """Permanently delete the authenticated Django account and revoke its auth state."""
         user = Profile.objects.select_for_update().get(pk=request.user.pk)
         user_id = str(user.id)
         user.delete()
