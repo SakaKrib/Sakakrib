@@ -3,7 +3,6 @@ from pathlib import Path
 
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.http import FileResponse
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -80,9 +79,6 @@ class KycSubmitView(APIView):
         user.national_id = national_id
         user.id_photo_url = id_path
         user.selfie_url = selfie_path
-        # KYC documents remain in the KYC namespace. Do not expose them as a
-        # generic identity-document URL that another form may interpret as a
-        # different bucket.
         user.id_document_url = ''
         user.id_document_type = 'national_id'
         user.kyc_completed = True
@@ -95,25 +91,3 @@ class KycSubmitView(APIView):
             'verification_status': user.verification_status, 'id_photo_url': user.id_photo_url,
             'selfie_url': user.selfie_url,
         }})
-
-
-class KycDocumentView(APIView):
-    """Serve KYC documents only through the authenticated private endpoint."""
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        path = str(request.query_params.get('path') or '').strip()
-        if not _owned_path(request.user.pk, path, 'kyc-documents'):
-            from .authorization import is_admin
-            if not is_admin(request.user) or not isinstance(path, str) or not path.startswith('kyc-documents/') or '..' in Path(path).parts:
-                return Response({'detail': 'You do not have access to this document.'}, status=403)
-        if not default_storage.exists(path):
-            return Response({'detail': 'Document not found.'}, status=404)
-        file_obj = default_storage.open(path, 'rb')
-        extension = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
-        content_type = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}.get(extension, 'application/octet-stream')
-        response = FileResponse(file_obj, content_type=content_type)
-        response['Content-Disposition'] = 'inline'
-        response['Cache-Control'] = 'private, max-age=300'
-        return response
