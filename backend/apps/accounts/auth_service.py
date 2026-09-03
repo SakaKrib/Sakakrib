@@ -12,8 +12,8 @@ from .models import Profile
 OTP_EXPIRY_MINUTES = 10
 OTP_RESEND_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
-VERIFICATION_WINDOW_HOURS = 24
 OTP_ACCOUNT_CLEANUP_DELAY_SECONDS = 180
+VERIFICATION_WINDOW_SECONDS = OTP_ACCOUNT_CLEANUP_DELAY_SECONDS
 
 
 def generate_signup_otp():
@@ -35,16 +35,13 @@ def send_signup_otp(user: Profile, *, now=None):
     user.signup_otp_last_sent_at = now
     if is_first_verification_send:
         user.signup_verification_started_at = now
-        user.signup_verification_deadline_at = now + timedelta(hours=VERIFICATION_WINDOW_HOURS)
+        user.signup_verification_deadline_at = now + timedelta(seconds=VERIFICATION_WINDOW_SECONDS)
     user.save(update_fields=[
         'signup_otp_hash', 'signup_otp_expires_at', 'signup_otp_attempts',
         'signup_otp_last_sent_at', 'signup_verification_started_at',
         'signup_verification_deadline_at', 'updated_at',
     ])
 
-    # Queue the OTP with the same Django email infrastructure used by the rest
-    # of the platform. The OTP itself is only rendered into the email body and
-    # the database stores only its password hash.
     queue_email(
         recipient=user.email,
         template_type='otp_verification',
@@ -56,9 +53,6 @@ def send_signup_otp(user: Profile, *, now=None):
         },
     )
 
-    # Start the three-minute cleanup clock after the email queue row is safely
-    # part of the surrounding transaction. The task re-checks email_verified
-    # before deleting anything.
     if is_first_verification_send:
         from .tasks import delete_unverified_account_after_3_minutes
 
@@ -75,7 +69,7 @@ def verify_signup_otp(user: Profile, otp: str, *, now=None):
     if user.email_verified:
         return user
     if user.signup_verification_deadline_at and now > user.signup_verification_deadline_at:
-        raise ValueError('The email verification window has expired. Please contact support.')
+        raise ValueError('The email verification window has expired. Please request a new verification email.')
     if not user.signup_otp_hash or not user.signup_otp_expires_at:
         raise ValueError('No active verification code. Please request a new code.')
     if now > user.signup_otp_expires_at:
