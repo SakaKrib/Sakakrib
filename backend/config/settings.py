@@ -8,9 +8,6 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 
-# Docker's internal service hostname and the LAN development address are valid
-# request hosts for the local stack. Keep any configured hosts and append these
-# mandatory local hosts so a stale shell/root .env value cannot remove them.
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, 'localhost', '127.0.0.1', 'backend', '100.109.224.0']))
 
@@ -35,10 +32,11 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_MAX_LOOP_INTERVAL = 5.0
 CELERY_BEAT_SCHEDULE = {
     'generate-recurring-rent-reminders-daily': {'task': 'apps.core.tasks.generate_recurring_rent_reminders', 'schedule': 86400.0},
     'process-due-rent-reminders-every-minute': {'task': 'apps.core.tasks.process_due_rent_reminders', 'schedule': 60.0},
-    'process-notification-email-queue-every-minute': {'task': 'apps.core.email_tasks.process_notification_email_queue', 'schedule': 60.0},
+    'process-notification-email-queue-every-five-seconds': {'task': 'apps.core.email_tasks.process_notification_email_queue', 'schedule': 5.0},
     'process-subscription-expiry-every-five-minutes': {'task': 'apps.subscriptions.tasks.process_subscription_expiry_task', 'schedule': 300.0},
 }
 AUTH_USER_MODEL = 'accounts.Profile'
