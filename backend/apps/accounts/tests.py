@@ -1,4 +1,5 @@
 import re
+from unittest.mock import patch
 
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -32,11 +33,13 @@ class AuthenticationApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertTrue(response.data['requiresEmailVerification'])
 
-    def test_verify_otp_issues_http_only_jwt_cookies(self):
+    @patch('apps.accounts.auth_service.generate_signup_otp', return_value='123456')
+    def test_verify_otp_issues_http_only_jwt_cookies(self, _generate_otp):
         self.client.post(reverse('signup'), {'email':'verify@example.com','password':'A-strong-password-123'}, format='json')
         user = Profile.objects.get(email='verify@example.com')
         notification = NotificationEmail.objects.get(recipient='verify@example.com', template_type='otp_verification')
-        otp = re.search(r'\b\d{6}\b', notification.html_body).group(0)
+        self.assertIn('123456', notification.html_body)
+        otp = re.search(r'\b123456\b', notification.html_body).group(0)
         response = self.client.post(reverse('verify-otp'), {'email':user.email,'otp':otp}, format='json')
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['authenticated'])
