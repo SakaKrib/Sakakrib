@@ -1,7 +1,6 @@
 import uuid
 from pathlib import Path
 
-from django.core import signing
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.http import FileResponse
@@ -10,14 +9,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .authorization import is_admin
 from .models import Profile
 
 MAX_KYC_IMAGE_BYTES = 10 * 1024 * 1024
 ALLOWED_KYC_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
-KYC_SIGNING_SALT = 'sakakrib.kyc-document'
-KYC_SIGNING_MAX_AGE = 900
-ALLOWED_DOCUMENT_BUCKETS = {'id-documents', 'licenses', 'kyc-documents'}
 
 
 def _owned_path(user_id, path, bucket='kyc-documents'):
@@ -25,13 +20,6 @@ def _owned_path(user_id, path, bucket='kyc-documents'):
         isinstance(path, str)
         and path.startswith(f'{bucket}/{user_id}/')
         and '..' not in Path(path).parts
-    )
-
-
-def _signed_url(request, path, bucket='kyc-documents'):
-    """Return an authenticated document URL without embedding a credential."""
-    return request.build_absolute_uri(
-        f'/api/accounts/documents/view/?bucket={bucket}&path={path}'
     )
 
 
@@ -67,7 +55,7 @@ class KycDocumentVerifyView(APIView):
             return Response({'detail': f'The uploaded {label} is invalid.'}, status=400)
         if not default_storage.exists(path):
             return Response({'detail': f'The uploaded {label} could not be verified.'}, status=404)
-        return Response({'verified': True, 'path': path, 'url': _signed_url(request, path, 'kyc-documents')})
+        return Response({'verified': True, 'path': path})
 
 
 class KycSubmitView(APIView):
@@ -92,7 +80,10 @@ class KycSubmitView(APIView):
         user.national_id = national_id
         user.id_photo_url = id_path
         user.selfie_url = selfie_path
-        user.id_document_url = id_path
+        # KYC documents remain in the KYC namespace. Do not expose them as a
+        # generic identity-document URL that another form may interpret as a
+        # different bucket.
+        user.id_document_url = ''
         user.id_document_type = 'national_id'
         user.kyc_completed = True
         user.kyc_status = 'pending'
@@ -107,29 +98,21 @@ class KycSubmitView(APIView):
 
 
 class KycDocumentView(APIView):
-    """Legacy short-lived signed URL endpoint kept for existing stored links."""
+    """Serve KYC documents only through the authenticated private endpoint."""
 
-    authentication_classes = []
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
-    def get(self, request, token):
-        try:
-            payload = signing.loads(token, salt=KYC_SIGNING_SALT, max_age=KYC_SIGNING_MAX_AGE)
-        except signing.BadSignature:
-            return Response({'detail': 'Invalid or expired KYC document URL.'}, status=404)
-        path = payload.get('path')
-        bucket = payload.get('bucket') or 'kyc-documents'
-        user_id = payload.get('user_id')
-        admin_access = bool(payload.get('admin'))
-        authorized_path = admin_access or _owned_path(user_id, path, bucket)
-        if bucket not in ALLOWED_DOCUMENT_BUCKETS or not path or not user_id or not authorized_path or not default_storage.exists(path):
+    def get(self, request):
+        path = str(request.query_params.get('path') or '').strip()
+        if not _owned_path(request.user.pk, path, 'kyc-documents'):
+            from .authorization import is_admin
+            if not is_admin(request.user) or not isinstance(path, str) or not path.startswith('kyc-documents/') or '..' in Path(path).parts:
+                return Response({'detail': 'You do not have access to this document.'}, status=403)
+        if not default_storage.exists(path):
             return Response({'detail': 'Document not found.'}, status=404)
         file_obj = default_storage.open(path, 'rb')
         extension = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
-        content_type = {
-            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
-            'webp': 'image/webp', 'pdf': 'application/pdf',
-        }.get(extension, 'application/octet-stream')
+        content_type = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}.get(extension, 'application/octet-stream')
         response = FileResponse(file_obj, content_type=content_type)
         response['Content-Disposition'] = 'inline'
         response['Cache-Control'] = 'private, max-age=300'
