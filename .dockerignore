@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+.git
+.gitignore
+.vscode
+.idea
+.env
+backend/.env
+backend/.venv
+backend/__pycache__
+backend/media
+backend/staticfiles
+*.log
