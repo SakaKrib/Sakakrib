@@ -1,743 +1,358 @@
-import { createClient } from '@supabase/supabase-js';
+import {
+  djangoRequest,
+  protectedGet,
+  protectedPatch,
+  protectedPost,
+  protectedDelete,
+} from '@/lib/djangoApi';
 
 /**
- * ============================================================
- * SUPABASE CLIENT
- * ============================================================
+ * Django compatibility boundary.
  *
- * IMPORTANT:
- *
- * This application uses a custom HttpOnly-cookie authentication
- * architecture.
- *
- * Authentication is NOT managed by the browser Supabase client.
- *
- * Authentication flow:
- *
- *   React
- *      ↓
- *   authGateway
- *      ↓
- *   auth-gateway Edge Function
- *      ↓
- *   HttpOnly sk_access / sk_refresh cookies
- *
- * Protected application data:
- *
- *   React
- *      ↓
- *   protectedApi
- *      ↓
- *   protected-api Edge Function
- *      ↓
- *   HttpOnly authentication cookies
- *      ↓
- *   Supabase/PostgREST
- *
- * Therefore this Supabase client MUST NOT:
- *
- * - persist an Auth session in localStorage
- * - automatically refresh browser-side tokens
- * - detect Supabase OAuth sessions from the URL
- * - be used for application authentication
- *
- * Do NOT use:
- *
- *   supabase.auth.signIn()
- *   supabase.auth.signUp()
- *   supabase.auth.getSession()
- *   supabase.auth.getUser()
- *   supabase.auth.refreshSession()
- *   supabase.auth.onAuthStateChange()
- *   supabase.auth.signOut()
- *
- * for the application's normal authentication flow.
- *
- * Use authGateway() instead.
+ * This file intentionally keeps the historical module path so legacy
+ * components can be migrated without changing their UI. It contains no
+ * Supabase SDK, URL, key, auth session, storage client, or network call.
+ * All requests go through Django's HttpOnly-cookie transport.
  */
 
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL as string | undefined;
+export type UserRole = 'renter' | 'landlord' | 'mover' | 'real_estate' | 'admin' | string;
+export type VerificationStatus = 'unverified' | 'pending_verification' | 'verified' | 'rejected' | string;
 
-const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-if (!supabaseUrl) {
-  throw new Error(
-    'VITE_SUPABASE_URL is not configured.',
-  );
+export interface Profile extends Record<string, unknown> {
+  id: string;
+  email?: string;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  middle_name?: string;
+  is_admin?: boolean;
+  role?: UserRole;
+  kyc_completed?: boolean;
+  verification_status?: VerificationStatus;
+  landlord_application_status?: string;
+  real_estate_application_status?: string;
+  mover_application_status?: string;
+  national_id?: string;
+  dl_number?: string;
+  phone?: string;
+  profile_photo_url?: string;
+  id_photo_url?: string;
+  selfie_url?: string;
+  id_document_url?: string;
+  id_document_type?: string;
+  city?: string;
+  county?: string;
+  is_agency?: boolean;
+  free_listings_used?: number;
+  created_at?: string;
+  updated_at?: string;
+  email_verified?: boolean;
+  admin_review_note?: string;
 }
 
-if (!supabaseAnonKey) {
-  throw new Error(
-    'VITE_SUPABASE_ANON_KEY is not configured.',
-  );
+export interface Listing extends Record<string, unknown> {
+  id: string;
+  user_id?: string;
+  title?: string;
+  description?: string;
+  city?: string;
+  county?: string;
+  price_kes?: number | null;
+  listing_type?: string | null;
+  deposit_required?: boolean | null;
+  deposit_structure?: string | null;
+  deposit_amount?: number | null;
+  size?: string | null;
+  beds?: number | null;
+  baths?: number | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  social_links?: Record<string, unknown> | null;
+  is_property_management?: boolean;
+  property_name?: string | null;
+  property_type?: string | null;
+  location_search?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  booking_enabled?: boolean;
+  payment_enabled?: boolean;
+  ai_caption?: string | null;
+  ai_caption_generated_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  media?: ListingMedia[];
+  landlord?: Profile | null;
 }
 
+export interface ListingMedia extends Record<string, unknown> {
+  id: string;
+  listing_id?: string;
+  user_id?: string;
+  unit_id?: string | null;
+  url: string;
+  label?: string | null;
+  media_type?: 'photo' | 'video' | string;
+  position?: number;
+  created_at?: string;
+}
 
+export interface Review extends Record<string, unknown> {
+  id: string;
+  rating: number;
+  [key: string]: unknown;
+}
 
-/**
- * Base Supabase client.
- *
- * This client is intentionally configured WITHOUT browser
- * session persistence.
- *
- * Authentication is handled by the custom HttpOnly-cookie
- * gateway instead.
- */
-export const supabase = createClient(
-  supabaseUrl,
-  supabaseAnonKey,
-  {
-    auth: {
-      /**
-       * Do NOT store Supabase Auth sessions in localStorage.
-       *
-       * The application's persistent authentication session
-       * lives in HttpOnly cookies instead.
-       */
-      persistSession: false,
+type ShimError = { message: string };
+export interface ShimResult<T = unknown> {
+  data: T | null;
+  error: ShimError | null;
+}
 
-      /**
-       * Token refresh is handled server-side by:
-       *
-       *   auth-gateway
-       *   protected-api
-       *
-       * The browser must not refresh Supabase tokens itself.
-       */
-      autoRefreshToken: false,
+type Filter = { column: string; operator: 'eq' | 'in'; value: unknown };
 
-      /**
-       * OAuth/session information is not obtained from the
-       * browser URL.
-       *
-       * OAuth will eventually be handled through a server-side
-       * callback that establishes the HttpOnly cookie session.
-       */
-      detectSessionInUrl: false,
+const encode = (value: unknown) => encodeURIComponent(String(value));
+
+const getEq = (filters: Filter[], column: string): string | null => {
+  const filter = filters.find((item) => item.column === column && item.operator === 'eq');
+  return filter ? String(filter.value) : null;
+};
+
+const getIn = (filters: Filter[], column: string): string[] => {
+  const filter = filters.find((item) => item.column === column && item.operator === 'in');
+  return filter && Array.isArray(filter.value) ? filter.value.map(String) : [];
+};
+
+const errorResult = <T>(error: unknown): ShimResult<T> => ({
+  data: null,
+  error: { message: error instanceof Error ? error.message : 'Request failed' },
+});
+
+class DjangoQueryBuilder<T = unknown> {
+  private readonly table: string;
+  private filters: Filter[] = [];
+  private orderBy: { column: string; ascending: boolean }[] = [];
+  private limitValue: number | null = null;
+  private singleMode: 'none' | 'single' | 'maybeSingle' = 'none';
+  private operation: 'select' | 'insert' | 'update' | 'delete' = 'select';
+  private payload: unknown = null;
+
+  constructor(table: string) {
+    this.table = table;
+  }
+
+  select(_columns = '*') {
+    return this;
+  }
+
+  eq(column: string, value: unknown) {
+    this.filters.push({ column, operator: 'eq', value });
+    return this;
+  }
+
+  in(column: string, values: unknown[]) {
+    this.filters.push({ column, operator: 'in', value: values });
+    return this;
+  }
+
+  order(column: string, options?: { ascending?: boolean }) {
+    this.orderBy.push({ column, ascending: options?.ascending !== false });
+    return this;
+  }
+
+  limit(value: number) {
+    this.limitValue = value;
+    return this;
+  }
+
+  single() {
+    this.singleMode = 'single';
+    return this;
+  }
+
+  maybeSingle() {
+    this.singleMode = 'maybeSingle';
+    return this;
+  }
+
+  insert(payload: Record<string, unknown>) {
+    this.operation = 'insert';
+    this.payload = payload;
+    return this;
+  }
+
+  update(payload: Record<string, unknown>) {
+    this.operation = 'update';
+    this.payload = payload;
+    return this;
+  }
+
+  delete() {
+    this.operation = 'delete';
+    return this;
+  }
+
+  private async execute(): Promise<ShimResult<T>> {
+    try {
+      if (this.table === 'profiles') {
+        if (this.operation === 'select') {
+          return { data: await protectedGet<T>('/api/accounts/me/'), error: null };
+        }
+        if (this.operation === 'update') {
+          return { data: await protectedPatch<T>('/api/accounts/me/', this.payload), error: null };
+        }
+        throw new Error('Unsupported profiles operation.');
+      }
+
+      if (this.table === 'listings') {
+        const listingId = getEq(this.filters, 'id');
+        if (this.operation === 'select') {
+          if (listingId && this.singleMode !== 'none') {
+            return { data: await protectedGet<T>(`/api/listings/${encode(listingId)}/`), error: null };
+          }
+          const params = new URLSearchParams();
+          const userId = getEq(this.filters, 'user_id');
+          if (userId) params.set('user_id', userId);
+          if (this.limitValue !== null) params.set('limit', String(this.limitValue));
+          const response = await protectedGet<{ results?: T }>(`/api/listings/${params.toString() ? `?${params}` : ''}`);
+          const data = (response as { results?: T })?.results ?? response as unknown as T;
+          return { data, error: null };
+        }
+        if (this.operation === 'update') {
+          if (!listingId) throw new Error('A listing id is required for update.');
+          return { data: await protectedPatch<T>(`/api/listings/${encode(listingId)}/`, this.payload), error: null };
+        }
+        if (this.operation === 'insert') {
+          return { data: await protectedPost<T>('/api/listings/create/', this.payload), error: null };
+        }
+        if (this.operation === 'delete') {
+          throw new Error('Listing deletion must use the dedicated Django listing workflow.');
+        }
+      }
+
+      if (this.table === 'listing_media') {
+        const mediaId = getEq(this.filters, 'id');
+        const listingId = getEq(this.filters, 'listing_id');
+        if (this.operation === 'select') {
+          if (mediaId && this.singleMode !== 'none') {
+            return { data: await protectedGet<T>(`/api/listings/media/${encode(mediaId)}/`), error: null };
+          }
+          const query = listingId ? `?listing_id=${encode(listingId)}` : '';
+          return { data: await protectedGet<T>(`/api/listings/media/${query}`), error: null };
+        }
+        if (this.operation === 'update') {
+          if (!mediaId) throw new Error('A media id is required for update.');
+          return { data: await protectedPatch<T>(`/api/listings/media/${encode(mediaId)}/`, this.payload), error: null };
+        }
+        if (this.operation === 'delete') {
+          if (!mediaId) throw new Error('A media id is required for delete.');
+          return { data: await protectedDelete<T>(`/api/listings/media/${encode(mediaId)}/`), error: null };
+        }
+        if (this.operation === 'insert') {
+          return { data: await protectedPost<T>('/api/listings/media/', this.payload), error: null };
+        }
+      }
+
+      if (this.table === 'movers') {
+        const moverId = getEq(this.filters, 'id');
+        if (this.operation !== 'select') throw new Error('Mover mutation must use the dedicated Django mover workflow.');
+        const path = moverId ? `/api/core/movers/${encode(moverId)}/` : '/api/core/movers/';
+        const data = await protectedGet<T>(path);
+        return { data: moverId && this.singleMode !== 'none' ? data : data, error: null };
+      }
+
+      if (this.table === 'reviews') {
+        if (this.operation !== 'select') throw new Error('Review mutations must use the dedicated Django review workflow.');
+        const params = new URLSearchParams();
+        for (const filter of this.filters) {
+          if (filter.operator === 'eq') params.set(filter.column, String(filter.value));
+        }
+        return { data: await protectedGet<T>(`/api/core/reviews/${params.toString() ? `?${params}` : ''}`), error: null };
+      }
+
+      if (this.table === 'bookings') {
+        if (this.operation !== 'select') throw new Error('Booking mutations must use the dedicated Django booking workflow.');
+        const bookingId = getEq(this.filters, 'id');
+        const data = await protectedGet<T>(bookingId ? `/api/core/bookings/${encode(bookingId)}/` : '/api/core/bookings/');
+        return { data, error: null };
+      }
+
+      throw new Error(`Django migration adapter does not support table: ${this.table}`);
+    } catch (error) {
+      return errorResult<T>(error);
+    }
+  }
+
+  then<TResult1 = ShimResult<T>, TResult2 = never>(
+    onfulfilled?: ((value: ShimResult<T>) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ) {
+    return this.execute().then(onfulfilled, onrejected);
+  }
+}
+
+const dashboard = async () => protectedGet<Record<string, any>>('/api/core/pms/dashboard/');
+const realEstateDashboard = async () => protectedGet<Record<string, any>>('/api/core/pms/real-estate/dashboard/');
+
+async function rpc<T = unknown>(name: string, params: Record<string, unknown> = {}): Promise<ShimResult<T>> {
+  try {
+    switch (name) {
+      case 'get_my_profile':
+        return { data: await protectedGet<T>('/api/accounts/me/'), error: null };
+      case 'get_my_pms_subscription':
+        return { data: await protectedGet<T>('/api/subscriptions/me/'), error: null };
+      case 'get_my_pms_unit_count': {
+        const data = await dashboard();
+        return { data: (data.capacity?.listings_used ?? 0) as T, error: null };
+      }
+      case 'get_my_pms_listings': {
+        const data = await dashboard();
+        return { data: (data.pmsListings ?? []) as T, error: null };
+      }
+      case 'get_my_available_pms_listings': {
+        const data = await dashboard();
+        return { data: (data.availableListings ?? []) as T, error: null };
+      }
+      case 'get_current_real_estate_subscription': {
+        const data = await realEstateDashboard();
+        return { data: (data.subscription ?? null) as T, error: null };
+      }
+      case 'get_real_estate_listing_entitlement': {
+        const data = await realEstateDashboard();
+        return { data: (data.entitlement ?? null) as T, error: null };
+      }
+      case 'add_listing_to_pms': {
+        const profile = await protectedGet<Profile>('/api/accounts/me/');
+        const path = profile.role === 'real_estate' ? '/api/core/pms/real-estate/action/' : '/api/core/pms/action/';
+        const data = await protectedPost<T>(path, { action: 'add_listing', listing_id: params.p_listing_id });
+        return { data, error: null };
+      }
+      case 'remove_listing_from_pms': {
+        const profile = await protectedGet<Profile>('/api/accounts/me/');
+        const path = profile.role === 'real_estate' ? '/api/core/pms/real-estate/action/' : '/api/core/pms/action/';
+        const data = await protectedPost<T>(path, { action: 'remove_listing', listing_id: params.p_listing_id });
+        return { data, error: null };
+      }
+      default:
+        throw new Error(`Unsupported Django RPC migration: ${name}`);
+    }
+  } catch (error) {
+    return errorResult<T>(error);
+  }
+}
+
+export const supabase = {
+  from: <T = unknown>(table: string) => new DjangoQueryBuilder<T>(table),
+  rpc,
+  auth: {
+    getUser: async (): Promise<{ data: { user: Profile | null }; error: ShimError | null }> => {
+      try {
+        const profile = await protectedGet<Profile>('/api/accounts/me/');
+        return { data: { user: profile }, error: null };
+      } catch (error) {
+        return { data: { user: null }, error: { message: error instanceof Error ? error.message : 'Unable to load authenticated user.' } };
+      }
     },
   },
-);
-
-/**
- * ============================================================
- * APPLICATION TYPES
- * ============================================================
- */
-
-export type UserRole =
-  | 'renter'
-  | 'landlord'
-  | 'mover'
-  | 'real_estate'
-  | 'admin';
-
-export type VerificationStatus =
-  | 'unverified'
-  | 'pending_verification'
-  | 'verified'
-  | 'rejected';
-
-/**
- * ============================================================
- * PROFILE
- * ============================================================
- */
-
-export interface Profile {
-  id: string;
-
-  email: string;
-
-  full_name: string;
-
-  is_admin: boolean;
-
-  first_name: string;
-
-  last_name: string;
-
-  middle_name: string;
-
-  role: UserRole;
-
-  kyc_completed: boolean;
-
-  verification_status: VerificationStatus;
-
-  landlord_application_status:
-    | 'not_requested'
-    | 'pending'
-    | 'approved'
-    | 'rejected';
-
-  real_estate_application_status:
-    | 'not_requested'
-    | 'pending'
-    | 'approved'
-    | 'rejected';
-
-  mover_application_status:
-    | 'not_requested'
-    | 'pending'
-    | 'approved'
-    | 'rejected';
-
-  national_id: string;
-
-  dl_number: string;
-
-  phone: string;
-
-  profile_photo_url: string;
-
-  id_photo_url: string;
-
-  selfie_url: string;
-
-  id_document_url: string;
-
-  id_document_type:
-    | ''
-    | 'national_id'
-    | 'passport';
-
-  city: string;
-
-  county: string;
-
-  is_agency: boolean;
-
-  free_listings_used: number;
-
-  created_at: string;
-
-  updated_at: string;
-
-  email_verified: boolean;
-
-  admin_review_note: string;
-}
-
-/**
- * ============================================================
- * LISTING
- * ============================================================
- */
-
-export interface Listing {
-  id: string;
-
-  user_id: string;
-
-  title: string;
-
-  description: string;
-
-  city: string;
-
-  county: string;
-
-  price_kes: number | null;
-
-  listing_type: 'rent' | 'sale';
-
-  deposit_required: boolean | null;
-
-  deposit_structure:
-    | 'fixed'
-    | 'installments'
-    | null;
-
-  deposit_amount: number | null;
-
-  size: string | null;
-
-  beds: number | null;
-
-  baths: number | null;
-
-  contact_phone: string;
-
-  contact_email: string;
-
-  status:
-    | 'pending'
-    | 'approved'
-    | 'rejected';
-
-  admin_review_note: string;
-
-  approval_status: string;
-
-  is_published: boolean;
-
-  is_approved: boolean;
-
-  social_links: {
-    platform: string;
-    url: string;
-  }[];
-
-  /**
-   * Property management
-   */
-  is_property_management: boolean;
-
-  property_name: string | null;
-
-  property_type: string | null;
-
-  /**
-   * Location
-   */
-  location_search: string | null;
-
-  latitude: number | null;
-
-  longitude: number | null;
-
-  /**
-   * Tenant actions
-   */
-  booking_enabled: boolean;
-
-  payment_enabled: boolean;
-
-  /**
-   * AI
-   */
-  ai_caption: string;
-
-  ai_caption_generated_at: string | null;
-
-  created_at: string;
-
-  updated_at: string;
-
-   /**
-   * Listing media
-   */
-  media: ListingMedia[];
-}
-
-/**
- * ============================================================
- * LISTING MEDIA
- * ============================================================
- */
-
-export interface ListingMedia {
-  id: string;
-
-  listing_id: string;
-
-  url: string;
-
-  label: string;
-
-  media_type: 'photo' | 'video';
-
-  position: number;
-
-  created_at: string;
-}
-
-/**
- * ============================================================
- * MOVER
- * ============================================================
- */
-
-export interface Mover {
-  id: string;
-
-  user_id: string;
-
-  driver_full_name: string;
-
-  business_name: string;
-
-  national_id: string;
-
-  dl_number: string;
-
-  dl_photo_url: string;
-
-  vehicle_type:
-    | 'pickup'
-    | 'lorry'
-    | 'trailer';
-
-  number_plate: string;
-
-  operating_city: string;
-
-  operating_county: string;
-
-  phone: string;
-
-  profile_photo_url: string;
-
-  base_rate_kes: number;
-
-  capacity_details: string;
-
-  is_available: boolean;
-
-  approval_status:
-    | 'pending_review'
-    | 'approved'
-    | 'rejected';
-
-  working_days: string[];
-
-  start_time: string;
-
-  end_time: string;
-
-  payment_channel:
-    | 'mpesa_send_money'
-    | 'mpesa_paybill'
-    | 'mpesa_lipa_na_mpesa'
-    | 'airtel_money';
-
-  payment_account: string;
-
-  liability_accepted: boolean;
-
-  reference_contacts: {
-    name: string;
-    phone: string;
-    relationship: string;
-  }[];
-
-  created_at: string;
-
-  updated_at: string;
-}
-
-/**
- * ============================================================
- * BOOKING
- * ============================================================
- */
-
-export interface Booking {
-  id: string;
-
-  renter_id: string;
-
-  mover_id: string;
-
-  listing_id: string | null;
-
-  pickup_address: string;
-
-  dropoff_address: string;
-
-  moving_date: string;
-
-  booking_amount: number;
-
-  commission_amount: number;
-
-  total_amount: number;
-
-  status:
-    | 'pending'
-    | 'confirmed'
-    | 'completed'
-    | 'cancelled';
-
-  payment_status:
-    | 'unpaid'
-    | 'paid'
-    | 'refunded';
-
-  payment_method: string;
-
-  created_at: string;
-
-  updated_at: string;
-}
-
-/**
- * ============================================================
- * REVIEW
- * ============================================================
- */
-
-export interface Review {
-  id: string;
-
-  reviewer_id: string;
-
-  reviewee_id: string | null;
-
-  listing_id: string | null;
-
-  mover_id: string | null;
-
-  rating: number;
-
-  comment: string;
-
-  review_type:
-    | 'landlord'
-    | 'mover';
-
-  created_at: string;
-}
-
-/**
- * ============================================================
- * COMMUNITY POST
- * ============================================================
- */
-
-export interface CommunityPost {
-  id: string;
-
-  user_id: string;
-
-  listing_id: string | null;
-
-  content: string;
-
-  ai_caption: string;
-
-  post_type:
-    | 'listing'
-    | 'manual';
-
-  created_at: string;
-}
-
-/**
- * ============================================================
- * TERMS ACCEPTANCE
- * ============================================================
- */
-
-export interface TermsAcceptance {
-  id: string;
-
-  user_id: string;
-
-  context:
-    | 'landlord'
-    | 'mover'
-    | 'listing';
-
-  accepted: boolean;
-
-  accepted_at: string | null;
-
-  created_at: string;
-}
-
-/**
- * ============================================================
- * CHAT MESSAGE
- * ============================================================
- */
-
-export interface ChatMessage {
-  id: string;
-
-  conversation_id: string;
-
-  sender_id: string;
-
-  receiver_id: string;
-
-  content: string;
-
-  message_type:
-    | 'text'
-    | 'event_request'
-    | 'event_confirmed'
-    | 'event_declined';
-
-  event_data: BookingEventData | null;
-
-  created_at: string;
-}
-
-/**
- * ============================================================
- * BOOKING EVENT DATA
- * ============================================================
- */
-
-export interface BookingEventData {
-  relocation_date: string;
-
-  day_of_week: string;
-
-  pickup_time: string;
-
-  pickup_address: string;
-
-  dropoff_address: string;
-
-  negotiated_price: number;
-}
-
-/**
- * ============================================================
- * BOOKING EVENT
- * ============================================================
- */
-
-export interface BookingEvent {
-  id: string;
-
-  conversation_id: string;
-
-  renter_id: string;
-
-  mover_id: string;
-
-  mover_profile_id: string;
-
-  relocation_date: string;
-
-  day_of_week: string;
-
-  pickup_time: string;
-
-  pickup_address: string;
-
-  dropoff_address: string;
-
-  negotiated_price: number;
-
-  commission_amount: number;
-
-  total_amount: number;
-
-  status:
-    | 'pending'
-    | 'confirmed'
-    | 'declined'
-    | 'paid'
-    | 'completed'
-    | 'cancelled';
-
-  payment_method: string;
-
-  created_at: string;
-
-  confirmed_at: string | null;
-
-  paid_at: string | null;
-}
-
-/**
- * ============================================================
- * SUBSCRIPTION
- * ============================================================
- */
-
-export interface Subscription {
-  id: string;
-
-  landlord_id: string;
-
-  plan_id: string;
-
-  billing_cycle:
-    | 'MONTHLY'
-    | 'ANNUAL'
-    | string;
-
-  status:
-    | 'PENDING_PAYMENT'
-    | 'ACTIVE'
-    | 'GRACE_PERIOD'
-    | 'EXPIRED'
-    | 'CANCELLED'
-    | string;
-
-  current_period_start: string;
-
-  current_period_end: string;
-
-  grace_period_end: string | null;
-
-  auto_renew: boolean;
-
-  created_at: string;
-
-  updated_at: string;
-
-  /**
-   * PayPal
-   */
-  paypal_subscription_id: string | null;
-
-  paypal_plan_id: string | null;
-
-  paypal_status: string | null;
-
-  next_billing_at: string | null;
-
-  cancel_at_period_end: boolean;
-
-  cancelled_at: string | null;
-
-  /**
-   * Billing
-   */
-  billing_amount_kes: number | null;
-
-  billing_amount_usd: number | null;
-
-  billing_exchange_rate: number | null;
-
-  billing_exchange_rate_timestamp: string | null;
-
-  /**
-   * Related plan
-   */
-  plan?: SubscriptionPlan | null;
-}
-
-/**
- * ============================================================
- * SUBSCRIPTION PLAN
- * ============================================================
- */
-
-export interface SubscriptionPlan {
-  id: string;
-
-  name: string;
-
-  audience:
-    | 'LANDLORD'
-    | 'REAL_ESTATE'
-    | string;
-
-  max_listings: number | null;
-
-  max_units_per_listing: number | null;
-
-  monthly_price_kes: number;
-
-  annual_price_kes: number;
-}
-
-/**
- * ============================================================
- * USER + SUBSCRIPTION
- * ============================================================
- */
-
-export interface UserWithSubscription
-  extends Profile {
-  subscription: Subscription | null;
 };
+
+export default supabase;
