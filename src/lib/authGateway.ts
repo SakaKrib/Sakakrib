@@ -1,15 +1,22 @@
-import type { Profile } from '@/lib/supabase';
-
 interface GatewayUser {
   id: string;
   email: string | null;
+}
+
+interface GatewayProfile {
+  id: string;
+  email: string;
+  full_name?: string;
+  phone?: string;
+  role?: string;
+  [key: string]: unknown;
 }
 
 export interface GatewaySessionResponse {
   authenticated?: boolean;
   success?: boolean;
   user?: GatewayUser;
-  profile?: Profile;
+  profile?: GatewayProfile;
   requiresEmailVerification?: boolean;
   email?: string | null;
   profile_id?: string | null;
