@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
@@ -16,8 +17,10 @@ ASGI_APPLICATION = 'config.asgi.application'
 REDIS_URL = os.getenv('REDIS_URL', '')
 if REDIS_URL:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels_redis.core.RedisChannelLayer', 'CONFIG': {'hosts': [REDIS_URL]}}}
-else:
+elif DEBUG:
     CHANNEL_LAYERS = {'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}
+else:
+    raise ImproperlyConfigured('REDIS_URL is required when DJANGO_DEBUG=false because Channels realtime tracking/chat must use a shared production channel layer.')
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
 CELERY_TIMEZONE = TIME_ZONE = os.getenv('CELERY_TIMEZONE', 'Africa/Nairobi')
