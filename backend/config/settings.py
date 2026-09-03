@@ -40,7 +40,7 @@ CELERY_BEAT_SCHEDULE = {
     'process-subscription-expiry-every-five-minutes': {'task': 'apps.subscriptions.tasks.process_subscription_expiry_task', 'schedule': 300.0},
 }
 AUTH_USER_MODEL = 'accounts.Profile'
-AUTHENTICATION_BACKENDS = ['apps.accounts.authentication.CookieJWTAuthenticationBackend']
+AUTHENTICATION_BACKENDS = ['apps.accounts.authentication.CookieJWTAuthenticationBackend','django.contrib.auth.backends.ModelBackend',]
 AUTH_PASSWORD_VALIDATORS = [{'NAME':'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},{'NAME':'django.contrib.auth.password_validation.MinimumLengthValidator','OPTIONS':{'min_length':8}},{'NAME':'django.contrib.auth.password_validation.CommonPasswordValidator'},{'NAME':'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql','NAME': os.getenv('DB_NAME','sakakrib'),'USER': os.getenv('DB_USER','sakakrib'),'PASSWORD': os.getenv('DB_PASSWORD',''),'HOST': os.getenv('DB_HOST','127.0.0.1'),'PORT': os.getenv('DB_PORT','5432'),'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE','60')),'OPTIONS': {'sslmode': os.getenv('DB_SSLMODE','prefer')}}}
 LANGUAGE_CODE = 'en-us'

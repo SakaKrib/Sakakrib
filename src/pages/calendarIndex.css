@@ -99,7 +99,7 @@
 }
 
 .dark .react-datepicker__day:hover {
-  @apply bg-brand-700 text-white;
+  @apply bg-brand-700 text-gray-500;
 }
 
 .dark .react-datepicker__day--selected,

@@ -8,7 +8,7 @@ def health(_request):
 
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('admin-built-in/', admin.site.urls),
     path('health/', health, name='health'),
     path('api/accounts/', include('apps.accounts.urls')),
     path('api/listings/', include('apps.listings.urls')),
