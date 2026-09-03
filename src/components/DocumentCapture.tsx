@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { protectedPost, protectedUpload } from '@/lib/djangoApi';
 
 interface DocumentCaptureProps {
   bucket:
@@ -111,26 +112,11 @@ export default function DocumentCapture({
   const resolveSignedUrl = useCallback(
     async (path: string): Promise<string | null> => {
       try {
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/protected-api/storage/sign`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            },
-            body: JSON.stringify({ bucket, path }),
-          }
+        const result = await protectedPost<{ url?: string }>(
+          '/api/accounts/kyc/document/sign/',
+          { bucket, path },
         );
-
-        const result = await response.json().catch(() => null);
-
-        if (!response.ok || !result?.url) {
-          return null;
-        }
-
-        return result.url as string;
+        return result?.url || null;
       } catch {
         return null;
       }
@@ -614,23 +600,12 @@ export default function DocumentCapture({
         fileName
       );
 
-      const response =
-        await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/protected-api/storage/upload`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-              apikey:
-                import.meta.env
-                  .VITE_SUPABASE_ANON_KEY,
-            },
-            body: formData,
-          }
-        );
-
-      const result =
-        await response.json();
+      const result = await protectedUpload<{
+        path?: string;
+        bucket?: string;
+        size?: number;
+        mime_type?: string;
+      }>('/api/accounts/documents/upload/', formData);
 
       if (!response.ok) {
         throw new Error(

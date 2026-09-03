@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 import AdminUserDetails from './AdminUserDetails';
-import { protectedGet, protectedPatch } from '@/lib/protectedApi';
+import { protectedGet, protectedPatch } from '@/lib/djangoLegacyApi';
 
 interface AdminApprovalProfile {
   id: string;

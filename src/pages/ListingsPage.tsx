@@ -3,7 +3,7 @@ import { Search, MapPin, Home, SlidersHorizontal, X, Loader2 } from 'lucide-reac
 import { useNav } from '@/context/NavContext';
 import { protectedGet } from '@/lib/djangoApi';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
-import type { Listing, ListingMedia } from '@/lib/supabase';
+import type { Listing, ListingMedia } from '@/types/domain';
 
 interface ListingListResponse {
   count: number;

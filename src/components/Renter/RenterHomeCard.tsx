@@ -7,7 +7,7 @@ import {
   MapPin,
 } from 'lucide-react';
 
-import type { Listing } from '@/lib/supabase';
+import type { Listing } from '@/types/domain';
 import { formatKES } from '@/lib/utils';
 
 export interface RenterAssociationSummary {

@@ -8,7 +8,7 @@ import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { protectedGet } from '@/lib/djangoApi';
 import { formatKES, timeAgo, cn } from '@/lib/utils';
-import type { Listing, ListingMedia, Review, Profile } from '@/lib/supabase';
+import type { Listing, ListingMedia, Review, Profile } from '@/types/domain';
 
 type ListingDetailResponse = Listing & {
   landlord: Profile | null;

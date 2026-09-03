@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
 import { timeAgo, formatKES, cn } from '@/lib/utils';
-import type { CommunityPost, Profile, Listing, ListingMedia } from '@/lib/supabase';
+import type { CommunityPost, Profile, Listing, ListingMedia } from '@/types/domain';
 
 interface EnrichedPost extends CommunityPost {
   author?: Profile;

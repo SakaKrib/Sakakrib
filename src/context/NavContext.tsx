@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
-import type { UserRole } from '@/lib/supabase';
+import type { UserRole } from '@/types/domain';
 export type AppView = 'home'|'listings'|'listing-detail'|'listing-manage'|'movers'|'mover-detail'|'mover-booking-detail'|'chat'|'community'|'post-listing'|'register-mover'|'register-landlord'|'kyc-verify'|'dashboard'|'my-bookings'|'my-listings'|'profile'|'subscription-plans'|'pms-dashboard'|'renter-invoices'|'renter-payment'|'mover-tracking'|'renter-calendar'|'notifications'|'admin-user-details';
 export type AuthMode = 'signin'|'signup'|'forgot';
 export interface MovingRequestContext { listingId: string|null; }

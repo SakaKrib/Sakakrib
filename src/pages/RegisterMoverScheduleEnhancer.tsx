@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Clock3, CalendarDays } from 'lucide-react';
-import { protectedGet, protectedPatch } from '@/lib/protectedApi';
+import { protectedGet, protectedPatch } from '@/lib/djangoLegacyApi';
 import { useAuth } from '@/context/AuthContext';
 
 

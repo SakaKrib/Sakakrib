@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
 import GPSLocationInput, { type GPSLocationValue } from '@/components/Helpers/GPSLocationInput';
 import { formatKES, COMMISSION_RATE, cn } from '@/lib/utils';
-import type { Mover, Review } from '@/lib/supabase';
+import type { Mover, Review } from '@/types/domain';
 
 type MoverQuote = {
   mover_id: string;

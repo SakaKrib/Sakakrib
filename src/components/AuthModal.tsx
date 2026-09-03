@@ -17,7 +17,7 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { supabase } from '@/lib/supabase';
+import { protectedPost } from '@/lib/djangoApi';
 import { cn, validateEmail } from '@/lib/utils';
 
 import EmailOtpVerification from '@/components/EmailOtpVerification';
@@ -423,14 +423,12 @@ export default function AuthModal() {
       setLoading(true);
 
       try {
-        const { error: resetError } =
-          await supabase.auth.resetPasswordForEmail(
-            normalizedEmail,
-            {
-              redirectTo:
-                window.location.origin,
-            },
-          );
+        await protectedPost('/api/accounts/password-reset/', {
+          email: normalizedEmail,
+          redirect_to: window.location.origin,
+        });
+
+        const resetError = null;
 
         if (resetError) {
           console.error(

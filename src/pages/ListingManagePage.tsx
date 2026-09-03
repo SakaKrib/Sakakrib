@@ -29,7 +29,6 @@ import {
 } from '@/lib/utils';
 
 import { useNav } from '@/context/NavContext';
-import { supabase } from '@/lib/supabase';
 
 interface LocationSuggestion {
   display_name: string;

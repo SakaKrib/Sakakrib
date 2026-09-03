@@ -1,7 +1,7 @@
 import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Clock3, Loader2, MapPin, RefreshCw, Truck, User, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNav } from '@/context/NavContext';
-import { protectedGet, protectedPost } from '@/lib/protectedApi';
+import { protectedGet, protectedPost } from '@/lib/djangoLegacyApi';
 import { cn, formatKES } from '@/lib/utils';
 
 interface Booking { id: string; renter_id: string; mover_id: string; listing_id: string | null; pickup_address: string; dropoff_address: string; moving_date: string | null; booking_amount: number | null; commission_amount: number | null; total_amount: number | null; status: string | null; payment_status: string | null; payment_method: string | null; distance_km: number | null; rate_per_km_kes: number | null; base_rate_kes: number | null; pickup_latitude: number | null; pickup_longitude: number | null; dropoff_latitude: number | null; dropoff_longitude: number | null; requested_at: string | null; request_expires_at: string | null; confirmed_at: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; started_at: string | null; completed_at: string | null; cancelled_at: string | null; cancellation_reason: string | null; cancellation_details: string | null; tracking_number: string | null; renter_confirmed_delivery_at: string | null; mover_confirmed_delivery_at: string | null; contact_released_at: string | null; dispute_status: string | null; created_at: string | null; updated_at: string | null; }

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { protectedGet, protectedPost } from '@/lib/protectedApi';
+import { protectedGet, protectedPost } from '@/lib/djangoLegacyApi';
 
 interface BookingState {
   id: string;

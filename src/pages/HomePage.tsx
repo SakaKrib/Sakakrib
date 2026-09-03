@@ -3,8 +3,8 @@ import { Home, Truck, Users, Search, MapPin, ShieldCheck, Star, ArrowRight, Buil
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
-import type { Listing } from '@/lib/supabase';
-import { protectedGet } from '@/lib/protectedApi';
+import type { Listing } from '@/types/domain';
+import { protectedGet } from '@/lib/djangoLegacyApi';
 
 export default function HomePage() {
   const { navigate, setAuthModalOpen, setRoleModalOpen } = useNav();

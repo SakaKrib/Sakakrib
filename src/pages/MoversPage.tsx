@@ -20,11 +20,11 @@ import {
 
 import {
   protectedGet,
-} from '@/lib/protectedApi';
+} from '@/lib/djangoLegacyApi';
 
 import type {
   Mover,
-} from '@/lib/supabase';
+} from '@/types/domain';
 
 // ============================================================
 // TYPES

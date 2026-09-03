@@ -23,7 +23,7 @@ import type {
   Subscription,
   SubscriptionPlan,
   VerificationStatus,
-} from '@/lib/supabase';
+} from '@/types/domain';
 
 import openKycDocument from '@/Dashboards/openPrivateDocsHelper';
 

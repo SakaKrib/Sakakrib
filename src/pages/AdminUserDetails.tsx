@@ -44,12 +44,12 @@ import type {
   Subscription,
   Listing,
   ListingMedia,
-} from '@/lib/supabase';
+} from '@/types/domain';
 import {
   protectedFunctionPost,
   protectedGet,
   protectedPatch,
-} from '@/lib/protectedApi';
+} from '@/lib/djangoLegacyApi';
 
 import { cn } from '@/lib/utils';
 

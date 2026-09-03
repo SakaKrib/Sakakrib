@@ -24,7 +24,7 @@ import {
 
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { protectedGet, protectedPatch } from '@/lib/protectedApi';
+import { protectedGet, protectedPatch } from '@/lib/djangoLegacyApi';
 import { cn } from '@/lib/utils';
 
 /* ============================================================

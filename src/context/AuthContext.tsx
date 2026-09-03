@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Profile, UserRole } from '@/lib/supabase';
+import type { Profile, UserRole } from '@/types/domain';
 import {
   authGateway,
   gatewayGoogleLogin,

@@ -14,7 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import RealEstateDashboard from './Realestatedashboard';
 
-import { protectedGet } from '@/lib/protectedApi';
+import { protectedGet } from '@/lib/djangoLegacyApi';
 import {
   formatKES,
   cn,
@@ -28,7 +28,7 @@ import type {
   Mover,
   Booking,
   Review,
-} from '@/lib/supabase';
+} from '@/types/domain';
 
 import AdminDashboard from '@/Dashboards/AdminDashboard';
 import LandlordDashboard from '@/Dashboards/LandlordDashboard';

@@ -43,13 +43,13 @@ import {
   protectedGet,
   protectedPost,
   protectedPatch,
-} from '@/lib/protectedApi';
+} from '@/lib/djangoLegacyApi';
 
 import type {
   Listing,
   Subscription,
   Profile,
-} from '@/lib/supabase';
+} from '@/types/domain';
 import {cn} from "@/lib/utils"
 
 import {

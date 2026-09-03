@@ -1,6 +1,6 @@
 import { Home, Sparkles } from 'lucide-react';
 
-import type { Profile } from '@/lib/supabase';
+import type { Profile } from '@/types/domain';
 
 /* ============================================================
  * PROPS

@@ -5,7 +5,7 @@ import { twMerge } from 'tailwind-merge';
 import {
   protectedGet,
   protectedPost,
-} from '@/lib/protectedApi';
+} from '@/lib/djangoLegacyApi';
 
 import type { ListingEntitlement } from './ListingEntitlement';
 

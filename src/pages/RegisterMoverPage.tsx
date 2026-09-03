@@ -40,7 +40,7 @@ import DatePicker from 'react-datepicker';
 
 import "react-datepicker/dist/react-datepicker.css";
 
-import { protectedPost, protectedFunctionPost } from '@/lib/protectedApi';
+import { protectedPost, protectedFunctionPost } from '@/lib/djangoLegacyApi';
 
 import {
   VEHICLE_TYPES,

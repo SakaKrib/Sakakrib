@@ -19,7 +19,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
-import { supabase } from "../../lib/supabase";
+import { djangoPmsGateway } from "@/lib/djangoPmsGateway";
 import { useNav } from "@/context/NavContext";
 
 import PMSPlanSelector, {
@@ -757,11 +757,11 @@ export default function PMSSubscriptionPage() {
           data: { user },
           error: userError,
         } =
-          await supabase.auth.getUser();
+          await djangoPmsGateway.auth.getUser();
 
         if (userError) {
           debugError(
-            "supabase.auth.getUser failed",
+            "djangoPmsGateway.auth.getUser failed",
             userError,
           );
 
@@ -845,19 +845,19 @@ export default function PMSSubscriptionPage() {
           availableListingsResult,
         ] =
           await Promise.all([
-            supabase.rpc(
+            djangoPmsGateway.rpc(
               "get_my_pms_subscription",
             ),
 
-            supabase.rpc(
+            djangoPmsGateway.rpc(
               "get_my_pms_unit_count",
             ),
 
-            supabase.rpc(
+            djangoPmsGateway.rpc(
               "get_my_pms_listings",
             ),
 
-            supabase.rpc(
+            djangoPmsGateway.rpc(
               "get_my_available_pms_listings",
             ),
           ]);
@@ -1042,11 +1042,11 @@ export default function PMSSubscriptionPage() {
           entitlementResult,
         ] =
           await Promise.all([
-            supabase.rpc(
+            djangoPmsGateway.rpc(
               "get_current_real_estate_subscription",
             ),
 
-            supabase.rpc(
+            djangoPmsGateway.rpc(
               "get_real_estate_listing_entitlement",
               {
                 p_real_estate_id:
@@ -1306,7 +1306,7 @@ export default function PMSSubscriptionPage() {
           setActionError(null);
 
           const result =
-            await supabase.rpc(
+            await djangoPmsGateway.rpc(
               "add_listing_to_pms",
               {
                 p_subscription_id:
@@ -1402,7 +1402,7 @@ export default function PMSSubscriptionPage() {
           setActionError(null);
 
           const result =
-            await supabase.rpc(
+            await djangoPmsGateway.rpc(
               "remove_listing_from_pms",
               {
                 p_subscription_id:

@@ -22,7 +22,7 @@ import {
   protectedPatch,
   protectedPost,
   protectedFunctionPost,
-} from '@/lib/protectedApi';
+} from '@/lib/djangoLegacyApi';
 
 import {
   validateEmail,
