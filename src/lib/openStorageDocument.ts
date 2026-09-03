@@ -1,10 +1,12 @@
 // ============================================================
 // OPEN PRIVATE STORAGE DOCUMENT
 //
-// Django replacement for the previous Supabase protected-api
-// storage transport. The document remains private; Django checks
-// ownership/admin access and returns a short-lived signed URL.
+// Django-only private document viewer. Authentication is carried
+// by the HttpOnly cookie; the document URL contains only a storage
+// path and never an access/signing token.
 // ============================================================
+
+import { protectedBlob } from '@/lib/djangoApi';
 
 const ALLOWED_BUCKETS = [
   'id-documents',
@@ -14,53 +16,75 @@ const ALLOWED_BUCKETS = [
 
 type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
 
+const extractStoragePath = (
+  documentPath: string,
+  bucketName: AllowedBucket,
+): string => {
+  let value = documentPath.trim();
+  if (!value) return '';
+
+  if (value.startsWith('django-media://')) {
+    return value.slice('django-media://'.length).replace(/^\/+/, '').split('?')[0];
+  }
+
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const queryPath = parsed.searchParams.get('path');
+    if (queryPath) return decodeURIComponent(queryPath).replace(/^\/+/, '');
+
+    const markers = [
+      `/storage/v1/object/public/${bucketName}/`,
+      `/storage/v1/object/sign/${bucketName}/`,
+    ];
+    for (const marker of markers) {
+      const index = parsed.pathname.indexOf(marker);
+      if (index >= 0) {
+        return parsed.pathname.slice(index + marker.length).replace(/^\/+/, '');
+      }
+    }
+  } catch {
+    // Treat non-URL input as a storage path below.
+  }
+
+  return value.split('?')[0].replace(/^\/+/, '');
+};
+
 export const openStorageDocument = async (
   documentPath: string | null | undefined,
-  bucketName: string = 'id-documents'
+  bucketName: string = 'id-documents',
 ): Promise<boolean> => {
   if (!documentPath) {
     console.error('Storage document path is missing.');
     return false;
   }
 
+  if (!ALLOWED_BUCKETS.includes(bucketName as AllowedBucket)) {
+    console.error('Unsupported storage bucket for document viewing:', bucketName);
+    return false;
+  }
+
+  const bucket = bucketName as AllowedBucket;
+  const path = extractStoragePath(documentPath, bucket);
+  if (!path || path.split('/').includes('..')) {
+    console.error('Invalid storage document path.');
+    return false;
+  }
+
   try {
-    let path = documentPath.trim();
-    if (!path) return false;
+    const blob = await protectedBlob(
+      `/api/accounts/documents/view/?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`,
+    );
+    const objectUrl = URL.createObjectURL(blob);
+    const newWindow = window.open(objectUrl, '_blank', 'noopener,noreferrer');
 
-    if (!ALLOWED_BUCKETS.includes(bucketName as AllowedBucket)) {
-      console.error('Unsupported storage bucket for document viewing:', bucketName);
-      return false;
-    }
-
-    // Accept legacy Supabase storage URLs while the data migration is in progress.
-    const publicMarker = `/storage/v1/object/public/${bucketName}/`;
-    const signedMarker = `/storage/v1/object/sign/${bucketName}/`;
-    if (path.includes(publicMarker)) path = path.split(publicMarker)[1];
-    else if (path.includes(signedMarker)) path = path.split(signedMarker)[1];
-    if (path.startsWith(`${bucketName}/`)) path = path.substring(`${bucketName}/`.length);
-    path = path.replace(/^\/+/, '').split('?')[0];
-
-    if (!path) {
-      console.error('Invalid storage document path.');
-      return false;
-    }
-
-    const { protectedPost } = await import('@/lib/djangoApi');
-    const result = await protectedPost<{ url: string }>('/api/accounts/kyc/document/sign/', {
-      path,
-      bucket: bucketName,
-    });
-
-    if (!result?.url) {
-      console.error('Failed to create signed storage URL.');
-      return false;
-    }
-
-    const newWindow = window.open(result.url, '_blank', 'noopener,noreferrer');
     if (!newWindow) {
+      URL.revokeObjectURL(objectUrl);
       console.error('Browser blocked the document window.');
       return false;
     }
+
+    // Keep the object URL alive while the new tab consumes the blob.
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     return true;
   } catch (error) {
     console.error('Unexpected storage document error:', error);
