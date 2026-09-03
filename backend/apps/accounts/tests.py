@@ -6,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.core.domain_platform import NotificationEmail
+from apps.core.domain_platform import MoverApplication, NotificationEmail
 
 from .models import Profile, RefreshToken
 
@@ -25,6 +25,7 @@ class AuthenticationApiTests(TestCase):
         notification = NotificationEmail.objects.get(recipient='new@example.com', template_type='otp_verification')
         self.assertIn('Verification Code', notification.html_body)
         self.assertIn('New', notification.html_body)
+        self.assertIsNotNone(notification.created_at)
         self.assertEqual(len(mail.outbox), 0)
 
     def test_login_requires_email_verification(self):
@@ -32,6 +33,15 @@ class AuthenticationApiTests(TestCase):
         response = self.client.post(reverse('login'), {'email':'pending@example.com','password':'A-strong-password-123'}, format='json')
         self.assertEqual(response.status_code, 403)
         self.assertTrue(response.data['requiresEmailVerification'])
+
+    def test_login_queues_sign_in_notification(self):
+        user = Profile.objects.create_user(email='login@example.com', password='A-strong-password-123', full_name='Login User', email_verified=True)
+        response = self.client.post(reverse('login'), {'email':user.email,'password':'A-strong-password-123'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        notification = NotificationEmail.objects.get(recipient=user.email, template_type='sign_in_notification')
+        self.assertIn('Successful Sign In', notification.html_body)
+        self.assertIn('Login', notification.html_body)
+        self.assertIn('Review Account Security', notification.html_body)
 
     @patch('apps.accounts.auth_service.generate_signup_otp', return_value='123456')
     def test_verify_otp_issues_http_only_jwt_cookies(self, _generate_otp):
@@ -81,3 +91,75 @@ class AuthenticationApiTests(TestCase):
         response = self.client.get(reverse('session'))
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.data['authenticated'])
+
+
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    ADMIN_EMAIL='admin@example.com',
+)
+class MoverApplicationApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def _login(self, user):
+        response = self.client.post(
+            reverse('login'),
+            {'email': user.email, 'password': 'A-strong-password-123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def _application(self):
+        return {
+            'driver_full_name': 'Mover Applicant',
+            'national_id': '12345678',
+            'dl_number': 'DL123456',
+            'dl_photo_url': '',
+            'vehicle_type': 'pickup',
+            'number_plate': 'KDA123A',
+            'capacity_details': '1.5 ton pickup',
+            'operating_city': 'Nairobi',
+            'operating_county': 'Nairobi',
+            'phone': '0712345678',
+            'base_rate_kes': 1000,
+            'rate_per_km_kes': 50,
+            'payment_channel': 'mpesa_send_money',
+            'payment_account': '0712345678',
+            'insurance_policy_details': 'Valid comprehensive insurance',
+            'vehicle_inspection_expiry': '2099-12-31',
+            'liability_accepted': True,
+            'terms_accepted': True,
+            'reference_contacts': [
+                {'name': 'Reference One', 'phone': '0722345678', 'relationship': 'Friend'},
+            ],
+            'latitude': -1.286389,
+            'longitude': 36.817223,
+            'location': 'Nairobi',
+            'working_days': ['Monday', 'Tuesday'],
+            'start_time': '08:00',
+            'end_time': '18:00',
+        }
+
+    def test_mover_application_requires_mover_role_email_and_kyc(self):
+        user = Profile.objects.create_user(email='renter@example.com', password='A-strong-password-123', email_verified=True, role='renter', kyc_completed=True)
+        self._login(user)
+        response = self.client.post(reverse('mover-application-submit'), {'p_application': self._application()}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['code'], 'INVALID_ROLE')
+
+    def test_mover_application_persists_pending_and_queues_both_emails(self):
+        user = Profile.objects.create_user(email='mover@example.com', password='A-strong-password-123', full_name='Mover Applicant', email_verified=True, role='mover', kyc_completed=True)
+        self._login(user)
+        application = self._application()
+        application['dl_photo_url'] = f'licenses/{user.id}/driving-license.jpg'
+        response = self.client.post(reverse('mover-application-submit'), {'p_application': application}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['success'])
+        self.assertEqual(response.data['status'], 'pending')
+        user.refresh_from_db()
+        self.assertEqual(user.mover_application_status, 'pending')
+        saved = MoverApplication.objects.get(applicant_id=user.id)
+        self.assertEqual(saved.status, 'pending')
+        self.assertEqual(saved.applicant_email, user.email)
+        self.assertEqual(NotificationEmail.objects.filter(recipient=user.email, template_type='mover_application_submitted').count(), 1)
+        self.assertEqual(NotificationEmail.objects.filter(recipient='admin@example.com', template_type='mover_admin_notification').count(), 1)
