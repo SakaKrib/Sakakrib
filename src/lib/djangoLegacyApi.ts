@@ -189,13 +189,10 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
     const applicationId = getEq(query, 'id');
     const applicantId = getEq(query, 'applicant_id');
     if (method === 'GET') {
-      if (applicantId) {
-        const ownProfile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
-        if (String(ownProfile.id) === applicantId) {
-          const response = await djangoGet<{ application?: T }>('/api/accounts/mover/application/');
-          return response?.application ? [response.application] as T : [] as T;
-        }
-      } else {
+      const ownProfile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
+      const isAdminUser = ownProfile?.is_admin === true || ownProfile?.is_staff === true || ownProfile?.is_superuser === true || ownProfile?.role === 'admin';
+
+      if (!isAdminUser && (!applicantId || String(ownProfile.id) === applicantId)) {
         const response = await djangoGet<{ application?: T }>('/api/accounts/mover/application/');
         return response?.application ? [response.application] as T : [] as T;
       }
