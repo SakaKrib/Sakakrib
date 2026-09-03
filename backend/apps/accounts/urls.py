@@ -5,7 +5,7 @@ from .admin_application_status_views import AdminApplicationStatusView
 from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverView
 from .application_review_views import AdminApplicationReviewView
 from .google_auth_views import GoogleLoginView
-from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
+from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
 from .landlord_application_views import LandlordApplicationSubmitView
 from .mover_application_views import MoverApplicationSubmitView
@@ -36,7 +36,6 @@ urlpatterns = [
     path('kyc/verify/', KycDocumentVerifyView.as_view(), name='kyc-verify'),
     path('kyc/submit/', KycSubmitView.as_view(), name='kyc-submit'),
     path('kyc/document/sign/', KycDocumentSignView.as_view(), name='kyc-document-sign'),
-    path('kyc/document/<str:token>/', KycDocumentView.as_view(), name='kyc-document'),
     path('landlord/application/submit/', LandlordApplicationSubmitView.as_view(), name='landlord-application-submit'),
     path('mover/application/submit/', MoverApplicationSubmitView.as_view(), name='mover-application-submit'),
     path('admin/applications/<uuid:user_id>/review/', AdminApplicationReviewView.as_view(), name='admin-application-review'),
