@@ -1,11 +1,19 @@
+import logging
+
+from django.conf import settings
+from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
 
+from apps.core.email_services import queue_email
+
 from .google_auth import authenticate_google_credential
 from .jwt_service import issue_token_pair, set_auth_cookies
 from .serializers import ProfileSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleLoginView(APIView):
@@ -33,4 +41,23 @@ class GoogleLoginView(APIView):
             status=status.HTTP_200_OK,
         )
         set_auth_cookies(response, access, refresh)
+
+        # Keep security notifications on the Django authentication boundary so
+        # every successful login method uses the same server-side email queue.
+        try:
+            queue_email(
+                recipient=user.email,
+                template_type='sign_in_notification',
+                payload={
+                    'email': user.email,
+                    'full_name': user.full_name,
+                    'sign_in_time': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
+                    'device': request.META.get('HTTP_USER_AGENT', 'Unknown device')[:255],
+                    'location': request.META.get('REMOTE_ADDR', 'Unknown location'),
+                    'security_url': getattr(settings, 'PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5173'),
+                },
+            )
+        except Exception:
+            logger.exception('Failed to queue Google sign-in notification for %s', user.email)
+
         return response
