@@ -1,11 +1,12 @@
 import { Clock3, ShieldCheck, XCircle } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav, type AppView } from '@/context/NavContext';
 import type { UserRole } from '@/types/domain';
 
 interface DashboardAccessGateProps {
   role: Extract<UserRole, 'landlord' | 'real_estate' | 'mover'>;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 const applicationField = {
@@ -31,7 +32,6 @@ export default function DashboardAccessGate({ role, children }: DashboardAccessG
   const { navigate } = useNav();
 
   if (loading || !profile) return null;
-
   if (profile.is_admin === true || profile.role === 'admin') return children;
 
   if (profile.role !== role) {
