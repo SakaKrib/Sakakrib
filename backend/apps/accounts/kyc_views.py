@@ -17,14 +17,27 @@ MAX_KYC_IMAGE_BYTES = 10 * 1024 * 1024
 ALLOWED_KYC_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
 KYC_SIGNING_SALT = 'sakakrib.kyc-document'
 KYC_SIGNING_MAX_AGE = 900
+ALLOWED_DOCUMENT_BUCKETS = {'id-documents', 'licenses', 'kyc-documents'}
 
 
-def _owned_path(user_id, path):
-    return isinstance(path, str) and path.startswith(f'kyc-documents/{user_id}/') and '..' not in Path(path).parts
+def _owned_path(user_id, path, bucket='kyc-documents'):
+    return (
+        isinstance(path, str)
+        and path.startswith(f'{bucket}/{user_id}/')
+        and '..' not in Path(path).parts
+    )
 
 
-def _signed_url(request, path):
-    token = signing.dumps({'path': path, 'user_id': str(request.user.pk), 'admin': is_admin(request.user)}, salt=KYC_SIGNING_SALT)
+def _signed_url(request, path, bucket='kyc-documents'):
+    token = signing.dumps(
+        {
+            'path': path,
+            'bucket': bucket,
+            'user_id': str(request.user.pk),
+            'admin': is_admin(request.user),
+        },
+        salt=KYC_SIGNING_SALT,
+    )
     return request.build_absolute_uri(f'/api/accounts/kyc/document/{token}/')
 
 
@@ -56,11 +69,11 @@ class KycDocumentVerifyView(APIView):
     def post(self, request):
         path = request.data.get('path')
         label = str(request.data.get('label') or 'document')
-        if not _owned_path(request.user.pk, path):
+        if not _owned_path(request.user.pk, path, 'kyc-documents'):
             return Response({'detail': f'The uploaded {label} is invalid.'}, status=400)
         if not default_storage.exists(path):
             return Response({'detail': f'The uploaded {label} could not be verified.'}, status=404)
-        return Response({'verified': True, 'path': path, 'url': _signed_url(request, path)})
+        return Response({'verified': True, 'path': path, 'url': _signed_url(request, path, 'kyc-documents')})
 
 
 class KycSubmitView(APIView):
@@ -76,9 +89,9 @@ class KycSubmitView(APIView):
             return Response({'detail': 'Full name is required.'}, status=400)
         if not national_id.isdigit() or not 7 <= len(national_id) <= 8:
             return Response({'detail': 'National ID must contain 7-8 digits.'}, status=400)
-        if not _owned_path(request.user.pk, id_path) or not default_storage.exists(id_path):
+        if not _owned_path(request.user.pk, id_path, 'kyc-documents') or not default_storage.exists(id_path):
             return Response({'detail': 'The National ID document could not be verified.'}, status=400)
-        if not _owned_path(request.user.pk, selfie_path) or not default_storage.exists(selfie_path):
+        if not _owned_path(request.user.pk, selfie_path, 'kyc-documents') or not default_storage.exists(selfie_path):
             return Response({'detail': 'The selfie could not be verified.'}, status=400)
         user = Profile.objects.select_for_update().get(pk=request.user.pk)
         user.full_name = full_name
@@ -109,14 +122,18 @@ class KycDocumentView(APIView):
         except signing.BadSignature:
             return Response({'detail': 'Invalid or expired KYC document URL.'}, status=404)
         path = payload.get('path')
+        bucket = payload.get('bucket') or 'kyc-documents'
         user_id = payload.get('user_id')
         admin_access = bool(payload.get('admin'))
-        authorized_path = admin_access or _owned_path(user_id, path)
-        if not path or not user_id or not authorized_path or not default_storage.exists(path):
+        authorized_path = admin_access or _owned_path(user_id, path, bucket)
+        if bucket not in ALLOWED_DOCUMENT_BUCKETS or not path or not user_id or not authorized_path or not default_storage.exists(path):
             return Response({'detail': 'Document not found.'}, status=404)
         file_obj = default_storage.open(path, 'rb')
         extension = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
-        content_type = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}.get(extension, 'application/octet-stream')
+        content_type = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+            'webp': 'image/webp', 'pdf': 'application/pdf',
+        }.get(extension, 'application/octet-stream')
         response = FileResponse(file_obj, content_type=content_type)
         response['Content-Disposition'] = 'inline'
         response['Cache-Control'] = 'private, max-age=300'
