@@ -7,6 +7,7 @@ import BottomBar from '@/components/BottomBar';
 import SecurityBanner from '@/components/SecurityBanner';
 import AuthModal from '@/components/AuthModal';
 import RoleSelectionModal from '@/components/RoleSelectionModal';
+import MovingGpsTracker from '@/components/MovingGpsTracker';
 import HomePage from '@/pages/HomePage';
 import ListingsPage from '@/pages/ListingsPage';
 import ListingDetailPage from '@/pages/ListingDetailPage';
@@ -16,9 +17,9 @@ import MoverBookingDetailPage from '@/pages/MoverBookingDetailPage';
 import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
 import PostListingPage from '@/pages/PostListingPageV2';
-import RegisterMoverScheduleEnhancer from '@/pages/RegisterMoverScheduleEnhancer';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
+import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
 import RenterDashboard from '@/Dashboards/RenterDashboard';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
@@ -47,6 +48,7 @@ function AppContent() {
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetailPage />;
+      case 'mover-tracking': return <MoverTrackingPage />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
@@ -63,7 +65,7 @@ function AppContent() {
     }
   };
 
-  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /></div>;
+  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /><MovingGpsTracker /></div>;
 }
 
 export default function App() {
