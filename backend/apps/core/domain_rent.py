@@ -211,6 +211,6 @@ class RentReminder(models.Model):
         indexes = [
             models.Index(
                 fields=('scheduled_for', 'status'),
-                name='idx_rent_reminders_due_schedule',
+                name='rent_reminders_due_idx',
             ),
         ]
