@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
@@ -55,4 +57,18 @@ def send_notification_email(email: NotificationEmail) -> dict:
     email.status = "sent"
     email.sent_at = timezone.now()
     email.save(update_fields=["status", "sent_at"])
+
+    if email.template_type == "otp_verification":
+        from apps.accounts.auth_service import OTP_EXPIRY_SECONDS
+        from apps.accounts.models import Profile
+
+        sent_at = email.sent_at or timezone.now()
+        Profile.objects.filter(
+            email__iexact=email.recipient,
+            email_verified=False,
+        ).update(
+            signup_otp_expires_at=sent_at + timedelta(seconds=OTP_EXPIRY_SECONDS),
+            updated_at=timezone.now(),
+        )
+
     return {"sent": True, "notification_id": str(email.id)}
