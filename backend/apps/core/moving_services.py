@@ -218,20 +218,42 @@ def confirm_moving_schedule(*, mover_user_id, booking_id):
         raise ValidationError("Booking not found or unauthorized")
     if booking.status != "confirmed":
         raise ValidationError("Booking must be confirmed before scheduling")
-    event = MoverScheduleEvent.objects.filter(booking_id=booking.id).first()
+
+    event = MoverScheduleEvent.objects.select_for_update().filter(booking_id=booking.id).first()
     if event is None:
         raise ValidationError("No schedule proposal exists")
-    if event.status == "CONFIRMED":
-        return {"booking_id": str(booking.id), "schedule_id": str(event.id), "status": event.status, "starts_at": event.starts_at, "ends_at": event.ends_at}
+    if event.status != "TENTATIVE":
+        raise ValidationError("Schedule is no longer awaiting confirmation")
+    now = timezone.now()
+    if event.starts_at <= now:
+        raise ValidationError("Schedule is in the past")
+    if event.ends_at <= event.starts_at:
+        raise ValidationError("Invalid schedule duration")
+
     _mover_schedule_window(mover, event.starts_at, event.ends_at)
     _ensure_no_schedule_conflict(mover.id, booking.id, event.starts_at, event.ends_at, confirmed_only=True)
+
     event.status = "CONFIRMED"
     event.save(update_fields=["status", "updated_at"])
     booking.scheduled_start_at = event.starts_at
     booking.scheduled_end_at = event.ends_at
-    booking.updated_at = timezone.now()
+    booking.updated_at = now
     booking.save(update_fields=["scheduled_start_at", "scheduled_end_at", "updated_at"])
-    return {"booking_id": str(booking.id), "schedule_id": str(event.id), "status": "CONFIRMED", "starts_at": event.starts_at, "ends_at": event.ends_at}
+
+    UserNotification.objects.create(
+        user_id=booking.renter_id,
+        notification_type="MOVER_SCHEDULE_CONFIRMED",
+        title="Moving schedule confirmed",
+        message="Your mover confirmed the proposed moving date and time.",
+        data={"booking_id": str(booking.id), "schedule_id": str(event.id), "starts_at": event.starts_at.isoformat(), "ends_at": event.ends_at.isoformat()},
+    )
+    return {
+        "booking_id": str(booking.id),
+        "schedule_id": str(event.id),
+        "status": "CONFIRMED",
+        "starts_at": event.starts_at,
+        "ends_at": event.ends_at,
+    }
 
 
 @transaction.atomic
@@ -420,19 +442,31 @@ def cancel_moving_booking(*, user_id, booking_id, reason_code, reason_text=""):
     if booking is None:
         raise ValidationError("Booking not found")
     mover = Mover.objects.filter(pk=booking.mover_id).first()
-    if booking.renter_id != user_id and (mover is None or mover.user_id != user_id):
-        raise ValidationError("Not authorized to cancel this booking")
-    if booking.status in {"completed", "cancelled"}:
-        raise ValidationError("Booking cannot be cancelled in its current state")
+    mover_user_id = mover.user_id if mover else None
+    if booking.renter_id == user_id:
+        actor = "RENTER"
+        if reason_code in {"MOVER_CANCELLED", "MOVER_UNAVAILABLE"}:
+            raise ValidationError("Invalid renter cancellation reason")
+    elif mover_user_id == user_id:
+        actor = "MOVER"
+        if reason_code in {"MOVER_DID_NOT_CONFIRM", "MOVER_TAKING_TOO_LONG", "CHANGED_MIND"}:
+            raise ValidationError("Invalid mover cancellation reason")
+    else:
+        raise ValidationError("Booking not found or unauthorized")
+    if booking.status in {"cancelled", "completed"}:
+        return {"booking_id": str(booking.id), "status": booking.status, "already_final": True}
+    if booking.status not in {"pending", "confirmed"}:
+        raise ValidationError("Booking cannot be cancelled after the journey has started")
+    if booking.payment_status not in {"unpaid", "pending", "failed"}:
+        raise ValidationError("Paid booking requires the payment/refund flow and cannot be cancelled here")
     now = timezone.now()
     booking.status = "cancelled"
     booking.cancelled_at = now
     booking.cancellation_reason = reason_code
-    booking.cancellation_details = str(reason_text or "")[:2000]
+    booking.cancellation_details = str(reason_text)[:2000]
     booking.updated_at = now
     booking.save(update_fields=["status", "cancelled_at", "cancellation_reason", "cancellation_details", "updated_at"])
     MovingCancellationEvent.objects.create(
-        booking_id=booking.id, cancelled_by=user_id,
-        reason_code=reason_code, reason_text=str(reason_text or ""),
+        booking_id=booking.id, cancelled_by=user_id, reason_code=reason_code, reason_text=reason_text,
     )
-    return {"booking_id": str(booking.id), "status": booking.status}
+    return {"booking_id": str(booking.id), "status": "cancelled", "cancelled_by": actor}
