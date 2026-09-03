@@ -97,6 +97,46 @@ class AuthenticationApiTests(TestCase):
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
     ADMIN_EMAIL='admin@example.com',
 )
+class LandlordApplicationApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_landlord_application_persists_pending_and_queues_both_emails(self):
+        user = Profile.objects.create_user(
+            email='landlord@example.com',
+            password='A-strong-password-123',
+            full_name='Landlord Applicant',
+            email_verified=True,
+            role='landlord',
+            kyc_completed=True,
+        )
+        self.client.post(reverse('login'), {'email': user.email, 'password': 'A-strong-password-123'}, format='json')
+        response = self.client.post(
+            reverse('landlord-application-submit'),
+            {
+                'p_first_name': 'Landlord',
+                'p_middle_name': 'Test',
+                'p_last_name': 'Applicant',
+                'p_email': user.email,
+                'p_phone': '0712345678',
+                'p_national_id': '12345678',
+                'p_document_type': 'national_id',
+                'p_document_url': f'id-documents/{user.id}/identity.jpg',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['success'])
+        user.refresh_from_db()
+        self.assertEqual(user.landlord_application_status, 'pending')
+        self.assertEqual(NotificationEmail.objects.filter(recipient=user.email, template_type='landlord_application_submitted').count(), 1)
+        self.assertEqual(NotificationEmail.objects.filter(recipient='admin@example.com', template_type='landlord_admin_notification').count(), 1)
+
+
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    ADMIN_EMAIL='admin@example.com',
+)
 class MoverApplicationApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
