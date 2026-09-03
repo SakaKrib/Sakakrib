@@ -10,7 +10,7 @@ import {
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav, type AppView } from '@/context/NavContext';
-import { type UserRole } from '@/lib/supabase';
+import { type UserRole } from '@/types/domain';
 import { cn } from '@/lib/utils';
 
 interface RoleOption {

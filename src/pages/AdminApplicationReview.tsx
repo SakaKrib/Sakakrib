@@ -56,25 +56,11 @@ export interface ApplicationRecord {
   is_agency: boolean | null;
 
   id_document_url: string | null;
-  id_document_type:
-    | ''
-    | 'national_id'
-    | 'passport'
-    | null;
+  id_document_type: string | null;
 
-  landlord_application_status:
-    | 'not_requested'
-    | 'pending'
-    | 'approved'
-    | 'rejected'
-    | null;
+  landlord_application_status: string | null;
 
-  real_estate_application_status:
-    | 'not_requested'
-    | 'pending'
-    | 'approved'
-    | 'rejected'
-    | null;
+  real_estate_application_status: string | null;
 
   verification_status:
     | VerificationStatus
@@ -212,6 +198,13 @@ function ApplicationFormView({
   onUpdateStatus,
   applicationType,
 }: ApplicationFormProps) {
+  const normalizedIdDocumentType: ApplicationRecord['id_document_type'] =
+    user.id_document_type === 'national_id' ||
+    user.id_document_type === 'passport' ||
+    user.id_document_type === ''
+      ? user.id_document_type
+      : null;
+
   const app: ApplicationRecord =
     application ?? {
       id: user.id,
@@ -236,7 +229,7 @@ function ApplicationFormView({
         user.id_document_url ?? null,
 
       id_document_type:
-        user.id_document_type ?? null,
+        normalizedIdDocumentType,
 
       landlord_application_status:
         user.landlord_application_status ??

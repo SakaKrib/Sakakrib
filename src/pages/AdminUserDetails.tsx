@@ -88,7 +88,8 @@ type ApplicationStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
-  | null;
+  | null
+  | string;
 
 interface LandlordApplication {
   id: string;
@@ -104,13 +105,9 @@ interface LandlordApplication {
   county: string | null;
   is_agency: boolean | null;
   id_document_url: string | null;
-  id_document_type:
-  | ''
-  | 'national_id'
-  | 'passport'
-  | null;
-  landlord_application_status: ApplicationStatus;
-  real_estate_application_status: ApplicationStatus;
+  id_document_type: string | null;
+  landlord_application_status: string | null;
+  real_estate_application_status: string | null;
   verification_status: string | null;
   kyc_completed: boolean | null;
   admin_review_note: string | null;
@@ -124,51 +121,51 @@ type LandlordProperty = Listing & {
 
 interface MoverApplication {
   id: string;
-  applicant_id: string;
-  applicant_email: string | null;
-  applicant_name: string;
-  application_type: string;
+  applicant_id?: string | null;
+  applicant_email?: string | null;
+  applicant_name?: string | null;
+  application_type?: string | null;
 
-  driver_full_name: string;
-  national_id: string;
-  dl_number: string;
-  dl_photo_url: string | null;
+  driver_full_name?: string | null;
+  national_id?: string | null;
+  dl_number?: string | null;
+  dl_photo_url?: string | null;
 
-  vehicle_type: string;
-  number_plate: string;
-  capacity_details: string;
+  vehicle_type?: string | null;
+  number_plate?: string | null;
+  capacity_details?: string | null;
 
-  operating_city: string;
-  operating_county: string;
-  phone: string;
+  operating_city?: string | null;
+  operating_county?: string | null;
+  phone?: string | null;
 
-  base_rate_kes: number | null;
-  rate_per_km_kes: number | null;
+  base_rate_kes?: number | null;
+  rate_per_km_kes?: number | null;
 
-  payment_channel: string;
-  payment_account: string;
+  payment_channel?: string | null;
+  payment_account?: string | null;
 
-  insurance_policy_details: string;
-  vehicle_inspection_expiry: string | null;
+  insurance_policy_details?: string | null;
+  vehicle_inspection_expiry?: string | null;
 
-  liability_accepted: boolean;
-  terms_accepted: boolean;
+  liability_accepted?: boolean;
+  terms_accepted?: boolean;
 
-  reference_contacts: unknown[];
+  reference_contacts?: unknown[];
 
-  latitude: number | null;
-  longitude: number | null;
-  location: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  location?: string | null;
 
-  status: 'pending' | 'approved' | 'rejected';
+  status?: 'pending' | 'approved' | 'rejected' | string | null;
 
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  review_notes: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_notes?: string | null;
 
-  submitted_at: string;
-  created_at: string;
-  updated_at: string;
+  submitted_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface AdminUserDetailsProps {
@@ -418,7 +415,7 @@ export default function AdminUserDetails({
 
     try {
       const profileRows = await protectedGet<Profile[]>(
-        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(userId)}&limit=1`
+        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(String(userId))}&limit=1`
       );
 
       const data = profileRows?.[0] ?? null;
@@ -435,7 +432,7 @@ export default function AdminUserDetails({
 
       if (data.role === 'landlord') {
         const subscriptionRows = await protectedGet<Subscription[]>(
-          `/rest/v1/landlord_subscriptions?select=id,landlord_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&landlord_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=1`
+          `/rest/v1/landlord_subscriptions?select=id,landlord_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&landlord_id=eq.${encodeURIComponent(String(userId))}&order=created_at.desc&limit=1`
         );
 
         subscription = subscriptionRows?.[0] ?? null;
@@ -443,7 +440,7 @@ export default function AdminUserDetails({
 
       if (data.role === 'real_estate') {
         const subscriptionRows = await protectedGet<Subscription[]>(
-          `/rest/v1/real_estate_subscriptions?select=id,real_estate_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&real_estate_id=eq.${encodeURIComponent(userId)}&order=created_at.desc&limit=1`
+          `/rest/v1/real_estate_subscriptions?select=id,real_estate_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&real_estate_id=eq.${encodeURIComponent(String(userId))}&order=created_at.desc&limit=1`
         );
 
         subscription = subscriptionRows?.[0] ?? null;
@@ -489,7 +486,7 @@ export default function AdminUserDetails({
 
     try {
       const profileRows = await protectedGet<Profile[]>(
-        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(userId)}&limit=1`
+        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(String(userId))}&limit=1`
       );
 
       const data = profileRows?.[0] ?? null;
@@ -612,7 +609,7 @@ export default function AdminUserDetails({
       }
 
       await protectedPatch(
-        `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+        `/rest/v1/profiles?id=eq.${encodeURIComponent(String(userId))}`,
         profileUpdate
       );
 
@@ -831,13 +828,13 @@ export default function AdminUserDetails({
 
     try {
       const rows = await protectedGet<Listing[]>(
-        `/rest/v1/listings?select=${LISTING_SELECT}&user_id=eq.${encodeURIComponent(userId)}&order=updated_at.desc`
+        `/rest/v1/listings?select=${LISTING_SELECT}&user_id=eq.${encodeURIComponent(String(userId))}&order=updated_at.desc`
       );
 
       const listingRows = rows || [];
 
-      const listingIds = listingRows.map(
-        (listing) => listing.id
+        const listingIds = listingRows.map(
+        (listing) => String(listing.id)
       );
 
       let mediaRows: ListingMedia[] = [];
@@ -851,16 +848,17 @@ export default function AdminUserDetails({
 
       const mediaByListingId = new Map<string, ListingMedia[]>();
       for (const media of mediaRows) {
-        if (!mediaByListingId.has(media.listing_id)) {
-          mediaByListingId.set(media.listing_id, []);
+        const lid = String(media.listing_id);
+        if (!mediaByListingId.has(lid)) {
+          mediaByListingId.set(lid, []);
         }
-        mediaByListingId.get(media.listing_id)!.push(media);
+        mediaByListingId.get(lid)!.push(media);
       }
 
       setProperties(
         listingRows.map((listing) => ({
           ...listing,
-          media: mediaByListingId.get(listing.id) || [],
+          media: mediaByListingId.get(String(listing.id)) || [],
         }))
       );
     } catch (err) {
@@ -911,10 +909,7 @@ export default function AdminUserDetails({
       id: mover.id,
       applicant_id: mover.user_id,
       applicant_email: fallbackProfile?.email ?? null,
-      applicant_name:
-        fallbackProfile?.full_name ||
-        mover.driver_full_name ||
-        'Applicant',
+      applicant_name: String(fallbackProfile?.full_name || mover.driver_full_name || 'Applicant'),
       application_type: 'mover',
       driver_full_name: mover.driver_full_name || '',
       national_id: mover.national_id || '',
@@ -982,7 +977,7 @@ export default function AdminUserDetails({
 
     try {
       const moverRows = await protectedGet<Mover[]>(
-        `/rest/v1/movers?select=${MOVER_SELECT}&user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`
+        `/rest/v1/movers?select=${MOVER_SELECT}&user_id=eq.${encodeURIComponent(String(userId))}&order=created_at.desc`
       );
 
       const rows = moverRows || [];
@@ -1005,7 +1000,7 @@ export default function AdminUserDetails({
 
       if (userIds.length > 0) {
         const profileRows = await protectedGet<Profile[]>(
-          `/rest/v1/profiles?select=${PROFILE_SELECT}&id=in.(${userIds.map((id) => encodeURIComponent(id)).join(',')})`
+          `/rest/v1/profiles?select=${PROFILE_SELECT}&id=in.(${userIds.map((id) => encodeURIComponent(String(id))).join(',')})`
         );
 
         profiles = profileRows || [];

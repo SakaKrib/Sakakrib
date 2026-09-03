@@ -41,7 +41,13 @@ type RatingsMap = Record<string, MoverRating>;
 // HELPERS
 // ============================================================
 
-const vehicleLabel = (type: string): string => {
+const vehicleLabel = (
+  type?: string | null
+): string => {
+  if (!type) {
+    return 'Vehicle';
+  }
+
   return (
     VEHICLE_TYPES.find(
       (vehicle) => vehicle.value === type

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { djangoPmsGateway } from "@/lib/djangoPmsGateway";
+import { protectedGet } from '@/lib/djangoLegacyApi';
 import { useNav } from "@/context/NavContext";
 
 import PMSPlanSelector, {
@@ -774,24 +775,9 @@ export default function PMSSubscriptionPage() {
           );
         }
 
-        const {
-          data: profile,
-          error: profileError,
-        } =
-          await supabase
-            .from("profiles")
-            .select("id, role")
-            .eq("id", user.id)
-            .single();
-
-        if (profileError) {
-          debugError(
-            "Failed to load profile",
-            profileError,
-          );
-
-          throw profileError;
-        }
+        const profiles = await protectedGet<any[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=id,role`);
+        const profile = Array.isArray(profiles) ? profiles[0] ?? null : profiles;
+        if (!profile) throw new Error('Profile not found');
 
         debug(
           "Profile returned",

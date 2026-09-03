@@ -428,25 +428,7 @@ export default function AuthModal() {
           redirect_to: window.location.origin,
         });
 
-        const resetError = null;
-
-        if (resetError) {
-          console.error(
-            'Password reset error:',
-            resetError
-          );
-
-          setError(
-            resetError.message ||
-              'Could not send the password reset email.'
-          );
-
-          return;
-        }
-
-        setInfo(
-          'Password reset link sent. Check your email inbox.'
-        );
+        setInfo('Password reset link sent. Check your email inbox.');
       } catch (err) {
         console.error(
           'Unexpected password reset error:',

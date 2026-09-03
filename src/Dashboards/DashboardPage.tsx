@@ -547,7 +547,8 @@ const FREE_LISTING_LIMIT =
                 </p>
 
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {moverProfile.base_rate_kes > 0
+                  {moverProfile.base_rate_kes &&
+                  moverProfile.base_rate_kes > 0
                     ? formatKES(
                         moverProfile.base_rate_kes
                       )

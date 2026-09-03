@@ -231,7 +231,7 @@ export default function ClaimRentalPage({ token }: { token: string }) {
               Monthly rent
             </span>
             <span className="font-semibold text-gray-900 dark:text-white">
-              {formatKES(preview.rent_amount)}
+              {formatKES(Number(preview.rent_amount))}
             </span>
           </div>
         </div>

@@ -32,10 +32,10 @@ export interface RealEstateListingSummary {
   id: string;
   user_id: string;
   title: string;
-  description: string | null;
+  description?: string | null;
   listing_type: 'rent' | 'sale' | string | null;
-  city: string | null;
-  county: string | null;
+  city?: string | null;
+  county?: string | null;
   price_kes: number | null;
   size?: string | null;
   beds?: number | null;

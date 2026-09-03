@@ -206,9 +206,9 @@ function CreateInvoiceView({
       );
 
       setResult({
-        invoice_number: invoiceResult.invoice_number,
-        amount_kes: invoiceResult.amount_kes,
-      });
+          invoice_number: invoiceResult.invoice_number,
+          amount_kes: Number(invoiceResult.amount_kes),
+        });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Unable to create invoice.'

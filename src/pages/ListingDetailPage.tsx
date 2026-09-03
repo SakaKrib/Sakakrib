@@ -35,7 +35,7 @@ export default function ListingDetailPage() {
       setLoading(true);
       try {
         const listingData = await protectedGet<ListingDetailResponse>(
-          `/api/listings/${selectedListingId}/`,
+          `/api/listings/${encodeURIComponent(String(selectedListingId))}/`,
         );
 
         setListing(listingData);
@@ -43,7 +43,7 @@ export default function ListingDetailPage() {
         setLandlord(listingData.landlord ?? null);
 
         const reviewData = await protectedGet<ReviewListResponse>(
-          `/api/core/reviews/?listing_id=${encodeURIComponent(selectedListingId)}`,
+          `/api/core/reviews/?listing_id=${encodeURIComponent(String(selectedListingId))}`,
         );
         setReviews(reviewData.items ?? []);
       } catch {
@@ -99,7 +99,7 @@ export default function ListingDetailPage() {
       {photos.length > 0 ? (
         <div className="mb-6">
           <div className="relative h-64 overflow-hidden rounded-xl bg-gray-200 sm:h-96 dark:bg-brand-800">
-            <img src={photos[activeImage]?.url} alt={photos[activeImage]?.label} className="h-full w-full object-cover" />
+            <img src={photos[activeImage]?.url} alt={photos[activeImage]?.label ?? ''} className="h-full w-full object-cover" />
             {photos.length > 1 && (
               <>
                 <button
@@ -131,7 +131,7 @@ export default function ListingDetailPage() {
                     i === activeImage ? 'border-brand-500' : 'border-transparent'
                   )}
                 >
-                  <img src={photo.url} alt={photo.label} className="h-full w-full object-cover" />
+                  <img src={photo.url} alt={photo.label ?? ''} className="h-full w-full object-cover" />
                 </button>
               ))}
             </div>
@@ -156,7 +156,7 @@ export default function ListingDetailPage() {
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-brand-600 dark:text-brand-400">
-                  {formatKES(listing.price_kes)}
+                  {formatKES(Number(listing.price_kes ?? 0))}
                 </p>
                 {listing.listing_type === 'rent' && (
                   <p className="text-sm text-gray-400">per month</p>
@@ -174,7 +174,7 @@ export default function ListingDetailPage() {
                 </span>
               )}
               <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">
-                {timeAgo(listing.created_at)}
+                {timeAgo(listing.created_at ?? '')}
               </span>
             </div>
 
@@ -214,7 +214,7 @@ export default function ListingDetailPage() {
               <div className="mt-3 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Deposit Amount</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">{formatKES(listing.deposit_amount)}</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">{formatKES(Number(listing.deposit_amount ?? 0))}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Payment Structure</span>
@@ -257,7 +257,7 @@ export default function ListingDetailPage() {
                           />
                         ))}
                       </div>
-                      <span className="text-xs text-gray-400">{timeAgo(review.created_at)}</span>
+                      <span className="text-xs text-gray-400">{timeAgo(review.created_at ?? '')}</span>
                     </div>
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{review.comment}</p>
                   </div>
@@ -275,7 +275,7 @@ export default function ListingDetailPage() {
             {landlord && (
               <div className="mt-3 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                  {landlord.full_name?.charAt(0).toUpperCase() || 'U'}
+                  {((landlord.full_name ?? 'U').charAt(0)).toUpperCase()}
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">{landlord.full_name || 'Landlord'}</p>
@@ -299,23 +299,23 @@ export default function ListingDetailPage() {
             ) : (
               <div className="mt-4 space-y-3">
                 {listing.contact_phone && (
-                  <a href={`tel:${listing.contact_phone}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50">
+                  <a href={`tel:${listing.contact_phone ?? ''}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50">
                     <Phone className="h-4 w-4 text-brand-600" /> {listing.contact_phone}
                   </a>
                 )}
                 {listing.contact_email && (
-                  <a href={`mailto:${listing.contact_email}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50">
+                  <a href={`mailto:${listing.contact_email ?? ''}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50">
                     <Mail className="h-4 w-4 text-brand-600" /> {listing.contact_email}
                   </a>
                 )}
-                {listing.social_links && listing.social_links.length > 0 && (
+                {Array.isArray(listing.social_links) && listing.social_links.length > 0 && (
                   <div className="space-y-2">
-                    {listing.social_links.map((link: string | { platform: string; url: string }, i) => {
+                    {(listing.social_links as any[]).map((link, i) => {
                       const socialLink = typeof link === 'string' ? { platform: 'Link', url: link } : link;
                       return (
                         <a
-                          key={i}
-                          href={socialLink.url}
+                            key={i}
+                              href={socialLink.url ?? '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"

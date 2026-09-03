@@ -99,7 +99,7 @@ export default function CommunityPage() {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{post.author?.full_name || 'Anonymous'}</p>
                     {post.author?.verification_status === 'verified' && <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700 dark:bg-success-900/30 dark:text-success-400">Verified</span>}
-                    <span className="text-xs text-gray-400">{timeAgo(post.created_at)}</span>
+                      <span className="text-xs text-gray-400">{timeAgo(post.created_at ?? '')}</span>
                   </div>
                   <p className="text-xs text-gray-400">{post.author?.role || 'renter'}</p>
                 </div>

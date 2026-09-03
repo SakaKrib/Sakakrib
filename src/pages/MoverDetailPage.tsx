@@ -98,7 +98,7 @@ export default function MoverDetailPage() {
         const distanceKm = Number((6371.0088 * 2 * Math.asin(Math.sqrt(haversine))).toFixed(2));
 
         const result = await protectedPost<MoverQuote>('/api/core/movers/quote/', {
-          mover_id: mover.id,
+          mover_id: mover!.id,
           distance_km: distanceKm,
         });
         if (!cancelled) setQuote(result);
@@ -147,12 +147,12 @@ export default function MoverDetailPage() {
     }
     setSubmitting(true);
     try {
-      const result = await protectedPost<{
+        const result = await protectedPost<{
         booking_id: string;
         status: string;
         quote: MoverQuote;
       }>('/api/core/bookings/request/', {
-        mover_id: mover.id,
+        mover_id: mover!.id,
         pickup_address: pickup.trim(),
         dropoff_address: dropoff.trim(),
         moving_date: movingDate,
@@ -278,12 +278,12 @@ export default function MoverDetailPage() {
         </div>
 
         <div className="mt-6 grid gap-4 border-t border-gray-200 pt-6 dark:border-brand-800 sm:grid-cols-2">
-          {mover.base_rate_kes > 0 && (
+          {typeof mover?.base_rate_kes === 'number' && mover.base_rate_kes > 0 && (
             <div className="flex items-center gap-3">
               <DollarSign className="h-5 w-5 text-gray-400" />
               <div>
                 <p className="text-xs text-gray-400">Base Rate</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">From {formatKES(mover.base_rate_kes)}</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">From {formatKES(Number(mover.base_rate_kes))}</p>
               </div>
             </div>
           )}

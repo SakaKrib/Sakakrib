@@ -1,4 +1,5 @@
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import type { RealEstateListingSummary as RealEstateListingSummaryPMS } from '@/lib/RealEstateTs/Realestatepmsaccess';
 
 export interface RealEstatePMSAccess {
   allowed: boolean;
@@ -32,24 +33,7 @@ export interface RealEstateListingEntitlement {
   individualListingPriceKes: number;
 }
 
-export interface RealEstateListingSummary {
-  id: string;
-  user_id: string;
-  title: string;
-  description?: string | null;
-  city: string;
-  county: string;
-  price_kes: number | null;
-  listing_type: string;
-  approval_status: string;
-  is_approved: boolean;
-  is_published: boolean;
-  is_paid: boolean;
-  pms_managed: boolean;
-  created_at: string;
-  cover_photo_url: string | null;
-  media?: unknown[];
-}
+export type RealEstateListingSummary = RealEstateListingSummaryPMS;
 
 interface DashboardResponse {
   pms_access?: RealEstatePMSAccess;

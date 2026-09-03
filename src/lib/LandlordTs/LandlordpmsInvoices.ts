@@ -97,7 +97,7 @@ export async function previewPaymentDestination(paymentMethodId: string, _unitId
     id: method.id,
     payment_method_id: method.payment_method_id ?? method.id ?? paymentMethodId,
     provider: method.provider,
-    mpesa_method: method.mpesa_method,
+    mpesa_method: method.mpesa_method ?? undefined,
     display_name: method.display_name,
     paybill_number: method.paybill_number ?? undefined,
     paybill_account: method.paybill_account ?? undefined,

@@ -1028,7 +1028,8 @@ const pmsBenefits = [
                   'Your property listing was approved.',
                 date:
                   listing.updated_at ||
-                  listing.created_at,
+                  listing.created_at ||
+                  '',
                 icon:
                   CheckCircle2,
                 tone:
@@ -1049,7 +1050,8 @@ const pmsBenefits = [
                   'Your property listing is awaiting review.',
                 date:
                   listing.updated_at ||
-                  listing.created_at,
+                  listing.created_at ||
+                  '',
                 icon: Clock,
                 tone:
                   'warning',
@@ -1069,7 +1071,8 @@ const pmsBenefits = [
                   'Your property listing was rejected.',
                 date:
                   listing.updated_at ||
-                  listing.created_at,
+                  listing.created_at ||
+                  '',
                 icon: XCircle,
                 tone:
                   'error',
@@ -1095,7 +1098,8 @@ const pmsBenefits = [
                 `${planName} subscription`,
               date:
                 subscription.updated_at ||
-                subscription.created_at,
+                subscription.created_at ||
+                '',
               icon:
                 CreditCard,
               tone:

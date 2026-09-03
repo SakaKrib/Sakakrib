@@ -29,6 +29,7 @@ import {
 } from '@/lib/utils';
 
 import { useNav } from '@/context/NavContext';
+import { protectedGet, protectedPatch, protectedPost } from '@/lib/djangoLegacyApi';
 
 interface LocationSuggestion {
   display_name: string;
@@ -488,78 +489,15 @@ export default function ListingManagePage() {
       setLoading(true);
       setError(null);
 
-     const { data, error: fetchError } = await supabase
-        .from('listings')
-        .select(`
-            id,
-            user_id,
-            title,
-            description,
-            city,
-            county,
-            price_kes,
-            listing_type,
-            deposit_required,
-            deposit_structure,
-            deposit_amount,
-            size,
-            beds,
-            baths,
-            contact_phone,
-            contact_email,
-            social_links,
-            is_property_management,
-            property_name,
-            property_type,
-            location_search,
-            latitude,
-            longitude,
-            booking_enabled,
-            payment_enabled,
-            ai_caption,
-            ai_caption_generated_at,
-            created_at,
-            updated_at
-        `)
-        .eq('id', listingId)
-        .single();
-
-        if (fetchError) {
-        throw fetchError;
-        }
-
-        if (!data) {
-        throw new Error('Listing not found.');
-        }
+      const listingResponse = await protectedGet<any[]>(`/rest/v1/listings?id=eq.${encodeURIComponent(listingId)}`);
+      const data = Array.isArray(listingResponse) ? listingResponse[0] ?? null : listingResponse;
+      if (!data) throw new Error('Listing not found.');
 
         /* ============================================================
         * FETCH LISTING MEDIA
         * ============================================================ */
 
-        const {
-            data: mediaData,
-            error: mediaError,
-            } = await supabase
-            .from('listing_media')
-            .select(`
-                id,
-                listing_id,
-                user_id,
-                url,
-                label,
-                media_type,
-                position,
-                created_at,
-                unit_id
-            `)
-            .eq('listing_id', listingId)
-            .order('position', {
-                ascending: true,
-            });
-
-            if (mediaError) {
-            throw mediaError;
-            }
+        const mediaData = await protectedGet<any[]>(`/rest/v1/listing_media?listing_id=eq.${encodeURIComponent(listingId)}&order=position.asc`);
 
             /* ============================================================
             * LOAD PHOTOS
@@ -1499,19 +1437,7 @@ export default function ListingManagePage() {
                 new Date().toISOString(),
             };
 
-            const {
-            error: updateError,
-            } = await supabase
-            .from('listings')
-            .update(listingUpdate)
-            .eq(
-                'id',
-                selectedListingManageId
-            );
-
-            if (updateError) {
-            throw updateError;
-            }
+            await protectedPatch(`/rest/v1/listings?id=eq.${encodeURIComponent(selectedListingManageId)}`, listingUpdate);
 
             // ==========================================================
             // SAVE SOCIAL LINKS BACK TO LOCAL FORM STATE
@@ -1544,29 +1470,10 @@ export default function ListingManagePage() {
             ) {
             const photo = existingPhotos[index];
 
-            const {
-                error: mediaUpdateError,
-            } = await supabase
-                .from('listing_media')
-                .update({
-                label:
-                    photo.label?.trim() ||
-                    `Photo ${index + 1}`,
-
-                position: index,
-                })
-                .eq(
-                'id',
-                photo.id
-                )
-                .eq(
-                'listing_id',
-                selectedListingManageId
-                );
-
-            if (mediaUpdateError) {
-                throw mediaUpdateError;
-            }
+            await protectedPatch(`/rest/v1/listing_media?id=eq.${encodeURIComponent(String(photo.id))}`, {
+              label: photo.label?.trim() || `Photo ${index + 1}`,
+              position: index,
+            });
             }
 
             // ==========================================================
@@ -1577,27 +1484,9 @@ export default function ListingManagePage() {
             video?.id &&
             !video.file
             ) {
-            const {
-                error: videoUpdateError,
-            } = await supabase
-                .from('listing_media')
-                .update({
-                label:
-                    video.label?.trim() ||
-                    'Walkthrough Video',
-                })
-                .eq(
-                'id',
-                video.id
-                )
-                .eq(
-                'listing_id',
-                selectedListingManageId
-                );
-
-            if (videoUpdateError) {
-                throw videoUpdateError;
-            }
+            await protectedPatch(`/rest/v1/listing_media?id=eq.${encodeURIComponent(String(video.id))}`, {
+              label: video.label?.trim() || 'Walkthrough Video',
+            });
             }
 
             // ==========================================================
