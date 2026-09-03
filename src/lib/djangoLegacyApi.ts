@@ -75,8 +75,6 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
     }
     if ((method === 'PATCH' || method === 'PUT') && userId) {
       // Legacy self-profile updates must never use an administrator endpoint.
-      // Compare the requested id with the authenticated /me/ identity first;
-      // only a different target is allowed to use the admin compatibility path.
       const profile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
       if (String(profile.id) === userId) {
         return djangoRequest<T>('/api/accounts/me/', { ...init, method });
@@ -215,6 +213,10 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
         admin_review_note: body.review_notes ?? '',
       });
     }
+  }
+
+  if (resource === 'rpc/submit_landlord_application' && method === 'POST') {
+    return djangoPost<T>('/api/accounts/landlord/application/submit/', json(init));
   }
 
   throw new Error(`No Django mapping exists for legacy endpoint: ${path}`);
