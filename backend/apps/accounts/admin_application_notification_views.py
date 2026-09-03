@@ -1,9 +1,13 @@
+from datetime import timedelta
+
 from django.conf import settings
+from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
+from apps.core.domain_platform import NotificationEmail
 from apps.core.email_services import queue_email
 
 
@@ -60,6 +64,28 @@ class AdminApplicationNotificationView(APIView):
             ).strip().lower()
             if not recipient:
                 return Response({'detail': 'No recipient email address was provided.'}, status=400)
+
+        # Application submission is now initiated by the Django submission endpoint.
+        # Keep this legacy compatibility endpoint safe for existing screens that may
+        # still call it: an identical notification queued in the last five minutes
+        # is reused instead of sending a duplicate email.
+        cutoff = timezone.now() - timedelta(minutes=5)
+        existing = NotificationEmail.objects.filter(
+            recipient=recipient,
+            template_type=email_type,
+            created_at__gte=cutoff,
+        ).order_by('-created_at').first()
+        if existing:
+            return Response({
+                'success': True,
+                'queued': True,
+                'sent': existing.status == 'sent',
+                'notification_id': str(existing.id),
+                'recipient': recipient,
+                'type': email_type,
+                'subject': existing.subject,
+                'deduplicated': True,
+            }, status=202)
 
         try:
             email = queue_email(
