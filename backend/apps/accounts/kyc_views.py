@@ -29,16 +29,10 @@ def _owned_path(user_id, path, bucket='kyc-documents'):
 
 
 def _signed_url(request, path, bucket='kyc-documents'):
-    token = signing.dumps(
-        {
-            'path': path,
-            'bucket': bucket,
-            'user_id': str(request.user.pk),
-            'admin': is_admin(request.user),
-        },
-        salt=KYC_SIGNING_SALT,
+    """Return an authenticated document URL without embedding a credential."""
+    return request.build_absolute_uri(
+        f'/api/accounts/documents/view/?bucket={bucket}&path={path}'
     )
-    return request.build_absolute_uri(f'/api/accounts/kyc/document/{token}/')
 
 
 class KycDocumentUploadView(APIView):
@@ -113,6 +107,8 @@ class KycSubmitView(APIView):
 
 
 class KycDocumentView(APIView):
+    """Legacy short-lived signed URL endpoint kept for existing stored links."""
+
     authentication_classes = []
     permission_classes = []
 
