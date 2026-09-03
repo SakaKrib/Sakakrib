@@ -9,9 +9,10 @@ from apps.core.email_services import queue_email
 
 from .models import Profile
 
-OTP_EXPIRY_MINUTES = 10
+OTP_EXPIRY_SECONDS = 60
 OTP_RESEND_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
+OTP_MAX_SENDS = 3
 OTP_ACCOUNT_CLEANUP_DELAY_SECONDS = 180
 VERIFICATION_WINDOW_SECONDS = OTP_ACCOUNT_CLEANUP_DELAY_SECONDS
 
@@ -22,23 +23,31 @@ def generate_signup_otp():
 
 def send_signup_otp(user: Profile, *, now=None):
     now = now or timezone.now()
+
+    if user.signup_otp_trial_count >= OTP_MAX_SENDS:
+        raise ValueError('You have reached the maximum of 3 verification codes. Please start a new verification request.')
+
     if user.signup_otp_last_sent_at:
         elapsed = (now - user.signup_otp_last_sent_at).total_seconds()
         if elapsed < OTP_RESEND_SECONDS:
-            raise ValueError('Please wait before requesting another verification code.')
+            remaining = max(1, int(OTP_RESEND_SECONDS - elapsed))
+            raise ValueError(f'Please wait {remaining} seconds before requesting another verification code.')
 
     is_first_verification_send = user.signup_verification_started_at is None
     otp = generate_signup_otp()
     user.signup_otp_hash = make_password(otp)
-    user.signup_otp_expires_at = now + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    # Expiry is finalized again immediately after SMTP accepts the message so
+    # queue latency cannot consume the applicant's one-minute verification window.
+    user.signup_otp_expires_at = now + timedelta(seconds=OTP_EXPIRY_SECONDS)
     user.signup_otp_attempts = 0
     user.signup_otp_last_sent_at = now
+    user.signup_otp_trial_count += 1
     if is_first_verification_send:
         user.signup_verification_started_at = now
         user.signup_verification_deadline_at = now + timedelta(seconds=VERIFICATION_WINDOW_SECONDS)
     user.save(update_fields=[
         'signup_otp_hash', 'signup_otp_expires_at', 'signup_otp_attempts',
-        'signup_otp_last_sent_at', 'signup_verification_started_at',
+        'signup_otp_last_sent_at', 'signup_otp_trial_count', 'signup_verification_started_at',
         'signup_verification_deadline_at', 'updated_at',
     ])
 
@@ -69,11 +78,11 @@ def verify_signup_otp(user: Profile, otp: str, *, now=None):
     if user.email_verified:
         return user
     if user.signup_verification_deadline_at and now > user.signup_verification_deadline_at:
-        raise ValueError('The email verification window has expired. Please request a new verification email.')
+        raise ValueError('The email verification window has expired. Please start a new verification request.')
     if not user.signup_otp_hash or not user.signup_otp_expires_at:
         raise ValueError('No active verification code. Please request a new code.')
     if now > user.signup_otp_expires_at:
-        raise ValueError('The verification code has expired.')
+        raise ValueError('The verification code has expired. Please request a new code.')
     if user.signup_otp_attempts >= OTP_MAX_ATTEMPTS:
         raise ValueError('Too many verification attempts. Please request a new code.')
 
