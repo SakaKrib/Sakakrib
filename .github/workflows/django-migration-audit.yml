@@ -15,82 +15,159 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply verified Django transport replacements
+      - name: Apply targeted Django transport migrations
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
 
-          root = Path('src')
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected block not found in {path}')
+              p.write_text(text.replace(old, new, 1))
 
-          # Move all type-only domain contracts away from the removed Supabase module.
-          for path in root.rglob('*'):
+          # Transitional Django compatibility transport. Keep this boundary until
+          # each consumer is verified against its concrete Django endpoint.
+          for path in Path('src').rglob('*'):
               if path.suffix not in {'.ts', '.tsx'}:
                   continue
               text = path.read_text()
               text = text.replace("@/lib/protectedApi", "@/lib/djangoLegacyApi")
-              text = text.replace("@/lib/supabase", "@/types/domain")
-              text = text.replace("../../lib/supabase", "@/types/domain")
               path.write_text(text)
 
+          # Move only type-only Supabase contracts to the transport-neutral domain types.
+          type_import = re.compile(
+              r"import\s+type\s+(\{.*?\})\s+from\s+(['\"])(?:@/lib/supabase|\.\.?/.*?/lib/supabase)\2;?",
+              re.S,
+          )
+          for path in Path('src').rglob('*'):
+              if path.suffix not in {'.ts', '.tsx'}:
+                  continue
+              text = path.read_text()
+              text = type_import.sub(r"import type \1 from '@/types/domain';", text)
+              path.write_text(text)
+
+          # AuthModal: password reset is now handled by Django.
+          replace_once(
+              'src/components/AuthModal.tsx',
+              "import { supabase } from '@/lib/supabase';",
+              "import { protectedPost } from '@/lib/djangoApi';",
+          )
+          replace_once(
+              'src/components/AuthModal.tsx',
+              """        const { error: resetError } =
+          await supabase.auth.resetPasswordForEmail(
+            normalizedEmail,
+            {
+              redirectTo:
+                window.location.origin,
+            },
+          );""",
+              """        await protectedPost('/api/accounts/password-reset/', {
+          email: normalizedEmail,
+          redirect_to: window.location.origin,
+        });
+
+        const resetError = null;""",
+          )
+
+          # PMS subscription page: preserve the existing UI/RPC-shaped workflow,
+          # but route the calls through the verified Django gateway.
+          replace_once(
+              'src/components/PMS/PMSSubscriptionPage.tsx',
+              'import { supabase } from "../../lib/supabase";',
+              'import { djangoPmsGateway } from "@/lib/djangoPmsGateway";',
+          )
+          pms = Path('src/components/PMS/PMSSubscriptionPage.tsx')
+          text = pms.read_text().replace('supabase.', 'djangoPmsGateway.')
+          pms.write_text(text)
+
           # ListingManagePage had an unused runtime Supabase import.
-          p = Path('src/pages/ListingManagePage.tsx')
-          text = p.read_text().replace("import { supabase } from '@/types/domain';\n", '')
-          p.write_text(text)
+          listing_manage = Path('src/pages/ListingManagePage.tsx')
+          text = listing_manage.read_text()
+          text = text.replace("import { supabase } from '@/lib/supabase';\n", '')
+          listing_manage.write_text(text)
 
-          # AuthModal: password reset is a Django endpoint now.
-          p = Path('src/components/AuthModal.tsx')
-          text = p.read_text()
-          text = text.replace("import { supabase } from '@/types/domain';\n", "import { protectedPost } from '@/lib/djangoApi';\n")
-          old = '''        const { error: resetError } =\n          await supabase.auth.resetPasswordForEmail(\n            normalizedEmail,\n            {\n              redirectTo:\n                window.location.origin,\n            },\n          );'''
-          new = '''        await protectedPost('/api/accounts/password-reset/', {\n          email: normalizedEmail,\n          redirect_to: window.location.origin,\n        });\n\n        const resetError = null;'''
-          if old not in text:
-              raise SystemExit('AuthModal password-reset block not found')
-          p.write_text(text.replace(old, new))
+          # ChatPage: keep the existing Django-backed implementation and fix the
+          # pre-existing JSX parse error on the scheduler error conditional.
+          chat = Path('src/pages/ChatPage.tsx')
+          text = chat.read_text()
+          text = text.replace("@/lib/protectedApi", "@/lib/djangoLegacyApi")
+          bad = "{scheduleError && <p className=\"mt-2 text-sm text-destructive\">{scheduleError}</p></div>}"
+          good = "{scheduleError && <p className=\"mt-2 text-sm text-destructive\">{scheduleError}</p>}</div>}"
+          if bad not in text:
+              raise SystemExit('ChatPage scheduler JSX block not found')
+          chat.write_text(text.replace(bad, good, 1))
 
-          # PMSSubscriptionPage keeps its existing UI/workflow but now uses a Django-only gateway.
-          p = Path('src/components/PMS/PMSSubscriptionPage.tsx')
-          text = p.read_text()
-          text = text.replace('import { supabase } from "@/types/domain";', 'import { djangoPmsGateway } from "@/lib/djangoPmsGateway";')
-          text = text.replace('supabase.', 'djangoPmsGateway.')
-          p.write_text(text)
-
-          # DocumentCapture: replace the two direct Supabase Storage calls with Django upload/sign APIs.
-          p = Path('src/components/DocumentCapture.tsx')
-          text = p.read_text()
+          # DocumentCapture: browser storage operations now use Django private
+          # document upload/sign endpoints; no Supabase URL/key is exposed.
+          capture = Path('src/components/DocumentCapture.tsx')
+          text = capture.read_text()
           if "from '@/lib/djangoApi'" not in text:
-              text = text.replace("import { cn } from '@/lib/utils';", "import { cn } from '@/lib/utils';\nimport { protectedPost, protectedUpload } from '@/lib/djangoApi';")
+              text = text.replace(
+                  "import { cn } from '@/lib/utils';",
+                  "import { cn } from '@/lib/utils';\nimport { protectedPost, protectedUpload } from '@/lib/djangoApi';",
+                  1,
+              )
           else:
-              text = text.replace("import { cn } from '@/lib/utils';", "import { cn } from '@/lib/utils';\nimport { protectedPost, protectedUpload } from '@/lib/djangoApi';")
+              text = text.replace(
+                  "import { cn } from '@/lib/utils';",
+                  "import { cn } from '@/lib/utils';\nimport { protectedPost, protectedUpload } from '@/lib/djangoApi';",
+                  1,
+              )
 
-          resolve_pattern = re.compile(r"  const resolveSignedUrl = useCallback\(.*?\n  \);\n\n  /\*\n  \|--------------------------------------------------------------------------\n  \| STOP CAMERA", re.S)
-          resolve_replacement = '''  const resolveSignedUrl = useCallback(\n    async (path: string): Promise<string | null> => {\n      try {\n        const result = await protectedPost<{ url: string }>('/api/accounts/kyc/document/sign/', {\n          bucket,\n          path,\n        });\n        return result?.url || null;\n      } catch {\n        return null;\n      }\n    },\n    [bucket]\n  );\n\n  /*\n  |--------------------------------------------------------------------------\n  | STOP CAMERA'''
+          resolve_pattern = re.compile(
+              r"  const resolveSignedUrl = useCallback\(.*?\n  \);\n\n  /\*\n  \|--------------------------------------------------------------------------\n  \| STOP CAMERA",
+              re.S,
+          )
+          resolve_replacement = """  const resolveSignedUrl = useCallback(
+    async (path: string): Promise<string | null> => {
+      try {
+        const result = await protectedPost<{ url?: string }>(
+          '/api/accounts/kyc/document/sign/',
+          { bucket, path },
+        );
+        return result?.url || null;
+      } catch {
+        return null;
+      }
+    },
+    [bucket]
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | STOP CAMERA"""
           text, count = resolve_pattern.subn(resolve_replacement, text, count=1)
           if count != 1:
               raise SystemExit('DocumentCapture resolveSignedUrl block not found')
 
-          upload_pattern = re.compile(r"      const response =\n        await fetch\(\n          `\$\{import\.meta\.env\.VITE_SUPABASE_URL\}/functions/v1/protected-api/storage/upload`,.*?\n      const result =\n        await response\.json\(\);", re.S)
-          upload_replacement = '''      const result = await protectedUpload<{\n        path?: string;\n        bucket?: string;\n        size?: number;\n        mime_type?: string;\n      }>('/api/accounts/documents/upload/', formData);'''
+          upload_pattern = re.compile(
+              r"      const response =\n        await fetch\(\n          `\$\{import\.meta\.env\.VITE_SUPABASE_URL\}/functions/v1/protected-api/storage/upload`,.*?\n      const result =\n        await response\.json\(\);",
+              re.S,
+          )
+          upload_replacement = """      const result = await protectedUpload<{
+        path?: string;
+        bucket?: string;
+        size?: number;
+        mime_type?: string;
+      }>('/api/accounts/documents/upload/', formData);"""
           text, count = upload_pattern.subn(upload_replacement, text, count=1)
           if count != 1:
               raise SystemExit('DocumentCapture upload block not found')
 
-          text = text.replace("      const publicUrl =\n        result.url ||\n        result.publicUrl;\n\n      const storagePath = result.path;", "      const storagePath = result.path;\n      const publicUrl = storagePath;")
-          text = text.replace('Supabase Storage upload', 'Django private document upload')
-          text = text.replace('Supabase', 'Django')
-          p.write_text(text)
-
-          # Rename the Django-only legacy compatibility module according to the migration rule.
-          old = Path('src/lib/protectedApi.ts')
-          new = Path('src/lib/djangoLegacyApi.ts')
-          if old.exists():
-              old.unlink()
-          if not new.exists():
-              raise SystemExit('djangoLegacyApi.ts replacement is missing')
+          text = text.replace(
+              "      const publicUrl =\n        result.url ||\n        result.publicUrl;\n\n      const storagePath = result.path;",
+              "      const storagePath = result.path;\n      const publicUrl = storagePath;",
+              1,
+          )
+          capture.write_text(text)
           PY
 
-      - name: Verify no Supabase runtime/import boundary remains
+      - name: Verify no Supabase runtime boundary remains
         shell: bash
         run: |
           set -e
@@ -107,7 +184,7 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Commit migration changes
+      - name: Commit verified migration changes
         shell: bash
         run: |
           git config user.name 'SakaKrib Migration Bot'
@@ -117,5 +194,5 @@ jobs:
             echo 'No migration changes to commit.'
             exit 0
           fi
-          git commit -m 'refactor(migration): cut remaining frontend Supabase runtime dependencies [skip ci]'
+          git commit -m 'refactor(migration): migrate verified frontend Supabase boundaries [skip ci]'
           git push origin HEAD:django-backend-migration
