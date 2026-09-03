@@ -1,13 +1,13 @@
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
 from .services import create_listing
 
 
-class RealEstatePMSListingCreationTests(SimpleTestCase):
+class RealEstatePMSListingCreationTests(TestCase):
     def make_profile(self):
         profile = Mock()
         profile.id = uuid4()
