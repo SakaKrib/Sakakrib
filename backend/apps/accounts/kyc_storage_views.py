@@ -11,8 +11,12 @@ KYC_SIGNING_MAX_AGE = 900
 ALLOWED_BUCKETS = {'id-documents', 'licenses', 'kyc-documents'}
 
 
-def _owned_path(user_id, path):
-    return isinstance(path, str) and path.startswith(f'kyc-documents/{user_id}/') and '..' not in path.split('/')
+def _owned_path(user_id, bucket, path):
+    return (
+        isinstance(path, str)
+        and path.startswith(f'{bucket}/{user_id}/')
+        and '..' not in path.split('/')
+    )
 
 
 class KycDocumentSignView(APIView):
@@ -27,11 +31,8 @@ class KycDocumentSignView(APIView):
             return Response({'detail': 'Document path is required.'}, status=400)
 
         requester_is_admin = is_admin(request.user)
-        if bucket == 'kyc-documents':
-            if not (_owned_path(request.user.pk, path) or requester_is_admin):
-                return Response({'detail': 'You do not have access to this document.'}, status=403)
-        elif not requester_is_admin:
-            return Response({'detail': 'Administrator access is required for this document.'}, status=403)
+        if not (_owned_path(request.user.pk, bucket, path) or requester_is_admin):
+            return Response({'detail': 'You do not have access to this document.'}, status=403)
 
         if not default_storage.exists(path):
             return Response({'detail': 'Document not found.'}, status=404)
@@ -39,6 +40,7 @@ class KycDocumentSignView(APIView):
         token = signing.dumps(
             {
                 'path': path,
+                'bucket': bucket,
                 'user_id': str(request.user.pk),
                 'admin': requester_is_admin,
             },
