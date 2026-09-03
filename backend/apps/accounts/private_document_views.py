@@ -42,6 +42,11 @@ def _is_safe_path(path):
     return bool(path) and not candidate.is_absolute() and '..' not in candidate.parts
 
 
+def _path_bucket(path):
+    prefix = str(path or '').split('/', 1)[0]
+    return prefix if prefix in ALLOWED_BUCKETS else None
+
+
 class PrivateDocumentUploadView(APIView):
     """Store applicant-owned private documents through Django storage."""
 
@@ -80,27 +85,34 @@ class PrivateDocumentUploadView(APIView):
 
 
 class PrivateDocumentView(APIView):
-    """Serve a private document through the authenticated HttpOnly-cookie session.
+    """Serve private documents through the authenticated HttpOnly-cookie session.
 
-    The document path is not a credential. Authorization is performed on every
-    request, so no signed access token is placed in the URL or returned to the
-    browser.
+    Storage paths are identifiers, not credentials. Every request is authorized
+    against the authenticated user or an administrator before opening the file.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        bucket = str(request.query_params.get('bucket') or '').strip()
-        path = str(request.query_params.get('path') or '').strip()
+        requested_bucket = str(request.query_params.get('bucket') or '').strip()
+        supplied_path = str(request.query_params.get('path') or '').strip()
 
-        if bucket not in ALLOWED_BUCKETS:
+        if requested_bucket not in ALLOWED_BUCKETS:
             return Response({'detail': 'Unsupported document storage bucket.'}, status=400)
-
-        path = _normalize_path(bucket, path)
-        if not _is_safe_path(path):
+        if not supplied_path or not _is_safe_path(supplied_path):
             return Response({'detail': 'Invalid document path.'}, status=400)
 
-        if not is_admin(request.user) and not path.startswith(f'{bucket}/{request.user.pk}/'):
+        # The stored path is authoritative for the storage namespace. This also
+        # lets older records containing a KYC path continue to preview from a
+        # form whose historical bucket parameter was id-documents, without ever
+        # weakening the owner/admin authorization check.
+        actual_bucket = _path_bucket(supplied_path) or requested_bucket
+        path = _normalize_path(actual_bucket, supplied_path)
+        if not _is_safe_path(path) or actual_bucket not in ALLOWED_BUCKETS:
+            return Response({'detail': 'Invalid document path.'}, status=400)
+
+        owner_prefix = f'{actual_bucket}/{request.user.pk}/'
+        if not is_admin(request.user) and not path.startswith(owner_prefix):
             return Response({'detail': 'You do not have access to this document.'}, status=403)
 
         if not default_storage.exists(path):
