@@ -12,15 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Scan frontend for remaining Supabase/legacy transport references
+      - name: Scan repository for remaining Supabase/legacy transport references
         shell: bash
         run: |
-          set +e
           echo '=== SUPABASE RUNTIME / IMPORT REFERENCES ==='
           grep -RInE --exclude-dir=node_modules --exclude-dir=.git --exclude='*.lock' --exclude='django-migration-audit.yml' \
-            "@/lib/supabase|from ['\"]supabase|from ['\"]@supabase|createClient\(|VITE_SUPABASE|SUPABASE_URL|SUPABASE_ANON_KEY|supabase\.co|functions/v1|storage/v1" \
+            "@/lib/supabase|from ['\"]supabase|from ['\"]@supabase|createClient\(|supabase\.|VITE_SUPABASE|SUPABASE_URL|SUPABASE_ANON_KEY|supabase\.co|functions/v1|storage/v1" \
             src backend . 2>/dev/null || true
-          echo '=== LEGACY PROTECTED API IMPORTS ==='
+          echo '=== LEGACY PROTECTED API IMPORTS / PATHS ==='
           grep -RInE --exclude-dir=node_modules --exclude-dir=.git --exclude='django-migration-audit.yml' \
             "@/lib/protectedApi|protectedFunctionPost|/rest/v1/" \
             src 2>/dev/null || true
