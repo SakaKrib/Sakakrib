@@ -7,20 +7,24 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql="ALTER INDEX IF EXISTS listings_property_management_idx RENAME TO listing_prop_mgmt_idx;",
-            reverse_sql="ALTER INDEX IF EXISTS listing_prop_mgmt_idx RENAME TO listings_property_management_idx;",
+        migrations.RenameIndex(
+            model_name='listing',
+            old_name='listings_property_management_idx',
+            new_name='listing_prop_mgmt_idx',
         ),
-        migrations.RunSQL(
-            sql="ALTER INDEX IF EXISTS idx_listing_payment_intents_listing_id RENAME TO listing_pay_intent_listing;",
-            reverse_sql="ALTER INDEX IF EXISTS listing_pay_intent_listing RENAME TO idx_listing_payment_intents_listing_id;",
+        migrations.RenameIndex(
+            model_name='listingpaymentintent',
+            old_name='idx_listing_payment_intents_listing_id',
+            new_name='listing_pay_intent_listing',
         ),
-        migrations.RunSQL(
-            sql="ALTER INDEX IF EXISTS listing_payment_intents_user_status_idx RENAME TO listing_pay_intent_user;",
-            reverse_sql="ALTER INDEX IF EXISTS listing_pay_intent_user RENAME TO listing_payment_intents_user_status_idx;",
+        migrations.RenameIndex(
+            model_name='listingpaymentintent',
+            old_name='listing_payment_intents_user_status_idx',
+            new_name='listing_pay_intent_user',
         ),
-        migrations.RunSQL(
-            sql="ALTER INDEX IF EXISTS listing_payment_intents_provider_reference_idx RENAME TO listing_pay_intent_provider;",
-            reverse_sql="ALTER INDEX IF EXISTS listing_pay_intent_provider RENAME TO listing_payment_intents_provider_reference_idx;",
+        migrations.RenameIndex(
+            model_name='listingpaymentintent',
+            old_name='listing_payment_intents_provider_reference_idx',
+            new_name='listing_pay_intent_provider',
         ),
     ]
