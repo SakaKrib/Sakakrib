@@ -1,8 +1,7 @@
 // Private document opener backed by Django authentication and storage.
-// The browser never receives storage credentials. Django authorizes the
-// requester and returns a short-lived signed document URL.
+// The browser never receives storage credentials or signed URL tokens.
 
-import { protectedPost } from '@/lib/djangoApi';
+import { protectedBlob } from '@/lib/djangoApi';
 
 type DocumentType = 'id' | 'selfie';
 
@@ -14,9 +13,51 @@ const ALLOWED_BUCKETS = [
 
 type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
 
+const normalizeDocumentPath = (
+  documentPath: string,
+): { bucket: AllowedBucket; path: string } | null => {
+  let value = documentPath.trim();
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const queryBucket = parsed.searchParams.get('bucket');
+    const queryPath = parsed.searchParams.get('path');
+    if (queryPath) {
+      const bucket = (queryBucket || 'kyc-documents') as AllowedBucket;
+      if (!ALLOWED_BUCKETS.includes(bucket)) return null;
+      return {
+        bucket,
+        path: decodeURIComponent(queryPath).replace(/^\/+/, '').split('?')[0],
+      };
+    }
+
+    const legacyStorageMatch = parsed.pathname.match(
+      /\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/,
+    );
+    if (legacyStorageMatch) {
+      const bucket = legacyStorageMatch[1] as AllowedBucket;
+      if (!ALLOWED_BUCKETS.includes(bucket)) return null;
+      return { bucket, path: legacyStorageMatch[2].replace(/^\/+/, '') };
+    }
+  } catch {
+    // Treat the value as a storage path below.
+  }
+
+  value = value.split('?')[0].split('#')[0].replace(/^\/+/, '');
+  for (const bucket of ALLOWED_BUCKETS) {
+    const prefix = `${bucket}/`;
+    if (value.startsWith(prefix)) {
+      return { bucket, path: value.slice(prefix.length) };
+    }
+  }
+
+  return { bucket: 'kyc-documents', path: value };
+};
+
 export default async function openKycDocument(
   documentPath: string | null | undefined,
-  documentType: DocumentType = 'id'
+  documentType: DocumentType = 'id',
 ): Promise<string | null> {
   if (!documentPath) {
     return documentType === 'selfie'
@@ -24,61 +65,24 @@ export default async function openKycDocument(
       : 'ID document is not available.';
   }
 
+  const normalized = normalizeDocumentPath(documentPath);
+  if (!normalized || !normalized.path || normalized.path.split('/').includes('..')) {
+    return 'Invalid document path.';
+  }
+
   try {
-    let value = documentPath.trim();
-    if (!value) return 'Invalid document path.';
-
-    let bucket: AllowedBucket = 'kyc-documents';
-    let path = value.split('?')[0].split('#')[0].replace(/^\/+/, '');
-
-    // Preserve compatibility with previously stored object URLs while
-    // the data migration is completed. No Supabase client or network call
-    // is used for these legacy values.
-    const legacyStorageMatch = path.match(
-      /\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/
+    const blob = await protectedBlob(
+      `/api/accounts/documents/view/?bucket=${encodeURIComponent(normalized.bucket)}&path=${encodeURIComponent(normalized.path)}`,
     );
-    if (legacyStorageMatch) {
-      const candidateBucket = legacyStorageMatch[1] as AllowedBucket;
-      if (ALLOWED_BUCKETS.includes(candidateBucket)) {
-        bucket = candidateBucket;
-        path = legacyStorageMatch[2];
-      }
-    }
-
-    for (const knownBucket of ALLOWED_BUCKETS) {
-      const prefix = `${knownBucket}/`;
-      if (path.startsWith(prefix)) {
-        bucket = knownBucket;
-        path = path.substring(prefix.length);
-        break;
-      }
-    }
-
-    if (path.startsWith(`${bucket}/`)) {
-      path = path.substring(`${bucket}/`.length);
-    }
-
-    if (!path) return 'Invalid document path.';
-
-    const result = await protectedPost<{ url: string }>(
-      '/api/accounts/kyc/document/sign/',
-      { bucket, path }
-    );
-
-    if (!result?.url) {
-      return 'Unable to open the document.';
-    }
-
-    const newWindow = window.open(
-      result.url,
-      '_blank',
-      'noopener,noreferrer'
-    );
+    const objectUrl = URL.createObjectURL(blob);
+    const newWindow = window.open(objectUrl, '_blank', 'noopener,noreferrer');
 
     if (!newWindow) {
+      URL.revokeObjectURL(objectUrl);
       return 'The document could not be opened. Please allow pop-ups for this site.';
     }
 
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     return null;
   } catch (error) {
     console.error('Unexpected private document error:', error);
