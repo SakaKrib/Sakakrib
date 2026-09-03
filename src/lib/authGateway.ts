@@ -1,3 +1,5 @@
+import { djangoRequest } from '@/lib/djangoApi';
+
 interface GatewayUser {
   id: string;
   email: string | null;
@@ -90,26 +92,29 @@ export const authGateway = async (
   action: AuthGatewayAction,
   payload: Record<string, unknown> = {},
 ): Promise<GatewaySessionResponse> => {
-  const isSession = action === 'session';
-  const path = isSession ? '/api/accounts/session/' : actionPath[action];
-  const method = isSession ? 'GET' : 'POST';
-  const headers = new Headers({ Accept: 'application/json' });
-
-  if (!isSession) {
-    headers.set('Content-Type', 'application/json');
-    headers.set('X-CSRFToken', await getCsrfToken());
+  // Session checks use the same protected transport as all other authenticated
+  // requests. This is important because a normal session check can encounter
+  // an expired access cookie and must rotate the refresh cookie before giving
+  // the UI an unauthenticated result.
+  if (action === 'session') {
+    return djangoRequest<GatewaySessionResponse>('/api/accounts/session/');
   }
 
+  const path = actionPath[action];
+  const headers = new Headers({ Accept: 'application/json' });
+  headers.set('Content-Type', 'application/json');
+  headers.set('X-CSRFToken', await getCsrfToken());
+
   const execute = () => fetch(`${getBaseUrl()}${path}`, {
-    method,
+    method: 'POST',
     credentials: 'include',
     headers,
-    ...(isSession ? {} : { body: JSON.stringify(payload) }),
+    body: JSON.stringify(payload),
   });
 
   let response = await execute();
 
-  if (response.status === 403 && !isSession) {
+  if (response.status === 403) {
     const body = await readJson<GatewaySessionResponse & { detail?: string }>(response.clone());
     if (body?.detail && /csrf/i.test(body.detail)) {
       headers.set('X-CSRFToken', await getCsrfToken(true));
