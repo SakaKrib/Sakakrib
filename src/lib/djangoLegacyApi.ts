@@ -69,26 +69,54 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
   if (resource === 'profiles') {
     const userId = getEq(query, 'id');
     if (method === 'GET') {
-      const dashboard = await getAdminDashboard();
-      if (userId) {
-        const item = dashboard.items.find((candidate) => String(candidate.id) === userId);
-        return (item?.profile ? [item.profile] : []) as T;
-      }
-      return dashboard.items.map((item) => item.profile).filter(Boolean) as T;
+      // A user's own profile is not an admin resource. The old Supabase
+      // query included `id=eq.<current-user-id>`, so translate that call to
+      // the authenticated /me/ endpoint rather than the admin user list.
+      const profile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
+      if (userId && String(profile.id) !== userId) return [] as T;
+      return [profile] as T;
     }
     if ((method === 'PATCH' || method === 'PUT') && userId) {
+      // Preserve the admin-only path for legacy admin profile edits.
       return djangoRequest<T>(`/api/accounts/admin/users/${encodeURIComponent(userId)}/`, {
         ...init,
         method,
       });
     }
-    if (method === 'GET') return djangoGet<T>('/api/accounts/me/');
     if (method === 'PATCH' || method === 'PUT') return djangoRequest<T>('/api/accounts/me/', { ...init, method });
   }
 
   if (resource === 'landlord_subscriptions' && method === 'GET') {
-    const dashboard = await getAdminDashboard();
-    return dashboard.items.map((item) => item.landlord_subscription).filter(Boolean) as T;
+    // The legacy landlord dashboard queried its own subscription row. Do not
+    // route this through the admin dashboard, which would incorrectly reject
+    // normal landlord accounts.
+    const subscription = await djangoGet<Record<string, unknown>>('/api/subscriptions/me/');
+    if (!subscription?.subscription_id) return [] as T;
+
+    const normalized = {
+      id: subscription.subscription_id,
+      subscription_id: subscription.subscription_id,
+      landlord_id: subscription.landlord_id,
+      plan_id: subscription.plan_id,
+      status: subscription.subscription_status,
+      billing_cycle: subscription.billing_cycle,
+      current_period_start: subscription.current_period_start,
+      current_period_end: subscription.current_period_end,
+      grace_period_end: subscription.grace_period_end,
+      auto_renew: subscription.auto_renew,
+      paypal_subscription_id: subscription.paypal_subscription_id,
+      paypal_status: subscription.paypal_status,
+      next_billing_at: subscription.next_billing_at,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      plan: subscription.plan_id ? {
+        id: subscription.plan_id,
+        name: subscription.plan_name,
+        max_listings: subscription.max_listings,
+        max_units_per_listing: subscription.max_units_per_listing,
+      } : null,
+    };
+
+    return [normalized] as T;
   }
 
   if (resource === 'listings') {
@@ -102,7 +130,8 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
       const offset = query.get('offset');
       if (limit) params.set('limit', limit);
       if (offset) params.set('offset', offset);
-      return djangoGet<T>(`/api/listings/${params.toString() ? `?${params}` : ''}`);
+      const response = await djangoGet<{ results?: T }>(`/api/listings/${params.toString() ? `?${params}` : ''}`);
+      return (Array.isArray(response?.results) ? response.results : []) as T;
     }
     if (listingId && method === 'PATCH') return djangoPatch<T>(`/api/listings/${encodeURIComponent(listingId)}/`, json(init));
   }
