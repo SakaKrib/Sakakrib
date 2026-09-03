@@ -3,7 +3,6 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
-from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -18,8 +17,12 @@ from .serializers import LoginSerializer, ProfileSerializer, ResendOtpSerializer
 class CsrfTokenView(APIView):
     permission_classes = [AllowAny]
 
-    @ensure_csrf_cookie
     def get(self, request):
+        # get_token() marks the CSRF cookie for update; Django's CSRF middleware
+        # writes it to the response. Do not apply ensure_csrf_cookie directly to
+        # an APIView method: a normal function decorator receives `self` as its
+        # first argument when used on a class method, which breaks Django 6's
+        # CSRF middleware with: CsrfTokenView has no attribute COOKIES.
         return JsonResponse({'csrfToken': get_token(request)})
 
 
