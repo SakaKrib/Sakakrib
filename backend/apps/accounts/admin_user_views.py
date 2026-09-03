@@ -244,8 +244,13 @@ class AdminDashboardDataView(APIView):
 
         items = []
         for profile in profiles:
-            item = ProfileSerializer(profile).data
-            item['subscription'] = subscriptions.get(profile.id)
+            serialized_profile = ProfileSerializer(profile).data
+            item = dict(serialized_profile)
+            subscription = subscriptions.get(profile.id)
+            item['profile'] = serialized_profile
+            item['subscription'] = subscription
+            item['landlord_subscription'] = subscription if profile.role == 'landlord' else None
+            item['real_estate_subscription'] = subscription if profile.role == 'real_estate' else None
             item['moverApplication'] = mover_applications.get(profile.id)
             item['moverRecord'] = movers.get(profile.id)
             items.append(item)
