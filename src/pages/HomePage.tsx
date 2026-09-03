@@ -4,62 +4,82 @@ import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import type { Listing } from '@/types/domain';
-import { protectedGet } from '@/lib/djangoLegacyApi';
+import { djangoRequest } from '@/lib/djangoApi';
+
+interface HomepageStats {
+  listings: number;
+  landlords: number;
+  movers: number;
+  reviews: number;
+}
+
+interface FeaturedListingsResponse {
+  count: number;
+  results: Listing[];
+}
+
+interface ListingWithMedia extends Listing {
+  media?: Array<{ id?: string; url: string; media_type?: string; position?: number }>;
+}
 
 export default function HomePage() {
   const { navigate, setAuthModalOpen, setRoleModalOpen } = useNav();
   const { profile, needsRoleSelection, loading, session } = useAuth();
   const [searchCity, setSearchCity] = useState('');
   const [searchType, setSearchType] = useState<'rent' | 'sale'>('rent');
-  const [featured, setFeatured] = useState<Listing[]>([]);
+  const [featured, setFeatured] = useState<ListingWithMedia[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<string, string>>({});
-  const [stats, setStats] = useState({ listings: 0, landlords: 0, movers: 0, reviews: 0 });
+  const [stats, setStats] = useState<HomepageStats>({ listings: 0, landlords: 0, movers: 0, reviews: 0 });
   const [error, setError] = useState("");
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
 
   useEffect(() => {
     let mounted = true;
     const fetchHomepageData = async () => {
-      if (loading || !session) return;
       try {
-        const [listings, landlords, movers, reviews] = await Promise.all([
-          protectedGet<{ id: string }[]>('/rest/v1/listings?select=id&is_published=eq.true&is_approved=eq.true'),
-          protectedGet<{ id: string }[]>('/rest/v1/profiles?select=id&role=eq.landlord&landlord_application_status=eq.approved'),
-          protectedGet<{ id: string }[]>('/rest/v1/movers?select=id&approval_status=eq.approved&is_available=eq.true'),
-          protectedGet<{ id: string }[]>('/rest/v1/reviews?select=id'),
-        ]);
+        const homepageStats = await djangoRequest<HomepageStats>('/api/core/homepage-stats/');
         if (!mounted) return;
-        setStats({ listings: listings?.length ?? 0, landlords: landlords?.length ?? 0, movers: movers?.length ?? 0, reviews: reviews?.length ?? 0 });
+        setStats({
+          listings: homepageStats?.listings ?? 0,
+          landlords: homepageStats?.landlords ?? 0,
+          movers: homepageStats?.movers ?? 0,
+          reviews: homepageStats?.reviews ?? 0,
+        });
       } catch (err) {
         if (mounted) console.error('Homepage stats:', err);
       }
     };
     void fetchHomepageData();
     return () => { mounted = false; };
-  }, [session, loading]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
     const fetchFeaturedListings = async () => {
-      if (loading || !session) return;
       try {
-        const listings = await protectedGet<Listing[]>('/rest/v1/listings?select=*&is_published=eq.true&is_approved=eq.true&order=created_at.desc&limit=12');
+        const response = await djangoRequest<FeaturedListingsResponse>('/api/listings/featured/');
         if (!mounted) return;
-        if (!listings || listings.length === 0) { setFeatured([]); setMediaMap({}); return; }
+        const listings = Array.isArray(response?.results) ? response.results as ListingWithMedia[] : [];
         setFeatured(listings);
-        const ids = listings.map((listing) => listing.id);
-        const media = await protectedGet<{ listing_id: string; url: string }[]>(`/rest/v1/listing_media?select=listing_id,url&listing_id=in.(${ids.join(',')})&media_type=eq.photo&order=position.asc`);
-        if (!mounted) return;
         const map: Record<string, string> = {};
-        media?.forEach((item) => { if (!map[item.listing_id]) map[item.listing_id] = item.url; });
+        listings.forEach((listing) => {
+          const firstPhoto = (listing.media || [])
+            .filter((item) => !item.media_type || item.media_type === 'photo')
+            .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
+          if (firstPhoto?.url) map[listing.id] = firstPhoto.url;
+        });
         setMediaMap(map);
       } catch (err) {
-        if (mounted) console.error('Featured listings:', err);
+        if (mounted) {
+          console.error('Featured listings:', err);
+          setFeatured([]);
+          setMediaMap({});
+        }
       }
     };
     void fetchFeaturedListings();
     return () => { mounted = false; };
-  }, [session, loading]);
+  }, []);
 
   const handleSearch = () => navigate('listings');
 
