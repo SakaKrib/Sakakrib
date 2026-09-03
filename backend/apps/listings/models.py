@@ -57,7 +57,7 @@ class Listing(models.Model):
             models.Index(fields=['city'], name='idx_listings_city'),
             models.Index(fields=['-created_at'], name='idx_listings_created_at'),
             models.Index(fields=['user'], name='idx_listings_user_id'),
-            models.Index(fields=['is_property_management'], name='listings_property_management_idx'),
+            models.Index(fields=['is_property_management'], name='listing_prop_mgmt_idx'),
             models.Index(fields=['user', 'is_draft', '-updated_at'], name='listings_user_draft_idx'),
         ]
         constraints = [
@@ -90,9 +90,9 @@ class ListingPaymentIntent(models.Model):
     class Meta:
         db_table = 'listing_payment_intents'
         indexes = [
-            models.Index(fields=['listing'], name='idx_listing_payment_intents_listing_id'),
-            models.Index(fields=['user', 'status', '-created_at'], name='listing_payment_intents_user_status_idx'),
-            models.Index(fields=['provider', 'provider_reference'], name='listing_payment_intents_provider_reference_idx', condition=models.Q(provider_reference__isnull=False)),
+            models.Index(fields=['listing'], name='listing_pay_intent_listing'),
+            models.Index(fields=['user', 'status', '-created_at'], name='listing_pay_intent_user'),
+            models.Index(fields=['provider', 'provider_reference'], name='listing_pay_intent_provider', condition=models.Q(provider_reference__isnull=False)),
         ]
         constraints = [
             models.CheckConstraint(condition=models.Q(role__in=['landlord', 'real_estate']), name='listing_payment_intents_role_valid'),
