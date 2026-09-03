@@ -127,6 +127,7 @@ class LoginView(APIView):
                 template_type='sign_in_notification',
                 payload={
                     'email': user.email,
+                    'full_name': user.full_name,
                     'sign_in_time': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
                     'device': request.META.get('HTTP_USER_AGENT', 'Unknown device')[:255],
                     'location': request.META.get('REMOTE_ADDR', 'Unknown location'),
