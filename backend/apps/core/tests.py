@@ -1,15 +1,23 @@
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient
 
 from .email_templates import EMAIL_TEMPLATES
-from .real_estate_pms_views import RealEstatePMSActionView, RealEstatePMSDashboardView
 
 
 class RealEstatePMSBoundaryTests(SimpleTestCase):
     def setUp(self):
-        self.factory = APIRequestFactory()
+        self.client = APIClient()
+        self.user = type('TestUser', (), {
+            'id': 'user-1',
+            'role': 'real_estate',
+            'is_authenticated': True,
+            'is_staff': False,
+            'is_superuser': False,
+            'is_admin': False,
+        })()
+        self.client.force_authenticate(user=self.user)
 
     @patch('apps.core.real_estate_pms_views.get_pms_access')
     def test_dashboard_rejects_non_real_estate_pms_access(self, get_access):
@@ -19,11 +27,7 @@ class RealEstatePMSBoundaryTests(SimpleTestCase):
             'read_only': False,
             'reason': 'SUBSCRIPTION_ACTIVE',
         }
-        request = self.factory.get('/api/pms/real-estate/dashboard/')
-        request.user = Mock(id='user-1', role='landlord', is_authenticated=True)
-
-        response = RealEstatePMSDashboardView.as_view()(request)
-
+        response = self.client.get('/api/pms/real-estate/dashboard/')
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.data['pms_access']['role'], 'landlord')
 
@@ -35,15 +39,11 @@ class RealEstatePMSBoundaryTests(SimpleTestCase):
             'read_only': True,
             'reason': 'SUBSCRIPTION_GRACE_PERIOD',
         }
-        request = self.factory.post(
+        response = self.client.post(
             '/api/pms/real-estate/action/',
             {'action': 'add_listing', 'listing_id': '00000000-0000-0000-0000-000000000001'},
             format='json',
         )
-        request.user = Mock(id='user-1', role='real_estate', is_authenticated=True)
-
-        response = RealEstatePMSActionView.as_view()(request)
-
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.data['pms_access']['reason'], 'SUBSCRIPTION_GRACE_PERIOD')
 
