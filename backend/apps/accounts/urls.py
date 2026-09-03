@@ -9,6 +9,7 @@ from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocument
 from .kyc_storage_views import KycDocumentSignView
 from .landlord_application_views import LandlordApplicationSubmitView
 from .password_reset_views import PasswordResetConfirmView, PasswordResetRequestView
+from .private_document_views import PrivateDocumentUploadView
 from .profile_media_views import ProfilePhotoView
 from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, ResendOtpView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
@@ -28,6 +29,7 @@ urlpatterns = [
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     path('profile-photo/', ProfilePhotoView.as_view(), name='profile-photo-upload'),
     path('profile-photo/<uuid:user_id>/', ProfilePhotoView.as_view(), name='profile-photo'),
+    path('documents/upload/', PrivateDocumentUploadView.as_view(), name='private-document-upload'),
     path('kyc/upload/', KycDocumentUploadView.as_view(), name='kyc-upload'),
     path('kyc/verify/', KycDocumentVerifyView.as_view(), name='kyc-verify'),
     path('kyc/submit/', KycSubmitView.as_view(), name='kyc-submit'),
