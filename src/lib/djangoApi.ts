@@ -80,7 +80,6 @@ const refreshAuthentication = async (): Promise<boolean> => {
       });
 
       if (response.status === 403) {
-        // The CSRF cookie/token may have rotated independently of the page.
         const freshCsrfToken = await getCsrfToken(true);
         const retry = await fetch(`${getBaseUrl()}/api/accounts/refresh/`, {
           method: 'POST',
@@ -143,9 +142,6 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
 
   let response = await execute();
 
-  // If Django rejects the CSRF token, obtain a fresh one and retry the exact
-  // request once. This handles token rotation without creating an unsafe
-  // infinite retry loop.
   if (response.status === 403 && isUnsafeMethod(method)) {
     const body = await readJson<T | DjangoApiErrorBody>(response.clone());
     const detail = body as DjangoApiErrorBody | null;
@@ -155,9 +151,6 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     }
   }
 
-  // Access JWTs are intentionally short-lived. If an authenticated request
-  // reaches Django after expiry, rotate the HttpOnly refresh cookie once and
-  // retry the exact original request. Never retry more than once.
   if (response.status === 401 && path !== '/api/accounts/refresh/') {
     const refreshed = await refreshAuthentication();
     if (refreshed) {
@@ -178,6 +171,44 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
 
 /** Generic Django transport for transitional compatibility bridges. */
 export const djangoRequest = request;
+
+/**
+ * Fetch a protected binary resource using the HttpOnly-cookie session.
+ * The returned Blob can be rendered through a browser object URL, so the
+ * authentication credential never becomes part of an image/document URL.
+ */
+export const protectedBlob = async (
+  path: string,
+  init: RequestInit = {},
+): Promise<Blob> => {
+  if (!path.startsWith('/api/')) {
+    throw new Error('Django API paths must target /api/.');
+  }
+
+  const headers = new Headers(init.headers);
+  headers.set('Accept', headers.get('Accept') || '*/*');
+
+  const execute = () => fetch(`${getBaseUrl()}${path}`, {
+    ...init,
+    method: 'GET',
+    credentials: 'include',
+    headers,
+  });
+
+  let response = await execute();
+
+  if (response.status === 401) {
+    const refreshed = await refreshAuthentication();
+    if (refreshed) response = await execute();
+  }
+
+  if (!response.ok) {
+    const body = await readJson<DjangoApiErrorBody>(response.clone());
+    throw createApiError(response, body);
+  }
+
+  return response.blob();
+};
 
 const requestMultipart = async <T>(
   path: string,
