@@ -1,8 +1,8 @@
 from datetime import timedelta
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -29,7 +29,7 @@ class PrivateDocumentAccessTests(TestCase):
     def test_private_document_is_owner_or_admin_only(self):
         with TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
             path = f'kyc-documents/{self.owner.pk}/id-test.jpg'
-            default_storage.save(path, b'private-test-document')
+            default_storage.save(path, ContentFile(b'private-test-document'))
 
             self.client.force_authenticate(self.owner)
             owner_response = self.client.get(
