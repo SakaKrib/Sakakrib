@@ -26,6 +26,7 @@ def queue_email(*, recipient: str, template_type: str, payload: dict) -> Notific
         html_body=html_body,
         template_type=template_type,
         status="pending",
+        created_at=timezone.now(),
     )
 
 
