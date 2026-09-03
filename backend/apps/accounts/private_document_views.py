@@ -2,6 +2,7 @@ import uuid
 from pathlib import Path
 
 from django.core.files.storage import default_storage
+from django.http import FileResponse
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -17,6 +18,28 @@ ALLOWED_CONTENT_TYPES = {
     'image/webp': '.webp',
     'application/pdf': '.pdf',
 }
+
+
+def _content_type(path):
+    return {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'pdf': 'application/pdf',
+    }.get(path.rsplit('.', 1)[-1].lower(), 'application/octet-stream')
+
+
+def _normalize_path(bucket, path):
+    value = str(path or '').strip().lstrip('/')
+    if value.startswith(f'{bucket}/'):
+        return value
+    return f'{bucket}/{value}'
+
+
+def _is_safe_path(path):
+    candidate = Path(path)
+    return bool(path) and not candidate.is_absolute() and '..' not in candidate.parts
 
 
 class PrivateDocumentUploadView(APIView):
@@ -54,3 +77,39 @@ class PrivateDocumentUploadView(APIView):
             'size': size,
             'mime_type': content_type,
         }, status=201)
+
+
+class PrivateDocumentView(APIView):
+    """Serve a private document through the authenticated HttpOnly-cookie session.
+
+    The document path is not a credential. Authorization is performed on every
+    request, so no signed access token is placed in the URL or returned to the
+    browser.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        bucket = str(request.query_params.get('bucket') or '').strip()
+        path = str(request.query_params.get('path') or '').strip()
+
+        if bucket not in ALLOWED_BUCKETS:
+            return Response({'detail': 'Unsupported document storage bucket.'}, status=400)
+
+        path = _normalize_path(bucket, path)
+        if not _is_safe_path(path):
+            return Response({'detail': 'Invalid document path.'}, status=400)
+
+        if not is_admin(request.user) and not path.startswith(f'{bucket}/{request.user.pk}/'):
+            return Response({'detail': 'You do not have access to this document.'}, status=403)
+
+        if not default_storage.exists(path):
+            return Response({'detail': 'Document not found.'}, status=404)
+
+        response = FileResponse(
+            default_storage.open(path, 'rb'),
+            content_type=_content_type(path),
+        )
+        response['Content-Disposition'] = 'inline'
+        response['Cache-Control'] = 'private, max-age=300'
+        return response
