@@ -40,9 +40,14 @@ def _broadcast_location(point):
     layer = get_channel_layer()
     if not layer:
         return
-    async_to_sync(layer.group_send)(
-        tracking_group_name(point.booking_id),
-        {"type": "moving.location", "location": _serialize_point(point)},
+    location = _serialize_point(point)
+    group_name = tracking_group_name(point.booking_id)
+    # Never broadcast a location that could later be rolled back.
+    transaction.on_commit(
+        lambda: async_to_sync(layer.group_send)(
+            group_name,
+            {"type": "moving.location", "location": location},
+        )
     )
 
 
