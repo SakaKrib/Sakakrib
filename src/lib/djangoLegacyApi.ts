@@ -51,6 +51,9 @@ const getResource = (path: string) => path.split('?')[0].replace(/^\/rest\/v1\//
 
 const json = (init: RequestInit) => init.body == null ? undefined : init.body;
 
+const getAdminDashboard = () =>
+  djangoGet<{ items: Array<Record<string, any>> }>('/api/accounts/admin/users/');
+
 const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   if (path.startsWith('/api/')) return djangoRequest<T>(path, init);
   if (!path.startsWith('/rest/v1/')) throw new Error('Django API paths must target /api/.');
@@ -64,8 +67,28 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
   }
 
   if (resource === 'profiles') {
+    const userId = getEq(query, 'id');
+    if (method === 'GET') {
+      const dashboard = await getAdminDashboard();
+      if (userId) {
+        const item = dashboard.items.find((candidate) => String(candidate.id) === userId);
+        return (item?.profile ? [item.profile] : []) as T;
+      }
+      return dashboard.items.map((item) => item.profile).filter(Boolean) as T;
+    }
+    if ((method === 'PATCH' || method === 'PUT') && userId) {
+      return djangoRequest<T>(`/api/accounts/admin/users/${encodeURIComponent(userId)}/`, {
+        ...init,
+        method,
+      });
+    }
     if (method === 'GET') return djangoGet<T>('/api/accounts/me/');
     if (method === 'PATCH' || method === 'PUT') return djangoRequest<T>('/api/accounts/me/', { ...init, method });
+  }
+
+  if (resource === 'landlord_subscriptions' && method === 'GET') {
+    const dashboard = await getAdminDashboard();
+    return dashboard.items.map((item) => item.landlord_subscription).filter(Boolean) as T;
   }
 
   if (resource === 'listings') {
@@ -136,14 +159,33 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
     return response.messages;
   }
 
-  if (resource === 'mover_applications' && method === 'GET') {
-    const dashboard = await djangoGet<{ items?: Array<{ moverApplication?: unknown; id: string }> }>('/api/accounts/admin/users/');
+  if (resource === 'mover_applications') {
+    const applicationId = getEq(query, 'id');
     const applicantId = getEq(query, 'applicant_id');
-    if (applicantId) {
-      const item = (dashboard.items || []).find((candidate) => candidate.id === applicantId);
-      return (item?.moverApplication ? [item.moverApplication] : []) as T;
+    if (method === 'GET') {
+      const dashboard = await getAdminDashboard();
+      if (applicationId) {
+        return dashboard.items
+          .map((item) => item.moverApplication)
+          .filter((application) => application && String(application.id) === applicationId) as T;
+      }
+      if (applicantId) {
+        const item = dashboard.items.find((candidate) => String(candidate.id) === applicantId);
+        return (item?.moverApplication ? [item.moverApplication] : []) as T;
+      }
+      return dashboard.items.map((item) => item.moverApplication).filter(Boolean) as T;
     }
-    return (dashboard.items || []).map((item) => item.moverApplication).filter(Boolean) as T;
+    if (method === 'PATCH' && applicationId) {
+      const dashboard = await getAdminDashboard();
+      const item = dashboard.items.find((candidate) => String(candidate.moverApplication?.id) === applicationId);
+      if (!item) throw new Error('Mover application was not found.');
+      const body = JSON.parse(String(init.body || '{}')) as Record<string, unknown>;
+      return djangoPatch<T>(`/api/accounts/admin/users/${encodeURIComponent(String(item.id))}/application-status/`, {
+        application_type: 'mover',
+        status: String(body.status || 'pending'),
+        admin_review_note: body.review_notes ?? '',
+      });
+    }
   }
 
   throw new Error(`No Django mapping exists for legacy endpoint: ${path}`);
