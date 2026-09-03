@@ -8,8 +8,9 @@ import DashboardPage from './DashboardPage';
 import type { UserRole } from '@/types/domain';
 
 type ProfessionalRole = Extract<UserRole, 'landlord' | 'real_estate' | 'mover'>;
+type ApplicationStatusField = 'landlord_application_status' | 'real_estate_application_status' | 'mover_application_status';
 
-const applicationField: Record<ProfessionalRole, keyof NonNullable<ReturnType<typeof useAuth>['profile']>> = {
+const applicationField: Record<ProfessionalRole, ApplicationStatusField> = {
   landlord: 'landlord_application_status',
   real_estate: 'real_estate_application_status',
   mover: 'mover_application_status',
