@@ -3,6 +3,7 @@ from django.urls import path
 from .ai_caption_views import ListingAiCaptionView
 from .draft_views import ListingDraftDetailView, ListingDraftListView
 from .media_delete_views import ListingMediaDeleteView
+from .public_views import FeaturedListingsView
 from .views import (
     AdminListingReviewView,
     ListingCreateView,
@@ -21,6 +22,7 @@ urlpatterns = [
     path('media/', ListingMediaView.as_view(), name='listing-media'),
     path('media/<uuid:media_id>/delete/', ListingMediaDeleteView.as_view(), name='listing-media-delete'),
     path('media/<uuid:media_id>/', ListingMediaDetailView.as_view(), name='listing-media-detail'),
+    path('featured/', FeaturedListingsView.as_view(), name='listing-featured'),
     path('', ListingListView.as_view(), name='listing-list'),
     path('create/', ListingCreateView.as_view(), name='listing-create'),
     path('payment-intents/', ListingPaymentIntentView.as_view(), name='listing-payment-intent-create'),
