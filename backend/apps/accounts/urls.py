@@ -8,6 +8,7 @@ from .google_auth_views import GoogleLoginView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
 from .landlord_application_views import LandlordApplicationSubmitView
+from .mover_application_views import MoverApplicationSubmitView
 from .password_reset_views import PasswordResetConfirmView, PasswordResetRequestView
 from .private_document_views import PrivateDocumentUploadView, PrivateDocumentView
 from .profile_media_views import ProfilePhotoView
@@ -37,6 +38,7 @@ urlpatterns = [
     path('kyc/document/sign/', KycDocumentSignView.as_view(), name='kyc-document-sign'),
     path('kyc/document/<str:token>/', KycDocumentView.as_view(), name='kyc-document'),
     path('landlord/application/submit/', LandlordApplicationSubmitView.as_view(), name='landlord-application-submit'),
+    path('mover/application/submit/', MoverApplicationSubmitView.as_view(), name='mover-application-submit'),
     path('admin/applications/<uuid:user_id>/review/', AdminApplicationReviewView.as_view(), name='admin-application-review'),
     path('admin/users/', AdminDashboardDataView.as_view(), name='admin-users'),
     path('admin/users/<uuid:user_id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
