@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 import logging
 
@@ -22,6 +22,20 @@ class MoverApplicationSubmitView(APIView):
     """Django replacement for the legacy submit_mover_application RPC."""
 
     permission_classes = [IsAuthenticated]
+
+    # These are the fields owned by the mover application form. Server-managed
+    # and admin-review fields are intentionally excluded from applicant input.
+    FORM_FIELDS = {
+        'applicant_email', 'applicant_name', 'application_type',
+        'base_rate_kes', 'capacity_details', 'dl_number', 'dl_photo_url',
+        'driver_full_name', 'end_time', 'insurance_policy_details',
+        'latitude', 'liability_accepted', 'location', 'longitude',
+        'national_id', 'number_plate', 'operating_city', 'operating_county',
+        'payment_account', 'payment_channel', 'phone', 'rate_per_km_kes',
+        'reference_contacts', 'start_time', 'submitted_at', 'terms_accepted',
+        'vehicle_inspection_expiry', 'vehicle_type', 'working_days',
+    }
+    ADMIN_FIELDS = {'status', 'reviewed_by', 'reviewed_at', 'review_notes', 'admin_review_note'}
 
     @staticmethod
     def _as_bool(value):
@@ -49,47 +63,53 @@ class MoverApplicationSubmitView(APIView):
             raise ValueError('Vehicle inspection expiration date is invalid.')
 
     @staticmethod
+    def _as_time(value, field):
+        try:
+            return datetime.strptime(str(value).strip(), '%H:%M').time()
+        except (TypeError, ValueError):
+            raise ValueError(f'{field} must be a valid time in HH:MM format.')
+
+    @staticmethod
     def _document_owned(path, user_id):
         value = str(path or '').strip()
         return bool(value) and value.startswith(f'licenses/{user_id}/') and '..' not in Path(value).parts
 
     @staticmethod
     def _serialize(application):
+        # Applicant-facing representation: form fields plus application
+        # identity/current status. Admin review fields are never exposed here.
         return {
             'id': str(application.id),
-            'applicant_id': str(application.applicant_id),
             'applicant_email': application.applicant_email,
             'applicant_name': application.applicant_name,
             'application_type': application.application_type,
-            'driver_full_name': application.driver_full_name,
-            'national_id': application.national_id,
+            'base_rate_kes': application.base_rate_kes,
+            'capacity_details': application.capacity_details,
             'dl_number': application.dl_number,
             'dl_photo_url': application.dl_photo_url,
-            'vehicle_type': application.vehicle_type,
+            'driver_full_name': application.driver_full_name,
+            'end_time': application.end_time.strftime('%H:%M') if application.end_time else None,
+            'insurance_policy_details': application.insurance_policy_details,
+            'latitude': application.latitude,
+            'liability_accepted': application.liability_accepted,
+            'location': application.location,
+            'longitude': application.longitude,
+            'national_id': application.national_id,
             'number_plate': application.number_plate,
-            'capacity_details': application.capacity_details,
             'operating_city': application.operating_city,
             'operating_county': application.operating_county,
-            'phone': application.phone,
-            'base_rate_kes': application.base_rate_kes,
-            'rate_per_km_kes': application.rate_per_km_kes,
-            'payment_channel': application.payment_channel,
             'payment_account': application.payment_account,
-            'insurance_policy_details': application.insurance_policy_details,
-            'vehicle_inspection_expiry': application.vehicle_inspection_expiry,
-            'liability_accepted': application.liability_accepted,
-            'terms_accepted': application.terms_accepted,
+            'payment_channel': application.payment_channel,
+            'phone': application.phone,
+            'rate_per_km_kes': application.rate_per_km_kes,
             'reference_contacts': application.reference_contacts,
+            'start_time': application.start_time.strftime('%H:%M') if application.start_time else None,
+            'terms_accepted': application.terms_accepted,
+            'vehicle_inspection_expiry': application.vehicle_inspection_expiry,
+            'vehicle_type': application.vehicle_type,
+            'working_days': application.working_days,
             'status': application.status,
-            'reviewed_by': str(application.reviewed_by) if application.reviewed_by else None,
-            'reviewed_at': application.reviewed_at,
-            'review_notes': application.review_notes,
             'submitted_at': application.submitted_at,
-            'created_at': application.created_at,
-            'updated_at': application.updated_at,
-            'latitude': application.latitude,
-            'longitude': application.longitude,
-            'location': application.location,
         }
 
     def get(self, request):
@@ -119,6 +139,25 @@ class MoverApplicationSubmitView(APIView):
         if not isinstance(application, dict):
             return Response({'success': False, 'code': 'INVALID_APPLICATION_DATA', 'message': 'Mover application data is required.'}, status=400)
 
+        submitted_keys = set(application.keys())
+        admin_fields = submitted_keys & self.ADMIN_FIELDS
+        if admin_fields:
+            return Response({
+                'success': False,
+                'code': 'INVALID_APPLICATION_FIELDS',
+                'message': 'Admin review fields cannot be submitted with a mover application.',
+                'fields': sorted(admin_fields),
+            }, status=400)
+
+        unexpected_fields = submitted_keys - self.FORM_FIELDS
+        if unexpected_fields:
+            return Response({
+                'success': False,
+                'code': 'INVALID_APPLICATION_FIELDS',
+                'message': 'Only mover application form fields are accepted.',
+                'fields': sorted(unexpected_fields),
+            }, status=400)
+
         try:
             full_name = str(application.get('driver_full_name') or '').strip()
             national_id = str(application.get('national_id') or '').strip()
@@ -138,8 +177,8 @@ class MoverApplicationSubmitView(APIView):
             terms_accepted = self._as_bool(application.get('terms_accepted'))
             references = application.get('reference_contacts')
             working_days = application.get('working_days')
-            start_time = str(application.get('start_time') or '').strip()
-            end_time = str(application.get('end_time') or '').strip()
+            start_time = self._as_time(application.get('start_time'), 'start_time')
+            end_time = self._as_time(application.get('end_time'), 'end_time')
 
             if not full_name or len(full_name.split()) < 2:
                 raise ValueError('First name and last name are required.')
@@ -175,7 +214,7 @@ class MoverApplicationSubmitView(APIView):
                 raise ValueError('Add at least one representative reference contact.')
             if not isinstance(working_days, list) or not working_days:
                 raise ValueError('Select at least one working day before submitting.')
-            if not start_time or not end_time or end_time <= start_time:
+            if end_time <= start_time:
                 raise ValueError('End time must be later than the start time.')
 
             latitude = self._as_float(application.get('latitude'), 'latitude')
@@ -225,6 +264,9 @@ class MoverApplicationSubmitView(APIView):
             liability_accepted=liability_accepted,
             terms_accepted=terms_accepted,
             reference_contacts=references,
+            working_days=working_days,
+            start_time=start_time,
+            end_time=end_time,
             status='pending',
             submitted_at=submitted_at,
             latitude=latitude,
@@ -282,6 +324,7 @@ class MoverApplicationSubmitView(APIView):
             'message': 'Your mover application has been submitted for review.',
             'mover_id': str(mover_application.id),
             'profile_id': str(profile.id),
+            'application': self._serialize(mover_application),
             'profile': ProfileSerializer(profile).data,
             'notifications': notifications,
         }, status=200)
