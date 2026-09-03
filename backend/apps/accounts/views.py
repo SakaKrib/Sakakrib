@@ -8,6 +8,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.email_services import queue_email
+
 from .auth_service import send_signup_otp, verify_signup_otp
 from .jwt_service import clear_auth_cookies, issue_token_pair, revoke_refresh_token, rotate_refresh_token, set_auth_cookies
 from .models import Profile
@@ -116,6 +118,25 @@ class LoginView(APIView):
         access, refresh = issue_token_pair(user)
         response = Response({'success': True, 'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
         set_auth_cookies(response, access, refresh)
+
+        # Sign-in notification is deliberately best-effort. Authentication must
+        # not fail merely because the optional email queue is unavailable.
+        try:
+            queue_email(
+                recipient=user.email,
+                template_type='sign_in_notification',
+                payload={
+                    'email': user.email,
+                    'sign_in_time': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
+                    'device': request.META.get('HTTP_USER_AGENT', 'Unknown device')[:255],
+                    'location': request.META.get('REMOTE_ADDR', 'Unknown location'),
+                    'security_url': getattr(settings, 'PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5173'),
+                },
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Failed to queue sign-in notification for %s', user.email)
+
         return response
 
 
