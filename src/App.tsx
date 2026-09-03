@@ -20,8 +20,8 @@ import PostListingPage from '@/pages/PostListingPageV2';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
+import RoleDashboardRouter from '@/Dashboards/RoleDashboardRouter';
 import DashboardPage from '@/Dashboards/DashboardPage';
-import RenterDashboard from '@/Dashboards/RenterDashboard';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
@@ -56,10 +56,10 @@ function AppContent() {
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
       case 'admin-user-details': return profile?.is_admin === true || profile?.role === 'admin' ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
-      case 'dashboard': return profile?.role === 'renter' ? <RenterDashboard /> : <DashboardPage />;
+      case 'dashboard': return <RoleDashboardRouter />;
       case 'profile': return <ProfilePage />;
-      case 'my-bookings': return <DashboardPage />;
-      case 'my-listings': return <DashboardPage />;
+      case 'my-bookings': return <RoleDashboardRouter />;
+      case 'my-listings': return <RoleDashboardRouter />;
       case 'subscription-plans': return <PMSSubscriptionPage />;
       default: return <HomePage />;
     }
