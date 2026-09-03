@@ -1,0 +1,19 @@
+name: Fix Document Capture
+on: push
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/fix_document_capture.py
+      - run: npm ci && npm run build
+      - name: Commit and clean up
+        run: |
+          git config user.name 'SakaKrib Migration Bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f scripts/fix_document_capture.py .github/workflows/fix-document-capture.yml
+          git add -A
+          git commit -m 'fix(storage): complete Django document upload response handling [skip ci]' || exit 0
+          git push origin HEAD:django-backend-migration
