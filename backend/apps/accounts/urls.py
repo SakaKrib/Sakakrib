@@ -8,6 +8,7 @@ from .google_auth_views import GoogleLoginView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycDocumentView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
 from .landlord_application_views import LandlordApplicationSubmitView
+from .password_reset_views import PasswordResetConfirmView, PasswordResetRequestView
 from .profile_media_views import ProfilePhotoView
 from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, ResendOtpView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
@@ -23,6 +24,8 @@ urlpatterns = [
     path('set-role/', SetRoleView.as_view(), name='set-role'),
     path('logout/', LogoutView.as_view(), name='logout'),
     path('me/', MeView.as_view(), name='me'),
+    path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     path('profile-photo/', ProfilePhotoView.as_view(), name='profile-photo-upload'),
     path('profile-photo/<uuid:user_id>/', ProfilePhotoView.as_view(), name='profile-photo'),
     path('kyc/upload/', KycDocumentUploadView.as_view(), name='kyc-upload'),
