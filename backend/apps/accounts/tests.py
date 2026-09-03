@@ -22,7 +22,8 @@ class AuthenticationApiTests(TestCase):
         self.assertFalse(user.email_verified)
         self.assertTrue(user.signup_otp_hash)
         notification = NotificationEmail.objects.get(recipient='new@example.com', template_type='otp_verification')
-        self.assertIn('new@example.com', notification.html_body)
+        self.assertIn('Verification Code', notification.html_body)
+        self.assertIn('New', notification.html_body)
         self.assertEqual(len(mail.outbox), 0)
 
     def test_login_requires_email_verification(self):
