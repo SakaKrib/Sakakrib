@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
