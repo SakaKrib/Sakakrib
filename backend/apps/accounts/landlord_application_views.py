@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.email_services import queue_email
+
 from .models import Profile
 from .serializers import ProfileSerializer
 
@@ -70,9 +72,55 @@ class LandlordApplicationSubmitView(APIView):
             'id_document_type', 'id_document_url', 'landlord_application_status', 'updated_at',
         ])
 
+        application = {
+            'application_id': str(profile.id),
+            'id': str(profile.id),
+            'applicant_id': str(profile.id),
+            'applicant_name': ' '.join(part for part in (first_name, middle_name, last_name) if part),
+            'full_name': ' '.join(part for part in (first_name, middle_name, last_name) if part),
+            'applicant_email': profile.email,
+            'email': profile.email,
+            'phone': phone,
+            'national_id': national_id,
+            'document_type': document_type,
+            'document_url': document_url,
+            'application_type': 'landlord',
+            'status': 'pending',
+            'submitted_at': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
+        }
+
+        notification_status = {'applicant_queued': False, 'admin_queued': False}
+        try:
+            queue_email(
+                recipient=profile.email,
+                template_type='landlord_application_submitted',
+                payload=application,
+            )
+            notification_status['applicant_queued'] = True
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Failed to queue landlord applicant notification for %s', profile.email)
+
+        try:
+            from django.conf import settings
+            admin_email = str(getattr(settings, 'ADMIN_EMAIL', '') or '').strip().lower()
+            if admin_email:
+                queue_email(
+                    recipient=admin_email,
+                    template_type='landlord_admin_notification',
+                    payload=application,
+                )
+                notification_status['admin_queued'] = True
+            else:
+                logging.getLogger(__name__).error('ADMIN_EMAIL is not configured; landlord admin notification was not queued')
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception('Failed to queue landlord admin notification for %s', profile.email)
+
         return Response({
             'success': True,
             'code': 'SUBMITTED',
             'message': 'Your landlord application has been submitted for review.',
             'profile': ProfileSerializer(profile).data,
+            'notifications': notification_status,
         }, status=200)
