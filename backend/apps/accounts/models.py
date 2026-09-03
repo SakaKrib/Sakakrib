@@ -37,7 +37,7 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=150, blank=True, default="")
     middle_name = models.CharField(max_length=150, blank=True, default="")
     phone = models.CharField(max_length=50, blank=True, default="")
-    role = models.CharField(max_length=50, default="renter")
+    role = models.CharField(max_length=50, null=True, blank=True, default=None)
     is_admin = models.BooleanField(default=False)
     kyc_completed = models.BooleanField(default=False)
     verification_status = models.CharField(max_length=50, default="pending_verification")
