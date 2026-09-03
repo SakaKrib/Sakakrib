@@ -7,6 +7,7 @@ import BottomBar from '@/components/BottomBar';
 import SecurityBanner from '@/components/SecurityBanner';
 import AuthModal from '@/components/AuthModal';
 import RoleSelectionModal from '@/components/RoleSelectionModal';
+import DashboardAccessGate from '@/components/DashboardAccessGate';
 import MovingGpsTracker from '@/components/MovingGpsTracker';
 import HomePage from '@/pages/HomePage';
 import ListingsPage from '@/pages/ListingsPage';
@@ -21,6 +22,8 @@ import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
 import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
 import DashboardPage from '@/Dashboards/DashboardPage';
+import LandlordDashboard from '@/Dashboards/LandlordDashboard';
+import RealEstateDashboard from '@/Dashboards/Realestatedashboard';
 import RenterDashboard from '@/Dashboards/RenterDashboard';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import ProfilePage from '@/pages/ProfilePage';
@@ -55,8 +58,16 @@ function AppContent() {
       case 'register-mover': return <RegisterMoverPage />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
-      case 'admin-user-details': return profile?.is_admin === true || profile?.role === 'admin' ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
-      case 'dashboard': return profile?.role === 'renter' ? <RenterDashboard /> : <DashboardPage />;
+      case 'admin-user-details':
+        return profile?.is_admin === true || profile?.role === 'admin'
+          ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />)
+          : <DashboardPage />;
+      case 'dashboard':
+        if (profile?.role === 'renter') return <RenterDashboard />;
+        if (profile?.role === 'landlord') return <DashboardAccessGate role="landlord"><LandlordDashboard /></DashboardAccessGate>;
+        if (profile?.role === 'real_estate') return <DashboardAccessGate role="real_estate"><RealEstateDashboard /></DashboardAccessGate>;
+        if (profile?.role === 'mover') return <DashboardAccessGate role="mover"><DashboardPage /></DashboardAccessGate>;
+        return <DashboardPage />;
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
