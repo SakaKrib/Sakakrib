@@ -19,7 +19,7 @@ class RealEstatePMSBoundaryTests(SimpleTestCase):
             'reason': 'SUBSCRIPTION_ACTIVE',
         }
         request = self.factory.get('/api/pms/real-estate/dashboard/')
-        request.user = Mock(id='user-1', role='landlord')
+        request.user = Mock(id='user-1', role='landlord', is_authenticated=True)
 
         response = RealEstatePMSDashboardView.as_view()(request)
 
@@ -39,7 +39,7 @@ class RealEstatePMSBoundaryTests(SimpleTestCase):
             {'action': 'add_listing', 'listing_id': '00000000-0000-0000-0000-000000000001'},
             format='json',
         )
-        request.user = Mock(id='user-1', role='real_estate')
+        request.user = Mock(id='user-1', role='real_estate', is_authenticated=True)
 
         response = RealEstatePMSActionView.as_view()(request)
 
