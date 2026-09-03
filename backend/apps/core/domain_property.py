@@ -27,11 +27,11 @@ class PMSSubscriptionNotification(models.Model):
     class Meta: db_table='pms_subscription_notifications'
 
 class PlatformSettings(models.Model):
-    id=models.BooleanField(primary_key=True,default=True); mover_commission_rate=models.DecimalField(max_digits=10,decimal_places=6,default=0.1); mover_operational_markup_rate=models.DecimalField(max_digits=10,decimal_places=6,default=0); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
+    id=models.BooleanField(primary_key=True,default=True); mover_commission_rate=models.DecimalField(max_digits=10,decimal_places=6,default=0.2); mover_operational_markup_rate=models.DecimalField(max_digits=10,decimal_places=6,default=0); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     class Meta: db_table='platform_settings'
 
 class CommunityPost(models.Model):
-    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); user_id=models.UUIDField(); listing_id=models.UUIDField(null=True,blank=True); content=models.TextField(default=''); ai_caption=models.TextField(null=True,blank=True,default=''); post_type=models.TextField(default='listing'); created_at=models.DateTimeField(null=True,blank=True)
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); user_id=models.UUIDField(); listing_id=models.UUIDField(null=True,blank=True); content=models.TextField(default=''); ai_caption=models.TextField(null=True,blank=True); post_type=models.TextField(default='listing'); created_at=models.DateTimeField(null=True,blank=True)
     class Meta: db_table='community_posts'
 
 class Review(models.Model):
