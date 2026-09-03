@@ -2,24 +2,24 @@ from decimal import Decimal
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 
 from .payment_services import _period_end, _paypal_return_url, finalize_mpesa_subscription, finalize_paypal_subscription
 
 
-class SubscriptionPaymentSecurityTests(SimpleTestCase):
+class SubscriptionPaymentSecurityTests(TestCase):
     def test_paypal_return_url_binds_invoice_id(self):
         url = _paypal_return_url('https://app.example.com/paypal/return?source=paypal', uuid4())
         self.assertIn('source=paypal', url)
         self.assertIn('invoice_id=', url)
 
-    @patch('apps.subscriptions.payment_services.verify_and_finalize_initial_subscription', create=True)
-    def test_paypal_finalization_delegates_to_remote_verification(self, verifier):
-        # The verifier is imported lazily by finalize_paypal_subscription.
-        with patch('apps.subscriptions.paypal_subscription_services.verify_and_finalize_initial_subscription', return_value={'success': True, 'status': 'PAID'}) as remote:
-            result = finalize_paypal_subscription(uuid4(), 'I-REMOTE-SUBSCRIPTION')
-        self.assertEqual(result['status'], 'PAID')
-        remote.assert_called_once()
+    @patch('apps.subscriptions.paypal_subscription_services.record_paypal_subscription_approval', return_value={'success': True, 'status': 'PENDING_PAYMENT'})
+    def test_paypal_finalization_delegates_to_remote_verification(self, remote):
+        invoice_id = uuid4()
+        paypal_subscription_id = 'I-REMOTE-SUBSCRIPTION'
+        result = finalize_paypal_subscription(invoice_id, paypal_subscription_id)
+        self.assertEqual(result['status'], 'PENDING_PAYMENT')
+        remote.assert_called_once_with(invoice_id, paypal_subscription_id)
 
     @patch('apps.subscriptions.payment_services._activate_invoice')
     @patch('apps.subscriptions.payment_services.SubscriptionInvoice.objects')
