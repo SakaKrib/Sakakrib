@@ -1,0 +1,63 @@
+name: Django Backend Cutover Check
+
+on:
+  push:
+    branches: [django-backend-migration]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Django system checks
+        run: python manage.py check
+
+      - name: Migration drift check
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Backend tests
+        run: python manage.py test
+
+      - name: Reject backend Supabase runtime dependencies
+        working-directory: .
+        run: |
+          set -euo pipefail
+          found=0
+          patterns=(
+            '@supabase'
+            'supabase\.co'
+            'SUPABASE_URL'
+            'SUPABASE_ANON_KEY'
+            'functions/v1'
+            'supabase_functions'
+          )
+          for pattern in "${patterns[@]}"; do
+            if git grep -n -I -E "$pattern" -- backend ':!backend/MIGRATION_STATUS.md' ':!backend/README.md'; then
+              found=1
+            fi
+          done
+          if [ "$found" -ne 0 ]; then
+            echo 'Backend Supabase runtime references remain.'
+            exit 1
+          fi
+
+      - name: Clean one-time workflow
+        if: success()
+        working-directory: .
+        run: |
+          git config user.name 'SakaKrib Migration Bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f .github/workflows/django-backend-cutover-check.yml
+          git add -A
+          git commit -m 'chore(migration): remove one-time backend cutover check [skip ci]' || exit 0
+          git push origin HEAD:django-backend-migration
