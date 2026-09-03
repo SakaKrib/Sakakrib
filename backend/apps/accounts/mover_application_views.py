@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 import logging
 
@@ -33,7 +33,11 @@ class MoverApplicationSubmitView(APIView):
             number = float(value)
         except (TypeError, ValueError):
             raise ValueError(f'{field} must be a valid number.')
-        if not (-90 <= number <= 90) if field == 'latitude' else not (-180 <= number <= 180):
+        if field == 'latitude':
+            valid = -90 <= number <= 90
+        else:
+            valid = -180 <= number <= 180
+        if not valid:
             raise ValueError(f'{field} is outside the valid range.')
         return number
 
@@ -48,6 +52,51 @@ class MoverApplicationSubmitView(APIView):
     def _document_owned(path, user_id):
         value = str(path or '').strip()
         return bool(value) and value.startswith(f'licenses/{user_id}/') and '..' not in Path(value).parts
+
+    @staticmethod
+    def _serialize(application):
+        return {
+            'id': str(application.id),
+            'applicant_id': str(application.applicant_id),
+            'applicant_email': application.applicant_email,
+            'applicant_name': application.applicant_name,
+            'application_type': application.application_type,
+            'driver_full_name': application.driver_full_name,
+            'national_id': application.national_id,
+            'dl_number': application.dl_number,
+            'dl_photo_url': application.dl_photo_url,
+            'vehicle_type': application.vehicle_type,
+            'number_plate': application.number_plate,
+            'capacity_details': application.capacity_details,
+            'operating_city': application.operating_city,
+            'operating_county': application.operating_county,
+            'phone': application.phone,
+            'base_rate_kes': application.base_rate_kes,
+            'rate_per_km_kes': application.rate_per_km_kes,
+            'payment_channel': application.payment_channel,
+            'payment_account': application.payment_account,
+            'insurance_policy_details': application.insurance_policy_details,
+            'vehicle_inspection_expiry': application.vehicle_inspection_expiry,
+            'liability_accepted': application.liability_accepted,
+            'terms_accepted': application.terms_accepted,
+            'reference_contacts': application.reference_contacts,
+            'status': application.status,
+            'reviewed_by': str(application.reviewed_by) if application.reviewed_by else None,
+            'reviewed_at': application.reviewed_at,
+            'review_notes': application.review_notes,
+            'submitted_at': application.submitted_at,
+            'created_at': application.created_at,
+            'updated_at': application.updated_at,
+            'latitude': application.latitude,
+            'longitude': application.longitude,
+            'location': application.location,
+        }
+
+    def get(self, request):
+        application = MoverApplication.objects.filter(applicant_id=request.user.pk).order_by('-created_at').first()
+        if not application:
+            return Response({'application': None}, status=200)
+        return Response({'application': self._serialize(application)}, status=200)
 
     @transaction.atomic
     def post(self, request):
@@ -201,6 +250,7 @@ class MoverApplicationSubmitView(APIView):
             'id': str(mover_application.id),
             'applicant_id': str(profile.id),
             'applicant_name': full_name,
+            'full_name': full_name,
             'applicant_email': profile.email,
             'email': profile.email,
             'application_type': 'mover',
