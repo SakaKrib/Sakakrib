@@ -1,4 +1,5 @@
 from django.urls import path
+from .homepage_views import HomepageStatsView
 from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
 from .moving_views import BookingEventView, BookingView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
 from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, MoverQuoteView, MovingBookingCancelView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView
@@ -18,6 +19,7 @@ from .payment_method_views import LandlordPaymentMethodView
 from .rent_advance_views import LandlordMarkRentPaidThroughView, LandlordRentPaymentHistoryView, LandlordRentUnitView
 
 urlpatterns = [
+    path("homepage-stats/", HomepageStatsView.as_view(), name="homepage-stats"),
     path("bookings/", BookingView.as_view(), name="booking-list"), path("bookings/<uuid:object_id>/", BookingView.as_view(), name="booking-detail"),
     path("booking-events/", BookingEventView.as_view(), name="booking-event-list"), path("booking-events/<uuid:object_id>/", BookingEventView.as_view(), name="booking-event-detail"),
     path("movers/", MoverView.as_view(), name="mover-list"), path("movers/<uuid:object_id>/", MoverView.as_view(), name="mover-detail"),
@@ -46,7 +48,7 @@ urlpatterns = [
     path("renter/invoices/", RenterInvoiceView.as_view(), name="renter-invoice-list"), path("renter/invoices/<uuid:invoice_id>/", RenterInvoiceView.as_view(), name="renter-invoice-detail"),
     path("renter/invoices/<uuid:invoice_id>/submissions/", RenterPaymentSubmissionView.as_view(), name="renter-payment-submissions"),
     path("renter/payment-destination/", RenterPaymentDestinationView.as_view(), name="renter-payment-destination"),
-    path("renter/rent-summary/", RenterRentSummaryView.as_view(), name="renter-rent-summary"), path("renter/payment-history/", RenterPaymentHistoryView.as_view(), name="renter-payment-history"), path("renter/mover-schedule-availability/", RenterMoverScheduleAvailabilityView.as_view(), name="renter-mover-schedule-availability"),
+    path("renter/rent-summary/", RenterRentSummaryView.as_view(), name="renter-rent-summary"), path("renter/payment-history/", RenterPaymentHistoryView.as_view(), name="renter-payment-history"), path("renter/mover-schedule-availability/", RenterMoverScheduleAvailabilityView.as_view(), name="mover-schedule-availability"),
     path("pms/entitlement/", PMSEntitlementView.as_view(), name="pms-entitlement"),
     path("pms/dashboard/", PMSDashboardView.as_view(), name="pms-dashboard"), path("pms/action/", PMSActionView.as_view(), name="pms-action"),
     path("pms/real-estate/dashboard/", RealEstatePMSDashboardView.as_view(), name="real-estate-pms-dashboard"),
