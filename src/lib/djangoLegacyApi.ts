@@ -69,15 +69,18 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
   if (resource === 'profiles') {
     const userId = getEq(query, 'id');
     if (method === 'GET') {
-      // A user's own profile is not an admin resource. The old Supabase
-      // query included `id=eq.<current-user-id>`, so translate that call to
-      // the authenticated /me/ endpoint rather than the admin user list.
       const profile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
       if (userId && String(profile.id) !== userId) return [] as T;
       return [profile] as T;
     }
     if ((method === 'PATCH' || method === 'PUT') && userId) {
-      // Preserve the admin-only path for legacy admin profile edits.
+      // Legacy self-profile updates must never use an administrator endpoint.
+      // Compare the requested id with the authenticated /me/ identity first;
+      // only a different target is allowed to use the admin compatibility path.
+      const profile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
+      if (String(profile.id) === userId) {
+        return djangoRequest<T>('/api/accounts/me/', { ...init, method });
+      }
       return djangoRequest<T>(`/api/accounts/admin/users/${encodeURIComponent(userId)}/`, {
         ...init,
         method,
@@ -87,9 +90,6 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
   }
 
   if (resource === 'landlord_subscriptions' && method === 'GET') {
-    // The legacy landlord dashboard queried its own subscription row. Do not
-    // route this through the admin dashboard, which would incorrectly reject
-    // normal landlord accounts.
     const subscription = await djangoGet<Record<string, unknown>>('/api/subscriptions/me/');
     if (!subscription?.subscription_id) return [] as T;
 
