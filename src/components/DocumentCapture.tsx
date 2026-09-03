@@ -607,23 +607,19 @@ export default function DocumentCapture({
         mime_type?: string;
       }>('/api/accounts/documents/upload/', formData);
 
-      if (!response.ok) {
+      const storagePath = result?.path;
+
+      if (!storagePath) {
         throw new Error(
-          result?.error ||
-            result?.message ||
-            'Document upload failed.'
+          'The document was uploaded but its storage path could not be confirmed.'
         );
       }
 
-      const publicUrl =
-        result.url ||
-        result.publicUrl;
+      const publicUrl = await resolveSignedUrl(storagePath);
 
-      const storagePath = result.path;
-
-      if (!publicUrl || !storagePath) {
+      if (!publicUrl) {
         throw new Error(
-          'The document was uploaded but its details could not be confirmed.'
+          'The document was uploaded but could not be opened securely.'
         );
       }
 
