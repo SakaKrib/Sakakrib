@@ -9,7 +9,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .authorization import is_admin
 from .models import Profile
 
 
@@ -34,8 +33,6 @@ class ProfilePhotoView(APIView):
         profile = Profile.objects.filter(pk=user_id).first()
         if not profile:
             return Response({'detail': 'Profile not found.'}, status=404)
-        if not is_admin(request.user) and str(request.user.pk) != str(profile.pk):
-            return Response({'detail': 'You do not have access to this profile photo.'}, status=403)
         storage_path = _storage_path(profile.profile_photo_url)
         if not storage_path or not default_storage.exists(storage_path):
             return Response({'detail': 'Profile photo not found.'}, status=404)
