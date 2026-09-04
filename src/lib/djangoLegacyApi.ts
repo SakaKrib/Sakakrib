@@ -51,6 +51,18 @@ const getResource = (path: string) => path.split('?')[0].replace(/^\/rest\/v1\//
 
 const json = (init: RequestInit) => init.body == null ? undefined : init.body;
 
+const parseBody = (init: RequestInit): Record<string, unknown> => {
+  if (init.body == null) return {};
+  if (typeof init.body === 'string') {
+    try {
+      return JSON.parse(init.body) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
 const getAdminDashboard = () =>
   djangoGet<{ items: Array<Record<string, any>> }>('/api/accounts/admin/users/');
 
@@ -74,6 +86,33 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
       return [profile] as T;
     }
     if ((method === 'PATCH' || method === 'PUT') && userId) {
+      const body = parseBody(init);
+      const applicationFields = [
+        'landlord_application_status',
+        'real_estate_application_status',
+        'mover_application_status',
+      ] as const;
+      const applicationField = applicationFields.find((field) => field in body);
+
+      // Application approval/rejection/pending is a domain state transition.
+      // Route it through the single canonical Django service rather than
+      // partially mutating profile fields through the legacy compatibility path.
+      if (applicationField) {
+        const applicationType = applicationField.replace('_application_status', '') as
+          | 'landlord'
+          | 'real_estate'
+          | 'mover';
+        const status = String(body[applicationField] || '').trim().toLowerCase();
+        return djangoPatch<T>(
+          `/api/accounts/admin/users/${encodeURIComponent(userId)}/application-status/`,
+          {
+            application_type: applicationType,
+            status,
+            admin_review_note: body.admin_review_note ?? '',
+          }
+        );
+      }
+
       const profile = await djangoGet<Record<string, unknown>>('/api/accounts/me/');
       if (String(profile.id) === userId) {
         return djangoRequest<T>('/api/accounts/me/', { ...init, method });
