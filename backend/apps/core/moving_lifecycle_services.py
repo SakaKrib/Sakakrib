@@ -52,11 +52,30 @@ def confirm_moving_delivery(*, user_id, booking_id):
         ])
 
     both_confirmed = bool(booking.renter_confirmed_delivery_at and booking.mover_confirmed_delivery_at)
+    newly_completed = False
     if both_confirmed and booking.status == "in_progress":
         booking.status = "completed"
         booking.completed_at = booking.completed_at or now
         booking.updated_at = now
         booking.save(update_fields=["status", "completed_at", "updated_at"])
+        newly_completed = True
+
+    if newly_completed:
+        notification_data = {"booking_id": str(booking.id), "completed_at": booking.completed_at.isoformat()}
+        UserNotification.objects.create(
+            user_id=booking.renter_id,
+            notification_type="MOVING_COMPLETED",
+            title="Moving job completed",
+            message="Your move has been completed. Thank you for using Saka Krib.",
+            data=notification_data,
+        )
+        UserNotification.objects.create(
+            user_id=mover.user_id,
+            notification_type="MOVING_COMPLETED",
+            title="Moving job completed",
+            message="The renter has confirmed delivery and your moving job is now complete.",
+            data=notification_data,
+        )
 
     return {
         "booking_id": str(booking.id),
@@ -99,13 +118,10 @@ def open_moving_dispute(*, user_id, booking_id, reason_code, description):
         final_payment_status="held", updated_at=now
     )
 
-    recipient_id = mover_user_id = Mover.objects.filter(pk=booking.mover_id).values_list("user_id", flat=True).first()
+    mover_user_id = Mover.objects.filter(pk=booking.mover_id).values_list("user_id", flat=True).first()
     if mover_user_id is None:
         raise ValidationError("Mover account not found")
-    if user_id == booking.renter_id:
-        recipient_id = mover_user_id
-    else:
-        recipient_id = booking.renter_id
+    recipient_id = mover_user_id if user_id == booking.renter_id else booking.renter_id
     UserNotification.objects.create(
         user_id=recipient_id,
         notification_type="MOVING_DISPUTE_OPENED",
