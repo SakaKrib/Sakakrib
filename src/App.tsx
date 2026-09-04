@@ -22,13 +22,19 @@ import KycVerifyPage from '@/pages/KycVerifyPage';
 import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
 import RoleDashboardRouter from '@/Dashboards/RoleDashboardRouter';
 import DashboardPage from '@/Dashboards/DashboardPage';
-import RenterDashboard from '@/Dashboards/RenterDashboard';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
 import RegisterMoverPage from './pages/RegisterMoverPage';
 import MoverCalendarPage from './pages/Movers/MoverCalendarPage';
+import MoverBookingRequestsPage from './pages/Movers/MoverBookingRequestsPage';
+import MoverUpcomingJobsPage from './pages/Movers/MoverUpcomingJobsPage';
+import MoverCustomers from './pages/Movers/MoverCustomers';
+import MoverInvoices from './pages/Movers/MoverInvoices';
+import MoverEarnings from './pages/Movers/MoverEarnings';
+import MoverNotifications from './pages/Movers/MoverNotifications';
+import MoverMessages from './pages/Movers/MoverMessages';
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
@@ -36,11 +42,9 @@ import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
 function AppContent() {
   const { view, selectedAdminUserId } = useNav();
   const { profile } = useAuth();
-
   if (window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
   if (window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
   if (window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
-
   const renderView = () => {
     switch (view) {
       case 'home': return <HomePage />;
@@ -52,6 +56,13 @@ function AppContent() {
       case 'mover-booking-detail': return <MoverBookingDetailPage />;
       case 'mover-tracking': return <MoverTrackingPage />;
       case 'mover-calendar': return <MoverCalendarPage />;
+      case 'mover-booking-requests': return <MoverBookingRequestsPage />;
+      case 'mover-upcoming-jobs': return <MoverUpcomingJobsPage />;
+      case 'mover-customers': return <MoverCustomers />;
+      case 'mover-invoices': return <MoverInvoices />;
+      case 'mover-earnings': return <MoverEarnings />;
+      case 'mover-notifications': return <MoverNotifications />;
+      case 'mover-messages': return <MoverMessages />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
@@ -67,10 +78,6 @@ function AppContent() {
       default: return <HomePage />;
     }
   };
-
   return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /><MovingGpsTracker /></div>;
 }
-
-export default function App() {
-  return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
-}
+export default function App() { return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>; }
