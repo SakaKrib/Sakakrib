@@ -57,16 +57,16 @@ class ApplicationStatusServiceTests(TestCase):
                     field = f'{application_type}_application_status'
 
                     if application_type == 'mover':
-                        identifier = f'{application_type[:2]}{status_value[:3]}'
+                        status_code = {'pending': '01', 'approved': '02', 'rejected': '03'}[status_value]
                         MoverApplication.objects.create(
                             applicant_id=profile.id,
                             applicant_email=profile.email,
                             applicant_name=profile.full_name or 'Mover Applicant',
                             driver_full_name=profile.full_name or 'Mover Applicant',
-                            national_id=f'1234567{len(status_value)}',
+                            national_id=f'123456{status_code}',
                             dl_number=f'DL{status_value[:3].upper()}456',
                             vehicle_type='pickup',
-                            number_plate=f'KDA{len(status_value)}{status_value[:2].upper()}',
+                            number_plate=f'KDA{status_code}{status_value[:2].upper()}',
                             capacity_details='1.5 ton pickup',
                             operating_city='Nairobi',
                             operating_county='Nairobi',
@@ -81,10 +81,10 @@ class ApplicationStatusServiceTests(TestCase):
                         Mover.objects.create(
                             user_id=profile.id,
                             driver_full_name=profile.full_name or 'Mover Applicant',
-                            national_id=f'1234567{len(status_value)}',
+                            national_id=f'123456{status_code}',
                             dl_number=f'DL{status_value[:3].upper()}456',
                             vehicle_type='pickup',
-                            number_plate=f'KDA{len(status_value)}{status_value[:2].upper()}',
+                            number_plate=f'KDA{status_code}{status_value[:2].upper()}',
                             operating_city='Nairobi',
                             operating_county='Nairobi',
                             phone='0712345678',
