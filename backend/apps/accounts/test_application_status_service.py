@@ -17,9 +17,10 @@ class ApplicationStatusServiceTests(TestCase):
             role='admin',
         )
 
-    def _profile(self, application_type):
+    def _profile(self, application_type, status_value=None):
+        suffix = status_value or 'fixture'
         return Profile.objects.create_user(
-            email=f'{application_type}-status-tests@example.com',
+            email=f'{application_type}-{suffix}-status-tests@example.com',
             password='A-strong-password-123',
             email_verified=True,
             role=application_type,
@@ -52,19 +53,20 @@ class ApplicationStatusServiceTests(TestCase):
         for application_type in ('landlord', 'real_estate', 'mover'):
             for status_value in ('pending', 'approved', 'rejected'):
                 with self.subTest(application_type=application_type, status=status_value):
-                    profile = self._profile(application_type)
+                    profile = self._profile(application_type, status_value)
                     field = f'{application_type}_application_status'
 
                     if application_type == 'mover':
+                        identifier = f'{application_type[:2]}{status_value[:3]}'
                         MoverApplication.objects.create(
                             applicant_id=profile.id,
                             applicant_email=profile.email,
                             applicant_name=profile.full_name or 'Mover Applicant',
                             driver_full_name=profile.full_name or 'Mover Applicant',
-                            national_id='12345678',
-                            dl_number='DL123456',
+                            national_id=f'1234567{len(status_value)}',
+                            dl_number=f'DL{status_value[:3].upper()}456',
                             vehicle_type='pickup',
-                            number_plate='KDA123A',
+                            number_plate=f'KDA{len(status_value)}{status_value[:2].upper()}',
                             capacity_details='1.5 ton pickup',
                             operating_city='Nairobi',
                             operating_county='Nairobi',
@@ -79,10 +81,10 @@ class ApplicationStatusServiceTests(TestCase):
                         Mover.objects.create(
                             user_id=profile.id,
                             driver_full_name=profile.full_name or 'Mover Applicant',
-                            national_id='12345678',
-                            dl_number='DL123456',
+                            national_id=f'1234567{len(status_value)}',
+                            dl_number=f'DL{status_value[:3].upper()}456',
                             vehicle_type='pickup',
-                            number_plate='KDA123A',
+                            number_plate=f'KDA{len(status_value)}{status_value[:2].upper()}',
                             operating_city='Nairobi',
                             operating_county='Nairobi',
                             phone='0712345678',
