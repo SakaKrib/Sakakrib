@@ -1,5 +1,6 @@
 import logging
 
+import jwt
 from django.conf import settings
 from django.contrib.auth.models import update_last_login
 from django.db import transaction
@@ -181,7 +182,7 @@ class SessionView(APIView):
         if raw_refresh:
             try:
                 access, refresh = rotate_refresh_token(raw_refresh)
-                payload = __import__('jwt').decode(
+                payload = jwt.decode(
                     access,
                     settings.JWT_SECRET_KEY,
                     algorithms=[settings.JWT_ALGORITHM],
@@ -192,7 +193,7 @@ class SessionView(APIView):
                 response = Response({'success': True, 'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
                 set_auth_cookies(response, access, refresh)
                 return response
-            except (ValueError, KeyError, Profile.DoesNotExist):
+            except (jwt.PyJWTError, ValueError, KeyError, TypeError, Profile.DoesNotExist):
                 pass
             except Exception:
                 logging.getLogger(__name__).exception('Django session refresh failed')
