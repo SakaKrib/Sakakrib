@@ -24,6 +24,17 @@ export interface MoverBooking {
   last_known_longitude: number | null; last_location_at: string | null; mover_confirmed_delivery_at: string | null; dispute_status: string | null;
 }
 
+export interface MoverCustomerBooking {
+  id: string; status: string | null; payment_status: string | null; moving_date: string | null;
+  pickup_address: string; dropoff_address: string; total_amount: number | null; updated_at: string | null;
+}
+
+export interface MoverCustomer {
+  id: string; full_name: string | null; phone: string | null; profile_photo_url: string | null;
+  city: string | null; county: string | null; email: string | null; booking_count: number;
+  last_booking_id: string | null; contact_released: boolean; bookings: MoverCustomerBooking[];
+}
+
 export interface MoverScheduleEvent { id: string; mover_id: string; booking_id: string; starts_at: string; ends_at: string; status: string; title: string; created_at: string | null; updated_at: string | null; }
 export interface MoverBookingDetail {
   booking: MoverBooking;
@@ -51,6 +62,8 @@ const core = '/api/core';
 export const moverApi = {
   getMover: async (userId: string): Promise<MoverRecord | null> => { if (!userId) throw new Error('Authenticated mover identity is required.'); const rows = await protectedGet<MoverRecord[]>(`${core}/movers/`); return (rows ?? []).find((row) => row.user_id === userId) ?? null; },
   getBookings: (): Promise<MoverBooking[]> => protectedGet<MoverBooking[]>(`${core}/bookings/`),
+  getCustomers: (): Promise<MoverCustomer[]> => protectedGet<MoverCustomer[]>(`${core}/moving-customers/`),
+  getCustomer: (customerId: string): Promise<MoverCustomer> => protectedGet<MoverCustomer>(`${core}/moving-customers/${encodeURIComponent(customerId)}/`),
   getBooking: (bookingId: string): Promise<MoverBooking> => protectedGet<MoverBooking>(`${core}/bookings/${encodeURIComponent(bookingId)}/`),
   getBookingDetail: (bookingId: string): Promise<MoverBookingDetail> => protectedGet<MoverBookingDetail>(`${core}/bookings/${encodeURIComponent(bookingId)}/detail/`),
   respondToBooking: (bookingId: string, decision: 'confirm' | 'not_sure' | 'cancel', reason?: string | null) => protectedPost<{ booking_id: string; decision: string; status: string }>(`${core}/bookings/${encodeURIComponent(bookingId)}/respond/`, { decision, reason: reason?.trim() || null }),
