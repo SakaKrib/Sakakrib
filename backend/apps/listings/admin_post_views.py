@@ -3,12 +3,42 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.authorization import require_admin
+from apps.accounts.models import Profile
+
 from .admin_listing_services import create_listing_on_behalf
 from .serializers import ListingCreateSerializer, ListingSerializer
 
 
 class AdminListingPostOnBehalfView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            require_admin(request.user)
+        except PermissionDenied as exc:
+            return Response({'error': str(exc)}, status=403)
+
+        owners = Profile.objects.filter(
+            role__in=('landlord', 'real_estate'),
+            is_active=True,
+            email_verified=True,
+            verification_status__iexact='verified',
+        ).order_by('full_name', 'email')
+        owners = [
+            owner for owner in owners
+            if (owner.landlord_application_status if owner.role == 'landlord' else owner.real_estate_application_status) == 'approved'
+        ]
+        return Response([
+            {
+                'id': str(owner.id),
+                'full_name': owner.full_name or owner.email,
+                'email': owner.email,
+                'role': owner.role,
+                'phone': owner.phone,
+            }
+            for owner in owners
+        ])
 
     def post(self, request):
         owner_id = request.data.get('owner_id')
