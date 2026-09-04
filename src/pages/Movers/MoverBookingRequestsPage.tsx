@@ -10,11 +10,19 @@ export default function MoverBookingRequestsPage() {
   const { navigate } = useNav();
   const [bookings, setBookings] = useState<MoverBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!profile?.id || profile.role !== 'mover') return;
     setLoading(true);
-    try { setBookings(await moverApi.getBookings()); } finally { setLoading(false); }
+    setError(null);
+    try {
+      setBookings(await moverApi.getBookings());
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to load booking requests.');
+    } finally {
+      setLoading(false);
+    }
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
@@ -27,7 +35,16 @@ export default function MoverBookingRequestsPage() {
         <div><button type="button" onClick={() => navigate('dashboard')} className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">← Back to dashboard</button><h1 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">Booking requests</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Review incoming moving requests and respond before their deadlines.</p></div>
         <button type="button" onClick={() => void load()} className="btn-secondary inline-flex items-center gap-2 text-sm"><RefreshCw className="h-4 w-4" />Refresh</button>
       </div>
-      <MoverBookingRequests bookings={bookings} onOpen={(bookingId) => navigate('mover-booking-detail', bookingId)} />
+
+      {error ? (
+        <div className="card p-6">
+          <p className="text-sm font-semibold text-error-700 dark:text-error-400">Unable to load booking requests.</p>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{error}</p>
+          <button type="button" onClick={() => void load()} className="btn-secondary mt-4 inline-flex items-center gap-2 text-sm"><RefreshCw className="h-4 w-4" />Try again</button>
+        </div>
+      ) : (
+        <MoverBookingRequests bookings={bookings} onOpen={(bookingId) => navigate('mover-booking-detail', bookingId)} limit={0} />
+      )}
     </div>
   );
 }
