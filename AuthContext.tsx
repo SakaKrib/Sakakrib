@@ -1,0 +1,755 @@
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+
+import type { Profile, UserRole } from '@/types/domain';
+
+import {
+  authGateway,
+  gatewayGoogleLogin,
+  gatewayLogin,
+  gatewayLogout,
+  gatewayResendOtp,
+  gatewaySignup,
+  gatewayVerifyOtp,
+} from '@/lib/authGateway';
+
+import { protectedPost } from '@/lib/djangoApi';
+
+interface AuthUser {
+  id: string;
+  email?: string | null;
+  user_metadata: Record<string, unknown>;
+}
+
+interface AuthSession {
+  /** Compatibility shape only. Django authentication tokens are never exposed to JS. */
+  user: AuthUser;
+}
+
+interface AuthResult {
+  error: string | null;
+  requiresEmailVerification?: boolean;
+}
+
+interface AuthContextValue {
+  session: AuthSession | null;
+  profile: Profile | null;
+  loading: boolean;
+  needsRoleSelection: boolean;
+  needsEmailVerification: boolean;
+  pendingVerificationEmail: string | null;
+  isAuthenticated: boolean;
+  signUp: (email: string, password: string, fullName: string) => Promise<AuthResult>;
+  verifyEmailOtp: (email: string, otp: string) => Promise<{ error: string | null }>;
+  resendSignupOtp: (email: string) => Promise<{ error: string | null }>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signInWithGoogle: () => Promise<void>;
+  signOut: () => Promise<void>;
+  setRole: (role: UserRole) => Promise<{ error: string | null }>;
+  refreshProfile: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+/**
+ * Convert technical/backend errors into client-friendly messages.
+ * Technical details remain available in console.error() calls.
+ */
+const toClientAuthError = (
+  error: unknown,
+  fallback: string,
+): string => {
+  const message =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : '';
+
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('csrf') ||
+    normalized.includes('forbidden') ||
+    normalized.includes('security token')
+  ) {
+    return 'We’re having trouble connecting securely. Please try again in a moment.';
+  }
+
+  if (
+    normalized.includes('network error') ||
+    normalized.includes('failed to fetch') ||
+    normalized.includes('network request')
+  ) {
+    return 'We couldn’t connect to the server. Please check your connection and try again.';
+  }
+
+  if (
+    normalized.includes('(401)') ||
+    normalized.includes('401 unauthorized') ||
+    normalized.includes('unauthorized')
+  ) {
+    return 'Your session has expired. Please sign in again.';
+  }
+
+  if (
+    normalized.includes('(403)') ||
+    normalized.includes('403 forbidden')
+  ) {
+    return 'You don’t have permission to perform this action.';
+  }
+
+  if (
+    normalized.includes('(500)') ||
+    normalized.includes('500 internal server error') ||
+    normalized.includes('internal server error')
+  ) {
+    return 'Something went wrong on our side. Please try again shortly.';
+  }
+
+  if (
+    normalized.includes('django') ||
+    normalized.includes('server error') ||
+    normalized.includes('traceback') ||
+    normalized.includes('html response')
+  ) {
+    return fallback;
+  }
+
+  return message || fallback;
+};
+
+const toAuthSession = (user: {
+  id: string;
+  email?: string | null;
+}): AuthSession => ({
+  user: {
+    id: user.id,
+    email: user.email ?? undefined,
+    user_metadata: {},
+  },
+});
+
+const loadGoogleIdentityScript = async (): Promise<void> => {
+  const existing = document.querySelector(
+    'script[data-sakakrib-google-identity]',
+  );
+
+  if (existing) {
+    if ((window as any).google?.accounts?.id) return;
+
+    await new Promise<void>((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener(
+        'error',
+        () => reject(new Error('Unable to load Google sign-in.')),
+        { once: true },
+      );
+    });
+
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.sakakribGoogleIdentity = 'true';
+
+    script.onload = () => resolve();
+    script.onerror = () =>
+      reject(new Error('Unable to load Google sign-in.'));
+
+    document.head.appendChild(script);
+  });
+};
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] =
+    useState<string | null>(null);
+
+  const clearAuthState = () => {
+    setSession(null);
+    setProfile(null);
+  };
+
+  const clearVerificationState = () => {
+    setNeedsEmailVerification(false);
+    setPendingVerificationEmail(null);
+  };
+
+  const requireEmailVerification = (email: string | null) => {
+    clearAuthState();
+    setNeedsEmailVerification(true);
+    setPendingVerificationEmail(
+      email ? normalizeEmail(email) : null,
+    );
+  };
+
+  const applyGatewayAuth = (
+    result: Awaited<ReturnType<typeof authGateway>>,
+  ) => {
+    if (!result.authenticated || !result.user || !result.profile) {
+      clearAuthState();
+      return false;
+    }
+
+    if (result.profile.email_verified !== true) {
+      requireEmailVerification(
+        result.email ?? result.user.email ?? null,
+      );
+      return false;
+    }
+
+    setSession(toAuthSession(result.user));
+    setProfile(result.profile);
+    clearVerificationState();
+
+    return true;
+  };
+
+  /**
+   * Initialize authentication from the HttpOnly-cookie session.
+   *
+   * When the five-minute access cookie has expired, the browser may already
+   * have removed it. In that case /session/ can legitimately return
+   * authenticated:false without producing a 401, so djangoRequest's normal
+   * 401 refresh interceptor cannot run. Explicitly try the refresh cookie once
+   * before treating the user as signed out.
+   */
+  const loadSessionWithRetry = async () => {
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await authGateway('session');
+      } catch (error) {
+        lastError = error;
+
+        if (attempt < 2) {
+          await wait(500 * (attempt + 1));
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Unable to initialize the Django authentication session.');
+  };
+
+  /**
+   * Recover an expired access-cookie session before declaring logout.
+   * The refresh endpoint uses the HttpOnly refresh cookie and never exposes
+   * JWT credentials to JavaScript.
+   */
+  const loadAuthenticatedSession = async () => {
+    let result = await loadSessionWithRetry();
+
+    if (result.authenticated || result.requiresEmailVerification) {
+      return result;
+    }
+
+    const refreshResult = await authGateway('refresh');
+
+    if (refreshResult.authenticated) {
+      result = await loadSessionWithRetry();
+    }
+
+    return result;
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const initialize = async () => {
+      try {
+        const result = await loadAuthenticatedSession();
+
+        if (!mounted) return;
+
+        if (result.authenticated) {
+          applyGatewayAuth(result);
+        } else if (result.requiresEmailVerification) {
+          requireEmailVerification(result.email ?? null);
+        } else {
+          clearAuthState();
+          clearVerificationState();
+        }
+      } catch (error) {
+        console.error('Django auth initialization error:', error);
+
+        // A transport/bootstrap failure is not proof that authentication is
+        // invalid. Do not turn a temporary network/server interruption into
+        // an apparent logout. A genuine unauthenticated response above is
+        // still handled as a real sign-out condition.
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    const recoverOnWake = async () => {
+      if (!mounted || document.visibilityState !== 'visible') return;
+
+      try {
+        const result = await loadAuthenticatedSession();
+
+        if (!mounted) return;
+
+        if (result.authenticated) {
+          applyGatewayAuth(result);
+        } else if (result.requiresEmailVerification) {
+          requireEmailVerification(result.email ?? null);
+        } else {
+          clearAuthState();
+          clearVerificationState();
+        }
+      } catch (error) {
+        // Preserve the current auth state when the browser wakes while the
+        // network/backend is temporarily unavailable. The next API request
+        // will use the normal Django refresh path as well.
+        console.error('Django auth wake recovery error:', error);
+      }
+    };
+
+    void initialize();
+    document.addEventListener('visibilitychange', recoverOnWake);
+
+    return () => {
+      mounted = false;
+      document.removeEventListener('visibilitychange', recoverOnWake);
+    };
+  }, []);
+
+  const isAuthenticated = Boolean(
+    session && profile?.email_verified === true,
+  );
+
+  const needsRoleSelection = Boolean(
+    !loading && isAuthenticated && !profile?.role,
+  );
+
+  const signUp = async (
+    email: string,
+    password: string,
+    fullName: string,
+  ): Promise<AuthResult> => {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedName = fullName.trim();
+
+    if (!isValidEmail(normalizedEmail)) {
+      return { error: 'Please enter a valid email address.' };
+    }
+
+    if (password.length < 8) {
+      return { error: 'Password must be at least 8 characters long.' };
+    }
+
+    if (!normalizedName) {
+      return { error: 'Please enter your full name.' };
+    }
+
+    try {
+      const result = await gatewaySignup(
+        normalizedEmail,
+        password,
+        normalizedName,
+      );
+
+      if (result.authenticated) {
+        applyGatewayAuth(result);
+        return { error: null };
+      }
+
+      requireEmailVerification(result.email ?? normalizedEmail);
+
+      return {
+        error: null,
+        requiresEmailVerification: true,
+      };
+    } catch (error) {
+      console.error('Django signup error:', error);
+
+      return {
+        error: toClientAuthError(
+          error,
+          'We couldn’t create your account. Please check your information and try again.',
+        ),
+      };
+    }
+  };
+
+  const verifyEmailOtp = async (email: string, otp: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedOtp = otp.replace(/\D/g, '');
+
+    if (!isValidEmail(normalizedEmail)) {
+      return { error: 'Please enter a valid email address.' };
+    }
+
+    if (normalizedOtp.length !== 6) {
+      return {
+        error: 'Please enter the 6-digit verification code.',
+      };
+    }
+
+    try {
+      const result = await gatewayVerifyOtp(
+        normalizedEmail,
+        normalizedOtp,
+      );
+
+      if (!result.success || !result.authenticated) {
+        return {
+          error: toClientAuthError(
+            result.error,
+            'We couldn’t verify your email. Please check the code and try again.',
+          ),
+        };
+      }
+
+      if (!applyGatewayAuth(result)) {
+        return {
+          error: 'Your email was verified, but we couldn’t finish setting up your account. Please try again.',
+        };
+      }
+
+      return { error: null };
+    } catch (error) {
+      console.error('Django OTP verification error:', error);
+
+      return {
+        error: toClientAuthError(
+          error,
+          'The verification code is invalid or has expired. Please request a new code.',
+        ),
+      };
+    }
+  };
+
+  const resendSignupOtp = async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!isValidEmail(normalizedEmail)) {
+      return { error: 'Please enter a valid email address.' };
+    }
+
+    requireEmailVerification(normalizedEmail);
+
+    try {
+      const result = await gatewayResendOtp(normalizedEmail);
+
+      return result.success
+        ? { error: null }
+        : {
+            error: toClientAuthError(
+              result.error,
+              'We couldn’t send a new verification code. Please try again.',
+            ),
+          };
+    } catch (error) {
+      console.error('Django OTP resend error:', error);
+
+      return {
+        error: toClientAuthError(
+          error,
+          'We couldn’t send a new verification code. Please try again.',
+        ),
+      };
+    }
+  };
+
+  const signIn = async (
+    email: string,
+    password: string,
+  ): Promise<AuthResult> => {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!isValidEmail(normalizedEmail)) {
+      return { error: 'Please enter a valid email address.' };
+    }
+
+    if (!password) {
+      return { error: 'Please enter your password.' };
+    }
+
+    try {
+      const result = await gatewayLogin(
+        normalizedEmail,
+        password,
+      );
+
+      if (!result.authenticated) {
+        if (result.requiresEmailVerification) {
+          requireEmailVerification(
+            result.email ?? normalizedEmail,
+          );
+
+          return {
+            error:
+              'Your email is not verified. Please verify it before signing in.',
+            requiresEmailVerification: true,
+          };
+        }
+
+        clearAuthState();
+
+        return {
+          error: toClientAuthError(
+            result.error,
+            'We couldn’t sign you in. Please check your details and try again.',
+          ),
+        };
+      }
+
+      applyGatewayAuth(result);
+
+      return { error: null };
+    } catch (error) {
+      console.error('Django sign-in error:', error);
+
+      clearAuthState();
+
+      return {
+        error: toClientAuthError(
+          error,
+          'We couldn’t sign you in. Please check your details and try again.',
+        ),
+      };
+    }
+  };
+
+  const signInWithGoogle = async (): Promise<void> => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as
+      | string
+      | undefined;
+
+    if (!clientId) {
+      throw new Error(
+        'Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID.',
+      );
+    }
+
+    await loadGoogleIdentityScript();
+
+    const google = (window as any).google;
+
+    if (!google?.accounts?.id) {
+      throw new Error(
+        'Google sign-in is unavailable. Please try again.',
+      );
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+
+        settled = true;
+
+        error ? reject(error) : resolve();
+      };
+
+      google.accounts.id.initialize({
+        client_id: clientId,
+        ux_mode: 'popup',
+
+        callback: async (response: { credential?: string }) => {
+          try {
+            if (!response.credential) {
+              return finish(
+                new Error(
+                  'Google did not return an ID token.',
+                ),
+              );
+            }
+
+            const result = await gatewayGoogleLogin(
+              response.credential,
+            );
+
+            if (
+              !result.authenticated ||
+              !result.user ||
+              !result.profile
+            ) {
+              return finish(
+                new Error(
+                  toClientAuthError(
+                    result.error,
+                    'We couldn’t sign you in with Google. Please try again.',
+                  ),
+                ),
+              );
+            }
+
+            if (!applyGatewayAuth(result)) {
+              return finish(
+                new Error(
+                  'Google sign-in was successful, but we couldn’t finish setting up your account. Please try again.',
+                ),
+              );
+            }
+
+            finish();
+          } catch (error) {
+            console.error(
+              'Django Google sign-in error:',
+              error,
+            );
+
+            finish(
+              new Error(
+                toClientAuthError(
+                  error,
+                  'We couldn’t sign you in with Google. Please try again.',
+                ),
+              ),
+            );
+          }
+        },
+      });
+
+      google.accounts.id.prompt((notification: any) => {
+        if (
+          notification.isNotDisplayed?.() ||
+          notification.isSkippedMoment?.()
+        ) {
+          finish(
+            new Error(
+              'Google sign-in was not available. Please try again or use email and password.',
+            ),
+          );
+        } else if (notification.isDismissedMoment?.()) {
+          finish(
+            new Error('Google sign-in was cancelled.'),
+          );
+        }
+      });
+    });
+  };
+
+  const signOut = async (): Promise<void> => {
+    try {
+      await gatewayLogout();
+    } catch (error) {
+      console.error('Django sign-out error:', error);
+    } finally {
+      clearAuthState();
+      clearVerificationState();
+
+      try {
+        (window as any).google?.accounts?.id?.disableAutoSelect?.();
+      } catch {
+        /* optional Google SDK */
+      }
+    }
+  };
+
+  const refreshProfile = async (): Promise<void> => {
+    try {
+      const result = await loadAuthenticatedSession();
+
+      if (!result.authenticated) {
+        if (result.requiresEmailVerification) {
+          requireEmailVerification(result.email ?? null);
+        } else {
+          clearAuthState();
+        }
+
+        return;
+      }
+
+      applyGatewayAuth(result);
+    } catch (error) {
+      console.error('Django session refresh error:', error);
+      // Preserve the current authenticated state on transient transport
+      // failures. A failed refresh is not itself proof that the user signed out.
+    }
+  };
+
+  const setRole = async (role: UserRole) => {
+    if (!session?.user) {
+      return { error: 'Not authenticated.' };
+    }
+
+    if (!profile) {
+      return { error: 'Application profile is required.' };
+    }
+
+    const allowedRoles: UserRole[] = [
+      'renter',
+      'landlord',
+      'mover',
+      'real_estate',
+    ];
+
+    if (!allowedRoles.includes(role)) {
+      return { error: 'Invalid role selected.' };
+    }
+
+    try {
+      await protectedPost('/api/accounts/set-role/', { role });
+
+      await refreshProfile();
+
+      return { error: null };
+    } catch (error) {
+      console.error('Django role selection error:', error);
+
+      return {
+        error: toClientAuthError(
+          error,
+          'We couldn’t save your role. Please try again.',
+        ),
+      };
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        session,
+        profile,
+        loading,
+        needsRoleSelection,
+        needsEmailVerification,
+        pendingVerificationEmail,
+        isAuthenticated,
+        signUp,
+        verifyEmailOtp,
+        resendSignupOtp,
+        signIn,
+        signInWithGoogle,
+        signOut,
+        setRole,
+        refreshProfile,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+
+  if (!ctx) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+
+  return ctx;
+}
