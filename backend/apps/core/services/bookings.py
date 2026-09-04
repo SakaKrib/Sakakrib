@@ -17,8 +17,9 @@ from django.utils import timezone
 
 from apps.accounts.models import Profile
 from apps.core.domain_bookings import Booking, ChatMessage, MovingCancellationEvent
-from apps.core.domain_platform import Mover, NotificationEmail, UserNotification
+from apps.core.domain_platform import Mover, UserNotification
 from apps.core.domain_property import PlatformSettings
+from apps.core.email_services import queue_email
 
 MONEY = Decimal("0.01")
 DISTANCE = Decimal("0.001")
@@ -215,15 +216,26 @@ class BookingService:
             data={"booking_id": str(booking.id), "expires_at": deadline.isoformat()},
         )
 
-        NotificationEmail.objects.create(
+        # Queue the same booking event through the shared email pipeline used
+        # by the other styled Saka Krib notification templates.
+        renter_name = renter.full_name or "A renter"
+        booking_url = f"https://sakakrib.com/#mover-booking-detail/{booking.id}"
+        queue_email(
             recipient=mover_profile.email,
-            subject="New Saka Krib moving request",
-            html_body=(
-                "<p>You have received a new moving request on Saka Krib.</p>"
-                "<p>Please open the app to review and respond within 30 minutes.</p>"
-            ),
-            template_type="MOVER_REQUEST",
-            status="pending",
+            template_type="mover_booking_request",
+            payload={
+                "booking_id": str(booking.id),
+                "renter_name": renter_name,
+                "pickup_address": pickup_address,
+                "dropoff_address": dropoff_address,
+                "moving_date": booking.moving_date,
+                "distance_km": quote["distance_km"],
+                "total_amount_kes": quote["renter_total_kes"],
+                "payment_status": booking.payment_status,
+                "requested_at": now,
+                "response_expires_at": deadline,
+                "booking_url": booking_url,
+            },
         )
 
         return {
