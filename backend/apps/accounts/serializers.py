@@ -15,7 +15,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             'national_id', 'dl_number', 'phone', 'profile_photo_url',
             'id_photo_url', 'selfie_url', 'id_document_url', 'id_document_type',
             'city', 'county', 'is_agency', 'free_listings_used',
-            'created_at', 'updated_at', 'email_verified', 'admin_review_note',
+            'created_at', 'updated_at', 'last_login', 'email_verified', 'admin_review_note',
             'role', 'role_selected_at',
         ]
         read_only_fields = fields
