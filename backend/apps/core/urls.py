@@ -40,7 +40,7 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/tracking/latest/", ActiveMovingLocationView.as_view(), name="moving-tracking-latest"),
     path("bookings/<uuid:booking_id>/review-mover/", MoverReviewAfterDeliveryView.as_view(), name="mover-review-after-delivery"),
     path("bookings/<uuid:booking_id>/payment/mpesa/start/", MovingMpesaStartView.as_view(), name="moving-payment-mpesa-start"), path("payments/moving/mpesa/callback/", MovingMpesaCallbackView.as_view(), name="moving-payment-mpesa-callback"),
-    path("bookings/<uuid:booking_id>/payment/paypal/start/", MovingPaypalStartView.as_view(), name="moving-payment-paypal-start"), path("payments/moving/paypal/webhook/", MovingPaypalWebhookView.as_view(), name="moving-payment-paypal-start"),
+    path("bookings/<uuid:booking_id>/payment/paypal/start/", MovingPaypalStartView.as_view(), name="moving-payment-paypal-start"), path("payments/moving/paypal/webhook/", MovingPaypalWebhookView.as_view(), name="moving-payment-paypal-webhook"),
     path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"), path("payments/mover-payout/callback/", MoverPayoutCallbackView.as_view(), name="mover-payout-callback"),
     path("mover-payouts/<uuid:payout_id>/retry/", MoverPayoutRetryView.as_view(), name="mover-payout-retry"),
     path("bookings/<uuid:booking_id>/delivery/confirm/", MovingDeliveryConfirmView.as_view(), name="moving-delivery-confirm"), path("bookings/<uuid:booking_id>/disputes/", MovingDisputeOpenView.as_view(), name="moving-dispute-open"), path("moving-disputes/<uuid:dispute_id>/resolve/", MovingDisputeResolveView.as_view(), name="moving-dispute-resolve"),
