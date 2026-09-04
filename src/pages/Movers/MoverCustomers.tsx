@@ -22,7 +22,7 @@ export default function MoverCustomers() {
   useEffect(() => { void load(); }, [load]);
 
   const bookingCount = useMemo(() => customers.reduce((total, customer) => total + customer.booking_count, 0), [customers]);
-  const activeCount = useMemo(() => customers.reduce((total, customer) => total + customer.bookings.filter(booking => !['completed', 'cancelled'].includes(String(booking.status ?? '').toLowerCase())).length, 0), [customers]);
+  const activeCount = useMemo(() => customers.reduce((total, customer) => total + customer.active_booking_count, 0), [customers]);
 
   if (loading) return <div className="flex min-h-[400px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div>;
 
@@ -59,6 +59,7 @@ export default function MoverCustomers() {
               <div><span className="text-xs text-gray-500 dark:text-gray-400">Phone</span><p className="font-medium text-gray-900 dark:text-white">{customer.phone || (customer.contact_released ? 'Not provided' : 'Available after contact release')}</p></div>
               <div><span className="text-xs text-gray-500 dark:text-gray-400">Email</span><p className="truncate font-medium text-gray-900 dark:text-white">{customer.email || (customer.contact_released ? 'Not provided' : 'Available after contact release')}</p></div>
               <div><span className="text-xs text-gray-500 dark:text-gray-400">Bookings</span><p className="font-medium text-gray-900 dark:text-white">{customer.booking_count}</p></div>
+              <div><span className="text-xs text-gray-500 dark:text-gray-400">Active / completed</span><p className="font-medium text-gray-900 dark:text-white">{customer.active_booking_count} / {customer.completed_booking_count}</p></div>
               <div><span className="text-xs text-gray-500 dark:text-gray-400">Contact access</span><p className="font-medium text-gray-900 dark:text-white">{customer.contact_released ? 'Released' : 'Restricted'}</p></div>
             </div>
             <div className="border-t border-gray-100 p-5 dark:border-brand-800">
