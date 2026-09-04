@@ -5,6 +5,7 @@ from .moving_views import BookingEventView, BookingView, MoverCustomerView, Move
 from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, MoverQuoteView, MovingBookingCancelView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView
 from .moving_listing_views import ListingAwareMoverBookingRequestView
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
+from .mover_payout_admin_views import MoverPayoutRetryView
 from .chat_views import ChatConversationView, ChatMessageView
 from .chat_media_views import ChatMediaFileView, ChatMediaUploadView
 from .notification_views import UserNotificationView, RenterNotificationView
@@ -41,6 +42,7 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/payment/mpesa/start/", MovingMpesaStartView.as_view(), name="moving-payment-mpesa-start"), path("payments/moving/mpesa/callback/", MovingMpesaCallbackView.as_view(), name="moving-payment-mpesa-callback"),
     path("bookings/<uuid:booking_id>/payment/paypal/start/", MovingPaypalStartView.as_view(), name="moving-payment-paypal-start"), path("payments/moving/paypal/webhook/", MovingPaypalWebhookView.as_view(), name="moving-payment-paypal-webhook"),
     path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"), path("payments/mover-payout/callback/", MoverPayoutCallbackView.as_view(), name="mover-payout-callback"),
+    path("mover-payouts/<uuid:payout_id>/retry/", MoverPayoutRetryView.as_view(), name="mover-payout-retry"),
     path("bookings/<uuid:booking_id>/delivery/confirm/", MovingDeliveryConfirmView.as_view(), name="moving-delivery-confirm"), path("bookings/<uuid:booking_id>/disputes/", MovingDisputeOpenView.as_view(), name="moving-dispute-open"), path("moving-disputes/<uuid:dispute_id>/resolve/", MovingDisputeResolveView.as_view(), name="moving-dispute-resolve"),
     path("chat/", ChatConversationView.as_view(), name="chat-conversation"), path("chat/message/", ChatMessageView.as_view(), name="chat-message"),
     path("chat/media/", ChatMediaUploadView.as_view(), name="chat-media-upload"), path("chat/media/<str:token>/", ChatMediaFileView.as_view(), name="chat-media-file"),
