@@ -2,11 +2,11 @@ from django.urls import path
 from .homepage_views import HomepageStatsView
 from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
 from .moving_views import BookingEventView, BookingView, MoverCustomerView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
-from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, MoverQuoteView, MovingBookingCancelView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView
+from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView, MovingBookingCancelView, MoverQuoteView
 from .moving_listing_views import ListingAwareMoverBookingRequestView
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
 from .mover_payout_admin_views import MoverPayoutRetryView
-from .chat_views import ChatConversationView, ChatMessageView
+from .chat_views import ChatConversationView, ChatMessageView, RenterChatPerformanceView
 from .chat_media_views import ChatMediaFileView, ChatMediaUploadView
 from .notification_views import UserNotificationView, RenterNotificationView
 from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfirmView, LandlordRentPaymentRejectView, RenterInvoicePaymentSubmitView, RenterPaidInvoiceCreateView
@@ -44,18 +44,16 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/escrow/release/", MovingEscrowReleaseView.as_view(), name="moving-escrow-release"), path("payments/mover-payout/callback/", MoverPayoutCallbackView.as_view(), name="mover-payout-callback"),
     path("mover-payouts/<uuid:payout_id>/retry/", MoverPayoutRetryView.as_view(), name="mover-payout-retry"),
     path("bookings/<uuid:booking_id>/delivery/confirm/", MovingDeliveryConfirmView.as_view(), name="moving-delivery-confirm"), path("bookings/<uuid:booking_id>/disputes/", MovingDisputeOpenView.as_view(), name="moving-dispute-open"), path("moving-disputes/<uuid:dispute_id>/resolve/", MovingDisputeResolveView.as_view(), name="moving-dispute-resolve"),
-    path("chat/", ChatConversationView.as_view(), name="chat-conversation"), path("chat/message/", ChatMessageView.as_view(), name="chat-message"),
-    path("chat/media/", ChatMediaUploadView.as_view(), name="chat-media-upload"), path("chat/media/<str:token>/", ChatMediaFileView.as_view(), name="chat-media-file"),
+    path("chat/", ChatConversationView.as_view(), name="chat-conversation"), path("chat/message/", ChatMessageView.as_view(), name="chat-message"), path("chat/media/", ChatMediaUploadView.as_view(), name="chat-media-upload"), path("chat/media/<str:token>/", ChatMediaFileView.as_view(), name="chat-media-file"),
+    path("renter/chat-performance/", RenterChatPerformanceView.as_view(), name="renter-chat-performance"),
     path("notifications/", UserNotificationView.as_view(), name="user-notifications"), path("renter-notifications/", RenterNotificationView.as_view(), name="renter-notifications"),
     path("renter/dashboard/", RenterDashboardView.as_view(), name="renter-dashboard"),
     path("renter/invoices/", RenterInvoiceView.as_view(), name="renter-invoice-list"), path("renter/invoices/<uuid:invoice_id>/", RenterInvoiceView.as_view(), name="renter-invoice-detail"),
     path("renter/invoices/<uuid:invoice_id>/submissions/", RenterPaymentSubmissionView.as_view(), name="renter-payment-submissions"),
     path("renter/payment-destination/", RenterPaymentDestinationView.as_view(), name="renter-payment-destination"),
     path("renter/rent-summary/", RenterRentSummaryView.as_view(), name="renter-rent-summary"), path("renter/payment-history/", RenterPaymentHistoryView.as_view(), name="renter-payment-history"), path("renter/mover-schedule-availability/", RenterMoverScheduleAvailabilityView.as_view(), name="mover-schedule-availability"),
-    path("pms/entitlement/", PMSEntitlementView.as_view(), name="pms-entitlement"),
-    path("pms/dashboard/", PMSDashboardView.as_view(), name="pms-dashboard"), path("pms/action/", PMSActionView.as_view(), name="pms-action"),
-    path("pms/real-estate/dashboard/", RealEstatePMSDashboardView.as_view(), name="real-estate-pms-dashboard"),
-    path("pms/real-estate/action/", RealEstatePMSActionView.as_view(), name="real-estate-pms-action"),
+    path("pms/entitlement/", PMSEntitlementView.as_view(), name="pms-entitlement"), path("pms/dashboard/", PMSDashboardView.as_view(), name="pms-dashboard"), path("pms/action/", PMSActionView.as_view(), name="pms-action"),
+    path("pms/real-estate/dashboard/", RealEstatePMSDashboardView.as_view(), name="real-estate-pms-dashboard"), path("pms/real-estate/action/", RealEstatePMSActionView.as_view(), name="real-estate-pms-action"),
     path("payment-methods/", LandlordPaymentMethodView.as_view(), name="landlord-payment-method-create"), path("payment-methods/<uuid:payment_method_id>/", LandlordPaymentMethodView.as_view(), name="landlord-payment-method-delete"),
     path("rent/units/", LandlordRentUnitView.as_view(), name="landlord-rent-units"), path("rent/units/<uuid:unit_id>/history/", LandlordRentPaymentHistoryView.as_view(), name="landlord-rent-payment-history"), path("rent/units/<uuid:unit_id>/paid-through/", LandlordMarkRentPaidThroughView.as_view(), name="landlord-rent-paid-through"),
     path("invoices/landlord/", LandlordRentInvoiceCreateView.as_view(), name="rent-invoice-create-landlord"), path("invoices/renter/paid/", RenterPaidInvoiceCreateView.as_view(), name="rent-invoice-create-renter-paid"), path("invoices/<uuid:invoice_id>/submit-payment/", RenterInvoicePaymentSubmitView.as_view(), name="rent-invoice-submit-payment"), path("payment-submissions/<uuid:submission_id>/confirm/", LandlordRentPaymentConfirmView.as_view(), name="rent-payment-confirm"), path("payment-submissions/<uuid:submission_id>/reject/", LandlordRentPaymentRejectView.as_view(), name="rent-payment-reject"),
@@ -65,9 +63,5 @@ urlpatterns = [
     path("reviews/", ReviewView.as_view(), name="review-list"), path("reviews/<uuid:object_id>/", ReviewView.as_view(), name="review-detail"),
     path("support-tickets/", SupportTicketView.as_view(), name="support-ticket-list"), path("support-tickets/<uuid:object_id>/", SupportTicketView.as_view(), name="support-ticket-detail"),
     path("terms-acceptance/", TermsAcceptanceView.as_view(), name="terms-acceptance-list"), path("terms-acceptance/<uuid:object_id>/", TermsAcceptanceView.as_view(), name="terms-acceptance-detail"),
-    path("renter-invitations/", RenterInvitationCreateView.as_view(), name="renter-invitation-create"),
-    path("renter-invitations/<uuid:association_id>/resend/", RenterInvitationResendView.as_view(), name="renter-invitation-resend"),
-    path("renter-invitations/<uuid:association_id>/cancel/", RenterInvitationCancelView.as_view(), name="renter-invitation-cancel"),
-    path("renter-invitations/<str:token>/preview/", RenterInvitationPreviewView.as_view(), name="renter-invitation-preview"),
-    path("renter-invitations/<str:token>/claim/", RenterInvitationClaimView.as_view(), name="renter-invitation-claim"),
+    path("renter-invitations/", RenterInvitationCreateView.as_view(), name="renter-invitation-create"), path("renter-invitations/<uuid:association_id>/resend/", RenterInvitationResendView.as_view(), name="renter-invitation-resend"), path("renter-invitations/<uuid:association_id>/cancel/", RenterInvitationCancelView.as_view(), name="renter-invitation-cancel"), path("renter-invitations/<str:token>/preview/", RenterInvitationPreviewView.as_view(), name="renter-invitation-preview"), path("renter-invitations/<str:token>/claim/", RenterInvitationClaimView.as_view(), name="renter-invitation-claim"),
 ]
