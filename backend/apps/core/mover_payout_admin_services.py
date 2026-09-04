@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.accounts.authorization import require_admin
+from apps.accounts.models import Profile
 
 from .domain_bookings import MoverPayout
 
@@ -14,9 +15,7 @@ def retry_failed_mover_payout(*, admin_user_id, payout_id):
     may still settle it asynchronously. Only failed submissions without a
     provider reference can be safely returned to the normal processor queue.
     """
-    from apps.accounts.models import User
-
-    admin_user = User.objects.filter(pk=admin_user_id).first()
+    admin_user = Profile.objects.filter(pk=admin_user_id).first()
     if admin_user is None:
         raise ValidationError("Administrator account not found")
     require_admin(admin_user)
