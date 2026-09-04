@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Clock3, FileText, MapPin, RefreshCw, Truck, Wallet } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { CalendarDays, CheckCircle2, FileText, MapPin, RefreshCw, Truck, Wallet } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { renterApi, type Booking, type RentInvoice } from '@/lib/Renter/renterApi';
@@ -13,12 +13,12 @@ const statusClass = (status?: string | null) => {
   return 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400';
 };
 
-function PageShell({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function PageShell({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   const { navigate } = useNav();
   return <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8 lg:py-8"><div className="mb-6"><button type="button" onClick={() => navigate('dashboard')} className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">← Back to dashboard</button><h1 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{title}</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p></div>{children}</div>;
 }
 
-function Guard({ children }: { children: React.ReactNode }) {
+function Guard({ children }: { children: ReactNode }) {
   const { profile, loading } = useAuth();
   const { navigate } = useNav();
   useEffect(() => { if (!loading && (!profile || profile.role !== 'renter')) navigate('home'); }, [loading, profile, navigate]);
