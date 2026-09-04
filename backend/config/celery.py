@@ -10,4 +10,5 @@ app.autodiscover_tasks()
 app.conf.imports = (
     "apps.core.email_tasks",
     "apps.core.mover_tasks",
+    "apps.core.mover_payout_tasks",
 )
