@@ -6,6 +6,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import Profile
+
 from .domain_bookings import MoverPayout
 from .domain_platform import Mover, UserNotification
 from .email_services import queue_mover_payout_success_emails
@@ -93,7 +95,7 @@ class MoverPayoutCallbackView(APIView):
             success = payload.get("success")
             if result_code is not None:
                 try: success = int(result_code) == 0
-                except (TypeError, ValueError): success = False
+                except (TypeError,ValueError): success = False
             elif isinstance(success,str): success=success.lower() in {"true","1","success","completed"}
             failure_reason=payload.get("failure_reason") or payload.get("ResultDesc") or payload.get("Result",{}).get("ResultDesc")
 
@@ -129,9 +131,10 @@ class MoverPayoutCallbackView(APIView):
                             event_key=f"mover-payout-released:{payout.id}",
                             defaults={"user_id":mover.user_id,"notification_type":"MOVER_PAYOUT_RELEASED","title":"Mover payout released","message":f"Your payout of KES {payout.net_mover_payable:,.2f} has been successfully released to M-Pesa.","data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id),"provider_transaction_id":provider_transaction_id}},
                         )
+                        mover_email=Profile.objects.filter(pk=mover.user_id).values_list("email",flat=True).first() or ""
                         queue_mover_payout_success_emails(
                             payout=payout,
-                            mover_email=getattr(mover, "user_email", "") or "",
+                            mover_email=mover_email,
                             mover_name=mover.driver_full_name or "",
                             admin_email=getattr(settings, "ADMIN_EMAIL", "") or "",
                         )
