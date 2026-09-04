@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
+from django.conf import settings
+from django.conf.urls.static import static
 
 
 def health(_request):
@@ -8,7 +10,7 @@ def health(_request):
 
 
 urlpatterns = [
-    path('admin-built-in/', admin.site.urls),
+    path('admin/', admin.site.urls),
     path('health/', health, name='health'),
     path('api/accounts/', include('apps.accounts.urls')),
     path('api/listings/', include('apps.listings.urls')),
@@ -16,3 +18,7 @@ urlpatterns = [
     path('api/payments/', include('apps.payments.urls')),
     path('api/core/', include('apps.core.urls')),
 ]
+
+
+if settings.DEBUG:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

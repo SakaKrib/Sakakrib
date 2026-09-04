@@ -279,3 +279,53 @@ class AdminUserMoverView(APIView):
         mover.updated_at = timezone.now()
         mover.save(update_fields=['approval_status', 'is_available', 'updated_at'])
         return Response(AdminUserDetailView._mover_payload(mover))
+
+
+class AdminUserMoverApplicationView(APIView):
+    """Return the latest mover application for a given user (admin only)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        if not is_admin(request.user):
+            return Response({'detail': 'Administrator access is required.'}, status=403)
+
+        application = MoverApplication.objects.filter(applicant_id=user_id).order_by('-created_at').first()
+        if not application:
+            return Response({'application': None}, status=200)
+
+        # Provide the same applicant-facing serialization used by the submit view.
+        data = {
+            'id': str(application.id),
+            'applicant_email': application.applicant_email,
+            'applicant_name': application.applicant_name,
+            'application_type': application.application_type,
+            'base_rate_kes': application.base_rate_kes,
+            'capacity_details': application.capacity_details,
+            'dl_number': application.dl_number,
+            'dl_photo_url': application.dl_photo_url,
+            'driver_full_name': application.driver_full_name,
+            'end_time': application.end_time.strftime('%H:%M') if application.end_time else None,
+            'insurance_policy_details': application.insurance_policy_details,
+            'latitude': application.latitude,
+            'liability_accepted': application.liability_accepted,
+            'location': application.location,
+            'longitude': application.longitude,
+            'national_id': application.national_id,
+            'number_plate': application.number_plate,
+            'operating_city': application.operating_city,
+            'operating_county': application.operating_county,
+            'payment_account': application.payment_account,
+            'payment_channel': application.payment_channel,
+            'phone': application.phone,
+            'rate_per_km_kes': application.rate_per_km_kes,
+            'reference_contacts': application.reference_contacts,
+            'start_time': application.start_time.strftime('%H:%M') if application.start_time else None,
+            'terms_accepted': application.terms_accepted,
+            'vehicle_inspection_expiry': application.vehicle_inspection_expiry,
+            'vehicle_type': application.vehicle_type,
+            'working_days': application.working_days,
+            'status': application.status,
+            'submitted_at': application.submitted_at,
+        }
+
+        return Response({'application': data}, status=200)

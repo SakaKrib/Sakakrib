@@ -2,7 +2,7 @@ from django.urls import path
 
 from .admin_application_notification_views import AdminApplicationNotificationView
 from .admin_application_status_views import AdminApplicationStatusView
-from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverView
+from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverView, AdminUserMoverApplicationView
 from .application_review_views import AdminApplicationReviewView
 from .google_auth_views import GoogleLoginView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycSubmitView
@@ -42,6 +42,7 @@ urlpatterns = [
     path('admin/users/', AdminDashboardDataView.as_view(), name='admin-users'),
     path('admin/users/<uuid:user_id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('admin/users/<uuid:user_id>/application-status/', AdminApplicationStatusView.as_view(), name='admin-application-status'),
+    path('admin/users/<uuid:user_id>/mover-application/', AdminUserMoverApplicationView.as_view(), name='admin-user-mover-application'),
     path('admin/application-notifications/', AdminApplicationNotificationView.as_view(), name='admin-application-notification'),
     path('admin/movers/<uuid:mover_id>/', AdminUserMoverView.as_view(), name='admin-user-mover'),
 ]

@@ -47,6 +47,7 @@ LANGUAGE_CODE = 'en-us'
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
 MEDIA_URL = '/media/'
 CHAT_ATTACHMENT_BASE_URL = os.getenv('CHAT_ATTACHMENT_BASE_URL', '')
