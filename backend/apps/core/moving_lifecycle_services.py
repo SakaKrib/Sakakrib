@@ -98,7 +98,7 @@ def open_moving_dispute(*, user_id, booking_id, reason_code, description):
     booking = _booking_for_participant(booking_id, user_id)
     if booking.status not in {"in_progress", "completed"}:
         raise ValidationError("Dispute can only be opened for an active or completed moving job")
-    if booking.payment_status not in {"paid", "held"}:
+    if booking.payment_status != "paid":
         raise ValidationError("No settled payment exists for this booking")
     if MovingDispute.objects.filter(booking_id=booking.id, status="OPEN").exists():
         raise ValidationError("An open dispute already exists for this booking")
