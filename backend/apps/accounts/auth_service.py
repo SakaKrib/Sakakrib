@@ -1,7 +1,9 @@
 import secrets
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.core import signing
 from django.db import transaction
 from django.utils import timezone
 
@@ -15,10 +17,20 @@ OTP_MAX_ATTEMPTS = 5
 OTP_MAX_SENDS = 3
 OTP_ACCOUNT_CLEANUP_DELAY_SECONDS = 180
 VERIFICATION_WINDOW_SECONDS = OTP_ACCOUNT_CLEANUP_DELAY_SECONDS
+OTP_ENCRYPTION_SALT = 'accounts.signup_otp'
 
 
 def generate_signup_otp():
     return f'{secrets.randbelow(1_000_000):06d}'
+
+
+def encrypt_signup_otp(otp: str) -> str:
+    """Store a signed/encrypted representation for audit/recovery metadata.
+
+    The hash remains the authoritative verification secret. This value is not
+    returned to the client and cannot be used as a substitute for the hash.
+    """
+    return signing.dumps(otp, salt=OTP_ENCRYPTION_SALT, compress=True)
 
 
 def send_signup_otp(user: Profile, *, now=None):
@@ -36,8 +48,8 @@ def send_signup_otp(user: Profile, *, now=None):
     is_first_verification_send = user.signup_verification_started_at is None
     otp = generate_signup_otp()
     user.signup_otp_hash = make_password(otp)
-    # Expiry is finalized again immediately after SMTP accepts the message so
-    # queue latency cannot consume the applicant's one-minute verification window.
+    user.signup_otp_encrypted = encrypt_signup_otp(otp)
+    # The backend is authoritative for the 60-second OTP lifetime.
     user.signup_otp_expires_at = now + timedelta(seconds=OTP_EXPIRY_SECONDS)
     user.signup_otp_attempts = 0
     user.signup_otp_last_sent_at = now
@@ -46,9 +58,9 @@ def send_signup_otp(user: Profile, *, now=None):
         user.signup_verification_started_at = now
         user.signup_verification_deadline_at = now + timedelta(seconds=VERIFICATION_WINDOW_SECONDS)
     user.save(update_fields=[
-        'signup_otp_hash', 'signup_otp_expires_at', 'signup_otp_attempts',
-        'signup_otp_last_sent_at', 'signup_otp_trial_count', 'signup_verification_started_at',
-        'signup_verification_deadline_at', 'updated_at',
+        'signup_otp_hash', 'signup_otp_encrypted', 'signup_otp_expires_at',
+        'signup_otp_attempts', 'signup_otp_last_sent_at', 'signup_otp_trial_count',
+        'signup_verification_started_at', 'signup_verification_deadline_at', 'updated_at',
     ])
 
     queue_email(
