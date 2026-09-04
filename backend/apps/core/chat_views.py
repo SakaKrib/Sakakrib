@@ -87,6 +87,9 @@ class RenterChatPerformanceView(APIView):
 
     def get(self, request):
         try:
+            if getattr(request.user, "role", None) != "renter":
+                return JsonResponse({"detail": "Renter access is required."}, status=403)
+
             now = timezone.localtime()
             year = int(request.query_params.get("year", now.year))
             month = int(request.query_params.get("month", now.month))
