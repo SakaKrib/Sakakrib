@@ -38,6 +38,7 @@ CELERY_BEAT_SCHEDULE = {
     'process-due-rent-reminders-every-minute': {'task': 'apps.core.tasks.process_due_rent_reminders', 'schedule': 60.0},
     'process-notification-email-queue-every-five-seconds': {'task': 'apps.core.email_tasks.process_notification_email_queue', 'schedule': 5.0},
     'process-subscription-expiry-every-five-minutes': {'task': 'apps.subscriptions.tasks.process_subscription_expiry_task', 'schedule': 300.0},
+    'expire-unresponded-mover-booking-requests-every-minute': {'task': 'apps.core.mover_tasks.expire_unresponded_mover_booking_requests', 'schedule': 60.0},
 }
 AUTH_USER_MODEL = 'accounts.Profile'
 AUTHENTICATION_BACKENDS = ['apps.accounts.authentication.CookieJWTAuthenticationBackend','django.contrib.auth.backends.ModelBackend',]
