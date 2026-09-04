@@ -1,4 +1,7 @@
+import logging
+
 from django.conf import settings
+from django.contrib.auth import update_last_login
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -20,11 +23,6 @@ class CsrfTokenView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        # get_token() marks the CSRF cookie for update; Django's CSRF middleware
-        # writes it to the response. Do not apply ensure_csrf_cookie directly to
-        # an APIView method: a normal function decorator receives `self` as its
-        # first argument when used on a class method, which breaks Django 6's
-        # CSRF middleware with: CsrfTokenView has no attribute COOKIES.
         return JsonResponse({'csrfToken': get_token(request)})
 
 
@@ -46,14 +44,14 @@ class SignupView(APIView):
                 send_signup_otp(existing)
             except ValueError as exc:
                 return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-            return Response({'success': True, 'requiresEmailVerification': True, 'email': existing.email}, status=status.HTTP_200_OK)
+            return Response({'success': True, 'requiresEmailVerification': True, 'email': existing.email, 'signup_attempt': existing.signup_otp_trial_count}, status=status.HTTP_200_OK)
         user = Profile.objects.create_user(email=email, password=password, full_name=full_name, email_verified=False, verification_status='pending_verification', kyc_status='pending')
         try:
             send_signup_otp(user)
         except Exception:
             user.delete()
             raise
-        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id)}, status=status.HTTP_201_CREATED)
+        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id), 'signup_attempt': user.signup_otp_trial_count}, status=status.HTTP_201_CREATED)
 
 
 class ResendOtpView(APIView):
@@ -75,7 +73,7 @@ class ResendOtpView(APIView):
             send_signup_otp(user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email})
+        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'signup_attempt': user.signup_otp_trial_count}, status=status.HTTP_200_OK)
 
 
 class VerifyOtpView(APIView):
@@ -116,11 +114,11 @@ class LoginView(APIView):
         if not user.email_verified:
             return Response({'authenticated': False, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id), 'error': 'Please verify your email before signing in.'}, status=status.HTTP_403_FORBIDDEN)
         access, refresh = issue_token_pair(user)
+        update_last_login(None, user)
         response = Response({'success': True, 'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
         set_auth_cookies(response, access, refresh)
 
-        # Sign-in notification is deliberately best-effort. Authentication must
-        # not fail merely because the optional email queue is unavailable.
+        # Sign-in notification is deliberately best-effort.
         try:
             queue_email(
                 recipient=user.email,
@@ -135,7 +133,6 @@ class LoginView(APIView):
                 },
             )
         except Exception:
-            import logging
             logging.getLogger(__name__).exception('Failed to queue sign-in notification for %s', user.email)
 
         return response
@@ -223,7 +220,6 @@ class MeView(APIView):
 
     @transaction.atomic
     def delete(self, request):
-        """Permanently delete the authenticated Django account and revoke its auth state."""
         user = Profile.objects.select_for_update().get(pk=request.user.pk)
         user_id = str(user.id)
         user.delete()
