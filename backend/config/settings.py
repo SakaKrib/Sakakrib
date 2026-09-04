@@ -39,6 +39,7 @@ CELERY_BEAT_SCHEDULE = {
     'process-notification-email-queue-every-five-seconds': {'task': 'apps.core.email_tasks.process_notification_email_queue', 'schedule': 5.0},
     'process-subscription-expiry-every-five-minutes': {'task': 'apps.subscriptions.tasks.process_subscription_expiry_task', 'schedule': 300.0},
     'expire-unresponded-mover-booking-requests-every-minute': {'task': 'apps.core.mover_tasks.expire_unresponded_mover_booking_requests', 'schedule': 60.0},
+    'process-released-mover-payouts-every-fifteen-seconds': {'task': 'apps.core.mover_payout_tasks.process_released_mover_payouts', 'schedule': 15.0},
 }
 AUTH_USER_MODEL = 'accounts.Profile'
 AUTHENTICATION_BACKENDS = ['apps.accounts.authentication.CookieJWTAuthenticationBackend','django.contrib.auth.backends.ModelBackend',]
@@ -97,6 +98,10 @@ MPESA_PASSKEY = os.getenv('MPESA_PASSKEY','')
 MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL','')
 MPESA_BASE_URL = os.getenv('MPESA_BASE_URL','https://sandbox.safaricom.co.ke')
 MPESA_PAYOUT_CALLBACK_SECRET = os.getenv('MPESA_PAYOUT_CALLBACK_SECRET','')
+MPESA_PAYOUT_INITIATOR_NAME = os.getenv('MPESA_PAYOUT_INITIATOR_NAME','')
+MPESA_PAYOUT_SECURITY_CREDENTIAL = os.getenv('MPESA_PAYOUT_SECURITY_CREDENTIAL','')
+MPESA_PAYOUT_COMMAND_ID = os.getenv('MPESA_PAYOUT_COMMAND_ID','BusinessPayment')
+MPESA_PAYOUT_RESULT_URL = os.getenv('MPESA_PAYOUT_RESULT_URL','')
 PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID','')
 PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET','')
 PAYPAL_BASE_URL = os.getenv('PAYPAL_BASE_URL','https://api-m.sandbox.paypal.com')
