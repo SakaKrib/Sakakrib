@@ -4,9 +4,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverInvoice, type MoverNotification, type MoverPayout, type MoverRecord, type MoverScheduleEvent } from '@/lib/Movers';
 import MoverBookingRequests from '@/pages/Movers/MoverBookingRequests';
+import MoverCalendar from '@/pages/Movers/MoverCalendar';
 import MoverCustomersCard from '@/pages/Movers/MoverCustomersCard';
+import MoverEarningsChart from '@/pages/Movers/MoverEarningsChart';
 import MoverFinanceOverview from '@/pages/Movers/MoverFinanceOverview';
 import MoverNotificationsCard from '@/pages/Movers/MoverNotificationsCard';
+import MoverQuickActions from '@/pages/Movers/MoverQuickActions';
 import MoverScheduleOverview from '@/pages/Movers/MoverScheduleOverview';
 import MoverStatsCards from '@/pages/Movers/MoverStatsCards';
 
@@ -61,11 +64,8 @@ export default function MoverDashboard() {
     if (notificationsResult.status === 'fulfilled') setNotifications(notificationsResult.value?.notifications ?? []);
 
     const failed = results.filter((result) => result.status === 'rejected');
-    if (failed.length === results.length) {
-      setError('Unable to load mover dashboard data. Please try again.');
-    } else if (failed.length > 0) {
-      setError('Some mover dashboard sections could not be refreshed.');
-    }
+    if (failed.length === results.length) setError('Unable to load mover dashboard data. Please try again.');
+    else if (failed.length > 0) setError('Some mover dashboard sections could not be refreshed.');
 
     setLoading(false);
     setRefreshing(false);
@@ -115,6 +115,7 @@ export default function MoverDashboard() {
       )}
 
       <div className="space-y-6">
+        <MoverQuickActions onCalendar={() => navigate('mover-booking-detail', schedule[0]?.booking_id)} onMessages={() => navigate('chat')} onProfile={() => navigate('profile')} />
         <MoverStatsCards bookings={bookings} payouts={payouts} />
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -122,8 +123,14 @@ export default function MoverDashboard() {
           <MoverScheduleOverview bookings={bookings} schedule={schedule} onOpen={(bookingId) => navigate('mover-booking-detail', bookingId)} />
         </div>
 
+        <MoverCalendar schedule={schedule} onOpen={(bookingId) => navigate('mover-booking-detail', bookingId)} />
+
         <div className="grid gap-6 lg:grid-cols-2">
           <MoverFinanceOverview invoices={invoices} payouts={payouts} />
+          <MoverEarningsChart payouts={payouts} />
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
           <MoverNotificationsCard
             notifications={notifications}
             onRead={async (notificationId) => {
@@ -136,9 +143,8 @@ export default function MoverDashboard() {
               else navigate('notifications');
             }}
           />
+          <MoverCustomersCard bookings={bookings} onOpenBooking={(bookingId) => navigate('mover-booking-detail', bookingId)} />
         </div>
-
-        <MoverCustomersCard bookings={bookings} onOpenBooking={(bookingId) => navigate('mover-booking-detail', bookingId)} />
       </div>
     </div>
   );
