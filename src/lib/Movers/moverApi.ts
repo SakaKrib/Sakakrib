@@ -32,6 +32,7 @@ export interface MoverCustomerBooking {
 export interface MoverCustomer {
   id: string; full_name: string | null; phone: string | null; profile_photo_url: string | null;
   city: string | null; county: string | null; email: string | null; booking_count: number;
+  active_booking_count: number; completed_booking_count: number;
   last_booking_id: string | null; contact_released: boolean; bookings: MoverCustomerBooking[];
 }
 
