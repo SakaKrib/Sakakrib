@@ -11,6 +11,7 @@ import RenterHomeCard from '@/pages/Renters/RenterHomeCard';
 import RenterRentCard from '@/pages/Renters/RenterRentCard';
 import RenterMovingCard from '@/pages/Renters/RenterMovingCard';
 import RenterQuickActions, { type RenterQuickAction } from '@/pages/Renters/RenterQuickActions';
+import RenterDashboardTabs from '@/pages/Renters/RenterDashboardTabs';
 
 const EMPTY_DASHBOARD: RenterDashboardResponse = {
   association: null,
@@ -110,6 +111,9 @@ export default function RenterDashboard() {
 
       <RenterWelcome profile={profile} />
       <section className="mb-6"><RenterHomeCard home={{ property: data.property ? { id: data.property.id, title: data.property.title, city: data.property.city, county: data.property.county, address: data.property.address, cover_image_url: data.property.cover_image_url } : null, unit: data.unit ? data.unit : null, association: data.association ? data.association : null }} onViewProperty={(propertyId) => navigate('listing-detail', propertyId)} /></section>
+
+      <RenterDashboardTabs />
+
       <section className="mb-6"><RenterQuickActions onAction={handleQuickAction} hasActiveMove={Boolean(activeBooking)} hasRentalHome={Boolean(data.association || data.unit)} /></section>
       <div className="grid gap-6 lg:grid-cols-2">
         <RenterRentCard invoice={currentInvoice} monthlyRent={monthlyRent} onViewInvoices={() => navigate('renter-invoices')} onSubmitPayment={handleRentPaymentSubmission} />
