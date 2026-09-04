@@ -115,7 +115,7 @@ export default function MoverDashboard() {
       )}
 
       <div className="space-y-6">
-        <MoverQuickActions onCalendar={() => navigate('mover-booking-detail', schedule[0]?.booking_id)} onMessages={() => navigate('chat')} onProfile={() => navigate('profile')} />
+        <MoverQuickActions onCalendar={() => navigate('mover-calendar')} onMessages={() => navigate('chat')} onProfile={() => navigate('profile')} />
         <MoverStatsCards bookings={bookings} payouts={payouts} />
 
         <div className="grid gap-6 lg:grid-cols-2">
