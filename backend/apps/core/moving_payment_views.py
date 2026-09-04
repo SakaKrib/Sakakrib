@@ -9,9 +9,10 @@ from rest_framework.views import APIView
 from .domain_bookings import MoverPayout
 from .moving_lifecycle_services import confirm_moving_delivery, open_moving_dispute, resolve_moving_dispute
 from .moving_payment_services import (
-    finalize_mover_payout, finalize_moving_mpesa_callback, finalize_moving_paypal_webhook,
+    finalize_mover_payout, finalize_moving_mpesa_callback,
     release_moving_escrow, start_moving_mpesa_payment, start_moving_paypal_payment,
 )
+from .moving_paypal_webhook_services import finalize_moving_paypal_webhook
 
 
 def _error(exc):
