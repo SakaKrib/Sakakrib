@@ -39,6 +39,64 @@ def _canonical_profile_state(application_type, status_value):
     }
 
 
+def _materialize_mover(*, profile, mover_application, status_value, now):
+    """Create or synchronize the canonical mover record from its application."""
+    mover = Mover.objects.select_for_update().filter(user_id=profile.id).first()
+
+    if status_value != 'approved':
+        if mover:
+            mover.approval_status = 'pending_review' if status_value == 'pending' else status_value
+            mover.is_available = False
+            mover.updated_at = now
+            mover.save(update_fields=['approval_status', 'is_available', 'updated_at'])
+        return mover
+
+    if mover_application is None:
+        # Approval can only materialize a marketplace mover when the application
+        # carrying the mover-specific data exists. Keep the profile decision
+        # intact rather than creating an incomplete marketplace record.
+        return mover
+
+    mover_defaults = {
+        'driver_full_name': mover_application.driver_full_name or profile.full_name or '',
+        'national_id': mover_application.national_id or profile.national_id or '',
+        'dl_number': mover_application.dl_number or profile.dl_number or '',
+        'dl_photo_url': mover_application.dl_photo_url or '',
+        'vehicle_type': mover_application.vehicle_type or 'pickup',
+        'number_plate': mover_application.number_plate or '',
+        'operating_city': mover_application.operating_city or profile.city or '',
+        'operating_county': mover_application.operating_county or profile.county or '',
+        'phone': mover_application.phone or profile.phone or '',
+        'base_rate_kes': mover_application.base_rate_kes,
+        'rate_per_km_kes': mover_application.rate_per_km_kes,
+        'payment_channel': mover_application.payment_channel or 'mpesa_send_money',
+        'payment_account': mover_application.payment_account or '',
+        'insurance_policy_details': mover_application.insurance_policy_details or '',
+        'vehicle_inspection_expiry': mover_application.vehicle_inspection_expiry,
+        'liability_accepted': mover_application.liability_accepted,
+        'terms_accepted': mover_application.terms_accepted,
+        'reference_contacts': mover_application.reference_contacts or [],
+        'working_days': mover_application.working_days or [],
+        'start_time': mover_application.start_time,
+        'end_time': mover_application.end_time,
+        'capacity_details': mover_application.capacity_details or '',
+        'approval_status': 'approved',
+        'is_available': True,
+        'updated_at': now,
+    }
+
+    if mover is None:
+        mover_defaults['user_id'] = profile.id
+        mover_defaults['created_at'] = now
+        return Mover.objects.create(**mover_defaults)
+
+    for field, value in mover_defaults.items():
+        if field not in {'user_id', 'created_at'}:
+            setattr(mover, field, value)
+    mover.save(update_fields=[field for field in mover_defaults if field not in {'user_id', 'created_at'}])
+    return mover
+
+
 @transaction.atomic
 def set_application_status(*, admin_user, user_id, application_type, status_value, note=''):
     """Apply one canonical application decision and synchronize all state."""
@@ -79,19 +137,20 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
     ])
 
     if application_type == 'mover':
-        mover = Mover.objects.select_for_update().filter(user_id=profile.id).first()
-        if mover:
-            mover.approval_status = 'pending_review' if status_value == 'pending' else status_value
-            mover.is_available = status_value == 'approved'
-            mover.updated_at = now
-            mover.save(update_fields=['approval_status', 'is_available', 'updated_at'])
-
         mover_application = (
             MoverApplication.objects.select_for_update()
             .filter(applicant_id=profile.id)
             .order_by('-created_at')
             .first()
         )
+
+        _materialize_mover(
+            profile=profile,
+            mover_application=mover_application,
+            status_value=status_value,
+            now=now,
+        )
+
         if mover_application:
             mover_application.status = status_value
             mover_application.review_notes = note or None
