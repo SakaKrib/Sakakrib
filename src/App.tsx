@@ -13,7 +13,6 @@ import ListingsPage from '@/pages/ListingsPage';
 import ListingDetailPage from '@/pages/ListingDetailPage';
 import MoversPage from '@/pages/MoversPage';
 import MoverDetailPage from '@/pages/MoverDetailPage';
-import MoverBookingDetailPage from '@/pages/MoverBookingDetailPage';
 import MoverBookingDetail from '@/pages/Movers/MoverBookingDetail';
 import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
