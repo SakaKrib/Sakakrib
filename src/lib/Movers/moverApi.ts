@@ -211,9 +211,10 @@ export interface MoverChatResponse { messages: MoverChatMessage[] }
 const core = '/api/core';
 
 export const moverApi = {
-  getMover: async (): Promise<MoverRecord | null> => {
+  getMover: async (userId: string): Promise<MoverRecord | null> => {
+    if (!userId) throw new Error('Authenticated mover identity is required.');
     const rows = await protectedGet<MoverRecord[]>(`${core}/movers/`);
-    return (rows ?? [])[0] ?? null;
+    return (rows ?? []).find((row) => row.user_id === userId) ?? null;
   },
 
   getBookings: (): Promise<MoverBooking[]> =>
