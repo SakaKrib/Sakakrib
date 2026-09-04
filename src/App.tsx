@@ -67,6 +67,7 @@ function AppContent() {
       case 'mover-messages': return <MoverMessages />;
       case 'renter-invoices': return <RenterInvoicesPage />;
       case 'renter-payment': return <RenterPaymentPage />;
+      case 'renter-moving-history': return <RenterMovingHistoryPage />;
       case 'renter-calendar': return <RenterCalendarPage />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
