@@ -28,6 +28,7 @@ import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
 import RegisterMoverPage from './pages/RegisterMoverPage';
+import MoverCalendarPage from './pages/Movers/MoverCalendarPage';
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
@@ -50,6 +51,7 @@ function AppContent() {
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetailPage />;
       case 'mover-tracking': return <MoverTrackingPage />;
+      case 'mover-calendar': return <MoverCalendarPage />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
