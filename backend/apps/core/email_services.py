@@ -4,8 +4,20 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
+from .booking_email_templates import mover_booking_request
 from .domain_platform import NotificationEmail
 from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES
+
+# Keep booking email presentation separate while registering it with the
+# existing template/queue architecture used by all other notification emails.
+EMAIL_TEMPLATES = {
+    **EMAIL_TEMPLATES,
+    "mover_booking_request": mover_booking_request,
+}
+EMAIL_SUBJECTS = {
+    **EMAIL_SUBJECTS,
+    "mover_booking_request": "New Saka Krib moving request",
+}
 
 
 def queue_email(*, recipient: str, template_type: str, payload: dict) -> NotificationEmail:
