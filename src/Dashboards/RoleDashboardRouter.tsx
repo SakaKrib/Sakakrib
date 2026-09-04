@@ -6,6 +6,7 @@ import LandlordDashboard from './LandlordDashboard';
 import MoverDashboard from './MoverDashboard';
 import RealEstateDashboard from './Realestatedashboard';
 import DashboardPage from './DashboardPage';
+import AdminOperationsPanel from './AdminOperationsPanel';
 import type { UserRole } from '@/types/domain';
 
 type ProfessionalRole = Extract<UserRole, 'landlord' | 'real_estate' | 'mover'>;
@@ -83,7 +84,14 @@ export default function RoleDashboardRouter() {
     return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
   }
 
-  if (profile.is_superuser === true || profile.is_admin === true) return <DashboardPage />;
+  if (profile.is_superuser === true || profile.is_admin === true) {
+    return (
+      <>
+        <DashboardPage />
+        <AdminOperationsPanel />
+      </>
+    );
+  }
   if (!profile.role) return null;
   if (profile.role === 'renter') return <RenterDashboard />;
 
