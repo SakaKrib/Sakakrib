@@ -169,9 +169,35 @@ class SessionView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        if not request.user.is_authenticated:
-            return Response({'authenticated': False}, status=status.HTTP_200_OK)
-        return Response({'authenticated': True, 'user': {'id': str(request.user.id), 'email': request.user.email}, 'profile': ProfileSerializer(request.user).data})
+        if request.user.is_authenticated:
+            return Response({'authenticated': True, 'user': {'id': str(request.user.id), 'email': request.user.email}, 'profile': ProfileSerializer(request.user).data})
+
+        # The access JWT is intentionally short-lived. If it has expired while
+        # the browser was idle, recover the session from the HttpOnly refresh
+        # cookie before reporting the user as logged out. This makes app
+        # startup/wake/session checks self-healing instead of forcing React to
+        # interpret an expired access cookie as a real logout.
+        raw_refresh = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
+        if raw_refresh:
+            try:
+                access, refresh = rotate_refresh_token(raw_refresh)
+                payload = __import__('jwt').decode(
+                    access,
+                    settings.JWT_SECRET_KEY,
+                    algorithms=[settings.JWT_ALGORITHM],
+                    issuer=settings.JWT_ISSUER,
+                    audience=settings.JWT_AUDIENCE,
+                )
+                user = Profile.objects.get(pk=payload['sub'], is_active=True)
+                response = Response({'success': True, 'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
+                set_auth_cookies(response, access, refresh)
+                return response
+            except (ValueError, KeyError, Profile.DoesNotExist):
+                pass
+            except Exception:
+                logging.getLogger(__name__).exception('Django session refresh failed')
+
+        return Response({'authenticated': False}, status=status.HTTP_200_OK)
 
 
 class SetRoleView(APIView):
