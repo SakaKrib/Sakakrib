@@ -4,6 +4,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
+from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -77,3 +78,61 @@ class ChatMessageView(APIView):
         if not message:
             return JsonResponse({"detail": "Message not found"}, status=404)
         return JsonResponse({"message": serialize_message(message)}, status=200)
+
+
+class RenterChatPerformanceView(APIView):
+    """Monthly chat activity summary for the authenticated renter."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            now = timezone.localtime()
+            year = int(request.query_params.get("year", now.year))
+            month = int(request.query_params.get("month", now.month))
+            if month < 1 or month > 12:
+                raise ValidationError("month must be between 1 and 12")
+            if year < 2000 or year > 2100:
+                raise ValidationError("year is out of range")
+
+            next_month = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+            tz = timezone.get_current_timezone()
+            start = timezone.make_aware(datetime(year, month, 1), tz)
+            end = timezone.make_aware(next_month, tz)
+            messages = chat_messages_for_user(request.user).filter(
+                created_at__gte=start,
+                created_at__lt=end,
+            ).order_by("created_at", "id")
+
+            days_in_month = (end.date() - start.date()).days
+            daily = [{"day": day, "sent": 0, "received": 0, "total": 0} for day in range(1, days_in_month + 1)]
+            conversations = set()
+            sent = received = 0
+            last_message_at = None
+            user_id = str(request.user.pk)
+
+            for message in messages.iterator():
+                day = timezone.localtime(message.created_at).day
+                row = daily[day - 1]
+                row["total"] += 1
+                conversations.add(message.conversation_id)
+                if str(message.sender_id) == user_id:
+                    row["sent"] += 1
+                    sent += 1
+                else:
+                    row["received"] += 1
+                    received += 1
+                last_message_at = message.created_at
+
+            return JsonResponse({
+                "year": year,
+                "month": month,
+                "total_messages": sent + received,
+                "sent_messages": sent,
+                "received_messages": received,
+                "active_conversations": len(conversations),
+                "last_message_at": last_message_at.isoformat() if last_message_at else None,
+                "daily": daily,
+            }, status=200)
+        except (ValidationError, ValueError, TypeError) as exc:
+            return _error(exc)
