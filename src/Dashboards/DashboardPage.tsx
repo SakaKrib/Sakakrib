@@ -84,6 +84,8 @@ export default function DashboardPage() {
   const isAdmin =
     profile?.is_admin === true ||
     profile?.role === 'admin';
+  const isSuperUser = profile?.is_superuser === true;
+  const isSuperOrAdmin = isSuperUser || isAdmin;
 
   /*
    * ============================================================
@@ -275,7 +277,7 @@ export default function DashboardPage() {
    * ============================================================
    */
 
-  if (!profile.kyc_completed && !isAdmin) {
+  if (!profile.kyc_completed && !isSuperUser && !isAdmin) {
     return (
       <div className="mx-auto max-w-md px-2 py-20">
         <div className="card p-8 text-center">
@@ -369,14 +371,14 @@ export default function DashboardPage() {
    * ============================================================
    */
 
-  const activeRole = isAdmin
+  const activeRole = isSuperOrAdmin
     ? simulatorRole || profile.role
     : profile.role;
 
   /*
    * Admin dashboard
    */
-  if (isAdmin) {
+  if (isSuperOrAdmin && activeRole === 'admin') {
     return <AdminDashboard />;
   }
 

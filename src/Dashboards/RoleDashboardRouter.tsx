@@ -28,7 +28,7 @@ function normalizeStatus(value: unknown) {
 
 function AccessNotice({ role, status }: { role: ProfessionalRole; status: string }) {
   const { navigate } = useNav();
-  const label = labels[role];
+  const label = String(labels[role] ?? '');
   const pending = ['pending', 'pending_review', 'pending-review', 'submitted', 'under_review'].includes(status);
   const rejected = ['rejected', 'declined'].includes(status);
 
@@ -54,9 +54,9 @@ function AccessNotice({ role, status }: { role: ProfessionalRole; status: string
         </div>
         <h2 className="mt-5 text-xl font-bold text-gray-900 dark:text-white">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{message}</p>
-        <div className="mt-5 rounded-xl border border-warning-200 bg-warning-50 p-4 text-left dark:border-warning-800 dark:bg-warning-900/20">
-          <p className="text-sm font-semibold text-warning-900 dark:text-warning-200">Dashboard access requirements</p>
-          <ul className="mt-2 space-y-1 text-sm text-warning-800 dark:text-warning-300">
+        <div className="card mt-5 p-4 text-left">
+          <p className="text-sm font-semibold text-gray-900 dark:text-gray-200">Dashboard access requirements</p>
+          <ul className="mt-2 space-y-1 text-sm text-gray-700 dark:text-gray-400">
             <li>• Your role must be {label}.</li>
             <li>• Your email must be verified.</li>
             <li>• Identity verification must be completed.</li>
@@ -82,7 +82,7 @@ export default function RoleDashboardRouter() {
     return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
   }
 
-  if (profile.is_admin === true || profile.role === 'admin') return <DashboardPage />;
+  if (profile.is_superuser === true || profile.is_admin === true) return <DashboardPage />;
   if (!profile.role) return null;
   if (profile.role === 'renter') return <RenterDashboard />;
 

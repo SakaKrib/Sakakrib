@@ -339,9 +339,20 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
   const row = data?.[0];
 
   if (!row) {
-    throw new Error(
-      'Platform settings are not configured in the database.',
-    );
+    // Gracefully fall back to sane defaults when platform settings
+    // are not present in the database. This prevents the UI from
+    // hard-failing and ensures downstream code has numeric values.
+    // Keep a console warning so operators can notice the missing config.
+    // eslint-disable-next-line no-console
+    console.warn('Platform settings not found; using defaults.');
+
+    return {
+      id: false,
+      mover_commission_rate: 0.2,
+      mover_operational_markup_rate: 0,
+      created_at: undefined,
+      updated_at: undefined,
+    };
   }
 
   const moverCommissionRate = Number(

@@ -44,6 +44,7 @@ type DashboardSection =
 
 interface AdminUser {
   id: string;
+  is_admin?: boolean;
   email: string;
   full_name: string | null;
   first_name: string | null;
@@ -172,6 +173,7 @@ export default function AdminDashboard() {
   const { profile } = useAuth();
   const { navigate } = useNav();
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
+  const isSuperUser = profile?.is_superuser === true;
 
   const [users, setUsers] = useState<UserWithSubscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,7 +201,7 @@ export default function AdminDashboard() {
   const loadDashboard = async () => {
     setError(null);
     try {
-      const response = await protectedGet<{ items?: AdminDashboardItem[] }>('/api/accounts/admin/users/');
+      const response = await protectedGet<{ items?: AdminDashboardItem[] }>('/api/accounts/admin/users/?is_admin=eq.true');
       const items = response?.items || [];
       setUsers(
         items
@@ -220,12 +222,13 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (!isAdmin) {
+    const allowed = isSuperUser || isAdmin;
+    if (!allowed) {
       setLoading(false);
       return;
     }
     void loadDashboard();
-  }, [isAdmin]);
+  }, [isSuperUser, isAdmin]);
 
   const landlords = useMemo(() => users.filter((user) => normalizeStatus(user.role) === 'landlord'), [users]);
   const movers = useMemo(() => users.filter((user) => normalizeStatus(user.role) === 'mover'), [users]);
@@ -269,7 +272,7 @@ export default function AdminDashboard() {
       case 'landlord_verification': result = landlords; break;
       case 'real_estate_verification': result = realEstate; break;
       case 'mover_verification': result = movers; break;
-      case 'admin_users': result = users.filter((user) => normalizeStatus(user.role) === 'admin'); break;
+      case 'admin_users': result = users.filter((user) => normalizeStatus(user.role) === 'admin' || user.is_admin === true); break;
       default: result = [];
     }
 

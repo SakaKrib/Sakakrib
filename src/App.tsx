@@ -56,7 +56,7 @@ function AppContent() {
       case 'register-mover': return <RegisterMoverPage />;
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
-      case 'admin-user-details': return profile?.is_admin === true || profile?.role === 'admin' ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
+      case 'admin-user-details': return (profile?.is_superuser === true || profile?.is_admin === true) ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
       case 'dashboard': return <RoleDashboardRouter />;
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;

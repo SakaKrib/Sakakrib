@@ -4,9 +4,10 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Truck,
   ShieldCheck,
   User,
-  Truck,
+  UserCheck,
   Building2,
   FileText,
   Eye,
@@ -17,7 +18,6 @@ import {
   Car,
   CalendarDays,
   AlertCircle,
-  UserCheck,
   RefreshCw,
 } from 'lucide-react';
 import openKycDocument from '@/Dashboards/openPrivateDocsHelper';
@@ -152,6 +152,10 @@ interface MoverApplication {
   terms_accepted?: boolean;
 
   reference_contacts?: unknown[];
+
+  working_days?: unknown[];
+  start_time?: string | null;
+  end_time?: string | null;
 
   latitude?: number | null;
   longitude?: number | null;
@@ -414,11 +418,21 @@ export default function AdminUserDetails({
     setError(null);
 
     try {
-      const profileRows = await protectedGet<Profile[]>(
-        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(String(userId))}&limit=1`
+      const respAny = await protectedGet<any>(
+        `/api/accounts/admin/users/?id=eq.${encodeURIComponent(String(userId))}&is_admin=eq.true`
       );
 
-      const data = profileRows?.[0] ?? null;
+      let data: Profile | null = null;
+      if (respAny == null) {
+        data = null;
+      } else if (Array.isArray(respAny.items)) {
+        const item = respAny.items.find((it: any) => String(it?.profile?.id || it?.id) === String(userId)) ?? respAny.items[0] ?? null;
+        data = (item?.profile ?? item) as Profile | null;
+      } else if (respAny.profile) {
+        data = respAny.profile as Profile;
+      } else if (respAny.id) {
+        data = respAny as Profile;
+      }
 
       if (!data) {
         throw new Error('User profile was not found.');
@@ -485,11 +499,21 @@ export default function AdminUserDetails({
     setError(null);
 
     try {
-      const profileRows = await protectedGet<Profile[]>(
-        `/rest/v1/profiles?select=${PROFILE_SELECT}&id=eq.${encodeURIComponent(String(userId))}&limit=1`
+      const respAny = await protectedGet<any>(
+        `/api/accounts/admin/users/?id=eq.${encodeURIComponent(String(userId))}&is_admin=eq.true`
       );
 
-      const data = profileRows?.[0] ?? null;
+      let data: Profile | null = null;
+      if (respAny == null) {
+        data = null;
+      } else if (Array.isArray(respAny.items)) {
+        const item = respAny.items.find((it: any) => String(it?.profile?.id || it?.id) === String(userId)) ?? respAny.items[0] ?? null;
+        data = (item?.profile ?? item) as Profile | null;
+      } else if (respAny.profile) {
+        data = respAny.profile as Profile;
+      } else if (respAny.id) {
+        data = respAny as Profile;
+      }
 
       if (!data) {
         setLandlordApplication(null);
@@ -980,7 +1004,64 @@ export default function AdminUserDetails({
         `/rest/v1/movers?select=${MOVER_SELECT}&user_id=eq.${encodeURIComponent(String(userId))}&order=created_at.desc`
       );
 
-      const rows = moverRows || [];
+      let rows = moverRows || [];
+
+      // If there are no approved/created mover records, admin users may have
+      // submitted a mover application instead (stored in `mover_applications`).
+      // Try fetching mover_applications as a fallback so admins can review
+      // pending applications even when no `movers` row exists yet.
+      if (rows.length === 0) {
+        try {
+          // Try the new admin endpoint that returns the serialized mover application
+          const adminApp = await protectedGet<{ application?: any }>(
+            `/api/accounts/admin/users/${encodeURIComponent(String(userId))}/mover-application/`
+          );
+
+          const application = adminApp?.application ?? null;
+          if (application) {
+            rows = [
+              {
+                id: application.id,
+                user_id: userId,
+                driver_full_name: application.driver_full_name || application.applicant_name || '',
+                business_name: application.applicant_name || application.applicant_email || '',
+                national_id: application.national_id || '',
+                dl_number: application.dl_number || '',
+                dl_photo_url: application.dl_photo_url || null,
+                vehicle_type: application.vehicle_type || '',
+                number_plate: application.number_plate || '',
+                operating_city: application.operating_city || '',
+                operating_county: application.operating_county || '',
+                phone: application.phone || '',
+                profile_photo_url: null,
+                base_rate_kes: application.base_rate_kes ?? null,
+                capacity_details: application.capacity_details || '',
+                is_available: false,
+                approval_status: application.status === 'pending' ? 'pending_review' : application.status,
+                working_days: Array.isArray(application.working_days) ? application.working_days : [],
+                start_time: application.start_time ?? null,
+                end_time: application.end_time ?? null,
+                payment_channel: application.payment_channel || '',
+                payment_account: application.payment_account || '',
+                liability_accepted: Boolean(application.liability_accepted),
+                reference_contacts: Array.isArray(application.reference_contacts) ? application.reference_contacts : [],
+                created_at: application.submitted_at ?? new Date().toISOString(),
+                updated_at: application.submitted_at ?? new Date().toISOString(),
+                // Mark this as a converted mover application so actions
+                // such as approve/reject route to the application API
+                // instead of attempting to patch a non-existent Mover record.
+                is_application: true,
+              } as unknown as Mover,
+            ];
+          }
+        } catch (appErr) {
+          // ignore — we'll surface the empty state below
+          // eslint-disable-next-line no-console
+          console.debug('Failed to fetch mover_applications fallback', appErr);
+        }
+      }
+
+     
 
       if (rows.length === 0) {
         setMovers([]);
@@ -1128,17 +1209,83 @@ export default function AdminUserDetails({
       const now = new Date().toISOString();
 
       /* ==================================================
-         1. UPDATE MOVER APPLICATION
+         1. UPDATE MOVER APPLICATION OR MOVER RECORD
       ================================================== */
 
-      await protectedPatch(
-        `/rest/v1/movers?id=eq.${encodeURIComponent(mover.id)}`,
-        {
-          approval_status: databaseStatus,
-          is_available: isAvailable,
-          updated_at: now,
+      // If this row was constructed from a mover_application (no real
+      // Mover DB record exists), route the status update through the
+      // admin application-status endpoint which updates the profile
+      // and mover_application atomically.
+      if ((mover as any).is_application) {
+        if (!mover.user_id) {
+          throw new Error('Cannot update application: missing user id.');
         }
-      );
+
+        await protectedPatch(
+          `/api/accounts/admin/users/${encodeURIComponent(String(mover.user_id))}/application-status/`,
+          {
+            application_type: 'mover',
+            status: status,
+            admin_review_note: note,
+          }
+        );
+
+        // Refresh the serialized application from the admin endpoint and
+        // convert it back into the mover-shaped object used by the UI.
+        const adminApp = await protectedGet<{ application?: any }>(
+          `/api/accounts/admin/users/${encodeURIComponent(String(mover.user_id))}/mover-application/`
+        );
+
+        const application = adminApp?.application ?? null;
+
+        if (application) {
+          const refreshedMover = {
+            id: application.id,
+            user_id: mover.user_id,
+            driver_full_name: application.driver_full_name || application.applicant_name || '',
+            business_name: application.applicant_name || application.applicant_email || '',
+            national_id: application.national_id || '',
+            dl_number: application.dl_number || '',
+            dl_photo_url: application.dl_photo_url || null,
+            vehicle_type: application.vehicle_type || '',
+            number_plate: application.number_plate || '',
+            operating_city: application.operating_city || '',
+            operating_county: application.operating_county || '',
+            phone: application.phone || '',
+            profile_photo_url: null,
+            base_rate_kes: application.base_rate_kes ?? null,
+            capacity_details: application.capacity_details || '',
+            is_available: false,
+            approval_status: application.status === 'pending' ? 'pending_review' : application.status,
+            working_days: Array.isArray(application.working_days) ? application.working_days : [],
+            start_time: application.start_time ?? null,
+            end_time: application.end_time ?? null,
+            payment_channel: application.payment_channel || '',
+            payment_account: application.payment_account || '',
+            liability_accepted: Boolean(application.liability_accepted),
+            reference_contacts: Array.isArray(application.reference_contacts) ? application.reference_contacts : [],
+            created_at: application.submitted_at ?? new Date().toISOString(),
+            updated_at: application.submitted_at ?? new Date().toISOString(),
+            is_application: true,
+            profile: mover.profile ?? null,
+          } as unknown as MoverWithProfile;
+
+          setSelectedMover(refreshedMover);
+
+          setMovers((current) =>
+            current.map((item) => (item.id === refreshedMover.id ? refreshedMover : item))
+          );
+
+          setAdminReviewNote(application.review_notes || note || '');
+        }
+
+        if (userId && mover.user_id === userId) {
+          await loadUser();
+        }
+
+        setUpdating(false);
+        return;
+      }
 
       /* ==================================================
          2. UPDATE PROFILE APPLICATION STATUS
@@ -1497,12 +1644,16 @@ export default function AdminUserDetails({
           <p className="mt-3 font-semibold">
             User not found.
           </p>
+          {(() => {
+            const displayError =
+              error === 'User profile was not found.'
+                ? 'The requested user does not exist.'
+                : error;
 
-          {error && (
-            <p className="mt-2 text-sm text-error-600">
-              {error}
-            </p>
-          )}
+            return displayError ? (
+              <p className="mt-2 text-sm text-error-600">{displayError}</p>
+            ) : null;
+          })()}
         </div>
       </div>
     );

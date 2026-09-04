@@ -10,7 +10,57 @@ export function NavProvider({children}:{children:ReactNode}){
  const [view,setView]=useState<AppView>('home'); const [selectedListingId,setSelectedListingId]=useState<string|null>(null); const [selectedListingManageId,setSelectedListingManageId]=useState<string|null>(null); const [selectedPostListingDraftId,setSelectedPostListingDraftId]=useState<string|null>(null); const [selectedMoverId,setSelectedMoverId]=useState<string|null>(null); const [selectedChatMoverId,setSelectedChatMoverId]=useState<string|null>(null); const [selectedMoverBookingId,setSelectedMoverBookingId]=useState<string|null>(null); const [selectedAdminUserId,setSelectedAdminUserId]=useState<string|null>(null); const [movingRequestContext,setMovingRequestContext]=useState<MovingRequestContext|null>(null); const [authModalOpen,setAuthModalOpen]=useState(false); const [authMode,setAuthMode]=useState<AuthMode>('signin'); const [roleModalOpen,setRoleModalOpen]=useState(false); const [simulatorRole,setSimulatorRole]=useState<UserRole|null>(null);
  const clearSelections=()=>{setSelectedListingId(null);setSelectedListingManageId(null);setSelectedPostListingDraftId(null);setSelectedMoverId(null);setSelectedChatMoverId(null);setSelectedMoverBookingId(null);setSelectedAdminUserId(null);};
  const beginMovingRequest=(context:MovingRequestContext)=>setMovingRequestContext({listingId:context.listingId??null}); const clearMovingRequest=()=>setMovingRequestContext(null);
- useEffect(()=>{const handleHashChange=()=>{const hash=window.location.hash.replace(/^#/,'').trim();if(!hash){setView('home');clearSelections();return;}const [hashView,...idParts]=hash.split('/');const hashId=idParts.length>0?idParts.join('/'):undefined;if(!VALID_APP_VIEWS.includes(hashView as AppView))return;const nextView=hashView as AppView;setView(nextView);clearSelections();switch(nextView){case 'listing-detail':setSelectedListingId(hashId??null);break;case 'listing-manage':setSelectedListingManageId(hashId??null);break;case 'post-listing':setSelectedPostListingDraftId(hashId?decodeURIComponent(hashId):null);break;case 'mover-detail':setSelectedMoverId(hashId??null);break;case 'mover-booking-detail':setSelectedMoverBookingId(hashId??null);break;case 'chat':setSelectedChatMoverId(hashId??null);break;case 'admin-user-details':setSelectedAdminUserId(hashId??null);break;default:break;}};handleHashChange();window.addEventListener('hashchange',handleHashChange);return()=>window.removeEventListener('hashchange',handleHashChange);},[]);
+ useEffect(() => {
+	const handleHashChange = () => {
+		const hash = window.location.hash.replace(/^#/, '').trim();
+		if (!hash) {
+			setView('home');
+			clearSelections();
+			return;
+		}
+
+		const [hashView, ...idParts] = hash.split('/');
+		const hashId = idParts.length > 0 ? idParts.join('/') : undefined;
+
+		if (!VALID_APP_VIEWS.includes(hashView as AppView)) return;
+
+		const nextView = hashView as AppView;
+		setView(nextView);
+		clearSelections();
+
+		const decode = (v?: string | undefined | null) => (v ? decodeURIComponent(v) : null);
+
+		switch (nextView) {
+			case 'listing-detail':
+				setSelectedListingId(decode(hashId));
+				break;
+			case 'listing-manage':
+				setSelectedListingManageId(decode(hashId));
+				break;
+			case 'post-listing':
+				setSelectedPostListingDraftId(decode(hashId));
+				break;
+			case 'mover-detail':
+				setSelectedMoverId(decode(hashId));
+				break;
+			case 'mover-booking-detail':
+				setSelectedMoverBookingId(decode(hashId));
+				break;
+			case 'chat':
+				setSelectedChatMoverId(decode(hashId));
+				break;
+			case 'admin-user-details':
+				setSelectedAdminUserId(decode(hashId));
+				break;
+			default:
+				break;
+		}
+	};
+
+	handleHashChange();
+	window.addEventListener('hashchange', handleHashChange);
+	return () => window.removeEventListener('hashchange', handleHashChange);
+ }, []);
  const navigate=(newView:AppView,id?:string)=>{setView(newView);clearSelections();switch(newView){case 'listing-detail':if(id)setSelectedListingId(id);break;case 'listing-manage':if(id)setSelectedListingManageId(id);break;case 'post-listing':if(id)setSelectedPostListingDraftId(id);break;case 'mover-detail':if(id)setSelectedMoverId(id);break;case 'mover-booking-detail':if(id)setSelectedMoverBookingId(id);break;case 'chat':if(id)setSelectedChatMoverId(id);break;case 'admin-user-details':if(id)setSelectedAdminUserId(id);break;default:break;}const nextHash=id?`${newView}/${encodeURIComponent(id)}`:newView;if(window.location.hash.replace(/^#/,'')!==nextHash)window.location.hash=nextHash;window.scrollTo({top:0,behavior:'smooth'});};
  return <NavContext.Provider value={{view,selectedListingId,selectedListingManageId,selectedPostListingDraftId,selectedMoverId,selectedChatMoverId,selectedMoverBookingId,selectedAdminUserId,movingRequestContext,beginMovingRequest,clearMovingRequest,navigate,authModalOpen,setAuthModalOpen,authMode,setAuthMode,roleModalOpen,setRoleModalOpen,simulatorRole,setSimulatorRole}}>{children}</NavContext.Provider>;
 }

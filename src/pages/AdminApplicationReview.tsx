@@ -263,15 +263,13 @@ function ApplicationFormView({
       ? 'Real Estate Application'
       : 'Landlord Application';
 
-  const applicationStatus =
+  const applicationStatus = (
     isRealEstate
       ? app.real_estate_application_status
-      : app.landlord_application_status;
+      : app.landlord_application_status
+  ) ?? '';
 
-  const normalizedStatus =
-    String(
-      applicationStatus ?? ''
-    ).toLowerCase();
+  const normalizedStatus = String(applicationStatus).toLowerCase();
 
   const currentStatus: ReviewStatus =
     normalizedStatus === 'approved'

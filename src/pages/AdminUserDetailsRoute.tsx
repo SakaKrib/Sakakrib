@@ -35,10 +35,23 @@ export default function AdminUserDetailsRoute({
 
   const load = async () => {
     try {
-      const rows = await protectedGet<AdminApprovalProfile[]>(
-        `/rest/v1/profiles?select=id,role,is_agency,landlord_application_status&id=eq.${encodeURIComponent(userId)}&limit=1`
+      const respAny = await protectedGet<any>(
+        `/api/accounts/admin/users/?id=eq.${encodeURIComponent(String(userId))}&is_admin=eq.true`
       );
-      setProfile(rows?.[0] ?? null);
+
+      let prof: AdminApprovalProfile | null = null;
+      if (respAny == null) {
+        prof = null;
+      } else if (Array.isArray(respAny.items)) {
+        const item = respAny.items.find((it: any) => String(it?.profile?.id || it?.id) === String(userId)) ?? respAny.items[0] ?? null;
+        prof = item?.profile ?? item ?? null;
+      } else if (respAny.profile) {
+        prof = respAny.profile;
+      } else if (respAny.id) {
+        prof = respAny as AdminApprovalProfile;
+      }
+
+      setProfile(prof);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load approval status.');
     }

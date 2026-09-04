@@ -16,6 +16,8 @@ export interface Profile extends Record<string, any> {
   middle_name?: string | null;
   last_name?: string | null;
   is_admin?: boolean;
+  is_staff?: boolean;
+  is_superuser?: boolean;
   role?: UserRole;
   kyc_completed?: boolean;
   verification_status?: VerificationStatus;
@@ -80,7 +82,7 @@ export interface Listing extends Record<string, any> {
 }
 
 export interface ListingMedia extends Record<string, any> {
-  id: string;
+  id?: string;
   listing_id?: string;
   user_id?: string;
   unit_id?: string | null;
