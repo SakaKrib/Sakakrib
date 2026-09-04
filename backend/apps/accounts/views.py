@@ -19,6 +19,16 @@ from .models import Profile
 from .serializers import LoginSerializer, ProfileSerializer, ResendOtpSerializer, SetRoleSerializer, SignupSerializer, VerifyOtpSerializer
 
 
+def _otp_state(user):
+    expires_at = user.signup_otp_expires_at
+    expires_in = max(0, int((expires_at - timezone.now()).total_seconds())) if expires_at else 0
+    return {
+        'signup_attempt': user.signup_otp_trial_count,
+        'otp_expires_at': expires_at.isoformat() if expires_at else None,
+        'otp_expires_in': expires_in,
+    }
+
+
 class CsrfTokenView(APIView):
     permission_classes = [AllowAny]
 
@@ -44,14 +54,14 @@ class SignupView(APIView):
                 send_signup_otp(existing)
             except ValueError as exc:
                 return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-            return Response({'success': True, 'requiresEmailVerification': True, 'email': existing.email, 'signup_attempt': existing.signup_otp_trial_count}, status=status.HTTP_200_OK)
+            return Response({'success': True, 'requiresEmailVerification': True, 'email': existing.email, **_otp_state(existing)}, status=status.HTTP_200_OK)
         user = Profile.objects.create_user(email=email, password=password, full_name=full_name, email_verified=False, verification_status='pending_verification', kyc_status='pending')
         try:
             send_signup_otp(user)
         except Exception:
             user.delete()
             raise
-        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id), 'signup_attempt': user.signup_otp_trial_count}, status=status.HTTP_201_CREATED)
+        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'profile_id': str(user.id), **_otp_state(user)}, status=status.HTTP_201_CREATED)
 
 
 class ResendOtpView(APIView):
@@ -73,7 +83,7 @@ class ResendOtpView(APIView):
             send_signup_otp(user)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, 'signup_attempt': user.signup_otp_trial_count}, status=status.HTTP_200_OK)
+        return Response({'success': True, 'requiresEmailVerification': True, 'email': user.email, **_otp_state(user)}, status=status.HTTP_200_OK)
 
 
 class VerifyOtpView(APIView):
@@ -118,7 +128,6 @@ class LoginView(APIView):
         response = Response({'success': True, 'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
         set_auth_cookies(response, access, refresh)
 
-        # Sign-in notification is deliberately best-effort.
         try:
             queue_email(
                 recipient=user.email,
