@@ -39,7 +39,10 @@ import MoverMessages from './pages/Movers/MoverMessages';
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
-import { RenterInvoicesPage, RenterPaymentPage, RenterCalendarPage, RenterMovingHistoryPage } from '@/pages/RenterPages';
+import { RenterInvoicesPage, RenterPaymentPage, RenterMovingHistoryPage } from '@/pages/RenterPages';
+import RenterCalendarPage from '@/pages/Renters/RenterCalendarPage';
+import RenterActivitiesPage from '@/pages/Renters/RenterActivitiesPage';
+import RenterChatPerformancePage from '@/pages/Renters/RenterChatPerformancePage';
 
 function AppContent() {
   const { view, selectedAdminUserId } = useNav();
@@ -69,6 +72,8 @@ function AppContent() {
       case 'renter-payment': return <RenterPaymentPage />;
       case 'renter-moving-history': return <RenterMovingHistoryPage />;
       case 'renter-calendar': return <RenterCalendarPage />;
+      case 'renter-activities': return <RenterActivitiesPage />;
+      case 'renter-chat-performance': return <RenterChatPerformancePage />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
