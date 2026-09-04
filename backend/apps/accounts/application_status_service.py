@@ -1,8 +1,11 @@
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.authorization import is_admin
-from apps.core.domain_platform import Mover, MoverApplication
+from apps.core.domain_platform import Mover, MoverApplication, NotificationEmail
+from apps.core.email_services import queue_email
 
 from .models import Profile
 
@@ -97,6 +100,82 @@ def _materialize_mover(*, profile, mover_application, status_value, now):
     return mover
 
 
+def _queue_application_status_email(*, profile, application_type, status_value, note, application=None):
+    """Queue the applicant notification from trusted Django state."""
+    recipient = str(profile.email or '').strip().lower()
+    if not recipient:
+        return None
+
+    email_type = {
+        'approved': 'application_approved',
+        'rejected': 'application_declined',
+        'pending': 'application_review',
+    }[status_value]
+
+    full_name = str(profile.full_name or '').strip()
+    if not full_name:
+        full_name = ' '.join(
+            part for part in [profile.first_name, profile.middle_name, profile.last_name]
+            if part
+        ).strip() or 'Applicant'
+    first_name = str(profile.first_name or '').strip() or full_name.split()[0]
+
+    payload = {
+        'email': recipient,
+        'application_id': str(application.id) if application else str(profile.id),
+        'application_status': status_value,
+        'application_type': application_type,
+        'admin_review_note': note or None,
+        'user': {
+            'id': str(profile.id),
+            'email': recipient,
+            'full_name': full_name,
+            'first_name': first_name,
+            'role': application_type,
+        },
+        'applicant': {
+            'id': str(profile.id),
+            'email': recipient,
+            'full_name': full_name,
+            'first_name': first_name,
+            'role': application_type,
+        },
+        'full_name': full_name,
+        'applicant_name': full_name,
+    }
+
+    if application_type == 'mover' and application is not None:
+        payload.update({
+            'driver_full_name': application.driver_full_name,
+            'operating_city': application.operating_city,
+            'operating_county': application.operating_county,
+            'mover': {
+                'id': str(application.id),
+                'user_id': str(profile.id),
+                'driver_full_name': application.driver_full_name,
+                'operating_city': application.operating_city,
+                'operating_county': application.operating_county,
+            },
+        })
+
+    # Avoid duplicate notifications when an admin repeats the same action
+    # within the compatibility endpoint's five-minute window.
+    cutoff = timezone.now() - timedelta(minutes=5)
+    existing = NotificationEmail.objects.filter(
+        recipient=recipient,
+        template_type=email_type,
+        created_at__gte=cutoff,
+    ).order_by('-created_at').first()
+    if existing:
+        return existing
+
+    return queue_email(
+        recipient=recipient,
+        template_type=email_type,
+        payload=payload,
+    )
+
+
 @transaction.atomic
 def set_application_status(*, admin_user, user_id, application_type, status_value, note=''):
     """Apply one canonical application decision and synchronize all state."""
@@ -136,6 +215,7 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
         'updated_at',
     ])
 
+    mover_application = None
     if application_type == 'mover':
         mover_application = (
             MoverApplication.objects.select_for_update()
@@ -164,5 +244,15 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
                 'reviewed_at',
                 'updated_at',
             ])
+
+    # Email is queued from the trusted server-side profile/application state.
+    # The browser no longer needs to construct or submit an email payload.
+    _queue_application_status_email(
+        profile=profile,
+        application_type=application_type,
+        status_value=status_value,
+        note=note,
+        application=mover_application,
+    )
 
     return profile
