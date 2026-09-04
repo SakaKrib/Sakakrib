@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
 import type { UserRole } from '@/types/domain';
-export type AppView = 'home'|'listings'|'listing-detail'|'listing-manage'|'movers'|'mover-detail'|'mover-booking-detail'|'chat'|'community'|'post-listing'|'register-mover'|'register-landlord'|'kyc-verify'|'dashboard'|'my-bookings'|'my-listings'|'profile'|'subscription-plans'|'pms-dashboard'|'renter-invoices'|'renter-payment'|'mover-tracking'|'renter-calendar'|'notifications'|'admin-user-details';
+export type AppView = 'home'|'listings'|'listing-detail'|'listing-manage'|'movers'|'mover-detail'|'mover-booking-detail'|'chat'|'community'|'post-listing'|'register-mover'|'register-landlord'|'kyc-verify'|'dashboard'|'my-bookings'|'my-listings'|'profile'|'subscription-plans'|'pms-dashboard'|'renter-invoices'|'renter-payment'|'mover-tracking'|'renter-calendar'|'mover-calendar'|'notifications'|'admin-user-details';
 export type AuthMode = 'signin'|'signup'|'forgot';
 export interface MovingRequestContext { listingId: string|null; }
 interface NavContextValue { view: AppView; selectedListingId: string|null; selectedListingManageId: string|null; selectedPostListingDraftId: string|null; selectedMoverId: string|null; selectedChatMoverId: string|null; selectedMoverBookingId: string|null; selectedAdminUserId: string|null; movingRequestContext: MovingRequestContext|null; beginMovingRequest:(context:MovingRequestContext)=>void; clearMovingRequest:()=>void; navigate:(view:AppView,id?:string)=>void; authModalOpen:boolean; setAuthModalOpen:(open:boolean)=>void; authMode:AuthMode; setAuthMode:Dispatch<SetStateAction<AuthMode>>; roleModalOpen:boolean; setRoleModalOpen:(open:boolean)=>void; simulatorRole:UserRole|null; setSimulatorRole:Dispatch<SetStateAction<UserRole|null>>; }
 const NavContext=createContext<NavContextValue|undefined>(undefined);
-const VALID_APP_VIEWS:AppView[]=['home','listings','listing-detail','listing-manage','movers','mover-detail','mover-booking-detail','chat','community','post-listing','register-mover','register-landlord','kyc-verify','dashboard','my-bookings','my-listings','profile','subscription-plans','pms-dashboard','renter-invoices','renter-payment','mover-tracking','renter-calendar','notifications','admin-user-details'];
+const VALID_APP_VIEWS:AppView[]=['home','listings','listing-detail','listing-manage','movers','mover-detail','mover-booking-detail','chat','community','post-listing','register-mover','register-landlord','kyc-verify','dashboard','my-bookings','my-listings','profile','subscription-plans','pms-dashboard','renter-invoices','renter-payment','mover-tracking','renter-calendar','mover-calendar','notifications','admin-user-details'];
 export function NavProvider({children}:{children:ReactNode}){
  const [view,setView]=useState<AppView>('home'); const [selectedListingId,setSelectedListingId]=useState<string|null>(null); const [selectedListingManageId,setSelectedListingManageId]=useState<string|null>(null); const [selectedPostListingDraftId,setSelectedPostListingDraftId]=useState<string|null>(null); const [selectedMoverId,setSelectedMoverId]=useState<string|null>(null); const [selectedChatMoverId,setSelectedChatMoverId]=useState<string|null>(null); const [selectedMoverBookingId,setSelectedMoverBookingId]=useState<string|null>(null); const [selectedAdminUserId,setSelectedAdminUserId]=useState<string|null>(null); const [movingRequestContext,setMovingRequestContext]=useState<MovingRequestContext|null>(null); const [authModalOpen,setAuthModalOpen]=useState(false); const [authMode,setAuthMode]=useState<AuthMode>('signin'); const [roleModalOpen,setRoleModalOpen]=useState(false); const [simulatorRole,setSimulatorRole]=useState<UserRole|null>(null);
  const clearSelections=()=>{setSelectedListingId(null);setSelectedListingManageId(null);setSelectedPostListingDraftId(null);setSelectedMoverId(null);setSelectedChatMoverId(null);setSelectedMoverBookingId(null);setSelectedAdminUserId(null);};
@@ -31,29 +31,14 @@ export function NavProvider({children}:{children:ReactNode}){
 		const decode = (v?: string | undefined | null) => (v ? decodeURIComponent(v) : null);
 
 		switch (nextView) {
-			case 'listing-detail':
-				setSelectedListingId(decode(hashId));
-				break;
-			case 'listing-manage':
-				setSelectedListingManageId(decode(hashId));
-				break;
-			case 'post-listing':
-				setSelectedPostListingDraftId(decode(hashId));
-				break;
-			case 'mover-detail':
-				setSelectedMoverId(decode(hashId));
-				break;
-			case 'mover-booking-detail':
-				setSelectedMoverBookingId(decode(hashId));
-				break;
-			case 'chat':
-				setSelectedChatMoverId(decode(hashId));
-				break;
-			case 'admin-user-details':
-				setSelectedAdminUserId(decode(hashId));
-				break;
-			default:
-				break;
+			case 'listing-detail': setSelectedListingId(decode(hashId)); break;
+			case 'listing-manage': setSelectedListingManageId(decode(hashId)); break;
+			case 'post-listing': setSelectedPostListingDraftId(decode(hashId)); break;
+			case 'mover-detail': setSelectedMoverId(decode(hashId)); break;
+			case 'mover-booking-detail': setSelectedMoverBookingId(decode(hashId)); break;
+			case 'chat': setSelectedChatMoverId(decode(hashId)); break;
+			case 'admin-user-details': setSelectedAdminUserId(decode(hashId)); break;
+			default: break;
 		}
 	};
 
@@ -64,4 +49,4 @@ export function NavProvider({children}:{children:ReactNode}){
  const navigate=(newView:AppView,id?:string)=>{setView(newView);clearSelections();switch(newView){case 'listing-detail':if(id)setSelectedListingId(id);break;case 'listing-manage':if(id)setSelectedListingManageId(id);break;case 'post-listing':if(id)setSelectedPostListingDraftId(id);break;case 'mover-detail':if(id)setSelectedMoverId(id);break;case 'mover-booking-detail':if(id)setSelectedMoverBookingId(id);break;case 'chat':if(id)setSelectedChatMoverId(id);break;case 'admin-user-details':if(id)setSelectedAdminUserId(id);break;default:break;}const nextHash=id?`${newView}/${encodeURIComponent(id)}`:newView;if(window.location.hash.replace(/^#/,'')!==nextHash)window.location.hash=nextHash;window.scrollTo({top:0,behavior:'smooth'});};
  return <NavContext.Provider value={{view,selectedListingId,selectedListingManageId,selectedPostListingDraftId,selectedMoverId,selectedChatMoverId,selectedMoverBookingId,selectedAdminUserId,movingRequestContext,beginMovingRequest,clearMovingRequest,navigate,authModalOpen,setAuthModalOpen,authMode,setAuthMode,roleModalOpen,setRoleModalOpen,simulatorRole,setSimulatorRole}}>{children}</NavContext.Provider>;
 }
-export function useNav(){const ctx=useContext(NavContext);if(!ctx)throw new Error('useNav must be used within a NavProvider');return ctx;}
+export function useNav(){const ctx=useContext(NavContext);if(!ctx)throw new Error('useNav must be used within NavProvider');return ctx;}
