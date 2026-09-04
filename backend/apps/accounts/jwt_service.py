@@ -11,6 +11,9 @@ from django.utils import timezone
 from .models import Profile, RefreshToken
 
 
+LEGACY_REFRESH_COOKIE = 'refreshToken'
+
+
 def _now():
     return datetime.now(dt_timezone.utc)
 
@@ -63,12 +66,18 @@ def revoke_refresh_token(raw_refresh: str):
         pass
 
 
+def _clear_legacy_refresh_cookie(response):
+    response.delete_cookie(LEGACY_REFRESH_COOKIE, path='/')
+
+
 def set_auth_cookies(response, access_token: str, refresh_token: str):
     common = {'httponly': True, 'secure': settings.JWT_COOKIE_SECURE, 'samesite': settings.JWT_COOKIE_SAMESITE, 'domain': settings.JWT_COOKIE_DOMAIN, 'path': '/'}
     response.set_cookie(settings.JWT_ACCESS_COOKIE, access_token, max_age=settings.JWT_ACCESS_LIFETIME_SECONDS, **common)
     response.set_cookie(settings.JWT_REFRESH_COOKIE, refresh_token, max_age=settings.JWT_REFRESH_LIFETIME_SECONDS, **common)
+    _clear_legacy_refresh_cookie(response)
 
 
 def clear_auth_cookies(response):
     response.delete_cookie(settings.JWT_ACCESS_COOKIE, path='/', domain=settings.JWT_COOKIE_DOMAIN, samesite=settings.JWT_COOKIE_SAMESITE)
     response.delete_cookie(settings.JWT_REFRESH_COOKIE, path='/', domain=settings.JWT_COOKIE_DOMAIN, samesite=settings.JWT_COOKIE_SAMESITE)
+    _clear_legacy_refresh_cookie(response)
