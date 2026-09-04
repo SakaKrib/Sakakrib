@@ -7,6 +7,7 @@ import MoverDashboard from './MoverDashboard';
 import RealEstateDashboard from './Realestatedashboard';
 import DashboardPage from './DashboardPage';
 import AdminOperationsPanel from './AdminOperationsPanel';
+import AdminListingPostPanel from './AdminListingPostPanel';
 import type { UserRole } from '@/types/domain';
 
 type ProfessionalRole = Extract<UserRole, 'landlord' | 'real_estate' | 'mover'>;
@@ -89,6 +90,7 @@ export default function RoleDashboardRouter() {
       <>
         <DashboardPage />
         <AdminOperationsPanel />
+        <AdminListingPostPanel />
       </>
     );
   }
