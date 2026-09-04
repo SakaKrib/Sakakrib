@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 type UserRole = 'landlord' | 'real_estate' | 'mover' | 'renter' | 'admin';
 type VerificationFilter = 'all' | 'pending' | 'approved' | 'rejected';
 type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+type ApplicationType = 'landlord' | 'real_estate' | 'mover';
 
 type DashboardSection =
   | 'overview'
@@ -152,13 +153,37 @@ const getMoverApplicationStatus = (user: UserWithSubscription) =>
       user.mover_application_status
   );
 
+const getApplicationStatusForType = (
+  user: UserWithSubscription,
+  applicationType: ApplicationType
+) => {
+  if (applicationType === 'landlord') {
+    return normalizeStatus(user.landlord_application_status);
+  }
+  if (applicationType === 'real_estate') {
+    return normalizeStatus(user.real_estate_application_status);
+  }
+  return getMoverApplicationStatus(user);
+};
+
 const getApplicationStatus = (user: UserWithSubscription) => {
   const role = normalizeStatus(user.role);
-  if (role === 'landlord') return normalizeStatus(user.landlord_application_status);
-  if (role === 'real_estate') return normalizeStatus(user.real_estate_application_status);
-  if (role === 'mover') return getMoverApplicationStatus(user);
+  if (role === 'landlord') return getApplicationStatusForType(user, 'landlord');
+  if (role === 'real_estate') return getApplicationStatusForType(user, 'real_estate');
+  if (role === 'mover') return getApplicationStatusForType(user, 'mover');
   return normalizeStatus(user.verification_status);
 };
+
+const isApprovedForType = (user: UserWithSubscription, applicationType: ApplicationType) =>
+  getApplicationStatusForType(user, applicationType) === 'approved';
+
+const isRejectedForType = (user: UserWithSubscription, applicationType: ApplicationType) =>
+  getApplicationStatusForType(user, applicationType) === 'rejected';
+
+const isPendingForType = (user: UserWithSubscription, applicationType: ApplicationType) =>
+  ['pending', 'pending_review', 'pending_verification'].includes(
+    getApplicationStatusForType(user, applicationType)
+  );
 
 const isApproved = (user: UserWithSubscription) =>
   ['approved', 'verified'].includes(getApplicationStatus(user));
@@ -241,23 +266,45 @@ export default function AdminDashboard() {
     () => landlords.filter((user) => normalizeStatus(user.subscription?.status) === 'active'),
     [landlords]
   );
-  const pendingLandlords = useMemo(() => landlords.filter(isPending), [landlords]);
-  const approvedLandlords = useMemo(() => landlords.filter(isApproved), [landlords]);
-  const rejectedLandlords = useMemo(() => landlords.filter(isRejected), [landlords]);
-  const pendingMovers = useMemo(() => movers.filter(isPending), [movers]);
-  const approvedMovers = useMemo(() => movers.filter(isApproved), [movers]);
-  const rejectedMovers = useMemo(() => movers.filter(isRejected), [movers]);
+
+  // Verification queues are driven by the application status fields, not the
+  // current role. The canonical backend intentionally resets pending/rejected
+  // applicants to renter, so filtering by role here would hide their applications.
+  const pendingLandlords = useMemo(
+    () => users.filter((user) => isPendingForType(user, 'landlord')),
+    [users]
+  );
+  const approvedLandlords = useMemo(
+    () => users.filter((user) => isApprovedForType(user, 'landlord')),
+    [users]
+  );
+  const rejectedLandlords = useMemo(
+    () => users.filter((user) => isRejectedForType(user, 'landlord')),
+    [users]
+  );
+  const pendingMovers = useMemo(
+    () => users.filter((user) => isPendingForType(user, 'mover')),
+    [users]
+  );
+  const approvedMovers = useMemo(
+    () => users.filter((user) => isApprovedForType(user, 'mover')),
+    [users]
+  );
+  const rejectedMovers = useMemo(
+    () => users.filter((user) => isRejectedForType(user, 'mover')),
+    [users]
+  );
   const pendingRealEstate = useMemo(
-    () => realEstate.filter((user) => normalizeStatus(user.real_estate_application_status) === 'pending'),
-    [realEstate]
+    () => users.filter((user) => isPendingForType(user, 'real_estate')),
+    [users]
   );
   const approvedRealEstate = useMemo(
-    () => realEstate.filter((user) => normalizeStatus(user.real_estate_application_status) === 'approved'),
-    [realEstate]
+    () => users.filter((user) => isApprovedForType(user, 'real_estate')),
+    [users]
   );
   const rejectedRealEstate = useMemo(
-    () => realEstate.filter((user) => normalizeStatus(user.real_estate_application_status) === 'rejected'),
-    [realEstate]
+    () => users.filter((user) => isRejectedForType(user, 'real_estate')),
+    [users]
   );
 
   const displayedUsers = useMemo(() => {
@@ -269,17 +316,32 @@ export default function AdminDashboard() {
       case 'movers': result = movers; break;
       case 'renters': result = renters; break;
       case 'subscribed_landlords': result = subscribedLandlords; break;
-      case 'landlord_verification': result = landlords; break;
-      case 'real_estate_verification': result = realEstate; break;
-      case 'mover_verification': result = movers; break;
+      case 'landlord_verification': result = users; break;
+      case 'real_estate_verification': result = users; break;
+      case 'mover_verification': result = users; break;
       case 'admin_users': result = users.filter((user) => normalizeStatus(user.role) === 'admin' || user.is_admin === true); break;
       default: result = [];
     }
 
-    if (section === 'landlord_verification' || section === 'real_estate_verification' || section === 'mover_verification') {
-      if (verificationFilter === 'pending') result = result.filter(isPending);
-      if (verificationFilter === 'approved') result = result.filter(isApproved);
-      if (verificationFilter === 'rejected') result = result.filter(isRejected);
+    if (section === 'landlord_verification') {
+      if (verificationFilter === 'pending') result = result.filter((user) => isPendingForType(user, 'landlord'));
+      if (verificationFilter === 'approved') result = result.filter((user) => isApprovedForType(user, 'landlord'));
+      if (verificationFilter === 'rejected') result = result.filter((user) => isRejectedForType(user, 'landlord'));
+      if (verificationFilter === 'all') result = result.filter((user) => ['pending', 'approved', 'rejected'].includes(getApplicationStatusForType(user, 'landlord')));
+    }
+
+    if (section === 'real_estate_verification') {
+      if (verificationFilter === 'pending') result = result.filter((user) => isPendingForType(user, 'real_estate'));
+      if (verificationFilter === 'approved') result = result.filter((user) => isApprovedForType(user, 'real_estate'));
+      if (verificationFilter === 'rejected') result = result.filter((user) => isRejectedForType(user, 'real_estate'));
+      if (verificationFilter === 'all') result = result.filter((user) => ['pending', 'approved', 'rejected'].includes(getApplicationStatusForType(user, 'real_estate')));
+    }
+
+    if (section === 'mover_verification') {
+      if (verificationFilter === 'pending') result = result.filter((user) => isPendingForType(user, 'mover'));
+      if (verificationFilter === 'approved') result = result.filter((user) => isApprovedForType(user, 'mover'));
+      if (verificationFilter === 'rejected') result = result.filter((user) => isRejectedForType(user, 'mover'));
+      if (verificationFilter === 'all') result = result.filter((user) => ['pending', 'approved', 'rejected'].includes(getApplicationStatusForType(user, 'mover')));
     }
 
     const query = search.trim().toLowerCase();
@@ -296,9 +358,16 @@ export default function AdminDashboard() {
     setSaving(true);
     setError(null);
     try {
-      const role = normalizeStatus(user.role);
-      const applicationType = role === 'real_estate' ? 'real_estate' : role;
-      if (!['landlord', 'real_estate', 'mover'].includes(applicationType)) {
+      let applicationType: ApplicationType | null = null;
+      const candidates: ApplicationType[] = ['landlord', 'real_estate', 'mover'];
+      for (const candidate of candidates) {
+        const candidateStatus = getApplicationStatusForType(user, candidate);
+        if (['pending', 'approved', 'rejected'].includes(candidateStatus)) {
+          applicationType = candidate;
+          break;
+        }
+      }
+      if (!applicationType) {
         throw new Error('Application status can only be updated for landlords, real-estate users, and movers.');
       }
       await protectedPatch(
@@ -334,7 +403,6 @@ export default function AdminDashboard() {
     setSaving(true);
     setError(null);
     try {
-      const role = editForm.role.trim() || editingUser.role;
       await protectedPatch(
         `/api/accounts/admin/users/${encodeURIComponent(editingUser.id)}/`,
         {
@@ -343,11 +411,6 @@ export default function AdminDashboard() {
           phone: editForm.phone.trim() || null,
           city: editForm.city.trim() || null,
           county: editForm.county.trim() || null,
-          role,
-          verification_status: editForm.verification_status || null,
-          landlord_application_status: role === 'landlord' ? editForm.landlord_application_status || null : null,
-          mover_application_status: role === 'mover' ? editForm.mover_application_status || null : null,
-          real_estate_application_status: role === 'real_estate' ? editForm.real_estate_application_status || null : null,
         }
       );
       setEditingUser(null);
@@ -400,7 +463,7 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {error && <div className="mb-6 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>}
+      {error && <div className="mb-6 rounded-lg bg-error-50 px-4 py-3 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400" role="alert">{error}</div>}
 
       {loading ? (
         <div className="card flex min-h-[300px] items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-brand-600" /></div>
