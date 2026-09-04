@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import RenterDashboard from './RenterDashboard';
 import LandlordDashboard from './LandlordDashboard';
+import MoverDashboard from './MoverDashboard';
 import RealEstateDashboard from './Realestatedashboard';
 import DashboardPage from './DashboardPage';
 import type { UserRole } from '@/types/domain';
@@ -94,5 +95,5 @@ export default function RoleDashboardRouter() {
   if (!approved || !verified) return <AccessNotice role={role} status={status} />;
   if (role === 'landlord') return <LandlordDashboard />;
   if (role === 'real_estate') return <RealEstateDashboard />;
-  return <DashboardPage />;
+  return <MoverDashboard />;
 }
