@@ -154,7 +154,7 @@ class MovingDisputeView(ScopedListDetailView):
 
 
 class MoverCustomerView(APIView):
-    """Return renter profiles and booking aggregates scoped to the authenticated mover."""
+    """Return renter profiles and complete booking aggregates scoped to the authenticated mover."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, object_id=None):
@@ -171,9 +171,21 @@ class MoverCustomerView(APIView):
             renter_id = str(booking.renter_id)
             entry = grouped.get(renter_id)
             if entry is None:
-                entry = {"booking_count": 0, "bookings": [], "last_booking": None, "has_released_contact": False}
+                entry = {
+                    "booking_count": 0,
+                    "active_booking_count": 0,
+                    "completed_booking_count": 0,
+                    "bookings": [],
+                    "last_booking": None,
+                    "has_released_contact": False,
+                }
                 grouped[renter_id] = entry
+
             entry["booking_count"] += 1
+            if booking.status in {"confirmed", "in_progress"}:
+                entry["active_booking_count"] += 1
+            elif booking.status == "completed":
+                entry["completed_booking_count"] += 1
             if booking.contact_released_at is not None:
                 entry["has_released_contact"] = True
             if len(entry["bookings"]) < 10:
@@ -207,6 +219,8 @@ class MoverCustomerView(APIView):
                 "county": profile.county,
                 "email": profile.email if contact_released else None,
                 "booking_count": aggregate["booking_count"],
+                "active_booking_count": aggregate["active_booking_count"],
+                "completed_booking_count": aggregate["completed_booking_count"],
                 "last_booking_id": aggregate["last_booking"],
                 "contact_released": contact_released,
                 "bookings": aggregate["bookings"],
