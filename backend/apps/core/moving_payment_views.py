@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from .domain_bookings import MoverPayout
 from .domain_platform import Mover, UserNotification
+from .email_services import queue_mover_payout_success_emails
 from .moving_lifecycle_services import confirm_moving_delivery, open_moving_dispute, resolve_moving_dispute
 from .moving_payment_services import (
     finalize_mover_payout, finalize_moving_mpesa_callback,
@@ -127,6 +128,12 @@ class MoverPayoutCallbackView(APIView):
                         UserNotification.objects.get_or_create(
                             event_key=f"mover-payout-released:{payout.id}",
                             defaults={"user_id":mover.user_id,"notification_type":"MOVER_PAYOUT_RELEASED","title":"Mover payout released","message":f"Your payout of KES {payout.net_mover_payable:,.2f} has been successfully released to M-Pesa.","data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id),"provider_transaction_id":provider_transaction_id}},
+                        )
+                        queue_mover_payout_success_emails(
+                            payout=payout,
+                            mover_email=getattr(mover, "user_email", "") or "",
+                            mover_name=mover.driver_full_name or "",
+                            admin_email=getattr(settings, "ADMIN_EMAIL", "") or "",
                         )
                     else:
                         UserNotification.objects.get_or_create(
