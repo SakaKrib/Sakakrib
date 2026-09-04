@@ -11,15 +11,9 @@ from apps.listings.models import Listing
 from apps.listings.serializers import ListingSerializer
 from apps.subscriptions.models import LandlordSubscription, RealEstateSubscription, SubscriptionPlan
 
+from .application_status_service import set_application_status
 from .models import Profile
 from .serializers import ProfileSerializer
-
-
-APPLICATION_FIELDS = {
-    'landlord': 'landlord_application_status',
-    'real_estate': 'real_estate_application_status',
-}
-ALLOWED_APPLICATION_STATUSES = {'pending', 'approved', 'rejected'}
 
 
 class AdminUserDetailView(APIView):
@@ -148,49 +142,46 @@ class AdminUserDetailView(APIView):
         if note is not None:
             note = str(note).strip()
 
-        if not application_type:
-            allowed_fields = {
-                'full_name', 'email', 'phone', 'city', 'county', 'role',
-                'verification_status', 'landlord_application_status',
-                'mover_application_status', 'real_estate_application_status',
-            }
-            updates = {key: request.data[key] for key in allowed_fields if key in request.data}
-            if not updates:
-                return Response({'detail': 'No supported profile fields were supplied.'}, status=400)
-            if 'email' in updates:
-                updates['email'] = str(updates['email']).strip()
-            if 'role' in updates:
-                updates['role'] = str(updates['role']).strip().lower()
-            with transaction.atomic():
-                locked = Profile.objects.select_for_update().get(pk=profile.pk)
-                for key, value in updates.items():
-                    setattr(locked, key, value)
-                locked.updated_at = timezone.now()
-                locked.save(update_fields=[*updates.keys(), 'updated_at'])
+        # Explicit application decisions always go through the canonical
+        # state-transition service. This prevents this general user-edit
+        # endpoint from creating a second approval/KYC lifecycle.
+        if application_type or status_value:
+            if not application_type or not status_value:
+                return Response({'detail': 'application_type and status must be supplied together.'}, status=400)
+            try:
+                locked = set_application_status(
+                    admin_user=request.user,
+                    user_id=profile.id,
+                    application_type=application_type,
+                    status_value=status_value,
+                    note=note or '',
+                )
+            except PermissionError as exc:
+                return Response({'detail': str(exc)}, status=403)
+            except LookupError as exc:
+                return Response({'detail': str(exc)}, status=404)
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=400)
             return Response(ProfileSerializer(locked).data)
 
-        if application_type not in APPLICATION_FIELDS:
-            return Response({'detail': 'application_type must be landlord or real_estate.'}, status=400)
-        if status_value not in ALLOWED_APPLICATION_STATUSES:
-            return Response({'detail': 'status must be pending, approved, or rejected.'}, status=400)
+        # Keep ordinary profile editing separate from application/KYC state.
+        # Application statuses, verification_status, kyc_status, kyc_completed,
+        # and role are deliberately not writable through this generic endpoint.
+        allowed_fields = {
+            'full_name', 'email', 'phone', 'city', 'county',
+        }
+        updates = {key: request.data[key] for key in allowed_fields if key in request.data}
+        if not updates:
+            return Response({'detail': 'No supported profile fields were supplied.'}, status=400)
+        if 'email' in updates:
+            updates['email'] = str(updates['email']).strip()
 
-        field = APPLICATION_FIELDS[application_type]
         with transaction.atomic():
             locked = Profile.objects.select_for_update().get(pk=profile.pk)
-            setattr(locked, field, status_value)
-            locked.admin_review_note = note or ''
-            if status_value == 'approved':
-                locked.verification_status = 'verified'
-                locked.kyc_completed = True
-            elif status_value == 'rejected':
-                locked.verification_status = 'rejected'
-                locked.kyc_completed = False
-            else:
-                locked.verification_status = 'pending_verification'
-                locked.kyc_completed = False
+            for key, value in updates.items():
+                setattr(locked, key, value)
             locked.updated_at = timezone.now()
-            locked.save(update_fields=[field, 'admin_review_note', 'verification_status', 'kyc_completed', 'updated_at'])
-
+            locked.save(update_fields=[*updates.keys(), 'updated_at'])
         return Response(ProfileSerializer(locked).data)
 
 
@@ -269,15 +260,32 @@ class AdminUserMoverView(APIView):
         if not mover:
             return Response({'detail': 'Mover not found.'}, status=404)
 
+        # Approval is part of the canonical application lifecycle. Direct
+        # approval changes here would desynchronize Profile and MoverApplication.
         if 'approval_status' in request.data:
             status_value = str(request.data.get('approval_status') or '').strip().lower()
-            if status_value not in {'pending_review', 'approved', 'rejected'}:
-                return Response({'detail': 'Invalid mover approval status.'}, status=400)
-            mover.approval_status = status_value
+            application_status = 'pending' if status_value == 'pending_review' else status_value
+            try:
+                profile = Profile.objects.get(pk=mover.user_id)
+                locked = set_application_status(
+                    admin_user=request.user,
+                    user_id=profile.id,
+                    application_type='mover',
+                    status_value=application_status,
+                    note=request.data.get('admin_review_note') or '',
+                )
+                mover = Mover.objects.get(pk=mover.id)
+            except Profile.DoesNotExist:
+                return Response({'detail': 'Mover profile was not found.'}, status=404)
+            except (PermissionError, LookupError, ValueError) as exc:
+                return Response({'detail': str(exc)}, status=400)
+            return Response(AdminUserDetailView._mover_payload(mover))
+
+        # Availability alone is operational state, not an approval decision.
         if 'is_available' in request.data:
             mover.is_available = bool(request.data.get('is_available'))
-        mover.updated_at = timezone.now()
-        mover.save(update_fields=['approval_status', 'is_available', 'updated_at'])
+            mover.updated_at = timezone.now()
+            mover.save(update_fields=['is_available', 'updated_at'])
         return Response(AdminUserDetailView._mover_payload(mover))
 
 
@@ -293,7 +301,6 @@ class AdminUserMoverApplicationView(APIView):
         if not application:
             return Response({'application': None}, status=200)
 
-        # Provide the same applicant-facing serialization used by the submit view.
         data = {
             'id': str(application.id),
             'applicant_email': application.applicant_email,
