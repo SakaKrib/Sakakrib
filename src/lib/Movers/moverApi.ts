@@ -1,15 +1,10 @@
-import { api } from '../djangoApi';
-
 /**
  * Mover API surface.
  *
- * Endpoints are intentionally kept in one place while the backend audit is
- * completed. Add domain-specific functions here only after verifying their
- * Django route and response contract.
+ * This module is the boundary for mover-specific data access. Domain methods
+ * are added only after their Django route and response contract are verified,
+ * preventing the dashboard from inventing frontend-only APIs.
  */
-export const moverApi = {
-  /** Fetch the authenticated mover's profile/domain record. */
-  getProfile: () => api.get('/api/movers/me/'),
-};
+export const moverApi = {} as const;
 
 export type MoverApi = typeof moverApi;
