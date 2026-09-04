@@ -103,7 +103,8 @@ def _ensure_moving_invoice(booking, mover):
         if _money(invoice.amount_kes) != _money(booking.total_amount):
             raise ValidationError("Existing moving invoice does not match booking total")
         return invoice
-    return MovingInvoice.objects.create(
+
+    invoice = MovingInvoice.objects.create(
         booking_id=booking.id,
         invoice_number=_invoice_number(),
         renter_id=booking.renter_id,
@@ -119,6 +120,22 @@ def _ensure_moving_invoice(booking, mover):
         number_plate_snapshot=mover.number_plate,
         mover_profile_photo_snapshot=mover.profile_photo_url,
     )
+    UserNotification.objects.create(
+        user_id=mover.user_id,
+        notification_type="MOVING_PAYMENT_INVOICE",
+        title="Payment invoice issued",
+        message=f"Payment invoice {invoice.invoice_number} has been issued for your moving booking. Renter payment: KES {_money(invoice.amount_kes):,.2f}. Your expected mover amount is KES {_money(invoice.mover_net_kes):,.2f}.",
+        data={
+            "booking_id": str(booking.id),
+            "invoice_id": str(invoice.id),
+            "invoice_number": invoice.invoice_number,
+            "amount_kes": str(invoice.amount_kes),
+            "platform_fee_kes": str(invoice.platform_fee_kes),
+            "mover_net_kes": str(invoice.mover_net_kes),
+            "status": invoice.status,
+        },
+    )
+    return invoice
 
 
 def _schedule_datetime(value):
