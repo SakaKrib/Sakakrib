@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
+from apps.accounts.models import Profile
 
 from .access_scopes import (
     booking_events_for_user,
@@ -150,6 +151,70 @@ class MovingDisputeView(ScopedListDetailView):
     model = MovingDispute
     scope = staticmethod(moving_disputes_for_user)
     fields = MOVING_DISPUTE_FIELDS
+
+
+class MoverCustomerView(APIView):
+    """Return renter profiles and booking aggregates scoped to the authenticated mover."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, object_id=None):
+        mover = Mover.objects.filter(user_id=request.user.id).first()
+        if mover is None:
+            return Response({"detail": "Mover profile not found."}, status=404)
+
+        bookings = Booking.objects.filter(mover_id=mover.id).order_by("-updated_at", "-created_at")
+        if object_id is not None:
+            bookings = bookings.filter(renter_id=object_id)
+
+        grouped = {}
+        for booking in bookings:
+            renter_id = str(booking.renter_id)
+            entry = grouped.get(renter_id)
+            if entry is None:
+                entry = {"booking_count": 0, "bookings": [], "last_booking": None, "has_released_contact": False}
+                grouped[renter_id] = entry
+            entry["booking_count"] += 1
+            if booking.contact_released_at is not None:
+                entry["has_released_contact"] = True
+            if len(entry["bookings"]) < 10:
+                entry["bookings"].append({
+                    "id": str(booking.id),
+                    "status": booking.status,
+                    "payment_status": booking.payment_status,
+                    "moving_date": booking.moving_date,
+                    "pickup_address": booking.pickup_address,
+                    "dropoff_address": booking.dropoff_address,
+                    "total_amount": booking.total_amount,
+                    "updated_at": booking.updated_at,
+                })
+            if entry["last_booking"] is None:
+                entry["last_booking"] = str(booking.id)
+
+        renter_ids = list(grouped.keys())
+        profiles = {str(profile.id): profile for profile in Profile.objects.filter(id__in=renter_ids)}
+        customers = []
+        for renter_id, aggregate in grouped.items():
+            profile = profiles.get(renter_id)
+            if profile is None:
+                continue
+            contact_released = aggregate["has_released_contact"]
+            customers.append({
+                "id": renter_id,
+                "full_name": profile.full_name,
+                "phone": profile.phone if contact_released else None,
+                "profile_photo_url": profile.profile_photo_url,
+                "city": profile.city,
+                "county": profile.county,
+                "email": profile.email if contact_released else None,
+                "booking_count": aggregate["booking_count"],
+                "last_booking_id": aggregate["last_booking"],
+                "contact_released": contact_released,
+                "bookings": aggregate["bookings"],
+            })
+
+        if object_id is not None:
+            return Response(customers[0] if customers else {"detail": "Customer not found."}, status=200 if customers else 404)
+        return Response(customers)
 
 
 class MoverScheduleEventView(APIView):
