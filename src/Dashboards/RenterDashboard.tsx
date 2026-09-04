@@ -79,6 +79,7 @@ export default function RenterDashboard() {
       case 'payment': navigate('renter-payment'); break;
       case 'find-mover': navigate('movers'); break;
       case 'track-move': activeBooking ? navigate('mover-tracking', activeBooking.id) : navigate('movers'); break;
+      case 'moving-history': navigate('renter-moving-history'); break;
       case 'calendar': navigate('renter-calendar'); break;
     }
   }, [activeBooking, navigate]);
@@ -109,7 +110,7 @@ export default function RenterDashboard() {
 
       <RenterWelcome profile={profile} />
       <section className="mb-6"><RenterHomeCard home={{ property: data.property ? { id: data.property.id, title: data.property.title, city: data.property.city, county: data.property.county, address: data.property.address, cover_image_url: data.property.cover_image_url } : null, unit: data.unit ? data.unit : null, association: data.association ? data.association : null }} onViewProperty={(propertyId) => navigate('listing-detail', propertyId)} /></section>
-      <section className="mb-6"><RenterQuickActions onAction={handleQuickAction} hasActiveMove={Boolean(activeBooking)} /></section>
+      <section className="mb-6"><RenterQuickActions onAction={handleQuickAction} hasActiveMove={Boolean(activeBooking)} hasRentalHome={Boolean(data.association || data.unit)} /></section>
       <div className="grid gap-6 lg:grid-cols-2">
         <RenterRentCard invoice={currentInvoice} monthlyRent={monthlyRent} onViewInvoices={() => navigate('renter-invoices')} onSubmitPayment={handleRentPaymentSubmission} />
         <RenterMovingCard booking={activeBooking} onTrack={(bookingId) => navigate('mover-tracking', bookingId)} onFindMover={() => navigate('movers')} />
