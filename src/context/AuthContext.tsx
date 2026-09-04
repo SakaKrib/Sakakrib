@@ -170,6 +170,9 @@ const loadGoogleIdentityScript = async (): Promise<void> => {
   });
 };
 
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -221,9 +224,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
+    const loadSessionWithRetry = async () => {
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await authGateway('session');
+        } catch (error) {
+          lastError = error;
+
+          if (attempt < 2) {
+            await wait(500 * (attempt + 1));
+          }
+        }
+      }
+
+      throw lastError instanceof Error
+        ? lastError
+        : new Error('Unable to initialize the Django authentication session.');
+    };
+
     const initialize = async () => {
       try {
-        const result = await authGateway('session');
+        const result = await loadSessionWithRetry();
 
         if (!mounted) return;
 
@@ -238,19 +261,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error('Django auth initialization error:', error);
 
-        if (mounted) {
-          clearAuthState();
-          clearVerificationState();
-        }
+        // A transport/bootstrap failure is not proof that authentication is
+        // invalid. Do not turn a temporary network/server interruption into
+        // an apparent logout. A genuine unauthenticated response above is
+        // still handled as a real sign-out condition.
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
+    const recoverOnWake = async () => {
+      if (!mounted || document.visibilityState !== 'visible') return;
+
+      try {
+        const result = await loadSessionWithRetry();
+
+        if (!mounted) return;
+
+        if (result.authenticated) {
+          applyGatewayAuth(result);
+        } else if (result.requiresEmailVerification) {
+          requireEmailVerification(result.email ?? null);
+        } else {
+          clearAuthState();
+          clearVerificationState();
+        }
+      } catch (error) {
+        // Preserve the current auth state when the browser wakes while the
+        // network/backend is temporarily unavailable. The next API request
+        // will use the normal Django refresh path as well.
+        console.error('Django auth wake recovery error:', error);
+      }
+    };
+
     void initialize();
+    document.addEventListener('visibilitychange', recoverOnWake);
 
     return () => {
       mounted = false;
+      document.removeEventListener('visibilitychange', recoverOnWake);
     };
   }, []);
 
@@ -597,7 +646,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applyGatewayAuth(result);
     } catch (error) {
       console.error('Django session refresh error:', error);
-      clearAuthState();
+      // Preserve the current authenticated state on transient transport
+      // failures. A failed refresh is not itself proof that the user signed out.
     }
   };
 
