@@ -3,6 +3,8 @@ import {
   Truck, MapPin, Phone, Star, ShieldCheck, ArrowLeft, Loader2,
   Calendar, DollarSign, CheckCircle2, Percent, CreditCard
 } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
@@ -21,6 +23,21 @@ type MoverQuote = {
   mover_net_kes: number | string;
 };
 
+function parseMovingDate(value: string) {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function formatMovingDate(date: Date | null) {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function MoverDetailPage() {
   const { selectedMoverId, navigate } = useNav();
   const { profile } = useAuth();
@@ -31,7 +48,6 @@ export default function MoverDetailPage() {
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [submittedQuote, setSubmittedQuote] = useState<MoverQuote | null>(null);
 
-  // Booking form
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [pickupLocation, setPickupLocation] = useState<GPSLocationValue>({
@@ -147,7 +163,7 @@ export default function MoverDetailPage() {
     }
     setSubmitting(true);
     try {
-        const result = await protectedPost<{
+      const result = await protectedPost<{
         booking_id: string;
         status: string;
         quote: MoverQuote;
@@ -297,7 +313,6 @@ export default function MoverDetailPage() {
         </div>
       </div>
 
-      {/* Commission Info */}
       <div className="mt-4 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-2 py-3 dark:border-brand-700 dark:bg-brand-800/30">
         <Percent className="h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400" />
         <p className="text-sm text-brand-700 dark:text-brand-300">
@@ -305,7 +320,6 @@ export default function MoverDetailPage() {
         </p>
       </div>
 
-      {/* Booking Form */}
       {!showBooking ? (
         <button onClick={() => profile ? setShowBooking(true) : navigate('home')} className="btn-primary mt-4 w-full">
           {profile ? 'Book This Mover' : 'Sign in to Book'}
@@ -332,10 +346,21 @@ export default function MoverDetailPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Moving Date</label>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Pickup Date</label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input type="date" value={movingDate} onChange={(e) => setMovingDate(e.target.value)} className="input-field pl-10" />
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <DatePicker
+                  selected={parseMovingDate(movingDate)}
+                  onChange={(date) => setMovingDate(formatMovingDate(date))}
+                  minDate={new Date()}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="Select pickup date"
+                  className="input-field w-full pl-10"
+                  wrapperClassName="w-full"
+                  popperClassName="z-50"
+                  isClearable
+                  onChangeRaw={() => undefined}
+                />
               </div>
             </div>
             <div className="flex items-end">
@@ -348,7 +373,6 @@ export default function MoverDetailPage() {
             </div>
           </div>
 
-          {/* Payment Method */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Preferred Payment Method</label>
             <div className="grid grid-cols-2 gap-2">
@@ -373,7 +397,6 @@ export default function MoverDetailPage() {
             </div>
           </div>
 
-          {/* Cost Summary */}
           {quote && (
             <div className="rounded-xl bg-gray-50 p-4 dark:bg-brand-800/30">
               <div className="flex justify-between py-1 text-sm">
@@ -401,7 +424,6 @@ export default function MoverDetailPage() {
         </form>
       )}
 
-      {/* Reviews */}
       {reviews.length > 0 && (
         <div className="card mt-6 p-6">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
