@@ -1,0 +1,163 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle, CalendarDays, CheckCircle2, ChevronRight, Clock3, Eye,
+  FileText, Landmark, ListChecks, Loader2, MapPin, RefreshCw, ShieldCheck,
+  Trash2, Truck, WalletCards, XCircle,
+} from 'lucide-react';
+import { useNav } from '@/context/NavContext';
+import { protectedDelete, protectedGet, protectedPatch, protectedPost } from '@/lib/djangoApi';
+
+type Tab = 'overview' | 'listings' | 'bookings' | 'finance' | 'escrow' | 'calendar';
+
+interface Listing { id: string; title?: string; city?: string; county?: string; price_kes?: number | string | null; listing_type?: string; approval_status?: string; is_published?: boolean; created_at?: string; user_id?: string; }
+interface Booking { id: string; renter_id?: string; mover_id?: string; listing_id?: string; moving_date?: string | null; total_amount?: number | string | null; status?: string; payment_status?: string; tracking_number?: string | null; scheduled_start_at?: string | null; scheduled_end_at?: string | null; last_location_at?: string | null; }
+interface MovingInvoice { id: string; booking_id?: string; invoice_number?: string; amount_kes?: number | string | null; platform_fee_kes?: number | string | null; mover_net_kes?: number | string | null; status?: string; paid_at?: string | null; released_at?: string | null; created_at?: string; }
+interface MovingPayment { id: string; booking_id?: string; invoice_id?: string; amount_kes?: number | string | null; provider?: string; status?: string; paid_at?: string | null; released_at?: string | null; created_at?: string; }
+interface MoverPayout { id: string; booking_id?: string; mover_id?: string; mover_name?: string; net_mover_payable?: number | string | null; final_payment_status?: string; down_payment_status?: string; final_payment_released_at?: string | null; down_payment_released_at?: string | null; payout_provider?: string; payout_completed_at?: string | null; payout_failure_reason?: string | null; }
+interface Dispute { id: string; booking_id?: string; status?: string; reason_code?: string; opened_at?: string | null; resolved_at?: string | null; }
+interface ScheduleEvent { id: string; booking_id?: string; starts_at?: string | null; ends_at?: string | null; status?: string; title?: string; }
+
+const money = (value: unknown) => {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? `KES ${n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'KES 0.00';
+};
+const dateTime = (value?: string | null) => value ? new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+const statusClass = (status?: string | null) => {
+  const value = String(status || '').toLowerCase();
+  if (['approved','paid','completed','released','confirmed','active'].includes(value)) return 'bg-success-50 text-success-700 dark:bg-success-900/20 dark:text-success-400';
+  if (['rejected','failed','cancelled','cancelled_by_renter','cancelled_by_mover'].includes(value)) return 'bg-error-50 text-error-700 dark:bg-error-900/20 dark:text-error-400';
+  return 'bg-warning-50 text-warning-700 dark:bg-warning-900/20 dark:text-warning-400';
+};
+
+export default function AdminOperationsPanel() {
+  const { navigate } = useNav();
+  const [tab, setTab] = useState<Tab>('overview');
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [invoices, setInvoices] = useState<MovingInvoice[]>([]);
+  const [payments, setPayments] = useState<MovingPayment[]>([]);
+  const [payouts, setPayouts] = useState<MoverPayout[]>([]);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (silent = false) => {
+    silent ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    const results = await Promise.allSettled([
+      protectedGet<{ results?: Listing[] }>('/api/listings/?limit=100'),
+      protectedGet<Booking[]>('/api/core/bookings/'),
+      protectedGet<MovingInvoice[]>('/api/core/moving-invoices/'),
+      protectedGet<MovingPayment[]>('/api/core/moving-payments/'),
+      protectedGet<MoverPayout[]>('/api/core/mover-payouts/'),
+      protectedGet<Dispute[]>('/api/core/moving-disputes/'),
+      protectedGet<ScheduleEvent[]>('/api/core/mover-schedule-events/'),
+    ]);
+    const [lr, br, ir, pr, por, dr, sr] = results;
+    if (lr.status === 'fulfilled') setListings(Array.isArray(lr.value?.results) ? lr.value.results : []);
+    if (br.status === 'fulfilled') setBookings(br.value ?? []);
+    if (ir.status === 'fulfilled') setInvoices(ir.value ?? []);
+    if (pr.status === 'fulfilled') setPayments(pr.value ?? []);
+    if (por.status === 'fulfilled') setPayouts(por.value ?? []);
+    if (dr.status === 'fulfilled') setDisputes(dr.value ?? []);
+    if (sr.status === 'fulfilled') setSchedule(sr.value ?? []);
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed === results.length) setError('Unable to load the administration operations layer.');
+    else if (failed) setError('Some operational sections could not be refreshed.');
+    setLoading(false); setRefreshing(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const pendingListings = useMemo(() => listings.filter((l) => String(l.approval_status || '').toLowerCase() === 'pending_review'), [listings]);
+  const activeBookings = useMemo(() => bookings.filter((b) => ['confirmed','in_progress'].includes(String(b.status || '').toLowerCase())), [bookings]);
+  const heldEscrow = useMemo(() => invoices.filter((i) => String(i.status || '').toLowerCase() !== 'released' && !i.released_at), [invoices]);
+  const grossPayments = useMemo(() => payments.reduce((sum, p) => sum + Number(p.amount_kes || 0), 0), [payments]);
+  const outstandingPayouts = useMemo(() => payouts.filter((p) => !p.payout_completed_at && String(p.final_payment_status || '').toLowerCase() !== 'released'), [payouts]);
+
+  const reviewListing = async (listingId: string, decision: 'approved' | 'rejected') => {
+    setWorkingId(listingId); setError(null);
+    try {
+      await protectedPost(`/api/listings/${encodeURIComponent(listingId)}/review/`, { decision, note: `Administrator ${decision} this listing from the operations dashboard.` });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Listing review failed.'); }
+    finally { setWorkingId(null); }
+  };
+
+  const deleteListing = async (listingId: string) => {
+    if (!window.confirm('Delete this listing permanently? This action is restricted to administrators.')) return;
+    setWorkingId(listingId); setError(null);
+    try {
+      await protectedDelete(`/api/listings/admin/${encodeURIComponent(listingId)}/`);
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Listing deletion failed.'); }
+    finally { setWorkingId(null); }
+  };
+
+  const releaseEscrow = async (bookingId?: string) => {
+    if (!bookingId) return;
+    if (!window.confirm('Release the escrow for this completed moving booking?')) return;
+    setWorkingId(bookingId); setError(null);
+    try {
+      await protectedPost(`/api/core/bookings/${encodeURIComponent(bookingId)}/escrow/release/`, {});
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Escrow release failed.'); }
+    finally { setWorkingId(null); }
+  };
+
+  const retryPayout = async (payoutId: string) => {
+    if (!window.confirm('Retry this mover payout? Only use this after reconciliation of the previous attempt.')) return;
+    setWorkingId(payoutId); setError(null);
+    try {
+      await protectedPost(`/api/core/mover-payouts/${encodeURIComponent(payoutId)}/retry/`, {});
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Payout retry failed.'); }
+    finally { setWorkingId(null); }
+  };
+
+  const tabs: Array<[Tab, string, typeof ListChecks]> = [
+    ['overview','Operations',ListChecks], ['listings','Approve Listings',ShieldCheck], ['bookings','Bookings',Truck], ['finance','Finance',WalletCards], ['escrow','Escrow',Landmark], ['calendar','Calendar',CalendarDays],
+  ];
+
+  if (loading) return <div className="card mt-6 flex min-h-[260px] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-brand-600" /></div>;
+
+  return <section className="mt-8 space-y-6">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div><p className="text-sm font-semibold text-brand-600 dark:text-brand-400">Administrator Control Plane</p><h2 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">Operations, Finance & Trust</h2><p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">The existing user-management dashboard remains intact. This layer adds authoritative operational controls without replacing it.</p></div>
+      <button type="button" onClick={() => void load(true)} disabled={refreshing} className="btn-secondary inline-flex items-center gap-2"><RefreshCw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />Refresh</button>
+    </div>
+    {error && <div className="flex items-start gap-3 rounded-xl bg-warning-50 px-4 py-3 text-sm text-warning-800 dark:bg-warning-900/20 dark:text-warning-300"><AlertCircle className="mt-0.5 h-4 w-4"/><span>{error}</span></div>}
+    <div className="flex gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-brand-800 dark:bg-brand-950">{tabs.map(([value,label,Icon]) => <button key={value} type="button" onClick={() => setTab(value)} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold ${tab===value?'bg-brand-600 text-white':'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}><Icon className="h-4 w-4"/>{label}</button>)}</div>
+
+    {tab === 'overview' && <>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Pending listings" value={pendingListings.length} icon={ShieldCheck} onClick={() => setTab('listings')} />
+        <Metric label="Active bookings" value={activeBookings.length} icon={Truck} onClick={() => setTab('bookings')} />
+        <Metric label="Escrow records" value={heldEscrow.length} icon={Landmark} onClick={() => setTab('escrow')} />
+        <Metric label="Payment volume" value={money(grossPayments)} icon={WalletCards} onClick={() => setTab('finance')} />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="card p-5"><h3 className="font-bold text-gray-900 dark:text-white">Trust queue</h3><div className="mt-4 space-y-3"><QueueRow label="Listings awaiting approval" value={pendingListings.length} action={() => setTab('listings')} /><QueueRow label="Open disputes" value={disputes.filter(d => String(d.status || '').toLowerCase() === 'open').length} action={() => navigate('mover-booking-detail', disputes[0]?.booking_id || '')} /><QueueRow label="Payouts requiring reconciliation" value={outstandingPayouts.length} action={() => setTab('finance')} /></div></div>
+        <div className="card p-5"><h3 className="font-bold text-gray-900 dark:text-white">Admin authority</h3><div className="mt-4 grid gap-3 sm:grid-cols-2"><ActionCard icon={Eye} label="Review users" onClick={() => navigate('admin-user-details', '')} /><ActionCard icon={FileText} label="Review listings" onClick={() => setTab('listings')} /><ActionCard icon={CalendarDays} label="View calendar" onClick={() => setTab('calendar')} /><ActionCard icon={WalletCards} label="Reconcile finance" onClick={() => setTab('finance')} /></div></div>
+      </div>
+    </>}
+
+    {tab === 'listings' && <div className="card overflow-hidden"><div className="border-b border-gray-200 p-5 dark:border-brand-800"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Listing approval & moderation</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Approval uses the existing canonical Django listing-review service.</p></div><div className="divide-y divide-gray-100 dark:divide-brand-800">{listings.slice(0,50).map(l => <div key={l.id} className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold text-gray-900 dark:text-white">{l.title || 'Untitled listing'}</h4><span className={`rounded-full px-2 py-1 text-[11px] font-bold ${statusClass(l.approval_status)}`}>{l.approval_status || 'unknown'}</span></div><p className="mt-1 flex items-center gap-1 text-sm text-gray-500"><MapPin className="h-3.5 w-3.5"/>{l.city || '—'}, {l.county || '—'} · {money(l.price_kes)}</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigate('listing-detail', l.id)} className="btn-secondary px-3 py-2 text-xs"><Eye className="h-3.5 w-3.5"/>View</button>{l.approval_status !== 'approved' && <button type="button" disabled={workingId===l.id} onClick={() => void reviewListing(l.id,'approved')} className="btn-primary px-3 py-2 text-xs"><CheckCircle2 className="h-3.5 w-3.5"/>Approve</button>}{l.approval_status !== 'rejected' && <button type="button" disabled={workingId===l.id} onClick={() => void reviewListing(l.id,'rejected')} className="btn-secondary px-3 py-2 text-xs"><XCircle className="h-3.5 w-3.5"/>Reject</button>}<button type="button" disabled={workingId===l.id} onClick={() => void deleteListing(l.id)} className="btn-secondary px-3 py-2 text-xs text-error-600"><Trash2 className="h-3.5 w-3.5"/>Delete</button></div></div>)}{listings.length===0&&<Empty text="No listings are available."/>}</div></div>}
+
+    {tab === 'bookings' && <div className="card overflow-hidden"><div className="border-b border-gray-200 p-5 dark:border-brand-800"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Booking command center</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Monitor booking state, payment state and tracking without changing the existing mover/renter workflow.</p></div><div className="divide-y divide-gray-100 dark:divide-brand-800">{bookings.slice(0,60).map(b => <div key={b.id} className="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-gray-900 dark:text-white">Booking {b.id.slice(0,8)}</span><span className={`rounded-full px-2 py-1 text-[11px] font-bold ${statusClass(b.status)}`}>{b.status || 'unknown'}</span><span className="rounded-full bg-brand-50 px-2 py-1 text-[11px] font-bold text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">{b.payment_status || 'payment unknown'}</span></div><p className="mt-1 text-sm text-gray-500">{dateTime(b.moving_date)} · {money(b.total_amount)} · {b.tracking_number || 'No tracking number'}</p></div><button type="button" onClick={() => navigate('mover-booking-detail', b.id)} className="btn-secondary px-3 py-2 text-xs">Open booking<ChevronRight className="h-3.5 w-3.5"/></button></div>)}{bookings.length===0&&<Empty text="No bookings are available."/>}</div></div>}
+
+    {tab === 'finance' && <div className="space-y-6"><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Payments" value={payments.length} icon={WalletCards}/><Metric label="Gross volume" value={money(grossPayments)} icon={WalletCards}/><Metric label="Invoices" value={invoices.length} icon={FileText}/><Metric label="Payout queue" value={outstandingPayouts.length} icon={Truck}/></div><div className="card overflow-hidden"><div className="border-b border-gray-200 p-5 dark:border-brand-800"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Mover payout reconciliation</h3></div><div className="divide-y divide-gray-100 dark:divide-brand-800">{payouts.slice(0,50).map(p => <div key={p.id} className="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">{p.mover_name || 'Mover'} · {money(p.net_mover_payable)}</p><p className="mt-1 text-xs text-gray-500">{p.payout_provider || 'Provider pending'} · {p.payout_failure_reason || 'No failure recorded'}</p></div>{!p.payout_completed_at && <button type="button" disabled={workingId===p.id} onClick={() => void retryPayout(p.id)} className="btn-primary px-3 py-2 text-xs">{workingId===p.id?<Loader2 className="h-4 w-4 animate-spin"/>:<RefreshCw className="h-4 w-4"/>}Retry payout</button>}</div>)}{payouts.length===0&&<Empty text="No mover payouts are available."/>}</div></div></div>}
+
+    {tab === 'escrow' && <div className="card overflow-hidden"><div className="border-b border-gray-200 p-5 dark:border-brand-800"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Escrow control</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Escrow remains backed by the existing moving invoice/payment lifecycle. Release is routed through Django's admin-only escrow service.</p></div><div className="divide-y divide-gray-100 dark:divide-brand-800">{invoices.map(i => <div key={i.id} className="flex flex-col gap-3 p-5 lg:flex-row lg:items-center lg:justify-between"><div><div className="flex items-center gap-2"><p className="font-semibold text-gray-900 dark:text-white">{i.invoice_number || `Invoice ${i.id.slice(0,8)}`}</p><span className={`rounded-full px-2 py-1 text-[11px] font-bold ${statusClass(i.status)}`}>{i.status || 'unknown'}</span></div><p className="mt-1 text-sm text-gray-500">{money(i.amount_kes)} · paid {dateTime(i.paid_at)} · released {dateTime(i.released_at)}</p></div>{i.booking_id && !i.released_at && <button type="button" disabled={workingId===i.booking_id} onClick={() => void releaseEscrow(i.booking_id)} className="btn-primary px-3 py-2 text-xs"><Landmark className="h-4 w-4"/>Release escrow</button>}</div>)}{invoices.length===0&&<Empty text="No escrow-backed moving invoices are available."/>}</div></div>}
+
+    {tab === 'calendar' && <div className="card p-5"><div className="flex items-center justify-between"><div><h3 className="text-lg font-bold text-gray-900 dark:text-white">Operations calendar</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Upcoming mover schedule events and moving commitments.</p></div><CalendarDays className="h-6 w-6 text-brand-600"/></div><div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">{schedule.slice(0,30).map(e => <button key={e.id} type="button" onClick={() => e.booking_id && navigate('mover-booking-detail',e.booking_id)} className="rounded-xl border border-gray-200 p-4 text-left transition hover:shadow-md dark:border-brand-800"><div className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-brand-600"/><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${statusClass(e.status)}`}>{e.status || 'scheduled'}</span></div><p className="mt-3 font-semibold text-gray-900 dark:text-white">{e.title || 'Moving commitment'}</p><p className="mt-1 text-xs text-gray-500">{dateTime(e.starts_at)} → {dateTime(e.ends_at)}</p></button>)}{schedule.length===0&&<Empty text="No schedule events are available."/>}</div></div>}
+  </section>;
+}
+
+function Metric({ label, value, icon: Icon, onClick }: { label: string; value: string | number; icon: typeof ListChecks; onClick?: () => void }) { return <button type="button" onClick={onClick} className="card group p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-start justify-between"><div><p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p></div><div className="rounded-xl bg-brand-50 p-3 text-brand-600 dark:bg-brand-900/30"><Icon className="h-5 w-5"/></div></div>{onClick&&<div className="mt-3 flex items-center text-xs font-semibold text-brand-600">Open<ChevronRight className="h-3.5 w-3.5"/></div>}</button>; }
+function QueueRow({ label, value, action }: { label: string; value: number; action: () => void }) { return <button type="button" onClick={action} className="flex w-full items-center justify-between rounded-xl border border-gray-100 p-3 text-left hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900/30"><span className="text-sm text-gray-600 dark:text-gray-300">{label}</span><span className="flex items-center gap-1 font-bold text-gray-900 dark:text-white">{value}<ChevronRight className="h-4 w-4 text-gray-400"/></span></button>; }
+function ActionCard({ icon: Icon, label, onClick }: { icon: typeof Eye; label: string; onClick: () => void }) { return <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-xl border border-gray-200 p-4 text-left hover:border-brand-300 hover:bg-brand-50/40 dark:border-brand-800 dark:hover:bg-brand-900/20"><Icon className="h-5 w-5 text-brand-600"/><span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{label}</span></button>; }
+function Empty({ text }: { text: string }) { return <div className="p-10 text-center text-sm text-gray-500 dark:text-gray-400">{text}</div>; }
