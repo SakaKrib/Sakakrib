@@ -5,6 +5,7 @@ import { formatKES } from '@/lib/utils';
 interface Props {
   bookings: MoverBooking[];
   onOpen: (bookingId: string) => void;
+  limit?: number;
 }
 
 const normalized = (value: string | null | undefined) => value?.trim().toLowerCase().replace(/-/g, '_') ?? '';
@@ -15,11 +16,12 @@ const formatDate = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? 'Date not set' : date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
-export default function MoverBookingRequests({ bookings, onOpen }: Props) {
-  const requests = bookings
+export default function MoverBookingRequests({ bookings, onOpen, limit = 5 }: Props) {
+  const pending = bookings
     .filter((booking) => normalized(booking.status) === 'pending')
-    .sort((a, b) => new Date(b.requested_at ?? b.created_at ?? 0).getTime() - new Date(a.requested_at ?? a.created_at ?? 0).getTime())
-    .slice(0, 5);
+    .sort((a, b) => new Date(b.requested_at ?? b.created_at ?? 0).getTime() - new Date(a.requested_at ?? a.created_at ?? 0).getTime());
+
+  const requests = Number.isFinite(limit) && limit > 0 ? pending.slice(0, limit) : pending;
 
   return (
     <section className="card overflow-hidden">
