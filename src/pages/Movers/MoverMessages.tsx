@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
+import { ArrowRight, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverChatMessage } from '@/lib/Movers';
