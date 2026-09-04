@@ -60,7 +60,6 @@ def process_pending_mover_payout(payout_id):
         payout.payout_provider = "MPESA"
         payout.save(update_fields=["payout_provider", "updated_at"])
         payout_id_value = str(payout.id)
-        booking_id_value = str(payout.booking_id)
         amount = payout.net_mover_payable
         destination = mover.payment_account or mover.phone
 
@@ -124,3 +123,17 @@ def process_pending_mover_payout(payout_id):
                     data={"payout_id": str(payout.id), "booking_id": str(payout.booking_id), "provider": "MPESA", "provider_reference": str(result.provider_reference), "amount_kes": str(payout.net_mover_payable)},
                 )
     return {"status": "processing", "payout_id": payout_id_value, "provider_reference": str(result.provider_reference)}
+
+
+@shared_task
+def process_released_mover_payouts():
+    """Find admin-released payouts that have not yet been submitted to a provider."""
+    payout_ids = list(
+        MoverPayout.objects.filter(
+            final_payment_status="processing",
+            payout_provider__isnull=True,
+        ).values_list("id", flat=True)[:25]
+    )
+    for payout_id in payout_ids:
+        process_pending_mover_payout.delay(str(payout_id))
+    return {"queued": len(payout_ids)}
