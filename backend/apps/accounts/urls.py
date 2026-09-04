@@ -2,8 +2,7 @@ from django.urls import path
 
 from .admin_application_notification_views import AdminApplicationNotificationView
 from .admin_application_status_views import AdminApplicationStatusView
-from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverView, AdminUserMoverApplicationView
-from .application_review_views import AdminApplicationReviewView
+from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverApplicationView
 from .google_auth_views import GoogleLoginView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
@@ -38,11 +37,9 @@ urlpatterns = [
     path('kyc/document/sign/', KycDocumentSignView.as_view(), name='kyc-document-sign'),
     path('landlord/application/submit/', LandlordApplicationSubmitView.as_view(), name='landlord-application-submit'),
     path('mover/application/submit/', MoverApplicationSubmitView.as_view(), name='mover-application-submit'),
-    path('admin/applications/<uuid:user_id>/review/', AdminApplicationReviewView.as_view(), name='admin-application-review'),
     path('admin/users/', AdminDashboardDataView.as_view(), name='admin-users'),
     path('admin/users/<uuid:user_id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('admin/users/<uuid:user_id>/application-status/', AdminApplicationStatusView.as_view(), name='admin-application-status'),
     path('admin/users/<uuid:user_id>/mover-application/', AdminUserMoverApplicationView.as_view(), name='admin-user-mover-application'),
     path('admin/application-notifications/', AdminApplicationNotificationView.as_view(), name='admin-application-notification'),
-    path('admin/movers/<uuid:mover_id>/', AdminUserMoverView.as_view(), name='admin-user-mover'),
 ]
