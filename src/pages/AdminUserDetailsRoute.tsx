@@ -8,19 +8,43 @@ import {
 } from 'lucide-react';
 
 import AdminUserDetails from './AdminUserDetails';
-import { protectedGet, protectedPatch } from '@/lib/djangoLegacyApi';
+import { protectedGet, protectedPatch } from '@/lib/djangoApi';
 
 interface AdminApprovalProfile {
   id: string;
   role: string | null;
   is_agency: boolean | null;
   landlord_application_status: string | null;
+  real_estate_application_status: string | null;
+  mover_application_status: string | null;
+  verification_status: string | null;
 }
 
 type Status = 'pending' | 'approved' | 'rejected';
+type ApplicationType = 'landlord' | 'real_estate' | 'mover';
 
 const normalize = (value: string | null | undefined) =>
   String(value || '').trim().toLowerCase();
+
+const getApplicationType = (profile: AdminApprovalProfile): ApplicationType | null => {
+  if (normalize(profile.role) === 'mover' || normalize(profile.mover_application_status) !== 'not_requested') {
+    return 'mover';
+  }
+  if (normalize(profile.role) === 'real_estate' || profile.is_agency === true || normalize(profile.real_estate_application_status) !== 'not_requested') {
+    return 'real_estate';
+  }
+  if (normalize(profile.role) === 'landlord' || normalize(profile.landlord_application_status) !== 'not_requested') {
+    return 'landlord';
+  }
+  return null;
+};
+
+const getStatus = (profile: AdminApprovalProfile, applicationType: ApplicationType | null) => {
+  if (applicationType === 'landlord') return normalize(profile.landlord_application_status);
+  if (applicationType === 'real_estate') return normalize(profile.real_estate_application_status);
+  if (applicationType === 'mover') return normalize(profile.mover_application_status);
+  return normalize(profile.verification_status);
+};
 
 export default function AdminUserDetailsRoute({
   userId,
@@ -32,25 +56,14 @@ export default function AdminUserDetailsRoute({
   const [profile, setProfile] = useState<AdminApprovalProfile | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const respAny = await protectedGet<any>(
-        `/api/accounts/admin/users/?id=eq.${encodeURIComponent(String(userId))}&is_admin=eq.true`
+      const response = await protectedGet<any>(
+        `/api/accounts/admin/users/${encodeURIComponent(String(userId))}/`
       );
-
-      let prof: AdminApprovalProfile | null = null;
-      if (respAny == null) {
-        prof = null;
-      } else if (Array.isArray(respAny.items)) {
-        const item = respAny.items.find((it: any) => String(it?.profile?.id || it?.id) === String(userId)) ?? respAny.items[0] ?? null;
-        prof = item?.profile ?? item ?? null;
-      } else if (respAny.profile) {
-        prof = respAny.profile;
-      } else if (respAny.id) {
-        prof = respAny as AdminApprovalProfile;
-      }
-
+      const prof = (response?.profile ?? response) as AdminApprovalProfile | null;
       setProfile(prof);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load approval status.');
@@ -58,35 +71,35 @@ export default function AdminUserDetailsRoute({
   };
 
   useEffect(() => {
+    setError(null);
+    setSuccess(null);
     void load();
   }, [userId]);
 
-  const isRealEstate =
-    normalize(profile?.role) === 'real_estate' || profile?.is_agency === true;
+  const applicationType = profile ? getApplicationType(profile) : null;
+  const applicationStatus = profile ? getStatus(profile, applicationType) : '';
+  const isRealEstate = applicationType === 'real_estate';
 
   const updateStatus = async (status: Status) => {
-    if (!profile || saving) return;
+    if (!profile || !applicationType || saving) return;
 
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       await protectedPatch(
-        `/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}`,
+        `/api/accounts/admin/users/${encodeURIComponent(profile.id)}/application-status/`,
         {
-          landlord_application_status: status,
-          verification_status:
-            status === 'approved'
-              ? 'verified'
-              : status === 'rejected'
-                ? 'rejected'
-                : 'pending_verification',
-          kyc_completed: status === 'approved',
-          updated_at: new Date().toISOString(),
+          application_type: applicationType,
+          status,
         }
       );
 
       await load();
+
+      const label = status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'marked as pending';
+      setSuccess(`Application ${label} successfully.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update application approval.');
     } finally {
@@ -119,11 +132,11 @@ export default function AdminUserDetailsRoute({
                   Application Status
                 </p>
                 <div className="mt-2 flex items-center gap-2">
-                  {normalize(profile?.landlord_application_status) === 'approved' ? (
+                  {applicationStatus === 'approved' ? (
                     <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
                       <CheckCircle2 className="h-3 w-3" /> Approved
                     </span>
-                  ) : normalize(profile?.landlord_application_status) === 'rejected' ? (
+                  ) : applicationStatus === 'rejected' ? (
                     <span className="badge bg-error-50 text-error-700 dark:bg-error-900/30 dark:text-error-400">
                       <XCircle className="h-3 w-3" /> Rejected
                     </span>
@@ -168,8 +181,13 @@ export default function AdminUserDetailsRoute({
               </div>
             </div>
 
+            {success && (
+              <div className="border-t border-success-100 bg-success-50 px-5 py-3 text-sm font-medium text-success-700 dark:border-success-900/30 dark:bg-success-900/20 dark:text-success-400" role="status">
+                {success}
+              </div>
+            )}
             {error && (
-              <div className="border-t border-error-100 bg-error-50 px-5 py-3 text-sm text-error-700 dark:border-error-900/30 dark:bg-error-900/20 dark:text-error-400">
+              <div className="border-t border-error-100 bg-error-50 px-5 py-3 text-sm font-medium text-error-700 dark:border-error-900/30 dark:bg-error-900/20 dark:text-error-400" role="alert">
                 {error}
               </div>
             )}
