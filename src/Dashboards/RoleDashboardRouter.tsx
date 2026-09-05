@@ -6,7 +6,7 @@ import { protectedGet } from '@/lib/djangoLegacyApi';
 import RenterDashboard from './RenterDashboard';
 import LandlordPMSWorkspace from './LandlordPMSWorkspace';
 import MoverDashboard from './MoverDashboard';
-import RealEstatePMS from '@/components/PMS/RealEstate/Realestatepms';
+import RealEstatePMSWorkspace from '@/components/PMS/RealEstate/RealEstatePMSWorkspace';
 import DashboardPage from './DashboardPage';
 import AdminOperationsPanel from './AdminOperationsPanel';
 import AdminListingPostPanel from './AdminListingPostPanel';
@@ -49,7 +49,6 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
   const [access, setAccess] = useState<PMSAccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { navigate } = useNav();
 
   useEffect(() => {
     let cancelled = false;
@@ -89,12 +88,7 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
   }
 
   if (access.allowed === true) {
-    return role === 'landlord'
-      ? <LandlordPMSWorkspace />
-      : <RealEstatePMS
-          onCreateListing={() => navigate('post-listing')}
-          onOpenListing={(listingId) => navigate('listing-detail', listingId)}
-        />;
+    return role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstatePMSWorkspace />;
   }
 
   const reason = normalizeStatus(access.reason);
