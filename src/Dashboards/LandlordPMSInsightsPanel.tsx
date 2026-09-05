@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, BarChart3, Building2, CheckCircle2, Clock3, RefreshCw, Users, Wallet } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
 
@@ -83,7 +83,7 @@ export default function LandlordPMSInsightsPanel() {
 
           <div className="grid gap-5 lg:grid-cols-3">
             <Panel title="Invoice health" icon={BarChart3}>
-              <RowStat label="Total invoices" value={data?.rentInvoices?.length || 0} />
+              <RowStat label="Total invoices" value={invoicesCount(data)} />
               <RowStat label="Paid" value={stats.paid} />
               <RowStat label="Payment submitted" value={stats.submitted} />
               <RowStat label="Overdue" value={stats.overdue} danger={stats.overdue > 0} />
@@ -121,11 +121,15 @@ export default function LandlordPMSInsightsPanel() {
   );
 }
 
+function invoicesCount(data: Row | null) {
+  return Array.isArray(data?.rentInvoices) ? data.rentInvoices.length : 0;
+}
+
 function Insight({ label, value, detail, icon: Icon }: { label: string; value: string | number; detail?: string; icon: typeof Wallet }) {
   return <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>{detail && <p className="mt-1 text-xs text-gray-500">{detail}</p>}</div><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-300"><Icon className="h-5 w-5" /></span></div></div>;
 }
 
-function Panel({ title, icon: Icon, children }: { title: string; icon: typeof Wallet; children: React.ReactNode }) {
+function Panel({ title, icon: Icon, children }: { title: string; icon: typeof Wallet; children: ReactNode }) {
   return <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="mb-4 flex items-center gap-2"><Icon className="h-5 w-5 text-brand-600" /><h3 className="font-bold text-gray-900 dark:text-white">{title}</h3></div>{children}</div>;
 }
 
