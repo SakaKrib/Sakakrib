@@ -2,9 +2,7 @@ import { Clock3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import RenterDashboard from './RenterDashboard';
-import LandlordDashboard from './LandlordDashboard';
-import LandlordPMSDjangoInsights from './LandlordPMSDjangoInsights';
-import LandlordPMSRentControls from './LandlordPMSRentControls';
+import LandlordPMSWorkspace from './LandlordPMSWorkspace';
 import MoverDashboard from './MoverDashboard';
 import RealEstateDashboard from './Realestatedashboard';
 import DashboardPage from './DashboardPage';
@@ -47,7 +45,7 @@ export default function RoleDashboardRouter() {
   const approved = status === 'approved';
   const verified = profile.email_verified === true && profile.kyc_completed === true;
   if (!approved || !verified) return <AccessNotice role={role} status={status} />;
-  if (role === 'landlord') return <><LandlordPMSDjangoInsights /><LandlordPMSRentControls /></>;
+  if (role === 'landlord') return <LandlordPMSWorkspace />;
   if (role === 'real_estate') return <RealEstateDashboard />;
   return <MoverDashboard />;
 }
