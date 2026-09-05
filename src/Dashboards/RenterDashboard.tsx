@@ -3,6 +3,7 @@ import { AlertCircle, Bell, MessageCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { cn } from '@/lib/utils';
+import { protectedGet } from '@/lib/djangoApi';
 import { renterApi, type RenterDashboardResponse } from '@/lib/Renter/renterApi';
 import RenterWelcome from '@/pages/Renters/RenterWelcome';
 import RenterHomeCard from '@/pages/Renters/RenterHomeCard';
@@ -32,7 +33,7 @@ export default function RenterDashboard() {
     try {
       const [response, notificationResponse] = await Promise.all([
         renterApi.getDashboard(profile.id),
-        fetch('/api/core/notifications/?limit=50', { credentials: 'include' }).then(async response => { if (!response.ok) throw new Error(`Notification request failed (${response.status})`); return response.json() as Promise<{ notifications?: Notification[] }>; }),
+        protectedGet<{ notifications?: Notification[] }>('/api/core/notifications/?limit=50'),
       ]);
       setData({ association: response?.association ?? null, unit: response?.unit ?? null, property: response?.property ?? null, invoices: Array.isArray(response?.invoices) ? response.invoices : [], bookings: Array.isArray(response?.bookings) ? response.bookings : [] });
       setNotifications(Array.isArray(notificationResponse?.notifications) ? notificationResponse.notifications : []);
