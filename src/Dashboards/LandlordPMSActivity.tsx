@@ -41,6 +41,7 @@ export default function LandlordPMSActivity() {
     const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
     const invoices = Array.isArray(data?.rentInvoices) ? data.rentInvoices : [];
     const payments = Array.isArray(data?.rentPayments) ? data.rentPayments : [];
+    const readableStatus = (value: unknown) => String(value || 'UNKNOWN').replace(/_/g, ' ');
 
     const rows: Activity[] = [
       ...notifications.slice(0, 8).map((item: RecordValue) => ({
@@ -53,14 +54,14 @@ export default function LandlordPMSActivity() {
       ...invoices.slice(0, 8).map((item: RecordValue) => ({
         id: `invoice-${item.id}`,
         title: item.invoice_number || 'Rent invoice',
-        detail: `${money(item.amount_kes)} · ${String(item.status || 'UNKNOWN').replaceAll('_', ' ')}`,
+        detail: `${money(item.amount_kes)} · ${readableStatus(item.status)}`,
         createdAt: item.updated_at || item.created_at || null,
         kind: 'invoice' as const,
       })),
       ...payments.slice(0, 8).map((item: RecordValue) => ({
         id: `payment-${item.id}`,
         title: item.provider_reference || item.mpesa_receipt || 'Rent payment',
-        detail: `${money(item.amount_kes)} · ${String(item.status || 'UNKNOWN').replaceAll('_', ' ')}`,
+        detail: `${money(item.amount_kes)} · ${readableStatus(item.status)}`,
         createdAt: item.paid_at || item.created_at || null,
         kind: 'payment' as const,
       })),
