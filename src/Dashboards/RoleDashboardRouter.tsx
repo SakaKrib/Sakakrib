@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock3, Loader2, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { protectedGet } from '@/lib/djangoLegacyApi';
+import { protectedGet } from '@/lib/djangoApi';
 import RenterDashboard from './RenterDashboard';
 import LandlordDashboard from './LandlordDashboard';
 import RealEstateDashboard from './Realestatedashboard';
@@ -63,9 +63,8 @@ export default function RoleDashboardRouter() {
   const status = normalizeStatus(profile[applicationField[role]]);
 
   // The normal landlord/real-estate dashboard is always the role landing page.
-  // PMS is a separate protected workspace. The PMS access gate is intentionally
-  // evaluated for both dashboard CTA navigation and a direct #pms-dashboard URL;
-  // Django remains the sole authority for subscription/application entitlement.
+  // PMS is a separate protected workspace. Django remains the sole authority
+  // for subscription/application entitlement.
   if (role === 'landlord' || role === 'real_estate') {
     if (view === 'pms-dashboard') {
       return <PMSAccessGate role={role} status={status} />;
