@@ -3,7 +3,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import RenterDashboard from './RenterDashboard';
 import LandlordDashboard from './LandlordDashboard';
-import LandlordPMSCommandCenter from './LandlordPMSCommandCenter';
+import LandlordPMSDjangoInsights from './LandlordPMSDjangoInsights';
 import MoverDashboard from './MoverDashboard';
 import RealEstateDashboard from './Realestatedashboard';
 import DashboardPage from './DashboardPage';
@@ -46,7 +46,7 @@ export default function RoleDashboardRouter() {
   const approved = status === 'approved';
   const verified = profile.email_verified === true && profile.kyc_completed === true;
   if (!approved || !verified) return <AccessNotice role={role} status={status} />;
-  if (role === 'landlord') return <LandlordPMSCommandCenter />;
+  if (role === 'landlord') return <LandlordPMSDjangoInsights />;
   if (role === 'real_estate') return <RealEstateDashboard />;
   return <MoverDashboard />;
 }
