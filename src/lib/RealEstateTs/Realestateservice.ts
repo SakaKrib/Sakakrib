@@ -87,7 +87,7 @@ function mapListing(listing: NonNullable<DashboardResponse['listings']>[number])
     county: listing.county,
     price_kes: listing.price_kes === null ? null : Number(listing.price_kes),
     listing_type: listing.listing_type,
-    approval_status: listing.approval_status,
+    approval_status: String(listing.approval_status ?? '').trim().toUpperCase(),
     is_approved: Boolean(listing.is_approved),
     is_published: Boolean(listing.is_published),
     is_paid: Boolean(listing.is_paid),
