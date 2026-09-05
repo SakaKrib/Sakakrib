@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Bell, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp, Wallet } from 'lucide-react';
+import { Activity, BarChart3, Bell, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp, Wallet } from 'lucide-react';
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
@@ -7,19 +7,21 @@ import LandlordPMSFinance from './LandlordPMSFinance';
 import LandlordPMSCalendarStats from './LandlordPMSCalendarStats';
 import LandlordPMSCalendar from './LandlordPMSCalendar';
 import LandlordPMSCollectionTrend from './LandlordPMSCollectionTrend';
+import LandlordPMSDjangoInsights from './LandlordPMSDjangoInsights';
 import LandlordPMSPropertyWorkflow from './LandlordPMSPropertyWorkflow';
 import LandlordPMSQuickActions from './LandlordPMSQuickActions';
 import LandlordPMSNotifications from './LandlordPMSNotifications';
 import LandlordPMSSettings from './LandlordPMSSettings';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
-type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' | 'notifications' | 'subscription' | 'settings';
+type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'insights' | 'activity' | 'notifications' | 'subscription' | 'settings';
 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'management', label: 'Properties & Renters', icon: Settings2 },
   { id: 'rent', label: 'Rent, Calendar & Stats', icon: CalendarDays },
   { id: 'finance', label: 'Finance & Payments', icon: TrendingUp },
+  { id: 'insights', label: 'Django Insights', icon: BarChart3 },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
@@ -46,6 +48,7 @@ export default function LandlordPMSWorkspace() {
       {tab === 'management' && <LandlordPMSPropertyWorkflow />}
       {tab === 'rent' && <><LandlordPMSCalendar /><LandlordPMSCalendarStats /><LandlordPMSRentControls /></>}
       {tab === 'finance' && <><LandlordPMSFinance /><LandlordPMSCollectionTrend /></>}
+      {tab === 'insights' && <LandlordPMSDjangoInsights />}
       {tab === 'activity' && <LandlordPMSActivity />}
       {tab === 'notifications' && <LandlordPMSNotifications />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
