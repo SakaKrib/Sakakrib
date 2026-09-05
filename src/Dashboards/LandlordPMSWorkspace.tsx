@@ -3,6 +3,7 @@ import { Activity, BarChart3, CalendarDays, CreditCard, LayoutDashboard, Setting
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
+import LandlordPMSCalendarStats from './LandlordPMSCalendarStats';
 import LandlordPMS from './LandlordPMS';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
@@ -71,7 +72,12 @@ export default function LandlordPMSWorkspace() {
       )}
 
       {tab === 'management' && <LandlordPMS />}
-      {tab === 'rent' && <LandlordPMSRentControls />}
+      {tab === 'rent' && (
+        <>
+          <LandlordPMSCalendarStats />
+          <LandlordPMSRentControls />
+        </>
+      )}
       {tab === 'activity' && <LandlordPMSActivity />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
     </section>
