@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Clock3, Loader2, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
@@ -15,11 +15,12 @@ import AdminListingPostPanel from './AdminListingPostPanel';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 import type { UserRole } from '@/types/domain';
 
-type ProfessionalRole = Extract<UserRole, 'landlord' | 'real_estate' | 'mover'>;
+type ProfessionalRole = 'landlord' | 'real_estate' | 'agency' | 'mover';
+type PMSRole = 'landlord' | 'real_estate';
 type ApplicationStatusField = 'landlord_application_status' | 'real_estate_application_status' | 'mover_application_status';
 type PMSAccessResponse = { allowed?: boolean; reason?: string; read_only?: boolean; role?: ProfessionalRole; subscription_id?: string; subscription_status?: string };
-const applicationField: Record<ProfessionalRole, ApplicationStatusField> = { landlord: 'landlord_application_status', real_estate: 'real_estate_application_status', mover: 'mover_application_status' };
-const labels: Record<ProfessionalRole, string> = { landlord: 'landlord', real_estate: 'real estate', mover: 'mover' };
+const applicationField: Record<ProfessionalRole, ApplicationStatusField> = { landlord: 'landlord_application_status', real_estate: 'real_estate_application_status', agency: 'real_estate_application_status', mover: 'mover_application_status' };
+const labels: Record<ProfessionalRole, string> = { landlord: 'landlord', real_estate: 'real estate', agency: 'real estate', mover: 'mover' };
 function normalizeStatus(value: unknown) { return String(value ?? '').trim().toLowerCase(); }
 
 function AccessNotice({ role, status }: { role: ProfessionalRole; status: string }) {
@@ -31,7 +32,7 @@ function AccessNotice({ role, status }: { role: ProfessionalRole; status: string
   return <div className="mx-auto max-w-md px-4 py-20"><div className="card p-8 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-50 dark:bg-warning-900/30">{pending ? <Clock3 className="h-7 w-7 text-warning-600 dark:text-warning-400" /> : <ShieldCheck className="h-7 w-7 text-warning-600 dark:text-warning-400" />}</div><h2 className="mt-5 text-xl font-bold text-gray-900 dark:text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{message}</p><div className="card mt-5 p-4 text-left"><p className="text-sm font-semibold text-gray-900 dark:text-gray-200">Dashboard access requirements</p><ul className="mt-2 space-y-1 text-sm text-gray-700 dark:text-gray-400"><li>• Your role must be {label}.</li><li>• Your email must be verified.</li><li>• Identity verification must be completed.</li><li>• An administrator must approve your application.</li></ul></div><button type="button" onClick={() => navigate(destination as any)} className="btn-primary mt-6 w-full">Continue with registration</button></div></div>;
 }
 
-function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'landlord' | 'real_estate'>; status: string }) {
+function PMSAccessGate({ role, status }: { role: PMSRole; status: string }) {
   const [access, setAccess] = useState<PMSAccessResponse | null>(null); const [error, setError] = useState<string | null>(null); const [refreshKey, setRefreshKey] = useState(0); const { navigate } = useNav();
   useEffect(() => { let cancelled = false; setAccess(null); setError(null); protectedGet<PMSAccessResponse>('/api/subscriptions/me/pms-access/').then((result) => { if (!cancelled) setAccess(result); }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to verify PMS access.'); }); return () => { cancelled = true; }; }, [role, status, refreshKey]);
   if (error) return <div className="mx-auto max-w-md px-4 py-20"><div className="card p-8 text-center"><ShieldCheck className="mx-auto h-10 w-10 text-error-600" /><h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Unable to verify PMS access</h2><p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{error}</p><button type="button" onClick={() => setRefreshKey((key) => key + 1)} className="btn-primary mt-6 w-full">Retry</button></div></div>;
@@ -50,20 +51,42 @@ function RealEstatePMSLauncher() {
 
 export default function RoleDashboardRouter() {
   const { profile, loading } = useAuth(); const { view, navigate, pmsEntryGranted } = useNav();
+  const lastAuthenticatedProfileId = useRef<string | null>(null);
+
+  // A successful login must always begin at the role dashboard. This also
+  // clears a stale #pms-dashboard hash/entry flag left by a previous session.
+  // PMS can only be entered later through the role dashboard's management CTA.
+  useEffect(() => {
+    if (loading || !profile?.id) return;
+    if (lastAuthenticatedProfileId.current === profile.id) return;
+    lastAuthenticatedProfileId.current = profile.id;
+    if (view === 'pms-dashboard' || pmsEntryGranted) navigate('dashboard');
+  }, [loading, profile?.id, view, pmsEntryGranted, navigate]);
+
   if (loading) return <div className="flex min-h-[300px] items-center justify-center text-sm text-gray-500">Loading your account...</div>;
   if (!profile) return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
   if (profile.is_superuser === true || profile.is_admin === true) return <><DashboardPage /><AdminOperationsPanel /><AdminListingPostPanel /></>;
   if (!profile.role) return null;
   if (profile.role === 'renter') return <RenterDashboard />;
-  const role = profile.role as ProfessionalRole; const status = normalizeStatus(profile[applicationField[role]]);
+
+  const rawRole = String(profile.role).trim().toLowerCase();
+  const role: ProfessionalRole = rawRole === 'agency' || profile.is_agency === true ? 'real_estate' : rawRole as ProfessionalRole;
+  const status = normalizeStatus(profile[applicationField[role]]);
+
+  // Landlords and real-estate/agency users always enter their normal dashboard.
+  // The PMS is a separate management workspace and is never the login landing page.
   if (role === 'landlord' || role === 'real_estate') {
-    if (view === 'pms-dashboard') {
-      if (!pmsEntryGranted) return role === 'landlord' ? <LandlordDashboard navigate={(destination, id) => navigate(destination as any, id)} /> : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
+    if (view === 'pms-dashboard' && pmsEntryGranted) {
       return <PMSAccessGate role={role} status={status} />;
     }
     return role === 'landlord' ? <LandlordDashboard navigate={(destination, id) => navigate(destination as any, id)} /> : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
   }
-  const approved = status === 'approved'; const verified = profile.email_verified === true && profile.kyc_completed === true;
-  if (!approved || !verified) return <AccessNotice role={role} status={status} />;
-  return <MoverDashboard />;
+
+  if (role === 'mover') {
+    const approved = status === 'approved'; const verified = profile.email_verified === true && profile.kyc_completed === true;
+    if (!approved || !verified) return <AccessNotice role={role} status={status} />;
+    return <MoverDashboard />;
+  }
+
+  return <DashboardPage />;
 }
