@@ -167,17 +167,33 @@ class RefreshView(APIView):
 
 
 class SessionView(APIView):
+    """Return the current cookie session without allowing an expired access JWT to short-circuit refresh recovery."""
+
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def get(self, request):
-        if request.user.is_authenticated:
-            return Response({'authenticated': True, 'user': {'id': str(request.user.id), 'email': request.user.email}, 'profile': ProfileSerializer(request.user).data})
+        raw_access = request.COOKIES.get(settings.JWT_ACCESS_COOKIE)
+        if raw_access:
+            try:
+                payload = jwt.decode(
+                    raw_access,
+                    settings.JWT_SECRET_KEY,
+                    algorithms=[settings.JWT_ALGORITHM],
+                    issuer=settings.JWT_ISSUER,
+                    audience=settings.JWT_AUDIENCE,
+                )
+                if payload.get('type') == 'access' and payload.get('sub'):
+                    user = Profile.objects.get(pk=payload['sub'], is_active=True)
+                    return Response({'authenticated': True, 'user': {'id': str(user.id), 'email': user.email}, 'profile': ProfileSerializer(user).data})
+            except (jwt.PyJWTError, KeyError, TypeError, ValueError, Profile.DoesNotExist):
+                pass
+            except Exception:
+                logging.getLogger(__name__).exception('Django access-session check failed')
 
-        # The access JWT is intentionally short-lived. If it has expired while
-        # the browser was idle, recover the session from the HttpOnly refresh
-        # cookie before reporting the user as logged out. This makes app
-        # startup/wake/session checks self-healing instead of forcing React to
-        # interpret an expired access cookie as a real logout.
+        # The access JWT is intentionally short-lived. If the browser was idle
+        # long enough for it to expire, recover from the HttpOnly refresh cookie
+        # before ever telling React that the user has been logged out.
         raw_refresh = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
         if raw_refresh:
             try:
