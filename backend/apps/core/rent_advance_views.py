@@ -59,11 +59,38 @@ class LandlordRentPaymentHistoryView(APIView):
             'id': str(x.id), 'renter_assoc_id': str(x.renter_assoc_id), 'unit_id': str(x.unit_id),
             'amount_kes': float(x.amount_kes), 'period_year': x.period_year, 'period_month': x.period_month,
             'status': x.status, 'paid_at': x.paid_at, 'payment_provider': x.payment_provider,
-            'payment_method': x.payment_method,
+            'payment_method': x.payment_method, 'note': x.result_description,
         } for x in rows])
 
 
 class LandlordMarkRentPaidThroughView(APIView):
+    @transaction.atomic
+    def get(self, request, unit_id):
+        if not can_manage_listings(request.user):
+            return Response({'detail': 'Landlord access is required.'}, status=403)
+        unit = PropertyUnit.objects.filter(id=unit_id, user_id=request.user.id).first()
+        if unit is None:
+            return Response({'detail': 'Unit not found or not owned by this account.'}, status=404)
+        rows = RentPayment.objects.filter(
+            landlord_id=request.user.id,
+            unit_id=unit.id,
+            payment_method='RENT_IN_ADVANCE',
+            status__iexact='PAID',
+        ).order_by('-period_year', '-period_month')
+        return Response({
+            'unit_id': str(unit.id),
+            'paid_in_advance': bool(unit.rent_paid_in_advance),
+            'paid_through_month': unit.rent_paid_through_month.isoformat() if unit.rent_paid_through_month else None,
+            'advance_records': [{
+                'id': str(x.id),
+                'period_year': x.period_year,
+                'period_month': x.period_month,
+                'amount_kes': float(x.amount_kes),
+                'paid_at': x.paid_at,
+                'note': x.result_description,
+            } for x in rows],
+        })
+
     @transaction.atomic
     def post(self, request, unit_id):
         if not can_manage_listings(request.user):
@@ -74,6 +101,10 @@ class LandlordMarkRentPaidThroughView(APIView):
             return Response({'detail': 'paid_through_month must be YYYY-MM-DD.'}, status=400)
         if through.day != 1:
             return Response({'detail': 'paid_through_month must be the first day of a month.'}, status=400)
+        reason = str(request.data.get('reason') or '').strip()
+        if len(reason) < 5:
+            return Response({'detail': 'A short reason is required for a manual paid-through adjustment.'}, status=400)
+
         unit = PropertyUnit.objects.select_for_update().filter(id=unit_id, user_id=request.user.id).first()
         if unit is None:
             return Response({'detail': 'Unit not found or not owned by this account.'}, status=404)
@@ -83,15 +114,20 @@ class LandlordMarkRentPaidThroughView(APIView):
         months_covered = (through.year - current.year) * 12 + through.month - current.month + 1
         if months_covered > 12:
             return Response({'detail': 'At most 12 consecutive months can be marked paid at once.'}, status=400)
-        association = RenterUnitAssociation.objects.filter(unit_id=unit.id, landlord_id=request.user.id, status__iexact='ACTIVE').order_by('-created_at').first()
+        association = RenterUnitAssociation.objects.filter(
+            unit_id=unit.id, landlord_id=request.user.id, status__iexact='ACTIVE'
+        ).order_by('-created_at').first()
         if association is None:
             return Response({'detail': 'No active renter is associated with this unit.'}, status=400)
+
         marked = already = 0
         for offset in range(months_covered):
             month_index = current.month - 1 + offset
             year = current.year + month_index // 12
             month = month_index % 12 + 1
-            existing = RentPayment.objects.filter(renter_assoc_id=association.id, period_year=year, period_month=month).first()
+            existing = RentPayment.objects.filter(
+                renter_assoc_id=association.id, period_year=year, period_month=month
+            ).first()
             if existing:
                 if str(existing.status).upper() != 'PAID':
                     transaction.set_rollback(True)
@@ -102,8 +138,10 @@ class LandlordMarkRentPaidThroughView(APIView):
                 renter_assoc_id=association.id, unit_id=unit.id, landlord_id=request.user.id,
                 amount_kes=Decimal(unit.rent), period_year=year, period_month=month, status='PAID',
                 paid_at=timezone.now(), payment_provider='MANUAL', payment_method='RENT_IN_ADVANCE',
+                result_description=reason,
             )
             marked += 1
+
         unit.rent_paid_in_advance = True
         unit.rent_paid_through_month = through
         unit.save(update_fields=['rent_paid_in_advance', 'rent_paid_through_month', 'updated_at'])
@@ -111,5 +149,5 @@ class LandlordMarkRentPaidThroughView(APIView):
             'unit_id': str(unit.id), 'paid_through_month': through.isoformat(),
             'months_marked_paid': marked, 'months_already_paid': already,
             'months_covered': months_covered, 'payment_provider': 'MANUAL',
-            'payment_method': 'RENT_IN_ADVANCE',
+            'payment_method': 'RENT_IN_ADVANCE', 'reason': reason,
         })
