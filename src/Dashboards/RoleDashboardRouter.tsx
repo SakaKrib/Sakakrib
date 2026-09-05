@@ -57,85 +57,30 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
     let cancelled = false;
     setAccess(null);
     setError(null);
-
     protectedGet<PMSAccessResponse>('/api/subscriptions/me/pms-access/')
-      .then((result) => {
-        if (!cancelled) setAccess(result);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to verify PMS access.');
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .then((result) => { if (!cancelled) setAccess(result); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to verify PMS access.'); });
+    return () => { cancelled = true; };
   }, [role, status, refreshKey]);
 
-  if (error) {
-    return (
-      <div className="mx-auto max-w-md px-4 py-20">
-        <div className="card p-8 text-center">
-          <ShieldCheck className="mx-auto h-10 w-10 text-error-600" />
-          <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Unable to verify PMS access</h2>
-          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{error}</p>
-          <button type="button" onClick={() => setRefreshKey((key) => key + 1)} className="btn-primary mt-6 w-full">Retry</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!access) {
-    return <div className="flex min-h-[300px] items-center justify-center gap-2 text-sm text-gray-500"><Loader2 className="h-5 w-5 animate-spin" />Verifying PMS access...</div>;
-  }
-
-  if (access.allowed === true) {
-    return role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstatePMSWorkspace />;
-  }
+  if (error) return <div className="mx-auto max-w-md px-4 py-20"><div className="card p-8 text-center"><ShieldCheck className="mx-auto h-10 w-10 text-error-600" /><h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Unable to verify PMS access</h2><p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{error}</p><button type="button" onClick={() => setRefreshKey((key) => key + 1)} className="btn-primary mt-6 w-full">Retry</button></div></div>;
+  if (!access) return <div className="flex min-h-[300px] items-center justify-center gap-2 text-sm text-gray-500"><Loader2 className="h-5 w-5 animate-spin" />Verifying PMS access...</div>;
+  if (access.allowed === true) return role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstatePMSWorkspace />;
 
   const reason = normalizeStatus(access.reason);
-  if (reason === 'active_subscription_required') {
-    return <PMSSubscriptionPage />;
-  }
-
-  if (reason === 'landlord_application_not_approved' || reason === 'real_estate_application_not_approved' || reason === 'identity_verification_required') {
-    return <AccessNotice role={role} status={status} />;
-  }
-
-  return (
-    <div className="mx-auto max-w-md px-4 py-20">
-      <div className="card p-8 text-center">
-        <ShieldCheck className="mx-auto h-10 w-10 text-warning-600" />
-        <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">PMS access is not available</h2>
-        <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{access.reason || 'Your account is not currently entitled to the PMS workspace.'}</p>
-        <button type="button" onClick={() => navigate('dashboard')} className="btn-primary mt-6 w-full">Return to dashboard</button>
-      </div>
-    </div>
-  );
+  if (reason === 'active_subscription_required') return <PMSSubscriptionPage />;
+  if (reason === 'landlord_application_not_approved' || reason === 'real_estate_application_not_approved' || reason === 'identity_verification_required') return <AccessNotice role={role} status={status} />;
+  return <div className="mx-auto max-w-md px-4 py-20"><div className="card p-8 text-center"><ShieldCheck className="mx-auto h-10 w-10 text-warning-600" /><h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">PMS access is not available</h2><p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{access.reason || 'Your account is not currently entitled to the PMS workspace.'}</p><button type="button" onClick={() => navigate('dashboard')} className="btn-primary mt-6 w-full">Return to dashboard</button></div></div>;
 }
 
 function RealEstatePMSLauncher() {
   const { navigate } = useNav();
-  return (
-    <div className="mx-auto mt-6 max-w-7xl px-2 sm:px-6 lg:px-8">
-      <div className="rounded-2xl border border-brand-200 bg-brand-50 p-5 shadow-sm dark:border-brand-800 dark:bg-brand-900/30">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">Property management</p>
-            <h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Manage your real estate portfolio</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Open the dedicated real-estate management workspace. Django will verify your active subscription before granting access.</p>
-          </div>
-          <button type="button" onClick={() => navigate('pms-dashboard')} className="btn-primary inline-flex shrink-0 items-center justify-center">Manage Real Estate</button>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="mx-auto mt-6 max-w-7xl px-2 sm:px-6 lg:px-8"><div className="rounded-2xl border border-brand-200 bg-brand-50 p-5 shadow-sm dark:border-brand-800 dark:bg-brand-900/30"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">Property management</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Manage your real estate portfolio</h2><p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Open the dedicated real-estate management workspace. Django will verify your active subscription before granting access.</p></div><button type="button" onClick={() => navigate('pms-dashboard')} className="btn-primary inline-flex shrink-0 items-center justify-center">Manage Real Estate</button></div></div></div>;
 }
 
 export default function RoleDashboardRouter() {
   const { profile, loading } = useAuth();
-  const { view } = useNav();
+  const { view, navigate, pmsEntryGranted } = useNav();
   if (loading) return <div className="flex min-h-[300px] items-center justify-center text-sm text-gray-500">Loading your account...</div>;
   if (!profile) return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
   if (profile.is_superuser === true || profile.is_admin === true) return <><DashboardPage /><AdminOperationsPanel /><AdminListingPostPanel /></>;
@@ -145,25 +90,12 @@ export default function RoleDashboardRouter() {
   const role = profile.role as ProfessionalRole;
   const status = normalizeStatus(profile[applicationField[role]]);
 
-  // The role dashboard is the first destination. PMS is a second-level
-  // destination entered explicitly from the landlord/real-estate dashboard.
   if (role === 'landlord' || role === 'real_estate') {
     if (view === 'pms-dashboard') {
-      // PMS entry is granted only by an in-app dashboard button. Direct
-      // URL/hash access and refreshes fall back to the role dashboard.
-      // Django remains authoritative for the subscription decision.
-      const { pmsEntryGranted } = useNav();
-      if (!pmsEntryGranted) {
-        return role === 'landlord' ? <LandlordDashboard /> : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
-      }
+      if (!pmsEntryGranted) return role === 'landlord' ? <LandlordDashboard navigate={navigate} /> : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
       return <PMSAccessGate role={role} status={status} />;
     }
-
-    return role === 'landlord' ? (
-      <LandlordDashboard navigate={(destination, id) => useNav().navigate(destination as any, id)} />
-    ) : (
-      <><RealEstateDashboard /><RealEstatePMSLauncher /></>
-    );
+    return role === 'landlord' ? <LandlordDashboard navigate={navigate} /> : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
   }
 
   const approved = status === 'approved';
