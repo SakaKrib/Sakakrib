@@ -52,7 +52,15 @@ const subscription = async (): Promise<PMSSubscriptionSnapshot> =>
 
 export const djangoPmsGateway = {
   auth: {
-    getUser: async () => request(() => protectedGet<any>('/api/accounts/me/')),
+    // Keep a Supabase-shaped auth result only as a compatibility contract for
+    // existing PMS components. The actual request is still Django-only.
+    getUser: async () => {
+      const result = await request(() => protectedGet<any>('/api/accounts/me/'));
+      return {
+        data: { user: result.data },
+        error: result.error,
+      };
+    },
   },
 
   /** Direct Django PMS boundary for new routes/components. */
