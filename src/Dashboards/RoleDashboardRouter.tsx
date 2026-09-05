@@ -46,9 +46,9 @@ function AccessNotice({ role, status }: { role: ProfessionalRole; status: string
 }
 
 function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'landlord' | 'real_estate'>; status: string }) {
-  const { navigate } = useNav();
   const [access, setAccess] = useState<PMSAccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +68,7 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
     return () => {
       cancelled = true;
     };
-  }, [role, status]);
+  }, [role, status, refreshKey]);
 
   if (error) {
     return (
@@ -77,7 +77,7 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
           <ShieldCheck className="mx-auto h-10 w-10 text-error-600" />
           <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Unable to verify PMS access</h2>
           <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{error}</p>
-          <button type="button" onClick={() => navigate('dashboard')} className="btn-primary mt-6 w-full">Retry</button>
+          <button type="button" onClick={() => setRefreshKey((key) => key + 1)} className="btn-primary mt-6 w-full">Retry</button>
         </div>
       </div>
     );
