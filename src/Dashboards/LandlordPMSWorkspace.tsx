@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, BarChart3, Bell, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp, Wallet } from 'lucide-react';
-import { protectedGet } from '@/lib/djangoApi';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Activity, BarChart3, Bell, CalendarDays, CreditCard, LayoutDashboard, RefreshCw, Settings2, TrendingUp, Wallet } from 'lucide-react';
+import { djangoPmsGateway, type PMSDashboardSnapshot } from '@/lib/djangoPmsGateway';
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
@@ -17,13 +17,6 @@ import LandlordPMSEntitlementHeader from './LandlordPMSEntitlementHeader';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
 type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'insights' | 'activity' | 'notifications' | 'subscription' | 'settings';
-type DashboardSnapshot = {
-  notifications?: Array<{ read?: boolean }>;
-  pendingRentSubmissions?: Array<{ status?: string }>;
-  rentInvoices?: Array<{ status?: string }>;
-  capacity?: { listings_used?: number; listings_remaining?: number | null; max_listings?: number | null };
-  subscription?: { plan_name?: string | null; status?: string | null } | null;
-};
 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -39,24 +32,39 @@ const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboar
 
 export default function LandlordPMSWorkspace() {
   const [tab, setTab] = useState<WorkspaceTab>('overview');
-  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<PMSDashboardSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const result = await djangoPmsGateway.dashboard();
+    if (result.error) {
+      setSnapshot(null);
+      setError(result.error.message);
+    } else {
+      setSnapshot(result.data);
+    }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    protectedGet<DashboardSnapshot>('/api/core/pms/dashboard/')
-      .then((data) => {
-        if (!cancelled) setSnapshot(data);
-      })
-      .catch(() => {
-        if (!cancelled) setSnapshot(null);
-      });
-    return () => { cancelled = true; };
-  }, [tab]);
+    void load();
+  }, [load]);
 
   const badges = useMemo(() => {
-    const unread = (snapshot?.notifications ?? []).filter((item) => !item.read).length;
-    const pending = (snapshot?.pendingRentSubmissions ?? []).filter((item) => String(item.status ?? '').toUpperCase() === 'PENDING').length;
-    return { unread, pending };
+    const notifications = Array.isArray(snapshot?.notifications) ? snapshot.notifications : [];
+    const submissions = Array.isArray(snapshot?.rentPaymentSubmissions)
+      ? snapshot.rentPaymentSubmissions
+      : Array.isArray(snapshot?.pendingRentSubmissions)
+        ? snapshot.pendingRentSubmissions
+        : [];
+
+    return {
+      unread: notifications.filter((item: any) => !item.read).length,
+      pending: submissions.filter((item: any) => String(item.status ?? '').toUpperCase() === 'PENDING').length,
+    };
   }, [snapshot]);
 
   const labelFor = (id: WorkspaceTab, label: string) => {
@@ -74,23 +82,49 @@ export default function LandlordPMSWorkspace() {
           <div>
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Django-backed PMS workspace</div>
             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {snapshot?.subscription?.plan_name ? `${snapshot.subscription.plan_name} · ${snapshot.subscription.status ?? 'status unavailable'}` : 'Live PMS state from Django'}
+              {snapshot?.subscription?.plan_name
+                ? `${snapshot.subscription.plan_name} · ${snapshot.subscription.status ?? 'status unavailable'}`
+                : 'Live PMS state from Django'}
             </div>
           </div>
-          {snapshot?.capacity && (
-            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-              {snapshot.capacity.listings_used ?? 0} used{snapshot.capacity.max_listings != null ? ` / ${snapshot.capacity.max_listings}` : ''} listings
-            </div>
-          )}
+          <div className="flex items-center gap-3 text-xs font-semibold text-gray-500 dark:text-gray-400">
+            {snapshot?.capacity && (
+              <span>
+                {snapshot.capacity.listings_used ?? 0} used{snapshot.capacity.max_listings != null ? ` / ${snapshot.capacity.max_listings}` : ''} listings
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-800 dark:hover:bg-brand-900"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
+
         <div className="flex gap-2 overflow-x-auto">
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setTab(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === id ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}>
-              <Icon className="h-4 w-4" />{labelFor(id, label)}
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === id ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}
+            >
+              <Icon className="h-4 w-4" />
+              {labelFor(id, label)}
             </button>
           ))}
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-900/50 dark:bg-error-900/20 dark:text-error-300">
+          Django PMS data could not be loaded: {error}
+        </div>
+      )}
 
       {tab === 'overview' && <><LandlordPMSOverview /><LandlordPMSQuickActions onNavigate={(nextTab) => setTab(nextTab)} /></>}
       {tab === 'management' && <LandlordPMSPropertyWorkflow />}
