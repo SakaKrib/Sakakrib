@@ -39,7 +39,10 @@ type AuthGatewayAction =
 
 const getBaseUrl = (): string => {
   const configured = import.meta.env.VITE_DJANGO_API_URL as string | undefined;
-  return (configured || '').replace(/\/+$/, '');
+  const fallback = typeof window !== 'undefined' ? window.location.origin : '';
+  return (configured || fallback)
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
 };
 
 const actionPath: Record<Exclude<AuthGatewayAction, 'session'>, string> = {
@@ -92,10 +95,6 @@ export const authGateway = async (
   action: AuthGatewayAction,
   payload: Record<string, unknown> = {},
 ): Promise<GatewaySessionResponse> => {
-  // Session checks use the same protected transport as all other authenticated
-  // requests. This is important because a normal session check can encounter
-  // an expired access cookie and must rotate the refresh cookie before giving
-  // the UI an unauthenticated result.
   if (action === 'session') {
     return djangoRequest<GatewaySessionResponse>('/api/accounts/session/');
   }
