@@ -45,6 +45,7 @@ def _invoice_payload(invoice):
         "status": invoice.status, "transaction_reference": invoice.transaction_reference,
         "payment_method": invoice.payment_method,
         "payment_date": invoice.payment_date.isoformat() if invoice.payment_date else None,
+        "payment_destination_snapshot": invoice.payment_destination_snapshot,
         "confirmed_by": str(invoice.confirmed_by) if invoice.confirmed_by else None,
         "confirmed_at": invoice.confirmed_at.isoformat() if invoice.confirmed_at else None,
         "periods": [{"period_year": p.period_year, "period_month": p.period_month, "amount_kes": str(p.amount_kes)} for p in periods],
@@ -62,14 +63,17 @@ def _get_unit(unit_id, landlord_id=None):
 
 
 def _get_payment_destination(payment_method_id, unit, actor_id):
-    if not payment_method_id:
-        raise ValidationError("Payment method is required.")
     if str(unit.user_id) != str(actor_id) and not RenterUnitAssociation.objects.filter(unit_id=unit.id, renter_user_id=actor_id, status__iexact="ACTIVE").exists():
         raise ValidationError("Not authorized to view this payment destination.")
-    try:
-        method = LandlordPaymentMethod.objects.get(id=payment_method_id, landlord_id=unit.user_id, is_active=True)
-    except LandlordPaymentMethod.DoesNotExist as exc:
-        raise ValidationError("Payment method is not authorized for this unit.") from exc
+    method = None
+    if payment_method_id:
+        method = LandlordPaymentMethod.objects.filter(id=payment_method_id, landlord_id=unit.user_id, is_active=True).first()
+    else:
+        method = LandlordPaymentMethod.objects.filter(landlord_id=unit.user_id, is_active=True, is_default=True).first()
+        if method is None:
+            method = LandlordPaymentMethod.objects.filter(landlord_id=unit.user_id, is_active=True).order_by('-created_at').first()
+    if method is None:
+        raise ValidationError("Add an active payment account before sending a rent invoice.")
     return {"payment_method_id": str(method.id), "provider": method.provider, "mpesa_method": method.mpesa_method,
             "display_name": method.display_name, "paybill_number": method.paybill_number,
             "paybill_account": method.paybill_account, "till_number": method.till_number, "paypal_email": method.paypal_email}
@@ -147,7 +151,7 @@ def create_landlord_rent_invoice(*, landlord_id, unit_id=None, renter_assoc_id=N
         id=uuid.uuid4(), invoice_number=_invoice_number(), landlord_id=landlord_id, renter_user_id=association.renter_user_id,
         renter_assoc_id=association.id, listing_id=unit.listing_id, unit_id=unit.id, billing_period_start=period_start,
         billing_period_end=period_end, due_date=due_date, amount_kes=Decimal(unit.rent) * len(normalized), currency="KES",
-        status="DUE", payment_method_id=payment_method_id, payment_destination_snapshot=destination,
+        status="DUE", payment_method_id=destination["payment_method_id"], payment_destination_snapshot=destination,
     )
     RentInvoicePeriod.objects.bulk_create([RentInvoicePeriod(invoice_id=invoice.id, renter_assoc_id=association.id, unit_id=unit.id,
         period_year=y, period_month=m, amount_kes=Decimal(unit.rent)) for y, m in normalized])
