@@ -13,8 +13,8 @@ type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'management', label: 'Properties & Renters', icon: Settings2 },
-  { id: 'rent', label: 'Rent & Calendar', icon: CalendarDays },
-  { id: 'finance', label: 'Finance', icon: TrendingUp },
+  { id: 'rent', label: 'Rent, Calendar & Stats', icon: CalendarDays },
+  { id: 'finance', label: 'Finance & Payments', icon: TrendingUp },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
 ];
@@ -24,7 +24,10 @@ export default function LandlordPMSWorkspace() {
 
   return (
     <section className="mt-6 space-y-5">
-      <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+        <div className="mb-2 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+          Django-backed PMS workspace
+        </div>
         <div className="flex gap-2 overflow-x-auto">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
@@ -64,7 +67,7 @@ export default function LandlordPMSWorkspace() {
             />
             <QuickPanel
               icon={TrendingUp}
-              title="Finance"
+              title="Finance & payments"
               description="Review invoiced, collected, outstanding and payment-review totals."
               action="Open finance"
               onClick={() => setTab('finance')}
