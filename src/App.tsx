@@ -82,6 +82,7 @@ function AppContent() {
       case 'kyc-verify': return <KycVerifyPage />;
       case 'admin-user-details': return (profile?.is_superuser === true || profile?.is_admin === true) ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
       case 'dashboard': return <RoleDashboardRouter />;
+      case 'pms-dashboard': return <RoleDashboardRouter />;
       case 'profile': return <ProfilePage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
