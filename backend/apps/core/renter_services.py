@@ -6,7 +6,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.models import Profile
 from apps.listings.models import Listing
+from apps.subscriptions.services import get_pms_access
 from .domain_property import PropertyUnit, RenterUnitAssociation
 from .domain_platform import NotificationEmail
 from .notification_services import dispatch_user_notification
@@ -14,6 +16,15 @@ from .notification_services import dispatch_user_notification
 
 def _hash_token(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _require_landlord_write(landlord_id):
+    profile = Profile.objects.filter(pk=landlord_id).first()
+    access = get_pms_access(profile)
+    if not access.get("allowed") or access.get("role") != "landlord":
+        raise ValidationError("An active landlord PMS subscription is required.")
+    if access.get("read_only"):
+        raise ValidationError("PMS is read-only during the subscription grace period.")
 
 
 def _preview(row):
@@ -29,6 +40,7 @@ def _preview(row):
 
 @transaction.atomic
 def create_renter_invitation(*, landlord_id, unit_id, renter_name, renter_phone, renter_email, app_base_url=None):
+    _require_landlord_write(landlord_id)
     name, email = (renter_name or "").strip(), (renter_email or "").strip().lower()
     if not name:
         raise ValidationError("Renter name is required.")
@@ -74,7 +86,6 @@ def claim_renter_invitation(*, renter_user_id, token):
     if row is None or (row.invite_expires_at and row.invite_expires_at <= timezone.now()):
         raise ValidationError("This invitation is invalid, expired, already claimed, or no longer available.")
 
-    from apps.accounts.models import Profile
     renter = Profile.objects.filter(pk=renter_user_id).only("email").first()
     if renter is None or not str(renter.email or "").strip():
         raise ValidationError("A verified renter account email is required to claim this rental.")
@@ -97,6 +108,7 @@ def claim_renter_invitation(*, renter_user_id, token):
 
 @transaction.atomic
 def resend_renter_invitation(*, landlord_id, association_id, app_base_url=None):
+    _require_landlord_write(landlord_id)
     row = RenterUnitAssociation.objects.select_for_update().filter(id=association_id, landlord_id=landlord_id, status="PENDING").first()
     if row is None:
         raise ValidationError("Pending invitation not found or not owned by this account.")
@@ -114,6 +126,7 @@ def resend_renter_invitation(*, landlord_id, association_id, app_base_url=None):
 
 @transaction.atomic
 def cancel_renter_invitation(*, landlord_id, association_id):
+    _require_landlord_write(landlord_id)
     row = RenterUnitAssociation.objects.select_for_update().filter(
         id=association_id, landlord_id=landlord_id, status="PENDING"
     ).first()
