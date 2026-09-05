@@ -13,6 +13,7 @@ export type PMSAccessDecision = {
 
 export type PMSSubscriptionSnapshot = Record<string, unknown> | null;
 export type PMSEntitlementSnapshot = Record<string, unknown> | null;
+export type PMSDashboardSnapshot = Record<string, any>;
 
 const ok = <T>(data: T): Result<T> => ({ data, error: null });
 const fail = <T>(error: unknown): Result<T> => ({
@@ -28,27 +29,21 @@ const request = async <T>(work: () => Promise<T>): Promise<Result<T>> => {
   }
 };
 
-const dashboard = async () =>
-  protectedGet<any>('/api/core/pms/dashboard/');
+const dashboard = async (): Promise<PMSDashboardSnapshot> =>
+  protectedGet<PMSDashboardSnapshot>('/api/core/pms/dashboard/');
 
 const realEstateDashboard = async () =>
   protectedGet<any>('/api/core/pms/real-estate/dashboard/');
 
 /**
  * Django-authoritative PMS access decision.
- *
- * This is intentionally separate from the dashboard payload. Routes that
- * enter PMS must ask Django whether access is allowed before rendering the
- * workspace. No client-side subscription state is trusted for authorization.
+ * Routes that enter PMS must ask Django whether access is allowed before rendering
+ * the workspace. No client-side subscription state is trusted for authorization.
  */
 const pmsAccess = async (): Promise<PMSAccessDecision> =>
   protectedGet<PMSAccessDecision>('/api/subscriptions/me/pms-access/');
 
-/**
- * Django-authoritative listing/subscription entitlement used by the landlord
- * dashboard and PMS subscription flow. This is the subscription access
- * endpoint, not a client-calculated entitlement.
- */
+/** Django-authoritative subscription/listing entitlement. */
 const subscriptionAccess = async (): Promise<PMSEntitlementSnapshot> =>
   protectedGet<PMSEntitlementSnapshot>('/api/subscriptions/me/access/');
 
@@ -61,6 +56,7 @@ export const djangoPmsGateway = {
   },
 
   /** Direct Django PMS boundary for new routes/components. */
+  dashboard: async () => request(dashboard),
   access: async () => request(pmsAccess),
   entitlement: async () => request(subscriptionAccess),
   subscription: async () => request(subscription),
@@ -89,37 +85,27 @@ export const djangoPmsGateway = {
     switch (name) {
       case 'get_my_pms_access':
         return request(pmsAccess);
-
       case 'get_my_pms_entitlement':
         return request(subscriptionAccess);
-
       case 'get_my_pms_subscription':
         return request(async () => (await dashboard()).subscription ?? null);
-
       case 'get_my_subscription':
         return request(subscription);
-
       case 'get_my_unit_entitlement':
         return request(subscriptionAccess);
-
       case 'get_my_pms_unit_count':
         return request(async () => {
           const data = await dashboard();
           return Array.isArray(data?.units) ? data.units.length : 0;
         });
-
       case 'get_my_pms_listings':
         return request(async () => (await dashboard()).pmsListings ?? []);
-
       case 'get_my_available_pms_listings':
         return request(async () => (await dashboard()).availableListings ?? []);
-
       case 'get_current_real_estate_subscription':
         return request(async () => (await realEstateDashboard()).subscription ?? null);
-
       case 'get_real_estate_listing_entitlement':
         return request(async () => (await realEstateDashboard()).entitlement ?? null);
-
       case 'add_listing_to_pms':
       case 'remove_listing_from_pms': {
         const profile = await protectedGet<any>('/api/accounts/me/');
@@ -132,7 +118,6 @@ export const djangoPmsGateway = {
           subscription_id: params.p_subscription_id,
         }));
       }
-
       default:
         return fail<any>(new Error(`No Django PMS operation exists for ${name}.`));
     }
