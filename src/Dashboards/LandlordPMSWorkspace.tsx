@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Bell, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp } from 'lucide-react';
+import { Activity, Bell, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp, Wallet } from 'lucide-react';
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
@@ -9,9 +9,10 @@ import LandlordPMSCalendar from './LandlordPMSCalendar';
 import LandlordPMSPropertyWorkflow from './LandlordPMSPropertyWorkflow';
 import LandlordPMSQuickActions from './LandlordPMSQuickActions';
 import LandlordPMSNotifications from './LandlordPMSNotifications';
+import LandlordPMSSettings from './LandlordPMSSettings';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
-type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' | 'notifications' | 'subscription';
+type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' | 'notifications' | 'subscription' | 'settings';
 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -21,6 +22,7 @@ const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboar
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
+  { id: 'settings', label: 'Payment Settings', icon: Wallet },
 ];
 
 export default function LandlordPMSWorkspace() {
@@ -46,6 +48,7 @@ export default function LandlordPMSWorkspace() {
       {tab === 'activity' && <LandlordPMSActivity />}
       {tab === 'notifications' && <LandlordPMSNotifications />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
+      {tab === 'settings' && <LandlordPMSSettings />}
     </section>
   );
 }
