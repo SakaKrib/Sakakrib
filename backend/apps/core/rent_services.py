@@ -202,6 +202,12 @@ def create_renter_paid_invoice(*, renter_user_id, unit_id, payment_date, payment
         raise ValidationError("Unit rent is not configured.")
     if RentPaymentSubmission.objects.filter(transaction_reference__iexact=reference).exists():
         raise ValidationError("This transaction ID has already been submitted.")
+    year, month = payment_date.year, payment_date.month
+    if RentPayment.objects.filter(renter_assoc_id=association.id, period_year=year, period_month=month, status__iexact="PAID").exists():
+        raise ValidationError(f"Rent for {year}-{month:02d} is already paid.")
+    active_invoice_ids = RentInvoice.objects.filter(status__in=["DUE", "PAYMENT_SUBMITTED"]).values_list("id", flat=True)
+    if RentInvoicePeriod.objects.filter(renter_assoc_id=association.id, period_year=year, period_month=month, invoice_id__in=active_invoice_ids).exists():
+        raise ValidationError(f"An active invoice already exists for {year}-{month:02d}. Submit the payment against that invoice instead.")
     period_start = payment_date.replace(day=1)
     last_day = calendar.monthrange(payment_date.year, payment_date.month)[1]
     invoice = RentInvoice.objects.create(id=uuid.uuid4(), invoice_number=_invoice_number(), landlord_id=association.landlord_id,
@@ -210,7 +216,7 @@ def create_renter_paid_invoice(*, renter_user_id, unit_id, payment_date, payment
         amount_kes=Decimal(unit.rent), currency="KES", status="PAYMENT_SUBMITTED", payment_method=method,
         payment_date=payment_date, transaction_reference=reference)
     RentInvoicePeriod.objects.create(invoice_id=invoice.id, renter_assoc_id=association.id, unit_id=unit.id,
-        period_year=payment_date.year, period_month=payment_date.month, amount_kes=Decimal(unit.rent))
+        period_year=year, period_month=month, amount_kes=Decimal(unit.rent))
     submission = RentPaymentSubmission.objects.create(invoice_id=invoice.id, renter_user_id=renter_user_id, landlord_id=association.landlord_id,
         renter_assoc_id=association.id, unit_id=unit.id, transaction_reference=reference, payment_method=method,
         payment_date=payment_date, status="PENDING")
