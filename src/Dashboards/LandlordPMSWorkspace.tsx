@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BarChart3, CalendarDays, CreditCard, LayoutDashboard, Settings2 } from 'lucide-react';
-import LandlordPMSDjangoInsights from './LandlordPMSDjangoInsights';
+import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMS from './LandlordPMS';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
@@ -41,7 +41,7 @@ export default function LandlordPMSWorkspace() {
 
       {tab === 'overview' && (
         <>
-          <LandlordPMSDjangoInsights />
+          <LandlordPMSOverview />
           <div className="grid gap-5 lg:grid-cols-2">
             <QuickPanel
               icon={BarChart3}
