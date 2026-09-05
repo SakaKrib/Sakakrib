@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  ArrowRight,
+  Building2,
   CalendarDays,
   CheckCircle2,
   Clock3,
-  FileText,
   Home,
   RefreshCw,
   Users,
@@ -89,7 +88,6 @@ export default function LandlordPMSCommandCenter() {
   const derived = useMemo(() => {
     const units = Array.isArray(data?.units) ? data.units : [];
     const invoices = Array.isArray(data?.rentInvoices) ? data.rentInvoices : [];
-    const payments = Array.isArray(data?.rentPayments) ? data.rentPayments : [];
 
     const occupied = units.filter((unit: RecordValue) => Boolean(unit.renter_assoc_id));
     const available = units.filter(
@@ -108,8 +106,6 @@ export default function LandlordPMSCommandCenter() {
 
     return {
       units,
-      invoices,
-      payments,
       occupied,
       available,
       paid,
@@ -153,7 +149,7 @@ export default function LandlordPMSCommandCenter() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Properties / listings" value={Array.isArray(data.listings) ? data.listings.length : 0} icon={Home} />
-            <Stat label="Total units" value={derived.units.length} icon={BuildingIcon} />
+            <Stat label="Total units" value={derived.units.length} icon={Building2} />
             <Stat label="Occupied units" value={`${derived.occupied.length} · ${derived.occupancyRate}%`} icon={Users} tone="success" />
             <Stat label="Available units" value={derived.available.length} icon={Home} tone="warning" />
           </div>
@@ -274,8 +270,4 @@ function QueueRow({ label, value }: { label: string; value: number }) {
       <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">{value}</span>
     </div>
   );
-}
-
-function BuildingIcon(props: React.ComponentProps<typeof Home>) {
-  return <Home {...props} />;
 }
