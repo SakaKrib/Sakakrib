@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Clock3, MapPin, MessageCircle, Navigation, X, XCircle } from 'lucide-react';
 import { cn, formatKES } from '@/lib/utils';
+import { protectedGet } from '@/lib/djangoApi';
 
 type ChatMessage = { id: string; sender_id: string; content: string; message_type: string | null; event_data: Record<string, unknown> | null; created_at: string };
 type Booking = { id: string; pickup_address: string; dropoff_address: string; moving_date: string | null; booking_amount: number | null; total_amount: number | null; status: string | null; payment_status: string | null; payment_method?: string | null; request_expires_at: string | null; confirmed_at: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null };
@@ -9,14 +11,31 @@ const displayDate = (value: string | null | undefined) => value ? new Date(`${va
 const displayDateTime = (value: string | null | undefined) => value ? new Date(value).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 
 export default function ChatBookingCard({ message, booking, isMover, responding, onRespond, onCancel, onSchedule }: Props) {
+  const [liveBooking, setLiveBooking] = useState<Booking | null>(booking ?? null);
+  useEffect(() => setLiveBooking(booking ?? null), [booking]);
+  useEffect(() => {
+    if (!booking?.id) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const result = await protectedGet<Booking>(`/api/core/bookings/${booking.id}/`);
+        if (!cancelled && result) setLiveBooking(result);
+      } catch { /* keep the last authoritative state visible */ }
+    };
+    const timer = window.setInterval(() => void refresh(), 4000);
+    void refresh();
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [booking?.id]);
+
+  const currentBooking = liveBooking ?? booking;
   const event = message?.event_data ?? {};
   const decision = normalize(event.decision);
-  const status = normalize(booking?.status ?? (event.status as string) ?? (decision === 'confirm' ? 'confirmed' : decision === 'cancel' ? 'cancelled' : 'pending'));
-  const pickup = booking?.pickup_address || String(event.pickup_address ?? 'Pickup location');
-  const dropoff = booking?.dropoff_address || String(event.dropoff_address ?? 'Drop-off location');
-  const movingDate = booking?.moving_date || (typeof event.moving_date === 'string' ? event.moving_date : null);
-  const total = booking?.total_amount ?? booking?.booking_amount ?? Number(event.renter_total_kes ?? 0);
-  const paymentMethod = booking?.payment_method || (typeof event.preferred_payment_method === 'string' ? event.preferred_payment_method : null);
+  const status = normalize(currentBooking?.status ?? (event.status as string) ?? (decision === 'confirm' ? 'confirmed' : decision === 'cancel' ? 'cancelled' : 'pending'));
+  const pickup = currentBooking?.pickup_address || String(event.pickup_address ?? 'Pickup location');
+  const dropoff = currentBooking?.dropoff_address || String(event.dropoff_address ?? 'Drop-off location');
+  const movingDate = currentBooking?.moving_date || (typeof event.moving_date === 'string' ? event.moving_date : null);
+  const total = currentBooking?.total_amount ?? currentBooking?.booking_amount ?? Number(event.renter_total_kes ?? 0);
+  const paymentMethod = currentBooking?.payment_method || (typeof event.preferred_payment_method === 'string' ? event.preferred_payment_method : null);
   const pickupLat = event.pickup_latitude;
   const pickupLng = event.pickup_longitude;
   const dropoffLat = event.dropoff_latitude;
@@ -34,11 +53,11 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
     <div className="space-y-4 p-4"><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-900/40"><div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /><div><p className="text-[11px] font-semibold uppercase text-gray-400">Pickup</p><p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{pickup}</p></div></div></div><div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-900/40"><div className="flex items-start gap-2"><Navigation className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /><div><p className="text-[11px] font-semibold uppercase text-gray-400">Destination</p><p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{dropoff}</p></div></div></div></div>
       {(hasPickupCoordinates || hasDropoffCoordinates) && <div className="rounded-xl border border-brand-100 bg-brand-50/70 p-3 dark:border-brand-800 dark:bg-brand-900/30"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-brand-600" /><p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">Location attached to request</p></div><div className="mt-2 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2"><p>Pickup GPS: {hasPickupCoordinates ? `${Number(pickupLat).toFixed(5)}, ${Number(pickupLng).toFixed(5)}` : 'Not supplied'}</p><p>Destination GPS: {hasDropoffCoordinates ? `${Number(dropoffLat).toFixed(5)}, ${Number(dropoffLng).toFixed(5)}` : 'Not supplied'}</p></div></div>}
       <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-sm dark:border-brand-800 sm:grid-cols-3"><div><p className="text-xs text-gray-400">Move date</p><p className="mt-1 font-medium">{displayDate(movingDate)}</p></div><div><p className="text-xs text-gray-400">Total</p><p className="mt-1 font-semibold text-brand-700 dark:text-brand-300">{formatKES(Number(total || 0))}</p></div><div><p className="text-xs text-gray-400">Payment</p><p className="mt-1 font-medium uppercase">{paymentMethod || 'Not selected'}</p></div></div>
-      {booking?.request_expires_at && status === 'pending' && <div className="flex items-center gap-2 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-800 dark:bg-warning-900/20 dark:text-warning-300"><Clock3 className="h-4 w-4" />Response window ends {displayDateTime(booking.request_expires_at)}.</div>}
+      {currentBooking?.request_expires_at && status === 'pending' && <div className="flex items-center gap-2 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-800 dark:bg-warning-900/20 dark:text-warning-300"><Clock3 className="h-4 w-4" />Response window ends {displayDateTime(currentBooking.request_expires_at)}.</div>}
       {canMoverRespond && <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-800 dark:bg-brand-900/40"><p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Choose an action for this request</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><button type="button" disabled={responding} onClick={() => onRespond('confirm')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"><Check className="h-4 w-4" />Accept</button><button type="button" disabled={responding} onClick={() => onRespond('not_sure')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><Clock3 className="h-4 w-4" />Not sure</button><button type="button" disabled={responding} onClick={() => onRespond('cancel')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-error-200 bg-white px-3 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-50 disabled:opacity-50 dark:border-error-800 dark:bg-brand-950 dark:text-error-300"><XCircle className="h-4 w-4" />Decline</button></div></div>}
       {isRenterPending && <div className="flex items-center justify-between gap-3 rounded-xl border border-warning-200 bg-warning-50 p-3 dark:border-warning-800 dark:bg-warning-900/20"><div><p className="text-sm font-semibold text-warning-900 dark:text-warning-200">Waiting for mover response</p><p className="mt-1 text-xs text-warning-800/80 dark:text-warning-300/80">You can continue messaging while the request is pending.</p></div><button type="button" disabled={responding} onClick={onCancel} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-warning-300 bg-white px-3 py-2 text-xs font-semibold text-warning-900 hover:bg-warning-100 disabled:opacity-50 dark:border-warning-700 dark:bg-brand-950 dark:text-warning-200"><X className="h-3.5 w-3.5" />Cancel</button></div>}
-      {isConfirmed && !isMover && !booking?.scheduled_start_at && <button type="button" onClick={onSchedule} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><CalendarDays className="h-4 w-4" />Choose moving time</button>}
-      {booking?.scheduled_start_at && <div className="flex items-center gap-2 rounded-xl border border-success-200 bg-success-50 p-3 text-sm text-success-800 dark:border-success-800 dark:bg-success-900/20 dark:text-success-300"><CalendarDays className="h-4 w-4" /><span>Scheduled: {displayDateTime(booking.scheduled_start_at)}{booking.scheduled_end_at ? ` – ${displayDateTime(booking.scheduled_end_at)}` : ''}</span></div>}
+      {isConfirmed && !isMover && !currentBooking?.scheduled_start_at && <button type="button" onClick={onSchedule} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><CalendarDays className="h-4 w-4" />Choose moving time</button>}
+      {currentBooking?.scheduled_start_at && <div className="flex items-center gap-2 rounded-xl border border-success-200 bg-success-50 p-3 text-sm text-success-800 dark:border-success-800 dark:bg-success-900/20 dark:text-success-300"><CalendarDays className="h-4 w-4" /><span>Scheduled: {displayDateTime(currentBooking.scheduled_start_at)}{currentBooking.scheduled_end_at ? ` – ${displayDateTime(currentBooking.scheduled_end_at)}` : ''}</span></div>}
       {isResponse && message?.content && <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-brand-900/50 dark:text-gray-300">{message.content}</p>}
     </div>
   </article>;
