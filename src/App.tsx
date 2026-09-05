@@ -8,6 +8,7 @@ import SecurityBanner from '@/components/SecurityBanner';
 import AuthModal from '@/components/AuthModal';
 import RoleSelectionModal from '@/components/RoleSelectionModal';
 import MovingGpsTracker from '@/components/MovingGpsTracker';
+import RenterBookingChatRedirector from '@/components/RenterBookingChatRedirector';
 import HomePage from '@/pages/HomePage';
 import ListingsPage from '@/pages/ListingsPage';
 import ListingDetailPage from '@/pages/ListingDetailPage';
@@ -43,6 +44,8 @@ import { RenterInvoicesPage, RenterPaymentPage, RenterMovingHistoryPage } from '
 import RenterCalendarPage from '@/pages/Renters/RenterCalendarPage';
 import RenterActivitiesPage from '@/pages/Renters/RenterActivitiesPage';
 import RenterChatPerformancePage from '@/pages/Renters/RenterChatPerformancePage';
+import RenterMessagesPage from '@/pages/Renters/RenterMessagesPage';
+import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
 
 function AppContent() {
   const { view, selectedAdminUserId } = useNav();
@@ -74,6 +77,8 @@ function AppContent() {
       case 'renter-calendar': return <RenterCalendarPage />;
       case 'renter-activities': return <RenterActivitiesPage />;
       case 'renter-chat-performance': return <RenterChatPerformancePage />;
+      case 'renter-messages': return <RenterMessagesPage />;
+      case 'renter-notifications': return <RenterNotificationsPage />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
@@ -90,6 +95,6 @@ function AppContent() {
       default: return <HomePage />;
     }
   };
-  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /><MovingGpsTracker /></div>;
+  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /><MovingGpsTracker /><RenterBookingChatRedirector /></div>;
 }
 export default function App() { return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>; }
