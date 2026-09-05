@@ -29,7 +29,7 @@ def _preview(row):
 
 @transaction.atomic
 def create_renter_invitation(*, landlord_id, unit_id, renter_name, renter_phone, renter_email, app_base_url=None):
-    name, email = (renter_name or "").strip(), (renter_email or "").strip()
+    name, email = (renter_name or "").strip(), (renter_email or "").strip().lower()
     if not name:
         raise ValidationError("Renter name is required.")
     if not email:
@@ -73,6 +73,16 @@ def claim_renter_invitation(*, renter_user_id, token):
     ).first()
     if row is None or (row.invite_expires_at and row.invite_expires_at <= timezone.now()):
         raise ValidationError("This invitation is invalid, expired, already claimed, or no longer available.")
+
+    from apps.accounts.models import Profile
+    renter = Profile.objects.filter(pk=renter_user_id).only("email").first()
+    if renter is None or not str(renter.email or "").strip():
+        raise ValidationError("A verified renter account email is required to claim this rental.")
+    invited_email = str(row.renter_email or "").strip().lower()
+    account_email = str(renter.email or "").strip().lower()
+    if invited_email != account_email:
+        raise ValidationError("This invitation was sent to a different email address.")
+
     row.renter_user_id = renter_user_id
     row.status = "ACTIVE"
     row.claimed_at = timezone.now()
