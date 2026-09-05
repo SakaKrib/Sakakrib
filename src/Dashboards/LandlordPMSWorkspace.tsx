@@ -5,6 +5,7 @@ import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
 import LandlordPMSFinance from './LandlordPMSFinance';
 import LandlordPMSCalendarStats from './LandlordPMSCalendarStats';
+import LandlordPMSCalendar from './LandlordPMSCalendar';
 import LandlordPMS from './LandlordPMS';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
@@ -86,6 +87,7 @@ export default function LandlordPMSWorkspace() {
       {tab === 'management' && <LandlordPMS />}
       {tab === 'rent' && (
         <>
+          <LandlordPMSCalendar />
           <LandlordPMSCalendarStats />
           <LandlordPMSRentControls />
         </>
