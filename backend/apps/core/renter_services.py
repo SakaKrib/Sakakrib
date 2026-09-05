@@ -86,8 +86,8 @@ def claim_renter_invitation(*, renter_user_id, token):
     if row is None or (row.invite_expires_at and row.invite_expires_at <= timezone.now()):
         raise ValidationError("This invitation is invalid, expired, already claimed, or no longer available.")
 
-    renter = Profile.objects.filter(pk=renter_user_id).only("email").first()
-    if renter is None or not str(renter.email or "").strip():
+    renter = Profile.objects.filter(pk=renter_user_id).only("email", "email_verified").first()
+    if renter is None or not str(renter.email or "").strip() or not renter.email_verified:
         raise ValidationError("A verified renter account email is required to claim this rental.")
     invited_email = str(row.renter_email or "").strip().lower()
     account_email = str(renter.email or "").strip().lower()
