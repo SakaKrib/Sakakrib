@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Clock3, Loader2, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
@@ -50,18 +50,7 @@ function RealEstatePMSLauncher() {
 }
 
 export default function RoleDashboardRouter() {
-  const { profile, loading } = useAuth(); const { view, navigate, pmsEntryGranted } = useNav();
-  const lastAuthenticatedProfileId = useRef<string | null>(null);
-
-  // A successful login must always begin at the role dashboard. This also
-  // clears a stale #pms-dashboard hash/entry flag left by a previous session.
-  // PMS can only be entered later through the role dashboard's management CTA.
-  useEffect(() => {
-    if (loading || !profile?.id) return;
-    if (lastAuthenticatedProfileId.current === profile.id) return;
-    lastAuthenticatedProfileId.current = profile.id;
-    if (view === 'pms-dashboard' || pmsEntryGranted) navigate('dashboard');
-  }, [loading, profile?.id, view, pmsEntryGranted, navigate]);
+  const { profile, loading } = useAuth(); const { view, navigate } = useNav();
 
   if (loading) return <div className="flex min-h-[300px] items-center justify-center text-sm text-gray-500">Loading your account...</div>;
   if (!profile) return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
@@ -73,10 +62,12 @@ export default function RoleDashboardRouter() {
   const role: ProfessionalRole = rawRole === 'agency' || profile.is_agency === true ? 'real_estate' : rawRole as ProfessionalRole;
   const status = normalizeStatus(profile[applicationField[role]]);
 
-  // Landlords and real-estate/agency users always enter their normal dashboard.
-  // The PMS is a separate management workspace and is never the login landing page.
+  // The normal landlord/real-estate dashboard is always the role landing page.
+  // PMS is a separate protected workspace. The PMS access gate is intentionally
+  // evaluated for both dashboard CTA navigation and a direct #pms-dashboard URL;
+  // Django remains the sole authority for subscription/application entitlement.
   if (role === 'landlord' || role === 'real_estate') {
-    if (view === 'pms-dashboard' && pmsEntryGranted) {
+    if (view === 'pms-dashboard') {
       return <PMSAccessGate role={role} status={status} />;
     }
     return role === 'landlord' ? <LandlordDashboard navigate={(destination, id) => navigate(destination as any, id)} /> : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
