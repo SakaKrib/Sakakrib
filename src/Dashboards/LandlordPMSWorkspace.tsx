@@ -12,6 +12,7 @@ import LandlordPMSPropertyWorkflow from './LandlordPMSPropertyWorkflow';
 import LandlordPMSQuickActions from './LandlordPMSQuickActions';
 import LandlordPMSNotifications from './LandlordPMSNotifications';
 import LandlordPMSSettings from './LandlordPMSSettings';
+import LandlordPMSEntitlementHeader from './LandlordPMSEntitlementHeader';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
 type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'insights' | 'activity' | 'notifications' | 'subscription' | 'settings';
@@ -33,6 +34,8 @@ export default function LandlordPMSWorkspace() {
 
   return (
     <section className="mt-6 space-y-5">
+      <LandlordPMSEntitlementHeader />
+
       <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="mb-2 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Django-backed PMS workspace</div>
         <div className="flex gap-2 overflow-x-auto">
