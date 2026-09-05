@@ -1,13 +1,12 @@
 from decimal import Decimal, InvalidOperation
 
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.authorization import can_manage_listings
+from apps.accounts.authorization import can_manage_listings, is_admin, pms_access
 from apps.listings.models import Listing
 from apps.subscriptions.services import get_current_subscription, get_subscription_plan
 
@@ -15,9 +14,16 @@ from .domain_property import PropertyUnit, RenterUnitAssociation
 from .domain_rent import RentInvoice
 
 
-def _require_landlord(request):
+def _require_landlord(request, write=False):
+    if is_admin(request.user):
+        return None
     if not can_manage_listings(request.user) or str(getattr(request.user, "role", "")).lower() != "landlord":
         return Response({"detail": "Landlord PMS access is required."}, status=403)
+    access = pms_access(request.user)
+    if not access.get("allowed"):
+        return Response({"detail": "Landlord PMS access is required.", "pms_access": access}, status=403)
+    if write and access.get("read_only"):
+        return Response({"detail": "PMS is read-only during the subscription grace period.", "pms_access": access}, status=403)
     return None
 
 
@@ -82,7 +88,7 @@ class LandlordPMSUnitView(APIView):
 
     @transaction.atomic
     def post(self, request, unit_id=None):
-        denied = _require_landlord(request)
+        denied = _require_landlord(request, write=True)
         if denied:
             return denied
 
@@ -113,7 +119,7 @@ class LandlordPMSUnitView(APIView):
             baths = int(request.data.get("baths") or 1)
             position = int(request.data.get("position") or 0)
             rent_due_day = int(request.data.get("rent_due_day") or 1)
-        except (InvalidOperation, TypeError, ValueError) as exc:
+        except (InvalidOperation, TypeError, ValueError):
             return Response({"detail": "Unit numeric fields are invalid."}, status=400)
 
         if rent <= 0:
@@ -140,7 +146,7 @@ class LandlordPMSUnitView(APIView):
 
     @transaction.atomic
     def patch(self, request, unit_id):
-        denied = _require_landlord(request)
+        denied = _require_landlord(request, write=True)
         if denied:
             return denied
         unit = PropertyUnit.objects.select_for_update().filter(
@@ -178,14 +184,22 @@ class LandlordPMSUnitView(APIView):
             return Response({"detail": "Rent due day must be between 1 and 31."}, status=400)
 
         if "payment_tracking_enabled" in request.data:
-            unit.payment_tracking_enabled = bool(request.data["payment_tracking_enabled"])
+            raw = request.data["payment_tracking_enabled"]
+            if isinstance(raw, bool):
+                unit.payment_tracking_enabled = raw
+            elif str(raw).strip().lower() in {"true", "1", "yes", "on"}:
+                unit.payment_tracking_enabled = True
+            elif str(raw).strip().lower() in {"false", "0", "no", "off"}:
+                unit.payment_tracking_enabled = False
+            else:
+                return Response({"detail": "payment_tracking_enabled must be a boolean."}, status=400)
         unit.updated_at = timezone.now()
         unit.save()
         return Response(_unit_payload(unit))
 
     @transaction.atomic
     def delete(self, request, unit_id):
-        denied = _require_landlord(request)
+        denied = _require_landlord(request, write=True)
         if denied:
             return denied
         unit = PropertyUnit.objects.select_for_update().filter(
@@ -207,7 +221,7 @@ class LandlordPMSRenterManageView(APIView):
 
     @transaction.atomic
     def delete(self, request, association_id):
-        denied = _require_landlord(request)
+        denied = _require_landlord(request, write=True)
         if denied:
             return denied
         row = RenterUnitAssociation.objects.select_for_update().filter(
