@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.authorization import can_manage_listings
+from apps.accounts.authorization import can_manage_listings, is_admin, pms_access
 from .models import LandlordPaymentMethod
 
 
@@ -17,22 +17,33 @@ def _payload(method):
     }
 
 
-def _allowed(request):
-    return can_manage_listings(request.user) and str(getattr(request.user, 'role', '')).lower() == 'landlord'
+def _allowed(request, write=False):
+    if is_admin(request.user):
+        return True, None
+    if not can_manage_listings(request.user) or str(getattr(request.user, 'role', '')).lower() != 'landlord':
+        return False, Response({'detail': 'Landlord access is required.'}, status=403)
+    access = pms_access(request.user)
+    if not access.get('allowed'):
+        return False, Response({'detail': 'Landlord PMS access is required.', 'pms_access': access}, status=403)
+    if write and access.get('read_only'):
+        return False, Response({'detail': 'PMS is read-only during the subscription grace period.', 'pms_access': access}, status=403)
+    return True, None
 
 
 class LandlordPaymentMethodView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if not _allowed(request):
-            return Response({'detail': 'Landlord access is required.'}, status=403)
+        allowed, denied = _allowed(request)
+        if not allowed:
+            return denied
         methods = LandlordPaymentMethod.objects.filter(landlord_id=request.user.id, is_active=True).order_by('-is_default', '-created_at')
         return Response([_payload(method) for method in methods])
 
     def post(self, request):
-        if not _allowed(request):
-            return Response({'detail': 'Landlord access is required.'}, status=403)
+        allowed, denied = _allowed(request, write=True)
+        if not allowed:
+            return denied
         provider = str(request.data.get('provider') or '').upper()
         display_name = str(request.data.get('display_name') or '').strip() or None
         try:
@@ -67,8 +78,9 @@ class LandlordPaymentMethodView(APIView):
         return Response(_payload(method), status=201)
 
     def patch(self, request, payment_method_id):
-        if not _allowed(request):
-            return Response({'detail': 'Landlord access is required.'}, status=403)
+        allowed, denied = _allowed(request, write=True)
+        if not allowed:
+            return denied
         method = LandlordPaymentMethod.objects.filter(id=payment_method_id, landlord_id=request.user.id, is_active=True).first()
         if method is None:
             return Response({'detail': 'Payment method not found.'}, status=404)
@@ -91,8 +103,9 @@ class LandlordPaymentMethodView(APIView):
         return Response(_payload(method))
 
     def delete(self, request, payment_method_id):
-        if not _allowed(request):
-            return Response({'detail': 'Landlord access is required.'}, status=403)
+        allowed, denied = _allowed(request, write=True)
+        if not allowed:
+            return denied
         method = LandlordPaymentMethod.objects.filter(id=payment_method_id, landlord_id=request.user.id, is_active=True).first()
         if method is None:
             return Response({'detail': 'Payment method not found.'}, status=404)
