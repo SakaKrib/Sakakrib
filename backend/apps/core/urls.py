@@ -9,6 +9,7 @@ from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackVi
 from .mover_payout_admin_views import MoverPayoutRetryView
 from .chat_views import ChatConversationView, ChatMessageView, RenterChatPerformanceView
 from .chat_media_views import ChatMediaFileView, ChatMediaUploadView
+from .notification_views import UserNotificationView, RenterNotificationView
 from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfirmView, LandlordRentPaymentRejectView, RenterInvoicePaymentSubmitView, RenterPaidInvoiceCreateView
 from .rent_reminder_views import RentPaymentReminderView
 from .rent_invoice_download_views import RentInvoiceDownloadView
