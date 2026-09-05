@@ -113,11 +113,20 @@ export default function RoleDashboardRouter() {
   if (profile.is_superuser === true || profile.is_admin === true) return <><DashboardPage /><AdminOperationsPanel /><AdminListingPostPanel /></>;
   if (!profile.role) return null;
   if (profile.role === 'renter') return <RenterDashboard />;
+
   const role = profile.role as ProfessionalRole;
   const status = normalizeStatus(profile[applicationField[role]]);
+
+  // Django is authoritative for PMS-enabled roles. Do not decide PMS access
+  // from frontend subscription state or duplicate subscription calculations.
+  if (role === 'landlord' || role === 'real_estate') {
+    return <PMSAccessGate role={role} status={status} />;
+  }
+
+  // Movers retain their existing application/verification gate because their
+  // dashboard is not part of the PMS subscription boundary.
   const approved = status === 'approved';
   const verified = profile.email_verified === true && profile.kyc_completed === true;
   if (!approved || !verified) return <AccessNotice role={role} status={status} />;
-  if (role === 'landlord' || role === 'real_estate') return <PMSAccessGate role={role} status={status} />;
   return <MoverDashboard />;
 }
