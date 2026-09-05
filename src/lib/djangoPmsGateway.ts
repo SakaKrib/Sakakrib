@@ -53,7 +53,12 @@ export const djangoPmsGateway = {
         return request(async () => (await dashboard()).subscription ?? null);
 
       case 'get_my_pms_unit_count':
-        return request(async () => (await dashboard()).capacity?.listings_used ?? 0);
+        // Django's PMS dashboard is the source of truth. Unit count must
+        // come from the authoritative units collection, not listing capacity.
+        return request(async () => {
+          const data = await dashboard();
+          return Array.isArray(data?.units) ? data.units.length : 0;
+        });
 
       case 'get_my_pms_listings':
         return request(async () => (await dashboard()).pmsListings ?? []);
