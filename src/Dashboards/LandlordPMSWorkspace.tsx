@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { BarChart3, CalendarDays, CreditCard, LayoutDashboard, Settings2 } from 'lucide-react';
+import { Activity, BarChart3, CalendarDays, CreditCard, LayoutDashboard, Settings2 } from 'lucide-react';
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
+import LandlordPMSActivity from './LandlordPMSActivity';
 import LandlordPMS from './LandlordPMS';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
-type WorkspaceTab = 'overview' | 'management' | 'rent' | 'subscription';
+type WorkspaceTab = 'overview' | 'management' | 'rent' | 'activity' | 'subscription';
 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'management', label: 'Properties & Renters', icon: Settings2 },
   { id: 'rent', label: 'Rent & Calendar', icon: CalendarDays },
+  { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
 ];
 
@@ -42,7 +44,7 @@ export default function LandlordPMSWorkspace() {
       {tab === 'overview' && (
         <>
           <LandlordPMSOverview />
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-3">
             <QuickPanel
               icon={BarChart3}
               title="Property, unit and renter operations"
@@ -57,12 +59,20 @@ export default function LandlordPMSWorkspace() {
               action="Open rent controls"
               onClick={() => setTab('rent')}
             />
+            <QuickPanel
+              icon={Activity}
+              title="Recent activity"
+              description="Review the latest Django-backed notifications, invoices and recorded rent payments in one timeline."
+              action="Open activity"
+              onClick={() => setTab('activity')}
+            />
           </div>
         </>
       )}
 
       {tab === 'management' && <LandlordPMS />}
       {tab === 'rent' && <LandlordPMSRentControls />}
+      {tab === 'activity' && <LandlordPMSActivity />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
     </section>
   );
