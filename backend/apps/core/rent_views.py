@@ -2,8 +2,11 @@ from datetime import date
 
 from django.core.exceptions import ValidationError
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.accounts.authorization import is_admin, pms_access
 
 from .rent_services import (
     confirm_rent_payment,
@@ -26,8 +29,24 @@ def _error(exc):
     return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
 
+def _require_active_landlord(request):
+    if is_admin(request.user):
+        return None
+    access = pms_access(request.user)
+    if not access.get("allowed") or access.get("role") != "landlord":
+        return Response({"detail": "Landlord PMS access is required.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
+    if access.get("read_only"):
+        return Response({"detail": "PMS is read-only during the subscription grace period.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
 class LandlordRentInvoiceCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
+        denied = _require_active_landlord(request)
+        if denied:
+            return denied
         try:
             periods = request.data.get("periods")
             billing_start = request.data.get("billing_period_start")
@@ -51,6 +70,8 @@ class LandlordRentInvoiceCreateView(APIView):
 
 
 class RenterInvoicePaymentSubmitView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, invoice_id):
         try:
             payment_date = request.data.get("payment_date")
@@ -67,6 +88,8 @@ class RenterInvoicePaymentSubmitView(APIView):
 
 
 class RenterPaidInvoiceCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         try:
             result = create_renter_paid_invoice(
@@ -82,7 +105,12 @@ class RenterPaidInvoiceCreateView(APIView):
 
 
 class LandlordRentPaymentConfirmView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, submission_id):
+        denied = _require_active_landlord(request)
+        if denied:
+            return denied
         try:
             result = confirm_rent_payment(landlord_id=request.user.id, submission_id=submission_id)
             return Response(result, status=status.HTTP_200_OK)
@@ -91,7 +119,12 @@ class LandlordRentPaymentConfirmView(APIView):
 
 
 class LandlordRentPaymentRejectView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, submission_id):
+        denied = _require_active_landlord(request)
+        if denied:
+            return denied
         try:
             result = reject_rent_payment(
                 landlord_id=request.user.id,
