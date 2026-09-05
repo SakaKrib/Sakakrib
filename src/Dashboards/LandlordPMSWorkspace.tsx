@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { Activity, BarChart3, CalendarDays, CreditCard, LayoutDashboard, Settings2 } from 'lucide-react';
+import { Activity, BarChart3, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp } from 'lucide-react';
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
+import LandlordPMSFinance from './LandlordPMSFinance';
 import LandlordPMSCalendarStats from './LandlordPMSCalendarStats';
 import LandlordPMS from './LandlordPMS';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
-type WorkspaceTab = 'overview' | 'management' | 'rent' | 'activity' | 'subscription';
+type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' | 'subscription';
 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'management', label: 'Properties & Renters', icon: Settings2 },
   { id: 'rent', label: 'Rent & Calendar', icon: CalendarDays },
+  { id: 'finance', label: 'Finance', icon: TrendingUp },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
 ];
@@ -45,25 +47,32 @@ export default function LandlordPMSWorkspace() {
       {tab === 'overview' && (
         <>
           <LandlordPMSOverview />
-          <div className="grid gap-5 lg:grid-cols-3">
+          <div className="grid gap-5 lg:grid-cols-4">
             <QuickPanel
               icon={BarChart3}
-              title="Property, unit and renter operations"
-              description="Manage the landlord → property → unit → renter relationship from the Django-backed PMS workspace."
+              title="Properties & renters"
+              description="Manage the Django-backed landlord → property → unit → renter relationship."
               action="Open management"
               onClick={() => setTab('management')}
             />
             <QuickPanel
               icon={CalendarDays}
-              title="Rent schedule and calendar"
-              description="Review rent due dates, paid-through records, calendar statistics and manual rent records."
-              action="Open rent controls"
+              title="Rent schedule"
+              description="Review due dates, paid-through records and calendar statistics."
+              action="Open calendar"
               onClick={() => setTab('rent')}
+            />
+            <QuickPanel
+              icon={TrendingUp}
+              title="Finance"
+              description="Review invoiced, collected, outstanding and payment-review totals."
+              action="Open finance"
+              onClick={() => setTab('finance')}
             />
             <QuickPanel
               icon={Activity}
               title="Recent activity"
-              description="Review the latest Django-backed notifications, invoices and recorded rent payments in one timeline."
+              description="Review Django-backed notifications, invoices and recorded payments."
               action="Open activity"
               onClick={() => setTab('activity')}
             />
@@ -78,6 +87,7 @@ export default function LandlordPMSWorkspace() {
           <LandlordPMSRentControls />
         </>
       )}
+      {tab === 'finance' && <LandlordPMSFinance />}
       {tab === 'activity' && <LandlordPMSActivity />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
     </section>
