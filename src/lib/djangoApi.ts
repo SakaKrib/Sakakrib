@@ -10,9 +10,18 @@ export interface DjangoApiException extends Error {
   authenticated?: boolean;
 }
 
+/**
+ * Django is the only API source of truth. Keep the configured value as an
+ * origin, not an /api path, because every caller already supplies /api/...
+ * This also makes the Docker/Vite same-origin proxy the safe default when no
+ * browser-facing API origin is configured.
+ */
 const getBaseUrl = (): string => {
   const configured = import.meta.env.VITE_DJANGO_API_URL as string | undefined;
-  return (configured || '').replace(/\/+$/, '');
+  const fallback = typeof window !== 'undefined' ? window.location.origin : '';
+  return (configured || fallback)
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
 };
 
 const readJson = async <T>(response: Response): Promise<T | null> => {
@@ -169,14 +178,8 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   return body as T;
 };
 
-/** Generic Django transport for transitional compatibility bridges. */
 export const djangoRequest = request;
 
-/**
- * Fetch a protected binary resource using the HttpOnly-cookie session.
- * The returned Blob can be rendered through a browser object URL, so the
- * authentication credential never becomes part of an image/document URL.
- */
 export const protectedBlob = async (
   path: string,
   init: RequestInit = {},
