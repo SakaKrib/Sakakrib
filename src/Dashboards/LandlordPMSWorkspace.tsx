@@ -6,6 +6,7 @@ import LandlordPMSActivity from './LandlordPMSActivity';
 import LandlordPMSFinance from './LandlordPMSFinance';
 import LandlordPMSCalendarStats from './LandlordPMSCalendarStats';
 import LandlordPMSCalendar from './LandlordPMSCalendar';
+import LandlordPMSCollectionTrend from './LandlordPMSCollectionTrend';
 import LandlordPMSPropertyWorkflow from './LandlordPMSPropertyWorkflow';
 import LandlordPMSQuickActions from './LandlordPMSQuickActions';
 import LandlordPMSNotifications from './LandlordPMSNotifications';
@@ -44,7 +45,7 @@ export default function LandlordPMSWorkspace() {
       {tab === 'overview' && <><LandlordPMSOverview /><LandlordPMSQuickActions onNavigate={(nextTab) => setTab(nextTab)} /></>}
       {tab === 'management' && <LandlordPMSPropertyWorkflow />}
       {tab === 'rent' && <><LandlordPMSCalendar /><LandlordPMSCalendarStats /><LandlordPMSRentControls /></>}
-      {tab === 'finance' && <LandlordPMSFinance />}
+      {tab === 'finance' && <><LandlordPMSFinance /><LandlordPMSCollectionTrend /></>}
       {tab === 'activity' && <LandlordPMSActivity />}
       {tab === 'notifications' && <LandlordPMSNotifications />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
