@@ -2,6 +2,18 @@ import { protectedGet, protectedPost } from '@/lib/djangoApi';
 
 type Result<T> = { data: T | null; error: { message: string } | null };
 
+export type PMSAccessDecision = {
+  allowed: boolean;
+  reason: string;
+  read_only: boolean;
+  role?: 'landlord' | 'real_estate';
+  subscription_id?: string;
+  subscription_status?: string;
+};
+
+export type PMSSubscriptionSnapshot = Record<string, unknown> | null;
+export type PMSEntitlementSnapshot = Record<string, unknown> | null;
+
 const ok = <T>(data: T): Result<T> => ({ data, error: null });
 const fail = <T>(error: unknown): Result<T> => ({
   data: null,
@@ -22,10 +34,36 @@ const dashboard = async () =>
 const realEstateDashboard = async () =>
   protectedGet<any>('/api/core/pms/real-estate/dashboard/');
 
+/**
+ * Django-authoritative PMS access decision.
+ *
+ * This is intentionally separate from the dashboard payload. Routes that
+ * enter PMS must ask Django whether access is allowed before rendering the
+ * workspace. No client-side subscription state is trusted for authorization.
+ */
+const pmsAccess = async (): Promise<PMSAccessDecision> =>
+  protectedGet<PMSAccessDecision>('/api/subscriptions/me/pms-access/');
+
+/**
+ * Django-authoritative listing/subscription entitlement used by the landlord
+ * dashboard and PMS subscription flow. This is the subscription access
+ * endpoint, not a client-calculated entitlement.
+ */
+const subscriptionAccess = async (): Promise<PMSEntitlementSnapshot> =>
+  protectedGet<PMSEntitlementSnapshot>('/api/subscriptions/me/access/');
+
+const subscription = async (): Promise<PMSSubscriptionSnapshot> =>
+  protectedGet<any>('/api/subscriptions/me/');
+
 export const djangoPmsGateway = {
   auth: {
     getUser: async () => request(() => protectedGet<any>('/api/accounts/me/')),
   },
+
+  /** Direct Django PMS boundary for new routes/components. */
+  access: async () => request(pmsAccess),
+  entitlement: async () => request(subscriptionAccess),
+  subscription: async () => request(subscription),
 
   from(table: string) {
     if (table !== 'profiles') {
@@ -49,12 +87,22 @@ export const djangoPmsGateway = {
 
   rpc: async (name: string, params: Record<string, unknown> = {}) => {
     switch (name) {
+      case 'get_my_pms_access':
+        return request(pmsAccess);
+
+      case 'get_my_pms_entitlement':
+        return request(subscriptionAccess);
+
       case 'get_my_pms_subscription':
         return request(async () => (await dashboard()).subscription ?? null);
 
+      case 'get_my_subscription':
+        return request(subscription);
+
+      case 'get_my_unit_entitlement':
+        return request(subscriptionAccess);
+
       case 'get_my_pms_unit_count':
-        // Django's PMS dashboard is the source of truth. Unit count must
-        // come from the authoritative units collection, not listing capacity.
         return request(async () => {
           const data = await dashboard();
           return Array.isArray(data?.units) ? data.units.length : 0;
