@@ -25,8 +25,10 @@ export default function RealEstatePMSCalendar({
   const today = new Date();
 
   const events = useMemo<CalendarEvent[]>(() => {
-    const rows: CalendarEvent[] = listings.map((listing) => ({
-      date: new Date(listing.created_at),
+    const rows: CalendarEvent[] = listings
+    .filter((listing) => listing.created_at)
+    .map((listing) => ({
+      date: new Date(listing.created_at!),
       label: 'Listing created',
       detail: listing.title || 'Property listing',
       tone: 'brand',
