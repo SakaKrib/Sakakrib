@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, CheckCircle2, FileText, RefreshCw, Wallet } from 'lucide-react';
+import { Bell, CheckCircle2, FileText, RefreshCw } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
 
 type RecordValue = Record<string, any>;
