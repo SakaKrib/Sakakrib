@@ -44,7 +44,7 @@ export default function LandlordPMS() {
   const invoices = data?.rentInvoices || [];
   const payments = data?.rentPayments || [];
   const activeRenters = units.filter((u: AnyRecord) => u.renter_assoc_id);
-  const availableUnits = units.filter((u: AnyRecord) => !u.renter_assoc_id || String(u.availability).toLowerCase() === 'available');
+  const availableUnits = units.filter((u: AnyRecord) => !u.renter_assoc_id && String(u.availability).toLowerCase() === 'available');
   const usedUnits = units.filter((u: AnyRecord) => u.renter_assoc_id);
   const paidInvoices = invoices.filter((i: AnyRecord) => String(i.status).toUpperCase() === 'PAID');
   const pendingInvoices = invoices.filter((i: AnyRecord) => ['DUE','PAYMENT_SUBMITTED','PENDING'].includes(String(i.status).toUpperCase()));
