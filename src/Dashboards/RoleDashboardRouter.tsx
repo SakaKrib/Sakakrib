@@ -6,7 +6,7 @@ import { protectedGet } from '@/lib/djangoLegacyApi';
 import RenterDashboard from './RenterDashboard';
 import LandlordPMSWorkspace from './LandlordPMSWorkspace';
 import MoverDashboard from './MoverDashboard';
-import RealEstateDashboard from './Realestatedashboard';
+import RealEstatePMS from '@/components/PMS/RealEstate/Realestatepms';
 import DashboardPage from './DashboardPage';
 import AdminOperationsPanel from './AdminOperationsPanel';
 import AdminListingPostPanel from './AdminListingPostPanel';
@@ -49,6 +49,7 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
   const [access, setAccess] = useState<PMSAccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { navigate } = useNav();
 
   useEffect(() => {
     let cancelled = false;
@@ -88,14 +89,16 @@ function PMSAccessGate({ role, status }: { role: Extract<ProfessionalRole, 'land
   }
 
   if (access.allowed === true) {
-    return role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstateDashboard />;
+    return role === 'landlord'
+      ? <LandlordPMSWorkspace />
+      : <RealEstatePMS
+          onCreateListing={() => navigate('post-listing')}
+          onOpenListing={(listingId) => navigate('listing-detail', listingId)}
+        />;
   }
 
   const reason = normalizeStatus(access.reason);
   if (reason === 'active_subscription_required') {
-    // Keep the existing dashboard route and show the existing subscription
-    // page in place. This avoids inventing a new redirect architecture while
-    // still requiring Django to authorize access before the PMS workspace is rendered.
     return <PMSSubscriptionPage />;
   }
 
@@ -123,8 +126,6 @@ export default function RoleDashboardRouter() {
     return <PMSAccessGate role={role} status={status} />;
   }
 
-  // Movers retain their existing application/verification gate because their
-  // dashboard is not part of the PMS subscription boundary.
   const approved = status === 'approved';
   const verified = profile.email_verified === true && profile.kyc_completed === true;
   if (!approved || !verified) return <AccessNotice role={role} status={status} />;
