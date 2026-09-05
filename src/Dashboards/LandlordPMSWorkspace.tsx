@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp } from 'lucide-react';
+import { Activity, Bell, CalendarDays, CreditCard, LayoutDashboard, Settings2, TrendingUp } from 'lucide-react';
 import LandlordPMSOverview from './LandlordPMSOverview';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
@@ -8,9 +8,10 @@ import LandlordPMSCalendarStats from './LandlordPMSCalendarStats';
 import LandlordPMSCalendar from './LandlordPMSCalendar';
 import LandlordPMSPropertyWorkflow from './LandlordPMSPropertyWorkflow';
 import LandlordPMSQuickActions from './LandlordPMSQuickActions';
+import LandlordPMSNotifications from './LandlordPMSNotifications';
 import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 
-type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' | 'subscription';
+type WorkspaceTab = 'overview' | 'management' | 'rent' | 'finance' | 'activity' | 'notifications' | 'subscription';
 
 const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboard }> = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -18,6 +19,7 @@ const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboar
   { id: 'rent', label: 'Rent, Calendar & Stats', icon: CalendarDays },
   { id: 'finance', label: 'Finance & Payments', icon: TrendingUp },
   { id: 'activity', label: 'Activity', icon: Activity },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
 ];
 
@@ -42,6 +44,7 @@ export default function LandlordPMSWorkspace() {
       {tab === 'rent' && <><LandlordPMSCalendar /><LandlordPMSCalendarStats /><LandlordPMSRentControls /></>}
       {tab === 'finance' && <LandlordPMSFinance />}
       {tab === 'activity' && <LandlordPMSActivity />}
+      {tab === 'notifications' && <LandlordPMSNotifications />}
       {tab === 'subscription' && <PMSSubscriptionPage />}
     </section>
   );
