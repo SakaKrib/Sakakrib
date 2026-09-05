@@ -1,7 +1,9 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from apps.accounts.models import Profile
 from apps.listings.models import Listing
+from apps.subscriptions.services import get_pms_access
 
 from .domain_property import PropertyUnit, RenterUnitAssociation
 from .notification_services import dispatch_user_notification
@@ -9,6 +11,13 @@ from .notification_services import dispatch_user_notification
 
 @transaction.atomic
 def send_rent_payment_reminder(*, landlord_id, renter_assoc_id, message=None):
+    profile = Profile.objects.filter(pk=landlord_id).first()
+    access = get_pms_access(profile)
+    if not access.get("allowed") or access.get("role") != "landlord":
+        raise PermissionError("Landlord PMS access is required")
+    if access.get("read_only"):
+        raise PermissionError("PMS is read-only during the subscription grace period")
+
     association = (
         RenterUnitAssociation.objects
         .select_for_update()
