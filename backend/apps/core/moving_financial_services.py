@@ -99,8 +99,8 @@ def ensure_moving_financial_documents(*, payment_id):
         },
     )
 
-    # Existing documents are refreshed with authoritative payment data without
-    # advancing the mover settlement beyond the escrow stage.
+    # Refresh authoritative payment data, but never move a settlement backward
+    # after the payout provider has already confirmed it as RELEASED.
     update_values = {
         "payment_id": payment.id,
         "renter_id": booking.renter_id,
@@ -112,10 +112,11 @@ def ensure_moving_financial_documents(*, payment_id):
         "amount_kes": amount,
         "platform_fee_kes": platform_fee,
         "mover_net_kes": mover_net,
-        "status": "HELD",
-        "released_at": None,
         "updated_at": timezone.now(),
     }
+    if mover_document.status != "RELEASED":
+        update_values["status"] = "HELD"
+        update_values["released_at"] = None
     MovingFinancialDocument.objects.filter(pk=mover_document.pk).update(**update_values)
 
     return {
@@ -125,7 +126,7 @@ def ensure_moving_financial_documents(*, payment_id):
         "mover_document_number": mover_document.document_number,
         "payment_id": str(payment.id),
         "booking_id": str(booking.id),
-        "status": "HELD",
+        "status": mover_document.status if mover_document.status == "RELEASED" else "HELD",
     }
 
 
@@ -139,8 +140,6 @@ def sync_moving_financial_documents_on_release(*, payment_id):
         raise ValidationError("Payment must be RELEASED before settlement synchronization")
 
     result = ensure_moving_financial_documents(payment_id=payment.id)
-    # This timestamp represents the actual mover settlement finalization, not
-    # the earlier escrow-release authorization timestamp stored on the payment.
     now = timezone.now()
     MovingFinancialDocument.objects.filter(
         pk=result["mover_document_id"],
