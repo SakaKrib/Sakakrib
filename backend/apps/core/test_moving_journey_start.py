@@ -1,6 +1,5 @@
 import uuid
 from datetime import timedelta
-from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -67,17 +66,16 @@ class MovingJourneyStartTests(TestCase):
         values.update(overrides)
         return Booking.objects.create(**values)
 
-    @patch("apps.core.moving_tracking_views.timezone.now")
-    def test_start_creates_authoritative_journey_and_uses_server_time(self, now_mock):
-        now = timezone.now()
-        now_mock.return_value = now
+    def test_start_creates_authoritative_journey_and_uses_server_time(self):
         booking = self._booking()
+        before_start = timezone.now()
 
         result = start_moving_journey(
             mover_user_id=self.mover_user.id,
             booking_id=booking.id,
             source=MovingJourney.START_SOURCE_MOBILE_APP,
         )
+        after_start = timezone.now()
 
         journey = MovingJourney.objects.get(booking_id=booking.id)
         booking.refresh_from_db()
@@ -85,9 +83,10 @@ class MovingJourneyStartTests(TestCase):
         self.assertEqual(result["source"], MovingJourney.START_SOURCE_MOBILE_APP)
         self.assertEqual(journey.status, MovingJourney.STATUS_ACTIVE)
         self.assertEqual(journey.started_by, self.mover_user.id)
-        self.assertEqual(journey.started_at, now)
+        self.assertGreaterEqual(journey.started_at, before_start)
+        self.assertLessEqual(journey.started_at, after_start)
         self.assertEqual(booking.status, "in_progress")
-        self.assertEqual(booking.started_at, now)
+        self.assertEqual(booking.started_at, journey.started_at)
         self.assertEqual(booking.tracking_number, journey.tracking_number)
         self.assertRegex(journey.tracking_number, r"^SK-MOV-\d{8}-[A-Z0-9]{6}$")
 
