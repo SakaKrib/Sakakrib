@@ -11,7 +11,7 @@ from apps.accounts.models import Profile
 from .domain_bookings import MoverPayout
 from .domain_platform import Mover, UserNotification
 from .email_services import queue_mover_payout_success_emails
-from .moving_financial_services import ensure_moving_financial_documents
+from .moving_financial_services import ensure_moving_financial_documents, sync_moving_financial_documents_on_release
 from .moving_lifecycle_services import confirm_moving_delivery, open_moving_dispute, resolve_moving_dispute
 from .moving_payment_services import (
     finalize_mover_payout, finalize_moving_mpesa_callback,
@@ -136,6 +136,7 @@ class MoverPayoutCallbackView(APIView):
                 mover=Mover.objects.filter(pk=payout.mover_id).first()
                 if mover:
                     if status=="released":
+                        sync_moving_financial_documents_on_release(payment_id=str(MoverPayout.objects.filter(pk=payout.id).values_list("booking_id", flat=False).first()[0]) if False else str(payout.booking_id))
                         UserNotification.objects.get_or_create(
                             event_key=f"mover-payout-released:{payout.id}",
                             defaults={"user_id":mover.user_id,"notification_type":"MOVER_PAYOUT_RELEASED","title":"Mover payout released","message":f"Your payout of KES {payout.net_mover_payable:,.2f} has been successfully released to M-Pesa.","data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id),"provider_transaction_id":provider_transaction_id}},
