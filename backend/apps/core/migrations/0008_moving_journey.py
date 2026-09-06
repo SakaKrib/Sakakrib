@@ -52,14 +52,14 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='movingjourney',
-            index=models.Index(fields=['booking_id'], name='moving_journeys_booking_idx'),
+            index=models.Index(fields=['booking_id'], name='mv_journey_booking_idx'),
         ),
         migrations.AddIndex(
             model_name='movingjourney',
-            index=models.Index(fields=['mover_id', 'status'], name='moving_journeys_mover_status_idx'),
+            index=models.Index(fields=['mover_id', 'status'], name='mv_journey_mover_st_idx'),
         ),
         migrations.AddIndex(
             model_name='movingjourney',
-            index=models.Index(fields=['status'], name='moving_journeys_status_idx'),
+            index=models.Index(fields=['status'], name='mv_journey_status_idx'),
         ),
     ]
