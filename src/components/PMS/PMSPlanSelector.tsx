@@ -249,17 +249,30 @@ export default function PMSPlanSelector({
 
             return (
               <button
-                key={plan.id}
-                type="button"
-                disabled={disabled}
-                aria-pressed={selected}
-                onClick={() => handlePlanChange(plan)}
-                className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6 text-left shadow-sm transition-all dark:bg-gray-900 ${
-                  selected
-                    ? 'border-gray-900 shadow-md ring-2 ring-gray-900/10 dark:border-white'
-                    : 'border-gray-200 hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md dark:border-gray-700'
-                } ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-              >
+                  key={plan.id}
+                  type="button"
+                  disabled={disabled}
+                  aria-pressed={selected}
+                  onClick={() =>
+                    onPlanChange(plan)
+                  }
+                  className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6 text-left shadow-sm transition-all dark:bg-gray-900 ${
+                    selected
+                      ? "border-gray-900 shadow-md ring-2 ring-gray-900/10 dark:border-white"
+                      : "border-gray-200 hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md dark:border-gray-700"
+                  } ${
+                    disabled
+                      ? "cursor-not-allowed opacity-60"
+                      : "cursor-pointer"
+                  }`}
+                >
+                  {/* CURRENT */}
+
+                  {current && (
+                    <span className="absolute right-20 top-15 inline-flex items-center rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                      Current Plan
+                    </span>
+                  )}
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
