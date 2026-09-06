@@ -80,9 +80,6 @@ def confirm_moving_delivery(*, user_id, booking_id):
             },
         )
 
-    # Delivery confirmation is an audit signal for escrow release. It must not
-    # mark the booking completed: completion is authoritative only after the
-    # payout provider confirms the mover transfer.
     return {
         "booking_id": str(booking.id),
         "renter_confirmed": bool(booking.renter_confirmed_delivery_at),
@@ -107,6 +104,8 @@ def open_moving_dispute(*, user_id, booking_id, reason_code, description):
         raise ValidationError("Dispute can only be opened for an active or completed moving job")
     if booking.payment_status != "paid":
         raise ValidationError("No settled payment exists for this booking")
+    if MoverPayout.objects.filter(booking_id=booking.id, final_payment_status="released").exists():
+        raise ValidationError("A dispute cannot be opened after the mover payout has been completed")
     if MovingDispute.objects.filter(booking_id=booking.id, status="OPEN").exists():
         raise ValidationError("An open dispute already exists for this booking")
 
