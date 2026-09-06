@@ -42,6 +42,41 @@
   }
 }
 
+/* Moving booking card: keep content surfaces consistent with the SakaKrib theme. */
+article.w-full.max-w-xl {
+  background-color: theme('colors.white');
+  color: theme('colors.gray.900');
+}
+
+article.w-full.max-w-xl > div:first-child {
+  background-color: theme('colors.brand.50');
+  border-color: theme('colors.brand.100');
+}
+
+article.w-full.max-w-xl > div:nth-child(2) > div:first-child > div,
+article.w-full.max-w-xl > div:nth-child(2) > div:first-child > div:nth-child(2) {
+  background-color: theme('colors.brand.50');
+  border-color: theme('colors.brand.100');
+}
+
+@media (prefers-color-scheme: dark) {
+  article.w-full.max-w-xl {
+    background-color: theme('colors.brand.950');
+    color: theme('colors.gray.100');
+  }
+
+  article.w-full.max-w-xl > div:first-child {
+    background-color: theme('colors.brand.900');
+    border-color: theme('colors.brand.800');
+  }
+
+  article.w-full.max-w-xl > div:nth-child(2) > div:first-child > div,
+  article.w-full.max-w-xl > div:nth-child(2) > div:first-child > div:nth-child(2) {
+    background-color: theme('colors.brand.900');
+    border-color: theme('colors.brand.800');
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
