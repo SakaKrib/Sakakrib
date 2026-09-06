@@ -53,6 +53,33 @@ def confirm_moving_delivery(*, user_id, booking_id):
 
     both_confirmed = bool(booking.renter_confirmed_delivery_at and booking.mover_confirmed_delivery_at)
 
+    if both_confirmed:
+        notification_data = {
+            "booking_id": str(booking.id),
+            "renter_confirmed_at": booking.renter_confirmed_delivery_at.isoformat(),
+            "mover_confirmed_at": booking.mover_confirmed_delivery_at.isoformat(),
+        }
+        UserNotification.objects.get_or_create(
+            event_key=f"moving-delivery-confirmed:renter:{booking.id}",
+            defaults={
+                "user_id": booking.renter_id,
+                "notification_type": "MOVING_DELIVERY_CONFIRMED",
+                "title": "Delivery confirmed",
+                "message": "Both parties have confirmed delivery. Saka Krib can now process the admin escrow-release step.",
+                "data": notification_data,
+            },
+        )
+        UserNotification.objects.get_or_create(
+            event_key=f"moving-delivery-confirmed:mover:{booking.id}",
+            defaults={
+                "user_id": mover.user_id,
+                "notification_type": "MOVING_DELIVERY_CONFIRMED",
+                "title": "Delivery confirmed",
+                "message": "Both parties have confirmed delivery. Your payout will be completed after admin release and provider confirmation.",
+                "data": notification_data,
+            },
+        )
+
     # Delivery confirmation is an audit signal for escrow release. It must not
     # mark the booking completed: completion is authoritative only after the
     # payout provider confirms the mover transfer.
