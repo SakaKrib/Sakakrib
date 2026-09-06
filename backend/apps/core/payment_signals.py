@@ -100,8 +100,6 @@ def schedule_moving_payment_events(sender, instance, **kwargs):
         from .moving_payment_email_tasks import send_moving_payment_emails
         transaction.on_commit(lambda: send_moving_payment_emails.delay(str(instance.id)))
     elif instance.status == "RELEASED":
-        from .moving_financial_services import sync_moving_financial_documents_on_release
-        transaction.on_commit(lambda: sync_moving_financial_documents_on_release(payment_id=str(instance.id)))
         _schedule_moving_payout_processing_notifications(instance)
 
 
