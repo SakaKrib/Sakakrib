@@ -18,6 +18,7 @@ from .domain_bookings import (
     MovingPayment,
     MoverPayout,
 )
+from .domain_financial import MovingFinancialDocument
 from .domain_platform import Mover
 from .domain_property import PropertyUnit
 from .domain_rent import RentInvoice, RentPayment, RentPaymentIntent, RentPaymentSubmission
@@ -75,6 +76,16 @@ def mover_payouts_for_user(user):
         return MoverPayout.objects.all()
     mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
     return MoverPayout.objects.filter(mover_id__in=mover_ids)
+
+
+def moving_financial_documents_for_user(user):
+    """Renter, mover owner, or admin access to auditable moving documents."""
+    if is_admin(user):
+        return MovingFinancialDocument.objects.all()
+    mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
+    return MovingFinancialDocument.objects.filter(
+        Q(renter_id=user.pk) | Q(mover_id__in=mover_ids)
+    )
 
 
 def moving_disputes_for_user(user):
