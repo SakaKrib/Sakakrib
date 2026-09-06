@@ -6,7 +6,7 @@ from apps.accounts.models import Profile
 from apps.payments.models import ListingPayment
 from apps.subscriptions.models import SubscriptionInvoice
 
-from .domain_bookings import MovingInvoice, MovingPayment
+from .domain_bookings import MoverPayout, MovingInvoice, MovingPayment
 from .domain_platform import UserNotification
 
 
@@ -44,15 +44,13 @@ def _schedule_admin_moving_payment_notification(payment):
 
 
 def _schedule_moving_escrow_release_notifications(payment):
-    """Notify the mover and renter once the escrow payment is actually released."""
+    """Notify the mover and renter once escrow is released by the admin."""
     booking_id = str(payment.booking_id)
     invoice = MovingInvoice.objects.filter(pk=payment.invoice_id).first() if payment.invoice_id else MovingInvoice.objects.filter(booking_id=payment.booking_id).first()
-    mover_user_id = getattr(getattr(payment, "booking", None), "mover_id", None)
-    if mover_user_id is None:
-        from .domain_bookings import Booking
-        mover_id = Booking.objects.filter(pk=payment.booking_id).values_list("mover_id", flat=True).first()
-        from .domain_platform import Mover
-        mover_user_id = Mover.objects.filter(pk=mover_id).values_list("user_id", flat=True).first()
+    from .domain_bookings import Booking
+    from .domain_platform import Mover
+    mover_id = Booking.objects.filter(pk=payment.booking_id).values_list("mover_id", flat=True).first()
+    mover_user_id = Mover.objects.filter(pk=mover_id).values_list("user_id", flat=True).first() if mover_id else None
 
     def create_notifications():
         base_data = {
@@ -101,6 +99,20 @@ def schedule_moving_payment_events(sender, instance, **kwargs):
         from .moving_financial_services import sync_moving_financial_documents_on_release
         transaction.on_commit(lambda: sync_moving_financial_documents_on_release(payment_id=str(instance.id)))
         _schedule_moving_escrow_release_notifications(instance)
+
+
+@receiver(post_save, sender=MoverPayout)
+def schedule_mover_payout_processing_sync(sender, instance, **kwargs):
+    """When existing escrow code moves a payout to processing, sync the settlement document."""
+    if instance.final_payment_status != "processing":
+        return
+
+    payment_id = MovingPayment.objects.filter(booking_id=instance.booking_id, status="RELEASED").order_by("-released_at", "-updated_at").values_list("id", flat=True).first()
+    if not payment_id:
+        return
+
+    from .moving_financial_services import sync_moving_financial_documents_on_release
+    transaction.on_commit(lambda: sync_moving_financial_documents_on_release(payment_id=str(payment_id)))
 
 
 @receiver(post_save, sender=SubscriptionInvoice)
