@@ -258,7 +258,7 @@ def release_moving_escrow(*, admin_user_id, booking_id):
     if payout.final_payment_status not in {"held","failed"}: raise ValidationError("Final escrow is not available for release")
     now=timezone.now()
     released=MovingPayment.objects.filter(booking_id=booking.id,status="HELD").update(status="RELEASED",released_at=now,updated_at=now)
-    payout.final_payment_status="processing"; payout.final_payment_released_at=payout.final_payment_released_at or now; payout.delivery_confirmed_at=payout.delivery_confirmed_at or now; payout.payout_requested_at=payout.payout_requested_at or now; payout.payout_failure_reason=None; payout.save(update_fields=["final_payment_status","final_payment_released_at","delivery_confirmed_at","payout_requested_at","payout_failure_reason","updated_at"])
+    payout.final_payment_status="processing"; payout.delivery_confirmed_at=payout.delivery_confirmed_at or now; payout.payout_requested_at=payout.payout_requested_at or now; payout.payout_failure_reason=None; payout.save(update_fields=["final_payment_status","delivery_confirmed_at","payout_requested_at","payout_failure_reason","updated_at"])
     invoice=MovingInvoice.objects.select_for_update().filter(booking_id=booking.id).first()
     if invoice: invoice.status="RELEASED"; invoice.released_at=invoice.released_at or now; invoice.save(update_fields=["status","released_at","updated_at"])
     mover_user=Mover.objects.filter(pk=booking.mover_id).values_list("user_id",flat=True).first()
@@ -279,7 +279,7 @@ def finalize_mover_payout(*, payout_id, provider, provider_reference, provider_t
     now=timezone.now()
     payout.payout_provider=provider; payout.payout_provider_reference=str(provider_reference); payout.payout_provider_transaction_id=str(provider_transaction_id or "") or None
     if success:
-        payout.final_payment_status="released"; payout.final_payment_released_at=payout.final_payment_released_at or now; payout.payout_completed_at=now; payout.payout_failure_reason=None
+        payout.final_payment_status="released"; payout.final_payment_released_at=now; payout.payout_completed_at=now; payout.payout_failure_reason=None
         booking.status="completed"; booking.completed_at=booking.completed_at or now; booking.contact_released_at=booking.contact_released_at or now; booking.updated_at=now; booking.save(update_fields=["status","completed_at","contact_released_at","updated_at"])
         payout.save(update_fields=["payout_provider","payout_provider_reference","payout_provider_transaction_id","final_payment_status","final_payment_released_at","payout_completed_at","payout_failure_reason","updated_at"])
         return {"status":"released","payout_id":str(payout.id),"booking_id":str(booking.id),"amount":payout.net_mover_payable}
