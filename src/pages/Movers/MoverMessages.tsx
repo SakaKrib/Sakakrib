@@ -3,6 +3,9 @@ import { ArrowRight, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-reac
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverChatMessage } from '@/lib/Movers';
+import ChatBookingCard from '@/components/ChatBookingCard';
+
+type BookingCardMessage = { id: string; sender_id: string; content: string; message_type: string | null; event_data: Record<string, unknown> | null; created_at: string };
 
 function conversationId(userA: string, userB: string) {
   return [userA, userB].sort().join('__');
@@ -24,22 +27,42 @@ function messageCreatedAt(message: MoverChatMessage) {
   return typeof message.created_at === 'string' ? message.created_at : '';
 }
 
+function messageType(message: MoverChatMessage) {
+  return typeof message.message_type === 'string' ? message.message_type : null;
+}
+
+function messageEventData(message: MoverChatMessage): Record<string, unknown> | null {
+  return message.event_data && typeof message.event_data === 'object' && !Array.isArray(message.event_data) ? message.event_data as Record<string, unknown> : null;
+}
+
 function formatMessageTime(value: string) {
   if (!value) return '';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 }
 
+function toBookingCardMessage(message: MoverChatMessage): BookingCardMessage {
+  return {
+    id: messageId(message),
+    sender_id: messageSender(message),
+    content: messageText(message),
+    message_type: messageType(message),
+    event_data: messageEventData(message),
+    created_at: messageCreatedAt(message),
+  };
+}
+
 export default function MoverMessages() {
   const { profile } = useAuth();
-  const { navigate } = useNav();
+  const { navigate, selectedMoverRenterId } = useNav();
   const [bookings, setBookings] = useState<MoverBooking[]>([]);
-  const [selectedRenterId, setSelectedRenterId] = useState<string | null>(null);
+  const [selectedRenterId, setSelectedRenterId] = useState<string | null>(selectedMoverRenterId);
   const [messages, setMessages] = useState<MoverChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [responding, setResponding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadBookings = useCallback(async () => {
@@ -49,12 +72,15 @@ export default function MoverMessages() {
     try {
       const rows = await moverApi.getBookings();
       setBookings(rows ?? []);
-      setSelectedRenterId(previous => previous && rows.some(row => row.renter_id === previous) ? previous : rows.find(row => row.renter_id)?.renter_id ?? null);
+      setSelectedRenterId(previous => {
+        if (selectedMoverRenterId && rows.some(row => row.renter_id === selectedMoverRenterId)) return selectedMoverRenterId;
+        return previous && rows.some(row => row.renter_id === previous) ? previous : rows.find(row => row.renter_id)?.renter_id ?? null;
+      });
     } catch (err) {
       console.error('Failed to load mover conversations:', err);
       setError(err instanceof Error ? err.message : 'Unable to load customer conversations.');
     } finally { setLoading(false); }
-  }, [profile?.id, profile?.role]);
+  }, [profile?.id, profile?.role, selectedMoverRenterId]);
 
   const customers = useMemo(() => {
     const unique = new Map<string, MoverBooking>();
@@ -88,6 +114,30 @@ export default function MoverMessages() {
     const timer = window.setInterval(() => { void loadConversation(); }, 5000);
     return () => window.clearInterval(timer);
   }, [activeConversationId, loadConversation]);
+
+  const respond = useCallback(async (bookingId: string, decision: 'confirm' | 'not_sure' | 'cancel') => {
+    if (responding) return;
+    setResponding(true);
+    setError(null);
+    try {
+      await moverApi.respondToBooking(bookingId, decision, decision === 'not_sure' ? 'The mover needs more information before confirming.' : decision === 'cancel' ? 'The mover declined the request.' : null);
+      await Promise.all([loadBookings(), loadConversation()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to update the booking request.');
+    } finally { setResponding(false); }
+  }, [responding, loadBookings, loadConversation]);
+
+  const cancelBooking = useCallback(async (bookingId: string) => {
+    if (responding) return;
+    setResponding(true);
+    setError(null);
+    try {
+      await moverApi.cancelBooking(bookingId, 'MOVER_CANCELLED', 'Cancelled from mover chat.');
+      await Promise.all([loadBookings(), loadConversation()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to cancel booking.');
+    } finally { setResponding(false); }
+  }, [responding, loadBookings, loadConversation]);
 
   const sendText = useCallback(async () => {
     const content = newMessage.trim();
@@ -149,8 +199,16 @@ export default function MoverMessages() {
                 </header>
                 <div className="flex-1 space-y-3 overflow-y-auto p-4">
                   {chatLoading && messages.length === 0 ? <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-500" /></div> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">No messages yet. Start the conversation with the renter.</div> : messages.map((message, index) => {
-                    const mine = messageSender(message) === profile?.id;
-                    return <div key={messageId(message) || `message-${index}`} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${mine ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-900 dark:bg-brand-900 dark:text-white'}`}><p className="whitespace-pre-wrap break-words">{messageText(message)}</p><p className={`mt-1 text-[10px] ${mine ? 'text-white/70' : 'text-gray-500 dark:text-gray-400'}`}>{formatMessageTime(messageCreatedAt(message))}</p></div></div>;
+                    const type = messageType(message);
+                    if (type === 'booking_request' || type === 'booking_response') {
+                      const eventData = messageEventData(message);
+                      const eventBookingId = typeof eventData?.booking_id === 'string' ? eventData.booking_id : null;
+                      const cardBooking = eventBookingId && selectedBooking?.id === eventBookingId ? selectedBooking : selectedBooking;
+                      if (cardBooking) {
+                        return <div key={messageId(message) || `booking-${index}`} className={`flex ${messageSender(message) === profile?.id ? 'justify-end' : 'justify-start'}`}><ChatBookingCard message={toBookingCardMessage(message)} booking={cardBooking} isMover responding={responding} onRespond={decision => void respond(cardBooking.id, decision)} onCancel={() => void cancelBooking(cardBooking.id)} onSchedule={() => navigate('mover-booking-detail', cardBooking.id)} /></div>;
+                      }
+                    }
+                    return <div key={messageId(message) || `message-${index}`} className={`flex ${messageSender(message) === profile?.id ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${messageSender(message) === profile?.id ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-900 dark:bg-brand-900 dark:text-white'}`}><p className="whitespace-pre-wrap break-words">{messageText(message)}</p><p className={`mt-1 text-[10px] ${messageSender(message) === profile?.id ? 'text-white/70' : 'text-gray-500 dark:text-gray-400'}`}>{formatMessageTime(messageCreatedAt(message))}</p></div></div>;
                   })}
                 </div>
                 <form onSubmit={event => { event.preventDefault(); void sendText(); }} className="border-t border-gray-100 p-3 dark:border-brand-800">
