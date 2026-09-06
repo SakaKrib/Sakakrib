@@ -29,18 +29,6 @@ const nairobiParts = (value: string | null) => {
 };
 const paymentValue = (value: string | null | undefined) => { const normalized = String(value ?? '').trim().toLowerCase().replace(/[-_ ]/g, ''); if (normalized === 'mpesa' || normalized === 'mobilemoney') return 'mpesa'; if (normalized === 'paypal') return 'paypal'; return ''; };
 
-function calculateDistanceKm(pickup: GPSLocationValue, dropoff: GPSLocationValue) {
-  if (pickup.latitude === null || pickup.longitude === null || dropoff.latitude === null || dropoff.longitude === null) return null;
-  const lat1 = pickup.latitude * Math.PI / 180;
-  const lon1 = pickup.longitude * Math.PI / 180;
-  const lat2 = dropoff.latitude * Math.PI / 180;
-  const lon2 = dropoff.longitude * Math.PI / 180;
-  const dLat = lat2 - lat1;
-  const dLon = lon2 - lon1;
-  const haversine = Math.min(1, Math.max(0, Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2));
-  return Number((6371.0088 * 2 * Math.asin(Math.sqrt(haversine))).toFixed(2));
-}
-
 export default function MovingBookingEditForm({ booking, onSaved, onClose }: Props) {
   const start = useMemo(() => nairobiParts(booking.scheduled_start_at), [booking.scheduled_start_at]);
   const end = useMemo(() => nairobiParts(booking.scheduled_end_at), [booking.scheduled_end_at]);
@@ -63,7 +51,6 @@ export default function MovingBookingEditForm({ booking, onSaved, onClose }: Pro
     if (endTime <= startTime) { setError('End time must be after start time.'); return; }
     setSaving(true);
     try {
-      const distanceKm = calculateDistanceKm(pickupLocation, dropoffLocation);
       const updated = await protectedPatch<Booking>(`/api/core/bookings/${booking.id}/edit/`, {
         pickup_address: pickup,
         dropoff_address: dropoff,
@@ -71,7 +58,6 @@ export default function MovingBookingEditForm({ booking, onSaved, onClose }: Pro
         pickup_longitude: pickupLocation.longitude,
         dropoff_latitude: dropoffLocation.latitude,
         dropoff_longitude: dropoffLocation.longitude,
-        ...(distanceKm !== null ? { distance_km: distanceKm } : {}),
         moving_date: date,
         moving_time: startTime,
         moving_end_time: endTime,
