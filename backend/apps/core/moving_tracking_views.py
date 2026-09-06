@@ -82,8 +82,6 @@ def start_moving_journey(*, mover_user_id, booking_id, source="MOBILE_APP"):
     if booking.status == "cancelled":
         raise ValidationError("Cancelled booking cannot start a journey")
     if booking.status != "confirmed":
-        # A previously started booking is intentionally idempotent even if the
-        # client retries after the original response was lost.
         existing = MovingJourney.objects.filter(booking_id=booking.id).first()
         if existing and existing.status in {"ACTIVE", "DELIVERY_PENDING", "COMPLETED"}:
             return {
@@ -111,9 +109,6 @@ def start_moving_journey(*, mover_user_id, booking_id, source="MOBILE_APP"):
             "source": existing.start_source,
         }
     if booking.started_at is not None:
-        # Legacy data may have a started booking without a journey record. Do
-        # not regenerate its tracking number; surface the inconsistent state
-        # for controlled reconciliation instead.
         if booking.tracking_number:
             raise ValidationError("Journey record is missing for an already-started booking")
         raise ValidationError("Booking has already started")
@@ -158,8 +153,6 @@ def start_moving_journey(*, mover_user_id, booking_id, source="MOBILE_APP"):
         "started_at": now.isoformat(),
     }
 
-    # One canonical start event drives the renter's in-app and email delivery.
-    # The event key is unique, so retries/concurrent callers cannot duplicate it.
     dispatch_user_notification(
         user_id=booking.renter_id,
         notification_type="MOVING_STARTED",
@@ -180,9 +173,6 @@ def start_moving_journey(*, mover_user_id, booking_id, source="MOBILE_APP"):
         send_email=False,
     )
 
-    # Keep the existing renter↔mover conversation as the system-of-record
-    # communication channel. It is created only after the journey transition
-    # succeeds and is therefore never sent for a rejected start.
     conversation_id = conversation_id_for_users(booking.renter_id, mover_user_id)
     ChatMessage.objects.create(
         conversation_id=conversation_id,
