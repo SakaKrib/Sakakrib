@@ -35,12 +35,15 @@ def process_pending_mover_payout(payout_id):
             payout.final_payment_status = "failed"
             payout.payout_failure_reason = "Mover payout channel is not configured for M-Pesa Send Money"
             payout.save(update_fields=["final_payment_status", "payout_failure_reason", "updated_at"])
-            UserNotification.objects.create(
-                user_id=mover.user_id,
-                notification_type="MOVER_PAYOUT_FAILED",
-                title="Mover payout needs attention",
-                message="Your payout could not be sent because your configured payout channel is not supported for automatic M-Pesa payout.",
-                data={"payout_id": str(payout.id), "booking_id": str(payout.booking_id)},
+            UserNotification.objects.get_or_create(
+                event_key=f"mover-payout-failed:unsupported-channel:{payout.id}",
+                defaults={
+                    "user_id":mover.user_id,
+                    "notification_type":"MOVER_PAYOUT_FAILED",
+                    "title":"Mover payout needs attention",
+                    "message":"Your payout could not be sent because your configured payout channel is not supported for automatic M-Pesa payout.",
+                    "data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id)},
+                },
             )
             return {"status": "failed", "payout_id": str(payout.id)}
 
@@ -48,12 +51,15 @@ def process_pending_mover_payout(payout_id):
             payout.final_payment_status = "failed"
             payout.payout_failure_reason = "Mover M-Pesa payout number is missing"
             payout.save(update_fields=["final_payment_status", "payout_failure_reason", "updated_at"])
-            UserNotification.objects.create(
-                user_id=mover.user_id,
-                notification_type="MOVER_PAYOUT_FAILED",
-                title="Mover payout needs attention",
-                message="Your payout could not be sent because your M-Pesa payout number is missing.",
-                data={"payout_id": str(payout.id), "booking_id": str(payout.booking_id)},
+            UserNotification.objects.get_or_create(
+                event_key=f"mover-payout-failed:missing-account:{payout.id}",
+                defaults={
+                    "user_id":mover.user_id,
+                    "notification_type":"MOVER_PAYOUT_FAILED",
+                    "title":"Mover payout needs attention",
+                    "message":"Your payout could not be sent because your M-Pesa payout number is missing.",
+                    "data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id)},
+                },
             )
             return {"status": "failed", "payout_id": str(payout.id)}
 
@@ -79,12 +85,15 @@ def process_pending_mover_payout(payout_id):
                 payout.save(update_fields=["payout_failure_reason", "updated_at"])
                 mover = Mover.objects.filter(pk=payout.mover_id).first()
                 if mover:
-                    UserNotification.objects.create(
-                        user_id=mover.user_id,
-                        notification_type="MOVER_PAYOUT_PROCESSING",
-                        title="Mover payout is being reconciled",
-                        message="Your payout request reached the payment-processing stage, but Saka Krib could not confirm the provider response. An administrator must reconcile the payout before another attempt is made.",
-                        data={"payout_id": str(payout.id), "booking_id": str(payout.booking_id)},
+                    UserNotification.objects.get_or_create(
+                        event_key=f"mover-payout-processing:reconciliation:{payout.id}",
+                        defaults={
+                            "user_id":mover.user_id,
+                            "notification_type":"MOVER_PAYOUT_PROCESSING",
+                            "title":"Mover payout is being reconciled",
+                            "message":"Your payout request reached the payment-processing stage, but Saka Krib could not confirm the provider response. An administrator must reconcile the payout before another attempt is made.",
+                            "data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id)},
+                        },
                     )
         return {"status": "provider_outcome_unknown", "payout_id": payout_id_value}
 
@@ -97,12 +106,15 @@ def process_pending_mover_payout(payout_id):
                 payout.save(update_fields=["final_payment_status", "payout_failure_reason", "updated_at"])
                 mover = Mover.objects.filter(pk=payout.mover_id).first()
                 if mover:
-                    UserNotification.objects.create(
-                        user_id=mover.user_id,
-                        notification_type="MOVER_PAYOUT_FAILED",
-                        title="Mover payout failed",
-                        message="Your mover payout could not be submitted. Please contact support if the payout does not retry after administrator review.",
-                        data={"payout_id": str(payout.id), "booking_id": str(payout.booking_id), "reason": result.message},
+                    UserNotification.objects.get_or_create(
+                        event_key=f"mover-payout-failed:submission:{payout.id}",
+                        defaults={
+                            "user_id":mover.user_id,
+                            "notification_type":"MOVER_PAYOUT_FAILED",
+                            "title":"Mover payout failed",
+                            "message":"Your mover payout could not be submitted. Please contact support if the payout does not retry after administrator review.",
+                            "data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id),"reason":result.message},
+                        },
                     )
         return {"status": "failed", "payout_id": payout_id_value}
 
@@ -115,12 +127,15 @@ def process_pending_mover_payout(payout_id):
             payout.save(update_fields=["payout_provider_reference", "payout_failure_reason", "payout_requested_at", "updated_at"])
             mover = Mover.objects.filter(pk=payout.mover_id).first()
             if mover:
-                UserNotification.objects.create(
-                    user_id=mover.user_id,
-                    notification_type="MOVER_PAYOUT_PROCESSING",
-                    title="Mover payout submitted",
-                    message=f"Your payout of KES {payout.net_mover_payable:,.2f} has been submitted to M-Pesa and is awaiting provider confirmation.",
-                    data={"payout_id": str(payout.id), "booking_id": str(payout.booking_id), "provider": "MPESA", "provider_reference": str(result.provider_reference), "amount_kes": str(payout.net_mover_payable)},
+                UserNotification.objects.get_or_create(
+                    event_key=f"mover-payout-processing:submitted:{payout.id}",
+                    defaults={
+                        "user_id":mover.user_id,
+                        "notification_type":"MOVER_PAYOUT_PROCESSING",
+                        "title":"Mover payout submitted",
+                        "message":f"Your payout of KES {payout.net_mover_payable:,.2f} has been submitted to M-Pesa and is awaiting provider confirmation.",
+                        "data":{"payout_id":str(payout.id),"booking_id":str(payout.booking_id),"provider":"MPESA","provider_reference":str(result.provider_reference),"amount_kes":str(payout.net_mover_payable)},
+                    },
                 )
     return {"status": "processing", "payout_id": payout_id_value, "provider_reference": str(result.provider_reference)}
 
