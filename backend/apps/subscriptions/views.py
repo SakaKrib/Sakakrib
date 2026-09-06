@@ -36,8 +36,12 @@ class SubscriptionPlansView(APIView):
                 'max_units_per_listing': plan.max_units_per_listing,
                 'monthly_price_kes': plan.monthly_price_kes,
                 'annual_price_kes': plan.annual_price_kes,
+                'paypal_product_id': plan.paypal_product_id,
                 'paypal_monthly_plan_id': plan.paypal_monthly_plan_id,
                 'paypal_annual_plan_id': plan.paypal_annual_plan_id,
+                'paypal_monthly_price_usd': plan.paypal_monthly_price_usd,
+                'paypal_annual_price_usd': plan.paypal_annual_price_usd,
+                'paypal_fx_rate': plan.paypal_fx_rate,
             }
             for plan in queryset
         ])
