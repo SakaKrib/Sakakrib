@@ -105,20 +105,44 @@ export const djangoPmsGateway = {
       case 'get_my_unit_entitlement':
         return request(subscriptionAccess);
       case 'get_my_pms_unit_count':
+        // Unit/listing counts are useful inside PMS, but the subscription page
+        // must also work for landlords who have no subscription yet. Do not call
+        // the access-gated dashboard in that state.
         return request(async () => {
+          const current = await subscription();
+          if (!current?.subscription_id) return 0;
           const data = await dashboard();
           return Array.isArray(data?.units) ? data.units.length : 0;
         });
       case 'get_my_pms_listings':
-        return request(async () => (await dashboard()).pmsListings ?? []);
+        // No subscription means there are no PMS-managed listings. This avoids
+        // forcing the purchase page through the PMS workspace authorization.
+        return request(async () => {
+          const current = await subscription();
+          if (!current?.subscription_id) return [];
+          return (await dashboard()).pmsListings ?? [];
+        });
       case 'get_my_available_pms_listings':
-        return request(async () => (await dashboard()).availableListings ?? []);
+        // Same boundary as managed listings: candidates are only relevant once
+        // a PMS subscription exists, so an unsubscribed landlord gets an empty
+        // collection instead of an access-denied dashboard response.
+        return request(async () => {
+          const current = await subscription();
+          if (!current?.subscription_id) return [];
+          return (await dashboard()).availableListings ?? [];
+        });
       case 'get_current_real_estate_subscription':
         // Same rule as landlord subscriptions: purchasing/reviewing a plan must
         // not depend on already having PMS workspace access.
         return request(async () => await subscription());
       case 'get_real_estate_listing_entitlement':
-        return request(async () => (await realEstateDashboard()).entitlement ?? null);
+        // Real-estate dashboard data is also access-gated. No active subscription
+        // is a normal purchase-page state, so return no usage data in that case.
+        return request(async () => {
+          const current = await subscription();
+          if (!current?.subscription_id) return null;
+          return (await realEstateDashboard()).entitlement ?? null;
+        });
       case 'add_listing_to_pms':
       case 'remove_listing_from_pms': {
         const profile = await protectedGet<any>('/api/accounts/me/');
