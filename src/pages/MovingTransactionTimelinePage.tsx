@@ -47,7 +47,7 @@ export default function MovingTransactionTimelinePage() {
     if (!profile?.id) return;
     setLoading(true); setError(null);
     try {
-      const data = await protectedGet<TimelineBooking[]>('/api/core/moving-financial-documents/?timeline=1');
+      const data = await protectedGet<TimelineBooking[]>('/api/core/moving-transaction-timeline/');
       setBookings(data);
       setSelected((current) => current && data.some((item) => item.booking_id === current) ? current : data[0]?.booking_id ?? null);
     } catch (err) {
