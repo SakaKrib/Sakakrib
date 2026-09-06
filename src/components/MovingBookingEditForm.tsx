@@ -3,21 +3,7 @@ import { CalendarDays, Check, Clock3, Loader2, MapPin, X } from 'lucide-react';
 import { protectedPatch } from '@/lib/djangoApi';
 import { formatKES } from '@/lib/utils';
 
-type Booking = {
-  id: string;
-  pickup_address: string;
-  dropoff_address: string;
-  moving_date: string | null;
-  booking_amount: number | null;
-  total_amount: number | null;
-  status: string | null;
-  payment_status: string | null;
-  payment_method?: string | null;
-  request_expires_at: string | null;
-  confirmed_at: string | null;
-  scheduled_start_at: string | null;
-  scheduled_end_at: string | null;
-};
+type Booking = { id: string; pickup_address: string; dropoff_address: string; moving_date: string | null; payment_method?: string | null; total_amount: number | null; scheduled_start_at: string | null; scheduled_end_at: string | null };
 interface Props { booking: Booking; onSaved: (updated: Booking) => void; onClose: () => void; }
 
 const nairobiParts = (value: string | null) => {
