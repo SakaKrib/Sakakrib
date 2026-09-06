@@ -10,6 +10,7 @@ from .domain_bookings import (
     MovingTrackingPoint,
 )
 from .domain_financial import MovingFinancialDocument
+from .domain_journeys import MovingJourney
 from .domain_platform import (
     MoverApplication, Mover, NotificationEmail, PaymentWebhookEvent,
     UserNotification, RenterNotification, SubscriptionRenewalAttempt,
@@ -29,7 +30,7 @@ __all__ = [
     'Booking', 'BookingEvent', 'ChatMessage', 'MoverPayout',
     'MoverScheduleEvent', 'MovingCancellationEvent', 'MovingDispute',
     'MovingInvoice', 'MovingPayment', 'MovingTrackingPoint',
-    'MovingFinancialDocument',
+    'MovingJourney', 'MovingFinancialDocument',
     'MoverApplication', 'Mover', 'NotificationEmail', 'PaymentWebhookEvent',
     'UserNotification', 'RenterNotification', 'SubscriptionRenewalAttempt',
     'SupportTicket', 'TermsAcceptance', 'LandlordPaymentMethod',
