@@ -5,9 +5,13 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .domain_bookings import Booking, ChatMessage
+from .domain_bookings import Booking, ChatMessage, MoverScheduleEvent
 from .domain_platform import Mover, UserNotification
-from .moving_services import request_mover_booking
+from .moving_services import (
+    _ensure_no_schedule_conflict,
+    _mover_schedule_window,
+    request_mover_booking,
+)
 
 NAIROBI_TZ = ZoneInfo("Africa/Nairobi")
 
@@ -30,7 +34,8 @@ def _parse_time(value):
 def request_mover_booking_with_schedule(*, renter_id, mover_id, pickup_address, dropoff_address,
                                          distance_km=None, pickup_latitude=None, pickup_longitude=None,
                                          dropoff_latitude=None, dropoff_longitude=None, listing_id=None,
-                                         moving_date=None, moving_time=None, preferred_payment_method=None):
+                                         moving_date=None, moving_time=None, moving_end_time=None,
+                                         preferred_payment_method=None):
     result = request_mover_booking(
         renter_id=renter_id,
         mover_id=mover_id,
@@ -47,33 +52,48 @@ def request_mover_booking_with_schedule(*, renter_id, mover_id, pickup_address, 
     )
 
     moving_time_value = _parse_time(moving_time)
-    if moving_time_value is not None:
-        booking = Booking.objects.select_for_update().get(pk=result["booking_id"])
-        start = timezone.make_aware(
-            datetime.combine(booking.moving_date, moving_time_value),
-            NAIROBI_TZ,
-        )
-        if start <= timezone.now():
-            raise ValidationError("Moving time must be in the future")
+    moving_end_time_value = _parse_time(moving_end_time)
+    if moving_time_value is None or moving_end_time_value is None:
+        raise ValidationError("Both start time and end time are required")
 
-        mover = Mover.objects.filter(pk=booking.mover_id).first()
-        if mover is None:
-            raise ValidationError("Mover not found")
-        local_start = start.astimezone(NAIROBI_TZ)
-        if mover.working_days:
-            weekday = local_start.strftime("%A").lower()
-            allowed = {str(day).strip().lower() for day in mover.working_days}
-            if weekday not in allowed:
-                raise ValidationError(f"Mover does not work on {weekday}")
-        if mover.start_time is not None and local_start.time() < mover.start_time:
-            raise ValidationError("Moving time is outside mover working hours")
-        if mover.end_time is not None and local_start.time() >= mover.end_time:
-            raise ValidationError("Moving time is outside mover working hours")
+    booking = Booking.objects.select_for_update().get(pk=result["booking_id"])
+    start = timezone.make_aware(
+        datetime.combine(booking.moving_date, moving_time_value),
+        NAIROBI_TZ,
+    )
+    end = timezone.make_aware(
+        datetime.combine(booking.moving_date, moving_end_time_value),
+        NAIROBI_TZ,
+    )
+    if end <= start:
+        raise ValidationError("End time must be after start time")
+    if start <= timezone.now():
+        raise ValidationError("Moving time must be in the future")
 
-        booking.scheduled_start_at = start
-        booking.updated_at = timezone.now()
-        booking.save(update_fields=["scheduled_start_at", "updated_at"])
+    mover = Mover.objects.select_for_update().filter(pk=booking.mover_id).first()
+    if mover is None:
+        raise ValidationError("Mover not found")
 
+    _mover_schedule_window(mover, start, end)
+    _ensure_no_schedule_conflict(mover.id, booking.id, start, end)
+
+    booking.scheduled_start_at = start
+    booking.scheduled_end_at = end
+    booking.updated_at = timezone.now()
+    booking.save(update_fields=["scheduled_start_at", "scheduled_end_at", "updated_at"])
+
+    MoverScheduleEvent.objects.create(
+        mover_id=mover.id,
+        booking_id=booking.id,
+        starts_at=start,
+        ends_at=end,
+        status="TENTATIVE",
+        title="Moving service",
+    )
+
+    result["scheduled_start_at"] = start
+    result["scheduled_end_at"] = end
+    result["schedule_status"] = "TENTATIVE"
     return result
 
 
@@ -116,6 +136,8 @@ def confirm_mover_booking_workflow(*, mover_user_id, booking_id):
             "dropoff_longitude": booking.dropoff_longitude,
             "moving_date": booking.moving_date.isoformat() if booking.moving_date else None,
             "scheduled_start_at": booking.scheduled_start_at.isoformat() if booking.scheduled_start_at else None,
+            "scheduled_end_at": booking.scheduled_end_at.isoformat() if booking.scheduled_end_at else None,
+            "schedule_status": MoverScheduleEvent.objects.filter(booking_id=booking.id).values_list("status", flat=True).first(),
             "total_amount": str(booking.total_amount),
             "payment_method": booking.payment_method,
         },
@@ -136,6 +158,7 @@ def confirm_mover_booking_workflow(*, mover_user_id, booking_id):
         "decision": "confirm",
         "status": "confirmed",
         "scheduled_start_at": booking.scheduled_start_at,
+        "scheduled_end_at": booking.scheduled_end_at,
     }
 
 
@@ -148,8 +171,6 @@ def confirm_booking_location(*, renter_id, booking_id):
         raise ValidationError("Booking must be confirmed before location confirmation")
 
     conversation = _conversation(booking.renter_id, booking.mover_id)
-    # The conversation is keyed by user ids. booking.mover_id is the mover profile id,
-    # so resolve the mover's user id for the chat event.
     mover = Mover.objects.filter(pk=booking.mover_id).first()
     if mover is None:
         raise ValidationError("Mover not found")
