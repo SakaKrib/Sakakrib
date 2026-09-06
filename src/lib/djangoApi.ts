@@ -38,11 +38,27 @@ let refreshPromise: Promise<boolean> | null = null;
 let csrfTokenPromise: Promise<string> | null = null;
 
 /**
+ * Reuse Django's existing non-HttpOnly CSRF cookie when the browser already
+ * has one. This avoids an unnecessary CSRF endpoint request during JWT
+ * refresh, while still falling back to Django when no cookie is available.
+ */
+const readCsrfCookie = (): string | null => {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+/**
  * Django's cookie-authenticated unsafe requests require a CSRF token.
  * The token itself is intentionally non-secret and is obtained from Django;
  * authentication JWTs remain HttpOnly and are never exposed to JavaScript.
  */
 const getCsrfToken = async (forceRefresh = false): Promise<string> => {
+  if (!forceRefresh) {
+    const existingToken = readCsrfCookie();
+    if (existingToken) return existingToken;
+  }
+
   if (forceRefresh) csrfTokenPromise = null;
   if (csrfTokenPromise) return csrfTokenPromise;
 
