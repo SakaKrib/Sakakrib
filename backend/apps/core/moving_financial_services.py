@@ -112,6 +112,8 @@ def ensure_moving_financial_documents(*, payment_id):
         "amount_kes": amount,
         "platform_fee_kes": platform_fee,
         "mover_net_kes": mover_net,
+        "status": "HELD",
+        "released_at": None,
         "updated_at": timezone.now(),
     }
     MovingFinancialDocument.objects.filter(pk=mover_document.pk).update(**update_values)
@@ -123,7 +125,7 @@ def ensure_moving_financial_documents(*, payment_id):
         "mover_document_number": mover_document.document_number,
         "payment_id": str(payment.id),
         "booking_id": str(booking.id),
-        "status": mover_document.status,
+        "status": "HELD",
     }
 
 
