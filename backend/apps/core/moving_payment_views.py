@@ -11,6 +11,7 @@ from apps.accounts.models import Profile
 from .domain_bookings import MoverPayout
 from .domain_platform import Mover, UserNotification
 from .email_services import queue_mover_payout_success_emails
+from .moving_financial_services import ensure_moving_financial_documents
 from .moving_lifecycle_services import confirm_moving_delivery, open_moving_dispute, resolve_moving_dispute
 from .moving_payment_services import (
     finalize_mover_payout, finalize_moving_mpesa_callback,
@@ -38,6 +39,9 @@ class MovingMpesaCallbackView(APIView):
         try:
             items={item.get("Name"):item.get("Value") for item in callback.get("CallbackMetadata",{}).get("Item",[])}
             result=finalize_moving_mpesa_callback(checkout_request_id=checkout_id,result_code=callback.get("ResultCode"),result_description=callback.get("ResultDesc"),callback_metadata=items,merchant_request_id=callback.get("MerchantRequestID"))
+            if result.get("payment_id"):
+                documents=ensure_moving_financial_documents(payment_id=result["payment_id"])
+                result={**result,"financial_documents":documents}
             return Response({"ResultCode":0,"ResultDesc":"Accepted",**result})
         except (ValidationError,TypeError,ValueError) as exc: return Response({"ResultCode":0,"ResultDesc":"Accepted","processing_error":str(exc)})
 
@@ -52,7 +56,12 @@ class MovingPaypalStartView(APIView):
 class MovingPaypalWebhookView(APIView):
     permission_classes=[AllowAny]; authentication_classes=[]
     def post(self,request):
-        try: return Response(finalize_moving_paypal_webhook(headers=request.headers,raw_body=request.body))
+        try:
+            result=finalize_moving_paypal_webhook(headers=request.headers,raw_body=request.body)
+            if result.get("payment_id"):
+                documents=ensure_moving_financial_documents(payment_id=result["payment_id"])
+                result={**result,"financial_documents":documents}
+            return Response(result)
         except PermissionError as exc: return Response({"success":False,"error":str(exc)},status=401)
         except (ValidationError,TypeError,ValueError) as exc: return Response({"success":False,"error":str(exc)},status=400)
         except RuntimeError as exc: return Response({"success":False,"error":str(exc)},status=503)
