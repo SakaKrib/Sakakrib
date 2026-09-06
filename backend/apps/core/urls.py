@@ -2,7 +2,6 @@ from django.urls import path
 from .homepage_views import HomepageStatsView
 from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
 from .moving_views import BookingEventView, BookingView, MoverCustomerView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
-from .admin_schedule_views import AdminScheduleEventView
 from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, RenterMovingBookingEditView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView, MovingBookingCancelView, MoverQuoteView
 from .moving_listing_views import ListingAwareMoverBookingRequestView
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
@@ -32,7 +31,7 @@ urlpatterns = [
     path("moving-payments/", MovingPaymentView.as_view(), name="moving-payment-list"), path("moving-payments/<uuid:object_id>/", MovingPaymentView.as_view(), name="moving-payment-detail"),
     path("mover-payouts/", MoverPayoutView.as_view(), name="mover-payout-list"), path("mover-payouts/<uuid:object_id>/", MoverPayoutView.as_view(), name="mover-payout-detail"),
     path("moving-disputes/", MovingDisputeView.as_view(), name="moving-dispute-list"), path("moving-disputes/<uuid:object_id>/", MovingDisputeView.as_view(), name="moving-dispute-detail"),
-    path("mover-schedule-events/", AdminScheduleEventView.as_view(), name="mover-schedule-event-list"),
+    path("mover-schedule-events/", MoverScheduleEventView.as_view(), name="mover-schedule-event-list"),
     path("moving-tracking-points/", MovingTrackingPointView.as_view(), name="moving-tracking-point-list"), path("moving-tracking-points/<int:object_id>/", MovingTrackingPointView.as_view(), name="moving-tracking-point-detail"),
     path("moving-cancellation-events/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-list"), path("moving-cancellation-events/<uuid:object_id>/", MovingCancellationEventView.as_view(), name="moving-cancellation-event-detail"),
     path("movers/quote/", MoverQuoteView.as_view(), name="mover-quote"), path("bookings/request/", ListingAwareMoverBookingRequestView.as_view(), name="booking-request"),
