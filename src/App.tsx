@@ -37,6 +37,7 @@ import MoverInvoices from './pages/Movers/MoverInvoices';
 import MoverEarnings from './pages/Movers/MoverEarnings';
 import MoverNotifications from './pages/Movers/MoverNotifications';
 import MoverMessages from './pages/Movers/MoverMessages';
+import MovingFinancialRecordsPage from './pages/MovingFinancialRecordsPage';
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
@@ -71,6 +72,7 @@ function AppContent() {
       case 'mover-earnings': return <MoverEarnings />;
       case 'mover-notifications': return <MoverNotifications />;
       case 'mover-messages': return <MoverMessages />;
+      case 'moving-financial-records': return <MovingFinancialRecordsPage />;
       case 'renter-invoices': return <RenterInvoicesPage />;
       case 'renter-payment': return <RenterPaymentPage />;
       case 'renter-moving-history': return <RenterMovingHistoryPage />;
