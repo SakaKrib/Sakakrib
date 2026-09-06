@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, Check, Clock3, MapPin, MessageCircle, Navigation, X, XCircle, CreditCard, Loader2 } from 'lucide-react';
+import { CalendarDays, Check, Clock3, CreditCard, Loader2, MapPin, MessageCircle, Navigation, X, XCircle } from 'lucide-react';
 import { cn, formatKES } from '@/lib/utils';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import MovingBookingEditForm from './MovingBookingEditForm';
 
 type ChatMessage = { id: string; sender_id: string; content: string; message_type: string | null; event_data: Record<string, unknown> | null; created_at: string };
 type Booking = { id: string; pickup_address: string; dropoff_address: string; moving_date: string | null; booking_amount: number | null; total_amount: number | null; status: string | null; payment_status: string | null; payment_method?: string | null; request_expires_at: string | null; confirmed_at: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null };
@@ -10,10 +11,11 @@ const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase().r
 const displayDate = (value: string | null | undefined) => value ? new Date(`${value}T00:00:00+03:00`).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const displayDateTime = (value: string | null | undefined) => value ? new Date(value).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 
-export default function ChatBookingCard({ message, booking, isMover, responding, onRespond, onCancel, onSchedule }: Props) {
+export default function ChatBookingCard({ message, booking, isMover, responding, onRespond, onCancel }: Props) {
   const [liveBooking, setLiveBooking] = useState<Booking | null>(booking ?? null);
   const [locationConfirming, setLocationConfirming] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [paymentStarting, setPaymentStarting] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
@@ -22,13 +24,10 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
     if (!booking?.id) return;
     let cancelled = false;
     const refresh = async () => {
-      try {
-        const result = await protectedGet<Booking>(`/api/core/bookings/${booking.id}/`);
-        if (!cancelled && result) setLiveBooking(result);
-      } catch { /* keep the last authoritative state visible */ }
+      try { const result = await protectedGet<Booking>(`/api/core/bookings/${booking.id}/`); if (!cancelled && result) setLiveBooking(result); }
+      catch { /* keep last authoritative state */ }
     };
-    const timer = window.setInterval(() => void refresh(), 4000);
-    void refresh();
+    const timer = window.setInterval(() => void refresh(), 4000); void refresh();
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [booking?.id]);
 
@@ -41,10 +40,8 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
   const movingDate = currentBooking?.moving_date || (typeof event.moving_date === 'string' ? event.moving_date : null);
   const total = currentBooking?.total_amount ?? currentBooking?.booking_amount ?? Number(event.renter_total_kes ?? event.total_amount ?? 0);
   const paymentMethod = currentBooking?.payment_method || (typeof event.preferred_payment_method === 'string' ? event.preferred_payment_method : typeof event.payment_method === 'string' ? event.payment_method : null);
-  const pickupLat = event.pickup_latitude;
-  const pickupLng = event.pickup_longitude;
-  const dropoffLat = event.dropoff_latitude;
-  const dropoffLng = event.dropoff_longitude;
+  const pickupLat = event.pickup_latitude; const pickupLng = event.pickup_longitude;
+  const dropoffLat = event.dropoff_latitude; const dropoffLng = event.dropoff_longitude;
   const hasPickupCoordinates = typeof pickupLat === 'number' && typeof pickupLng === 'number';
   const hasDropoffCoordinates = typeof dropoffLat === 'number' && typeof dropoffLng === 'number';
   const isRequest = message?.message_type === 'booking_request';
@@ -58,14 +55,10 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
 
   const confirmLocation = async () => {
     if (!currentBooking?.id || locationConfirming) return;
-    setLocationConfirming(true);
-    setPaymentMessage(null);
-    try {
-      await protectedPost(`/api/core/bookings/${currentBooking.id}/respond/`, { decision: 'confirm_location' });
-      setLocationConfirmed(true);
-    } catch (error) {
-      setPaymentMessage(error instanceof Error ? error.message : 'Unable to confirm the pickup location.');
-    } finally { setLocationConfirming(false); }
+    setLocationConfirming(true); setPaymentMessage(null);
+    try { await protectedPost(`/api/core/bookings/${currentBooking.id}/respond/`, { decision: 'confirm_location' }); setLocationConfirmed(true); }
+    catch (error) { setPaymentMessage(error instanceof Error ? error.message : 'Unable to confirm the pickup location.'); }
+    finally { setLocationConfirming(false); }
   };
 
   const startPayment = async (provider: 'mpesa' | 'paypal') => {
@@ -77,25 +70,26 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
         setPaymentMessage(result.customer_message || 'Payment request started. Check your phone and follow the payment prompt.');
       } else {
         const result = await protectedPost<{ success: boolean; approval_url?: string | null }>(`/api/core/bookings/${currentBooking.id}/payment/paypal/start/`, {});
-        if (result.approval_url) window.location.assign(result.approval_url);
-        else setPaymentMessage('PayPal payment could not be started. Please try again.');
+        if (result.approval_url) window.location.assign(result.approval_url); else setPaymentMessage('PayPal payment could not be started. Please try again.');
       }
-    } catch (error) {
-      setPaymentMessage(error instanceof Error ? error.message : 'Unable to start payment.');
-    } finally { setPaymentStarting(false); }
+    } catch (error) { setPaymentMessage(error instanceof Error ? error.message : 'Unable to start payment.'); }
+    finally { setPaymentStarting(false); }
   };
 
   return <article className="w-full max-w-xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
     <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-brand-800 dark:bg-brand-900/60"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-900 dark:text-brand-300"><MessageCircle className="h-4 w-4" /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">Moving request</p><p className="text-sm font-semibold text-gray-900 dark:text-white">{isResponse ? 'Booking update' : 'Request details'}</p></div></div><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase', isConfirmed ? 'bg-success-50 text-success-700 dark:bg-success-900/20 dark:text-success-300' : isDeclined ? 'bg-error-50 text-error-700 dark:bg-error-900/20 dark:text-error-300' : 'bg-warning-50 text-warning-700 dark:bg-warning-900/20 dark:text-warning-300')}>{status || 'pending'}</span></div></div>
-    <div className="space-y-4 p-4"><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-900/40"><div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /><div><p className="text-[11px] font-semibold uppercase text-gray-400">Pickup</p><p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{pickup}</p></div></div></div><div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-900/40"><div className="flex items-start gap-2"><Navigation className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /><div><p className="text-[11px] font-semibold uppercase text-gray-400">Destination</p><p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{dropoff}</p></div></div></div></div>
+    <div className="space-y-4 p-4">
+      <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-900/40"><div className="flex items-start gap-2"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /><div><p className="text-[11px] font-semibold uppercase text-gray-400">Pickup</p><p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{pickup}</p></div></div></div><div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-900/40"><div className="flex items-start gap-2"><Navigation className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /><div><p className="text-[11px] font-semibold uppercase text-gray-400">Destination</p><p className="mt-1 text-sm font-medium text-gray-800 dark:text-gray-100">{dropoff}</p></div></div></div></div>
       {(hasPickupCoordinates || hasDropoffCoordinates) && <div className="rounded-xl border border-brand-100 bg-brand-50/70 p-3 dark:border-brand-800 dark:bg-brand-900/30"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-brand-600" /><p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">Location attached to request</p></div><div className="mt-2 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2"><p>Pickup GPS: {hasPickupCoordinates ? `${Number(pickupLat).toFixed(5)}, ${Number(pickupLng).toFixed(5)}` : 'Not supplied'}</p><p>Destination GPS: {hasDropoffCoordinates ? `${Number(dropoffLat).toFixed(5)}, ${Number(dropoffLng).toFixed(5)}` : 'Not supplied'}</p></div></div>}
       <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 text-sm dark:border-brand-800 sm:grid-cols-3"><div><p className="text-xs text-gray-400">Move date</p><p className="mt-1 font-medium">{displayDate(movingDate)}</p></div><div><p className="text-xs text-gray-400">Total</p><p className="mt-1 font-semibold text-brand-700 dark:text-brand-300">{formatKES(Number(total || 0))}</p></div><div><p className="text-xs text-gray-400">Payment</p><p className="mt-1 font-medium uppercase">{paymentMethod || 'Not selected'}</p></div></div>
       {currentBooking?.scheduled_start_at && <div className="flex items-center gap-2 rounded-xl border border-success-200 bg-success-50 p-3 text-sm text-success-800 dark:border-success-800 dark:bg-success-900/20 dark:text-success-300"><CalendarDays className="h-4 w-4" /><span>Scheduled: {displayDateTime(currentBooking.scheduled_start_at)}{currentBooking.scheduled_end_at ? ` – ${displayDateTime(currentBooking.scheduled_end_at)}` : ''}</span></div>}
       {currentBooking?.request_expires_at && status === 'pending' && <div className="flex items-center gap-2 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-800 dark:bg-warning-900/20 dark:text-warning-300"><Clock3 className="h-4 w-4" />Response window ends {displayDateTime(currentBooking.request_expires_at)}.</div>}
-      {canMoverRespond && <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-800 dark:bg-brand-900/40"><p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Choose an action for this request</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><button type="button" disabled={responding} onClick={() => onRespond('confirm')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"><Check className="h-4 w-4" />Accept</button><button type="button" disabled={responding} onClick={() => onRespond('not_sure')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><Clock3 className="h-4 w-4" />Not sure</button><button type="button" disabled={responding} onClick={() => onRespond('cancel')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-error-200 bg-white px-3 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-50 disabled:opacity-50 dark:border-error-800 dark:bg-brand-950 dark:text-error-300"><XCircle className="h-4 w-4" />Decline</button></div></div>}
-      {isRenterPending && <div className="rounded-xl border border-warning-200 bg-warning-50 p-3 dark:border-warning-800 dark:bg-warning-900/20"><div><p className="text-sm font-semibold text-warning-900 dark:text-warning-200">Waiting for mover response</p><p className="mt-1 text-xs text-warning-800/80 dark:text-warning-300/80">You can continue waiting or cancel and search for another mover.</p></div><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={responding} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-warning-900 dark:bg-brand-950 dark:text-warning-200">Continue waiting</button><button type="button" disabled={responding} onClick={onCancel} className="inline-flex items-center gap-2 rounded-lg border border-warning-300 bg-white px-3 py-2 text-xs font-semibold text-warning-900 hover:bg-warning-100 disabled:opacity-50 dark:border-warning-700 dark:bg-brand-950 dark:text-warning-200"><X className="h-3.5 w-3.5" />Cancel &amp; search</button></div></div>}
-      {needsLocationConfirmation && <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-800 dark:bg-brand-900/40"><p className="text-sm font-semibold text-gray-900 dark:text-white">Please confirm your pickup location</p><p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{pickup}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={locationConfirming} onClick={() => void confirmLocation()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{locationConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Yes, confirm</button><button type="button" disabled={locationConfirming} onClick={onSchedule} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><CalendarDays className="h-4 w-4" />Edit location</button></div></div>}
-      {(!needsLocationConfirmation && !isMover && isConfirmed && currentBooking?.payment_status !== 'paid') && <div className="rounded-xl border border-success-200 bg-success-50 p-4 dark:border-success-800 dark:bg-success-900/20"><p className="text-sm font-semibold text-success-900 dark:text-success-200">Booking confirmed</p><p className="mt-1 text-xs text-success-800/80 dark:text-success-300/80">Your mover accepted the request. Continue to payment when you are ready.</p><button type="button" onClick={() => setShowPayment(true)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><CreditCard className="h-4 w-4" />Pay Now</button></div>}
+      {canMoverRespond && <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3 dark:border-brand-800 dark:bg-brand-900/40"><p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Choose an action for this request</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><button type="button" disabled={responding} onClick={() => onRespond('confirm')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"><Check className="h-4 w-4" />Confirm</button><button type="button" disabled={responding} onClick={() => onRespond('not_sure')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><Clock3 className="h-4 w-4" />Not sure</button><button type="button" disabled={responding} onClick={() => onRespond('cancel')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-error-200 bg-white px-3 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-50 disabled:opacity-50 dark:border-error-800 dark:bg-brand-950 dark:text-error-300"><XCircle className="h-4 w-4" />Decline</button></div></div>}
+      {isRenterPending && <div className="rounded-xl border border-warning-200 bg-warning-50 p-3 dark:border-warning-800 dark:bg-warning-900/20"><p className="text-sm font-semibold text-warning-900 dark:text-warning-200">Waiting for mover response</p><p className="mt-1 text-xs text-warning-800/80 dark:text-warning-300/80">You can continue waiting or cancel and search for another mover.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={responding} className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-warning-900 dark:bg-brand-950 dark:text-warning-200">Continue waiting</button><button type="button" disabled={responding} onClick={onCancel} className="inline-flex items-center gap-2 rounded-lg border border-warning-300 bg-white px-3 py-2 text-xs font-semibold text-warning-900 hover:bg-warning-100 disabled:opacity-50 dark:border-warning-700 dark:bg-brand-950 dark:text-warning-200"><X className="h-3.5 w-3.5" />Cancel &amp; search</button></div></div>}
+      {needsLocationConfirmation && !showEdit && <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-800 dark:bg-brand-900/40"><p className="text-sm font-semibold text-gray-900 dark:text-white">Please confirm your pickup location</p><p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{pickup}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={locationConfirming} onClick={() => void confirmLocation()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{locationConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Yes, confirm</button><button type="button" disabled={locationConfirming} onClick={() => setShowEdit(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><MapPin className="h-4 w-4" />Edit booking</button></div></div>}
+      {isConfirmed && !isMover && !showEdit && !needsLocationConfirmation && <button type="button" onClick={() => setShowEdit(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-200 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300"><CalendarDays className="h-4 w-4" />Edit booking</button>}
+      {showEdit && currentBooking && <MovingBookingEditForm booking={currentBooking} onSaved={(updated) => setLiveBooking(updated)} onClose={() => setShowEdit(false)} />}
+      {(!needsLocationConfirmation && !showEdit && !isMover && isConfirmed && currentBooking?.payment_status !== 'paid') && <div className="rounded-xl border border-success-200 bg-success-50 p-4 dark:border-success-800 dark:bg-success-900/20"><p className="text-sm font-semibold text-success-900 dark:text-success-200">Booking confirmed</p><p className="mt-1 text-xs text-success-800/80 dark:text-success-300/80">Your mover accepted the request. Continue to payment when you are ready.</p><button type="button" onClick={() => setShowPayment(true)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><CreditCard className="h-4 w-4" />Pay Now</button></div>}
       {paymentMessage && <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-brand-900/50 dark:text-gray-300">{paymentMessage}</p>}
       {isResponse && message?.content && <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-brand-900/50 dark:text-gray-300">{message.content}</p>}
     </div>
