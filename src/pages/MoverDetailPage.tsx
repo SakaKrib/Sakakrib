@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Truck, MapPin, Phone, Star, ShieldCheck, ArrowLeft, Loader2,
-  DollarSign, CheckCircle2, CreditCard, MessageCircle
+  DollarSign, CheckCircle2, CreditCard, MessageCircle, Clock3
 } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -29,6 +29,7 @@ export default function MoverDetailPage() {
   const [pickupLocation, setPickupLocation] = useState<GPSLocationValue>({ locationSearch: '', latitude: null, longitude: null });
   const [dropoffLocation, setDropoffLocation] = useState<GPSLocationValue>({ locationSearch: '', latitude: null, longitude: null });
   const [movingDate, setMovingDate] = useState('');
+  const [movingTime, setMovingTime] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('mpesa');
   const [quote, setQuote] = useState<MoverQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -81,13 +82,13 @@ export default function MoverDetailPage() {
     e.preventDefault(); setError(null);
     if (!profile) { setError('Please sign in to book a mover.'); return; }
     if (!mover) { setError('Mover details are still loading. Please try again.'); return; }
-    if (!pickup.trim() || !dropoff.trim() || !movingDate) { setError('Please fill in all booking details.'); return; }
+    if (!pickup.trim() || !dropoff.trim() || !movingDate || !movingTime) { setError('Please fill in the pickup, destination, date, and time.'); return; }
     if (!quote || pickupLocation.latitude === null || pickupLocation.longitude === null || dropoffLocation.latitude === null || dropoffLocation.longitude === null) { setError('Please select both pickup and drop-off locations so the route can be calculated.'); return; }
     if (paymentMethod !== 'mpesa' && paymentMethod !== 'paypal') { setError('Please select M-Pesa or PayPal.'); return; }
     setSubmitting(true);
     try {
       const result = await protectedPost<{ booking_id: string; conversation_id?: string; status: string; quote: MoverQuote }>('/api/core/bookings/request/', {
-        mover_id: mover.id, pickup_address: pickup.trim(), dropoff_address: dropoff.trim(), moving_date: movingDate,
+        mover_id: mover.id, pickup_address: pickup.trim(), dropoff_address: dropoff.trim(), moving_date: movingDate, moving_time: movingTime,
         pickup_latitude: pickupLocation.latitude, pickup_longitude: pickupLocation.longitude,
         dropoff_latitude: dropoffLocation.latitude, dropoff_longitude: dropoffLocation.longitude,
         preferred_payment_method: paymentMethod,
@@ -112,11 +113,12 @@ export default function MoverDetailPage() {
         {reviews.length > 0 && <div className="mt-6 border-t border-gray-100 pt-5 dark:border-brand-800"><h2 className="font-semibold text-gray-900 dark:text-white">Recent reviews</h2><div className="mt-3 space-y-3">{reviews.slice(0, 3).map((review) => <div key={review.id} className="rounded-xl bg-gray-50 p-3 text-sm dark:bg-brand-900"><p className="font-medium">{review.comment || 'Great service.'}</p></div>)}</div></div>}
       </section>
       <section className="card p-6">
-        <div className="mb-5"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Schedule a move</h2><p className="mt-1 text-sm text-gray-500">Enter your pickup and drop-off locations, then choose a pickup date.</p></div>
+        <div className="mb-5"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Schedule a move</h2><p className="mt-1 text-sm text-gray-500">Enter your pickup and drop-off locations, then choose a pickup date and time.</p></div>
         {bookingSuccess ? <div className="rounded-2xl border border-success-200 bg-success-50 p-6 text-success-800 dark:border-success-800 dark:bg-success-900/20 dark:text-success-300"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/40"><CheckCircle2 className="h-6 w-6" /></div><h3 className="mt-3 font-semibold">Request sent to {mover.business_name || mover.driver_full_name || 'your mover'}</h3><p className="mt-1 text-sm">Opening your private chat so you can follow the request and continue the conversation.</p>{submittedQuote && <div className="mt-4 space-y-1 text-sm"><p>Move total: <strong>{formatKES(Number(submittedQuote.renter_total_kes))}</strong></p><p>Platform fee: <strong>{formatKES(Number(submittedQuote.platform_fee_kes))}</strong></p></div>}<div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold"><MessageCircle className="h-4 w-4" />Opening chat…</div></div> : <form onSubmit={handleBooking} className="space-y-5">
           <GPSLocationInput label="Pickup location" value={pickupLocation} onChange={setPickupLocation} placeholder="Search pickup location" />
           <GPSLocationInput label="Drop-off location" value={dropoffLocation} onChange={setDropoffLocation} placeholder="Search drop-off location" />
           <div><label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Pickup date</label><DatePicker selected={parseMovingDate(movingDate)} onChange={(date: Date | null) => setMovingDate(formatMovingDate(date))} minDate={new Date()} dateFormat="dd/MM/yyyy" placeholderText="Select pickup date" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-900 dark:text-white" /></div>
+          <div><label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"><Clock3 className="mr-1 inline h-4 w-4" />Pickup time</label><input type="time" value={movingTime} onChange={(event) => setMovingTime(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-900 dark:text-white" /></div>
           <div className="rounded-xl bg-brand-50 p-4 dark:bg-brand-900/40"><div className="flex items-center justify-between"><span className="text-sm text-gray-600 dark:text-gray-300">Move total</span><span className="text-lg font-bold text-brand-700 dark:text-brand-300">{quoting ? 'Calculating…' : formatKES(bookingAmount)}</span></div><div className="mt-2 flex items-center justify-between text-xs text-gray-500"><span>Platform fee</span><span>{formatKES(commission)}</span></div></div>
           {error && <p className="text-sm text-error-600">{error}</p>}
           <div className="grid gap-3 sm:grid-cols-2"><label className={cn('cursor-pointer rounded-xl border p-4', paymentMethod === 'mpesa' ? 'border-gray-500 bg-brand-50 text-gray-800' : 'border-gray-200')}><input type="radio" className="sr-only" name="payment" value="mpesa" checked={paymentMethod === 'mpesa'} onChange={() => setPaymentMethod('mpesa')} /><span className="flex items-center gap-2 font-medium"><CreditCard className="h-4 w-4" />M-Pesa</span></label><label className={cn('cursor-pointer rounded-xl border p-4', paymentMethod === 'paypal' ? 'border-gray-500 bg-brand-50 text-gray-800' : 'border-gray-200')}><input type="radio" className="sr-only" name="payment" value="paypal" checked={paymentMethod === 'paypal'} onChange={() => setPaymentMethod('paypal')} /><span className="flex items-center gap-2 font-medium"><DollarSign className="h-4 w-4" />PayPal</span></label></div>
