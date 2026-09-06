@@ -7,10 +7,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .domain_bookings import Booking, BookingEvent, MovingTrackingPoint
+from .chat_services import conversation_id_for_users
+from .domain_bookings import Booking, BookingEvent, ChatMessage, MovingTrackingPoint
+from .domain_journeys import MovingJourney
 from .domain_platform import Mover, UserNotification
 from .domain_property import Review
 from .moving_tracking_consumers import tracking_group_name
+from .notification_services import dispatch_user_notification
 
 
 def _serialize_point(point):
@@ -51,8 +54,23 @@ def _broadcast_location(point):
     )
 
 
+def _tracking_number():
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "SK-MOV-%s-%s" % (
+        timezone.now().strftime("%Y%m%d"),
+        "".join(secrets.choice(alphabet) for _ in range(6)),
+    )
+
+
 @transaction.atomic
-def start_moving_journey(*, mover_user_id, booking_id):
+def start_moving_journey(*, mover_user_id, booking_id, source="MOBILE_APP"):
+    source = str(source or "MOBILE_APP").strip().upper()
+    if source not in MovingJourney.START_SOURCES:
+        raise ValidationError("Invalid journey start source")
+
+    # The booking row is the serialization point. Only one concurrent start
+    # request can transition this booking into an active journey.
     booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
     if booking is None:
         raise ValidationError("Booking not found")
@@ -61,22 +79,66 @@ def start_moving_journey(*, mover_user_id, booking_id):
         raise ValidationError("Only the assigned mover can start the journey")
     if booking.payment_status != "paid":
         raise ValidationError("Booking must be paid before starting")
+    if booking.status == "cancelled":
+        raise ValidationError("Cancelled booking cannot start a journey")
     if booking.status != "confirmed":
+        # A previously started booking is intentionally idempotent even if the
+        # client retries after the original response was lost.
+        existing = MovingJourney.objects.filter(booking_id=booking.id).first()
+        if existing and existing.status in {"ACTIVE", "DELIVERY_PENDING", "COMPLETED"}:
+            return {
+                "booking_id": str(booking.id),
+                "journey_id": str(existing.id),
+                "tracking_number": existing.tracking_number,
+                "started_at": existing.started_at,
+                "status": "already_started",
+                "source": existing.start_source,
+            }
         raise ValidationError("Booking must be confirmed before starting")
     if booking.scheduled_start_at is None:
         raise ValidationError("Moving time must be scheduled")
     if booking.scheduled_end_at is not None and booking.scheduled_end_at <= booking.scheduled_start_at:
         raise ValidationError("Invalid scheduled time")
+
+    existing = MovingJourney.objects.select_for_update().filter(booking_id=booking.id).first()
+    if existing and existing.status in {"ACTIVE", "DELIVERY_PENDING", "COMPLETED"}:
+        return {
+            "booking_id": str(booking.id),
+            "journey_id": str(existing.id),
+            "tracking_number": existing.tracking_number,
+            "started_at": existing.started_at,
+            "status": "already_started",
+            "source": existing.start_source,
+        }
     if booking.started_at is not None:
-        return {"booking_id": str(booking.id), "tracking_number": booking.tracking_number, "started_at": booking.started_at, "status": "already_started"}
+        # Legacy data may have a started booking without a journey record. Do
+        # not regenerate its tracking number; surface the inconsistent state
+        # for controlled reconciliation instead.
+        if booking.tracking_number:
+            raise ValidationError("Journey record is missing for an already-started booking")
+        raise ValidationError("Booking has already started")
 
     now = timezone.now()
-    tracking_number = f"SK-{str(booking.id).replace('-', '').upper()[:10]}"
+    tracking_number = _tracking_number()
+    while MovingJourney.objects.filter(tracking_number=tracking_number).exists():
+        tracking_number = _tracking_number()
+
+    journey = MovingJourney.objects.create(
+        booking_id=booking.id,
+        mover_id=mover.id,
+        tracking_number=tracking_number,
+        status="ACTIVE",
+        started_at=now,
+        started_by=mover_user_id,
+        start_source=source,
+    )
+
     booking.tracking_number = tracking_number
     booking.started_at = now
     booking.status = "in_progress"
     booking.updated_at = now
     booking.save(update_fields=["tracking_number", "started_at", "status", "updated_at"])
+
     BookingEvent.objects.create(
         conversation_id=str(booking.id), renter_id=booking.renter_id, mover_id=mover_user_id,
         mover_profile_id=mover.id, relocation_date=booking.moving_date,
@@ -87,17 +149,58 @@ def start_moving_journey(*, mover_user_id, booking_id):
         confirmed_at=booking.confirmed_at, paid_at=now, distance_km=booking.distance_km,
         rate_per_km_kes=booking.rate_per_km_kes, base_rate_kes=booking.base_rate_kes,
     )
-    UserNotification.objects.create(
-        user_id=booking.renter_id, notification_type="MOVING_STARTED", title="Your move has started",
+
+    event_data = {
+        "booking_id": str(booking.id),
+        "journey_id": str(journey.id),
+        "tracking_number": tracking_number,
+        "start_source": source,
+        "started_at": now.isoformat(),
+    }
+
+    # One canonical start event drives the renter's in-app and email delivery.
+    # The event key is unique, so retries/concurrent callers cannot duplicate it.
+    dispatch_user_notification(
+        user_id=booking.renter_id,
+        notification_type="MOVING_STARTED",
+        title="Your move has started",
         message=f"Your mover has started the journey. Your tracking number is {tracking_number}.",
-        data={"booking_id": str(booking.id), "tracking_number": tracking_number},
+        data=event_data,
+        event_key=f"moving-started:renter:{booking.id}",
+        send_email=True,
+        email_template="moving_started",
     )
-    UserNotification.objects.create(
-        user_id=mover_user_id, notification_type="MOVING_STARTED", title="Journey started",
+    dispatch_user_notification(
+        user_id=mover_user_id,
+        notification_type="MOVING_STARTED",
+        title="Journey started",
         message="The moving journey is now active.",
-        data={"booking_id": str(booking.id), "tracking_number": tracking_number},
+        data=event_data,
+        event_key=f"moving-started:mover:{booking.id}",
+        send_email=False,
     )
-    return {"booking_id": str(booking.id), "tracking_number": tracking_number, "started_at": now, "status": "started"}
+
+    # Keep the existing renter↔mover conversation as the system-of-record
+    # communication channel. It is created only after the journey transition
+    # succeeds and is therefore never sent for a rejected start.
+    conversation_id = conversation_id_for_users(booking.renter_id, mover_user_id)
+    ChatMessage.objects.create(
+        conversation_id=conversation_id,
+        sender_id=mover_user_id,
+        receiver_id=booking.renter_id,
+        content=f"Your mover has started the journey. Tracking number: {tracking_number}.",
+        message_type="system",
+        event_data={"event_key": f"moving-started:chat:{booking.id}", **event_data},
+    )
+
+    return {
+        "booking_id": str(booking.id),
+        "journey_id": str(journey.id),
+        "tracking_number": tracking_number,
+        "started_at": now,
+        "status": "started",
+        "source": source,
+    }
 
 
 @transaction.atomic
@@ -155,7 +258,8 @@ class MovingJourneyStartView(APIView):
     permission_classes = [IsAuthenticated]
     def post(self, request, booking_id):
         try:
-            return Response(start_moving_journey(mover_user_id=request.user.id, booking_id=booking_id))
+            source = request.data.get("source") or request.headers.get("X-Saka-Tracking-Source") or "MOBILE_APP"
+            return Response(start_moving_journey(mover_user_id=request.user.id, booking_id=booking_id, source=source))
         except (ValidationError, TypeError, ValueError) as exc:
             return Response({"detail": str(exc)}, status=400)
 
