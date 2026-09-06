@@ -84,6 +84,16 @@ export default function PMSPlanSelector({
   const [localSelectedPlanName, setLocalSelectedPlanName] = useState<PMSPlanName | null>(selectedPlanName ?? null);
   const [localBillingCycle, setLocalBillingCycle] = useState<PMSBillingCycle>(billingCycle ?? 'MONTHLY');
 
+
+  // audience lable
+  function audienceLabel(
+    role: PMSAudience
+  ): string {
+    return role === "landlord"
+      ? "Landlord"
+      : "Real Estate";
+  }
+
   // Parent props are used as initial/current values, but local interaction must
   // remain responsive even when the parent callback does not immediately echo
   // the selected value back through props.
@@ -248,7 +258,7 @@ export default function PMSPlanSelector({
                 : plan.annual_price_kes;
 
             return (
-              <button
+                <button
                   key={plan.id}
                   type="button"
                   disabled={disabled}
@@ -273,62 +283,119 @@ export default function PMSPlanSelector({
                       Current Plan
                     </span>
                   )}
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
-                      {role === 'landlord' ? 'Landlord' : 'Real Estate'} PMS
-                    </p>
-                    <h3 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
-                      {plan.name}
-                    </h3>
-                  </div>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                    {selected ? <Check className="h-5 w-5" /> : <Crown className="h-5 w-5" />}
-                  </div>
-                </div>
 
-                <div className="mt-7">
-                  <span className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                    {formatKES(price)}
-                  </span>
-                  <span className="ml-1 text-sm text-gray-500">
-                    /{effectiveBillingCycle === 'MONTHLY' ? 'month' : 'year'}
-                  </span>
-                </div>
+                  <div className="flex items-start justify-between gap-4 relative">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                        {audienceLabel(
+                          role
+                        )}{" "}
+                        PMS
+                      </p>
 
-                <div className="mt-6 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-gray-700">
-                    <Home className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Listings</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {plan.max_listings === null
-                        ? 'Unlimited listings'
-                        : `Up to ${formatLimit(plan.max_listings)} listings`}
-                    </p>
-                  </div>
-                </div>
-
-                {plan.max_units_per_listing !== null && (
-                  <div className="mt-3 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-gray-700">
-                      <Users className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                      <h3 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
+                        {plan.name}
+                      </h3>
                     </div>
+
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                        selected
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                      }`}
+                    >
+                      {selected ? (
+                        <Check className="h-5 w-5" />
+                      ) : (
+                        <Crown className="h-5 w-5" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PRICE */}
+
+                  <div className="mt-7">
+                    <div className="flex items-end gap-1">
+                      <span className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                        {formatKES(
+                          price
+                        )}
+                      </span>
+
+                      <span className="mb-1 text-sm text-gray-500">
+                        /
+                        {billingCycle ===
+                        "MONTHLY"
+                          ? "month"
+                          : "year"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* LISTING LIMIT */}
+
+                  <div className="mt-6 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-gray-700">
+                      <Home className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                    </div>
+
                     <div>
-                      <p className="text-xs text-gray-500">Units per listing</p>
+                      <p className="text-xs text-gray-500">
+                        Listings
+                      </p>
+
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                        Up to {formatLimit(plan.max_units_per_listing)} units
+                        {plan.max_listings ===
+                        null
+                          ? "Unlimited listings"
+                          : `Up to ${formatLimit(
+                              plan.max_listings
+                            )} listings`}
                       </p>
                     </div>
                   </div>
-                )}
 
-                <div className="mt-6 flex items-center justify-center rounded-xl border px-2 py-2.5 text-sm font-semibold">
-                  {selected ? 'Selected' : current ? 'Current Plan' : 'Select Plan'}
-                </div>
-              </button>
-            );
+                  {/* UNIT LIMIT */}
+
+                  {plan.max_units_per_listing !==
+                    null && (
+                    <div className="mt-3 flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-gray-700">
+                        <Users className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-500">
+                          Units per listing
+                        </p>
+
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          Up to{" "}
+                          {formatLimit(
+                            plan.max_units_per_listing
+                          )}{" "}
+                          units
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className={`mt-6 flex items-center justify-center rounded-xl border px-2 py-2.5 text-sm font-semibold ${
+                      selected
+                        ? "border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-gray-900"
+                        : "border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                    }`}
+                  >
+                    {selected
+                      ? "Selected"
+                      : current
+                      ? "Current Plan"
+                      : "Select Plan"}
+                  </div>
+                </button>
+              );
           })}
         </div>
       )}
@@ -349,7 +416,11 @@ export default function PMSPlanSelector({
             type="button"
             disabled={disabled}
             onClick={handlePayClick}
-            className="inline-flex min-w-[240px] items-center justify-center rounded-xl bg-gray-900 px-6 py-3.5 text-sm font-bold text-white"
+            className={`inline-flex min-w-[240px] items-center justify-center rounded-xl px-6 py-3.5 text-sm font-bold shadow-sm transition-all ${
+                disabled
+                  ? "cursor-not-allowed bg-gray-300 text-gray-500"
+                  : "bg-gray-900 text-white hover:-translate-y-0.5 hover:bg-gray-800 hover:shadow-md dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
+              }`}
           >
             {hasCurrentSubscription && isCurrentPlan
               ? 'Go to PMS Dashboard'
