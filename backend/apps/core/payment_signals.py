@@ -48,6 +48,8 @@ def schedule_moving_payment_admin_notification(sender, instance, **kwargs):
     if instance.status != "HELD":
         return
     _schedule_admin_moving_payment_notification(instance)
+    from .moving_payment_email_tasks import send_moving_payment_emails
+    transaction.on_commit(lambda: send_moving_payment_emails.delay(str(instance.id)))
 
 
 @receiver(post_save, sender=SubscriptionInvoice)
