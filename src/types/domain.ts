@@ -54,7 +54,7 @@ export interface Listing extends Record<string, any> {
   deposit_required?: boolean | null;
   deposit_structure?: string | null;
   deposit_amount?: number | null;
-  size?: string | null;
+  size?: string;
   beds?: number | null;
   baths?: number | null;
   contact_phone?: string | null;
@@ -107,6 +107,9 @@ export interface Mover extends Record<string, any> {
   is_available?: boolean;
   approval_status?: string;
   rate_per_km_kes?: number;
+  working_days?: string[] | null;
+  start_time?: string | null;
+  end_time?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -178,12 +181,7 @@ export interface SubscriptionPlan extends Record<string, any> {
 export interface CommunityPost extends Record<string, any> {
   id: string;
   user_id?: string;
-  author_id?: string;
   content?: string;
-  title?: string | null;
   created_at?: string;
   updated_at?: string;
-  profile?: Profile | null;
-  listing?: Listing | null;
-  media?: ListingMedia[];
 }
