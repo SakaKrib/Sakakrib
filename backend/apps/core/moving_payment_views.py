@@ -121,6 +121,15 @@ class MoverPayoutCallbackView(APIView):
         if not payout_id:
             return Response({"success":True,"status":"IGNORED"})
 
+        payout=MoverPayout.objects.filter(pk=payout_id).first()
+        if payout is None:
+            return Response({"success":True,"status":"IGNORED"})
+        if str(payout.payout_provider or "").upper() != provider:
+            return Response({"success":False,"error":"Payout provider does not match stored payout"},status=400)
+        stored_reference=str(payout.payout_provider_reference or "").strip()
+        if not stored_reference or not hmac.compare_digest(stored_reference, str(provider_reference).strip()):
+            return Response({"success":False,"error":"Payout provider reference does not match stored payout"},status=400)
+
         try:
             result = finalize_mover_payout(
                 payout_id=payout_id,
@@ -132,7 +141,7 @@ class MoverPayoutCallbackView(APIView):
             )
             status=result.get("status")
             payout=MoverPayout.objects.filter(pk=payout_id).first()
-            if payout and status in {"released","failed"}:
+            if payout and status in {"released","failed"} and not result.get("already_processed"):
                 mover=Mover.objects.filter(pk=payout.mover_id).first()
                 if mover:
                     if status=="released":
