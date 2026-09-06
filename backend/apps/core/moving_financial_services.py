@@ -22,7 +22,12 @@ def _document_number(prefix):
 
 @transaction.atomic
 def ensure_moving_financial_documents(*, payment_id):
-    """Create or synchronize the two auditable financial documents for a payment."""
+    """Create or synchronize the two auditable financial documents for a payment.
+
+    Escrow release changes the payment lifecycle to RELEASED, but that only
+    authorizes the mover payout. The mover settlement becomes RELEASED only
+    after the payout provider confirms the actual transfer.
+    """
     payment = MovingPayment.objects.select_for_update().filter(pk=payment_id).first()
     if payment is None:
         raise ValidationError("Moving payment not found")
@@ -88,13 +93,14 @@ def ensure_moving_financial_documents(*, payment_id):
             "amount_kes": amount,
             "platform_fee_kes": platform_fee,
             "mover_net_kes": mover_net,
-            "status": "RELEASED" if payment.status == "RELEASED" else "HELD",
+            "status": "HELD",
             "issued_at": now,
-            "released_at": payment.released_at if payment.status == "RELEASED" else None,
+            "released_at": None,
         },
     )
 
-    # Existing HELD documents are refreshed with authoritative payment data.
+    # Existing documents are refreshed with authoritative payment data without
+    # advancing the mover settlement beyond the escrow stage.
     update_values = {
         "payment_id": payment.id,
         "renter_id": booking.renter_id,
@@ -108,11 +114,6 @@ def ensure_moving_financial_documents(*, payment_id):
         "mover_net_kes": mover_net,
         "updated_at": timezone.now(),
     }
-    if payment.status == "RELEASED":
-        update_values.update({
-            "status": "RELEASED",
-            "released_at": payment.released_at or now,
-        })
     MovingFinancialDocument.objects.filter(pk=mover_document.pk).update(**update_values)
 
     return {
@@ -122,16 +123,28 @@ def ensure_moving_financial_documents(*, payment_id):
         "mover_document_number": mover_document.document_number,
         "payment_id": str(payment.id),
         "booking_id": str(booking.id),
-        "status": "RELEASED" if payment.status == "RELEASED" else mover_document.status,
+        "status": mover_document.status,
     }
 
 
 @transaction.atomic
 def sync_moving_financial_documents_on_release(*, payment_id):
-    """Synchronize the mover settlement after an escrow release."""
+    """Finalize the mover settlement after provider-confirmed payout."""
     payment = MovingPayment.objects.select_for_update().filter(pk=payment_id).first()
     if payment is None:
         raise ValidationError("Moving payment not found")
     if payment.status != "RELEASED":
         raise ValidationError("Payment must be RELEASED before settlement synchronization")
-    return ensure_moving_financial_documents(payment_id=payment.id)
+
+    result = ensure_moving_financial_documents(payment_id=payment.id)
+    now = timezone.now()
+    MovingFinancialDocument.objects.filter(
+        pk=result["mover_document_id"],
+        document_type="MOVER_SETTLEMENT",
+    ).update(
+        status="RELEASED",
+        released_at=payment.released_at or now,
+        updated_at=now,
+    )
+    result["status"] = "RELEASED"
+    return result
