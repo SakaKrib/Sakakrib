@@ -3,6 +3,20 @@ import uuid
 from django.db import models
 
 
+DOCUMENT_TYPES = (
+    'RENTER_RECEIPT',
+    'MOVER_SETTLEMENT',
+)
+STATUSES = (
+    'ISSUED',
+    'PAID',
+    'HELD',
+    'RELEASED',
+    'REFUNDED',
+    'CANCELLED',
+)
+
+
 class MovingFinancialDocument(models.Model):
     """Auditable financial document for a moving booking.
 
@@ -11,18 +25,8 @@ class MovingFinancialDocument(models.Model):
     MovingInvoice contract used by the payment flow.
     """
 
-    DOCUMENT_TYPES = [
-        'RENTER_RECEIPT',
-        'MOVER_SETTLEMENT',
-    ]
-    STATUSES = [
-        'ISSUED',
-        'PAID',
-        'HELD',
-        'RELEASED',
-        'REFUNDED',
-        'CANCELLED',
-    ]
+    DOCUMENT_TYPES = DOCUMENT_TYPES
+    STATUSES = STATUSES
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     booking_id = models.UUIDField()
