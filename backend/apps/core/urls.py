@@ -3,6 +3,7 @@ from .homepage_views import HomepageStatsView
 from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
 from .moving_views import BookingEventView, BookingView, MoverCustomerView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
 from .moving_financial_views import MovingFinancialDocumentView
+from .moving_timeline_views import MovingTransactionTimelineView
 from .moving_action_views import MoverBookingRequestView, MoverBookingResponseView, MoverBookingDetailView, RenterMovingBookingEditView, RenterMovingScheduleProposalView, MoverMovingScheduleConfirmView, MovingBookingCancelView, MoverQuoteView
 from .moving_listing_views import ListingAwareMoverBookingRequestView
 from .moving_payment_views import MovingEscrowReleaseView, MovingMpesaCallbackView, MovingMpesaStartView, MovingPaypalStartView, MovingPaypalWebhookView, MoverPayoutCallbackView, MovingDeliveryConfirmView, MovingDisputeOpenView, MovingDisputeResolveView
@@ -29,8 +30,9 @@ urlpatterns = [
     path("movers/", MoverView.as_view(), name="mover-list"), path("movers/<uuid:object_id>/", MoverView.as_view(), name="mover-detail"),
     path("moving-customers/", MoverCustomerView.as_view(), name="mover-customer-list"), path("moving-customers/<uuid:object_id>/", MoverCustomerView.as_view(), name="mover-customer-detail"),
     path("moving-invoices/", MovingInvoiceView.as_view(), name="moving-invoice-list"), path("moving-invoices/<uuid:object_id>/", MovingInvoiceView.as_view(), name="moving-invoice-detail"),
-    path("moving-payments/", MovingPaymentView.as_view(), name="moving-payment-list"), path("moving-payments/<uuid:object_id>/", MovingPaymentView.as_view(), name="moving-payment-detail"),
     path("moving-financial-documents/", MovingFinancialDocumentView.as_view(), name="moving-financial-document-list"), path("moving-financial-documents/<uuid:object_id>/", MovingFinancialDocumentView.as_view(), name="moving-financial-document-detail"),
+    path("moving-transaction-timeline/", MovingTransactionTimelineView.as_view(), name="moving-transaction-timeline"), path("bookings/<uuid:booking_id>/timeline/", MovingTransactionTimelineView.as_view(), name="moving-booking-timeline"),
+    path("moving-payments/", MovingPaymentView.as_view(), name="moving-payment-list"), path("moving-payments/<uuid:object_id>/", MovingPaymentView.as_view(), name="moving-payment-detail"),
     path("mover-payouts/", MoverPayoutView.as_view(), name="mover-payout-list"), path("mover-payouts/<uuid:object_id>/", MoverPayoutView.as_view(), name="mover-payout-detail"),
     path("moving-disputes/", MovingDisputeView.as_view(), name="moving-dispute-list"), path("moving-disputes/<uuid:object_id>/", MovingDisputeView.as_view(), name="moving-dispute-detail"),
     path("mover-schedule-events/", MoverScheduleEventView.as_view(), name="mover-schedule-event-list"),
