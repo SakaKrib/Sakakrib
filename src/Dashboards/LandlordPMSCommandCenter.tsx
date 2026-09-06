@@ -11,7 +11,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
-import LandlordPMS from './LandlordPMS';
+import LandlordPMSWorkspace from './LandlordPMSWorkspace';
 
 type RecordValue = Record<string, any>;
 
@@ -249,7 +249,7 @@ export default function LandlordPMSCommandCenter() {
         </>
       )}
 
-      <LandlordPMS />
+      <LandlordPMSWorkspace />
     </div>
   );
 }
