@@ -52,31 +52,10 @@ def confirm_moving_delivery(*, user_id, booking_id):
         ])
 
     both_confirmed = bool(booking.renter_confirmed_delivery_at and booking.mover_confirmed_delivery_at)
-    newly_completed = False
-    if both_confirmed and booking.status == "in_progress":
-        booking.status = "completed"
-        booking.completed_at = booking.completed_at or now
-        booking.updated_at = now
-        booking.save(update_fields=["status", "completed_at", "updated_at"])
-        newly_completed = True
 
-    if newly_completed:
-        notification_data = {"booking_id": str(booking.id), "completed_at": booking.completed_at.isoformat()}
-        UserNotification.objects.create(
-            user_id=booking.renter_id,
-            notification_type="MOVING_COMPLETED",
-            title="Moving job completed",
-            message="Your move has been completed. Thank you for using Saka Krib.",
-            data=notification_data,
-        )
-        UserNotification.objects.create(
-            user_id=mover.user_id,
-            notification_type="MOVING_COMPLETED",
-            title="Moving job completed",
-            message="The renter has confirmed delivery and your moving job is now complete.",
-            data=notification_data,
-        )
-
+    # Delivery confirmation is an audit signal for escrow release. It must not
+    # mark the booking completed: completion is authoritative only after the
+    # payout provider confirms the mover transfer.
     return {
         "booking_id": str(booking.id),
         "renter_confirmed": bool(booking.renter_confirmed_delivery_at),
@@ -84,6 +63,7 @@ def confirm_moving_delivery(*, user_id, booking_id):
         "both_confirmed": both_confirmed,
         "status": booking.status,
         "already_confirmed": already_confirmed,
+        "next_step": "ADMIN_ESCROW_RELEASE" if both_confirmed else "AWAIT_OTHER_PARTY_CONFIRMATION",
     }
 
 
