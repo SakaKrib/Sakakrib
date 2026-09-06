@@ -96,7 +96,10 @@ export const djangoPmsGateway = {
       case 'get_my_pms_entitlement':
         return request(subscriptionAccess);
       case 'get_my_pms_subscription':
-        return request(async () => (await dashboard()).subscription ?? null);
+        // Subscription selection must remain available when PMS access is denied.
+        // The dashboard endpoint is access-gated, so it cannot be used to discover
+        // an existing/expired subscription on the subscription purchase page.
+        return request(async () => await subscription());
       case 'get_my_subscription':
         return request(subscription);
       case 'get_my_unit_entitlement':
@@ -111,7 +114,9 @@ export const djangoPmsGateway = {
       case 'get_my_available_pms_listings':
         return request(async () => (await dashboard()).availableListings ?? []);
       case 'get_current_real_estate_subscription':
-        return request(async () => (await realEstateDashboard()).subscription ?? null);
+        // Same rule as landlord subscriptions: purchasing/reviewing a plan must
+        // not depend on already having PMS workspace access.
+        return request(async () => await subscription());
       case 'get_real_estate_listing_entitlement':
         return request(async () => (await realEstateDashboard()).entitlement ?? null);
       case 'add_listing_to_pms':
