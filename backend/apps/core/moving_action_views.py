@@ -36,6 +36,7 @@ class MoverBookingRequestView(APIView):
                 distance_km=request.data.get("distance_km"), pickup_latitude=request.data.get("pickup_latitude"), pickup_longitude=request.data.get("pickup_longitude"),
                 dropoff_latitude=request.data.get("dropoff_latitude"), dropoff_longitude=request.data.get("dropoff_longitude"),
                 moving_date=request.data.get("moving_date"), moving_time=request.data.get("moving_time"),
+                moving_end_time=request.data.get("moving_end_time"),
                 preferred_payment_method=request.data.get("preferred_payment_method"),
             )
             return Response(result, status=201)
