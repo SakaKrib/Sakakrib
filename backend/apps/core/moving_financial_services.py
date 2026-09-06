@@ -139,13 +139,15 @@ def sync_moving_financial_documents_on_release(*, payment_id):
         raise ValidationError("Payment must be RELEASED before settlement synchronization")
 
     result = ensure_moving_financial_documents(payment_id=payment.id)
+    # This timestamp represents the actual mover settlement finalization, not
+    # the earlier escrow-release authorization timestamp stored on the payment.
     now = timezone.now()
     MovingFinancialDocument.objects.filter(
         pk=result["mover_document_id"],
         document_type="MOVER_SETTLEMENT",
     ).update(
         status="RELEASED",
-        released_at=payment.released_at or now,
+        released_at=now,
         updated_at=now,
     )
     result["status"] = "RELEASED"
