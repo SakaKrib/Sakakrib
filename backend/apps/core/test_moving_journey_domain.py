@@ -1,5 +1,6 @@
 import uuid
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 
@@ -34,12 +35,12 @@ class MovingJourneyDomainTests(TestCase):
 
     def test_invalid_status_is_rejected(self):
         journey = self._journey(status="STOPPED")
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             journey.full_clean()
 
     def test_invalid_start_source_is_rejected(self):
         journey = self._journey(start_source="MOVER_STOPPED_IT")
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             journey.full_clean()
 
     def test_booking_and_tracking_number_are_unique(self):
