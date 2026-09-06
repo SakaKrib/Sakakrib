@@ -13,8 +13,12 @@ from .moving_services import (
     cancel_moving_booking,
     confirm_moving_schedule,
     propose_moving_schedule,
-    request_mover_booking,
     respond_to_mover_booking,
+)
+from .moving_workflow_services import (
+    confirm_booking_location,
+    confirm_mover_booking_workflow,
+    request_mover_booking_with_schedule,
 )
 
 
@@ -40,7 +44,7 @@ class MoverBookingRequestView(APIView):
 
     def post(self, request):
         try:
-            result = request_mover_booking(
+            result = request_mover_booking_with_schedule(
                 renter_id=request.user.id,
                 mover_id=request.data.get("mover_id"),
                 listing_id=request.data.get("listing_id"),
@@ -52,6 +56,7 @@ class MoverBookingRequestView(APIView):
                 dropoff_latitude=request.data.get("dropoff_latitude"),
                 dropoff_longitude=request.data.get("dropoff_longitude"),
                 moving_date=request.data.get("moving_date"),
+                moving_time=request.data.get("moving_time"),
                 preferred_payment_method=request.data.get("preferred_payment_method"),
             )
             return Response(result, status=201)
@@ -172,10 +177,21 @@ class MoverBookingResponseView(APIView):
 
     def post(self, request, booking_id):
         try:
+            decision = request.data.get("decision")
+            if decision == "confirm":
+                return Response(confirm_mover_booking_workflow(
+                    mover_user_id=request.user.id,
+                    booking_id=booking_id,
+                ))
+            if decision == "confirm_location":
+                return Response(confirm_booking_location(
+                    renter_id=request.user.id,
+                    booking_id=booking_id,
+                ))
             result = respond_to_mover_booking(
                 mover_user_id=request.user.id,
                 booking_id=booking_id,
-                decision=request.data.get("decision"),
+                decision=decision,
                 reason=request.data.get("reason"),
             )
             return Response(result)
