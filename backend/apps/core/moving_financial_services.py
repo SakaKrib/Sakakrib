@@ -22,12 +22,7 @@ def _document_number(prefix):
 
 @transaction.atomic
 def ensure_moving_financial_documents(*, payment_id):
-    """Create the two auditable financial documents for a successful payment.
-
-    This is deliberately additive: the existing MovingInvoice/MovingPayment
-    contract remains unchanged. The new documents are idempotent through the
-    database uniqueness constraint on (booking_id, document_type).
-    """
+    """Create or synchronize the two auditable financial documents for a payment."""
     payment = MovingPayment.objects.select_for_update().filter(pk=payment_id).first()
     if payment is None:
         raise ValidationError("Moving payment not found")
@@ -52,6 +47,7 @@ def ensure_moving_financial_documents(*, payment_id):
     if mover_net < 0:
         raise ValidationError("Mover settlement cannot be negative")
 
+    now = timezone.now()
     common = {
         "booking_id": booking.id,
         "payment_id": payment.id,
@@ -78,8 +74,8 @@ def ensure_moving_financial_documents(*, payment_id):
             "platform_fee_kes": Decimal("0.00"),
             "mover_net_kes": Decimal("0.00"),
             "status": "PAID",
-            "issued_at": timezone.now(),
-            "paid_at": payment.paid_at or timezone.now(),
+            "issued_at": now,
+            "paid_at": payment.paid_at or now,
         },
     )
 
@@ -93,10 +89,31 @@ def ensure_moving_financial_documents(*, payment_id):
             "platform_fee_kes": platform_fee,
             "mover_net_kes": mover_net,
             "status": "RELEASED" if payment.status == "RELEASED" else "HELD",
-            "issued_at": timezone.now(),
+            "issued_at": now,
             "released_at": payment.released_at if payment.status == "RELEASED" else None,
         },
     )
+
+    # Existing HELD documents are refreshed with authoritative payment data.
+    update_values = {
+        "payment_id": payment.id,
+        "renter_id": booking.renter_id,
+        "mover_id": booking.mover_id,
+        "currency": "KES",
+        "payment_provider": payment.provider,
+        "provider_reference": payment.provider_reference,
+        "provider_transaction_id": payment.provider_transaction_id,
+        "amount_kes": amount,
+        "platform_fee_kes": platform_fee,
+        "mover_net_kes": mover_net,
+        "updated_at": timezone.now(),
+    }
+    if payment.status == "RELEASED":
+        update_values.update({
+            "status": "RELEASED",
+            "released_at": payment.released_at or now,
+        })
+    MovingFinancialDocument.objects.filter(pk=mover_document.pk).update(**update_values)
 
     return {
         "renter_document_id": str(renter_document.id),
@@ -105,5 +122,16 @@ def ensure_moving_financial_documents(*, payment_id):
         "mover_document_number": mover_document.document_number,
         "payment_id": str(payment.id),
         "booking_id": str(booking.id),
-        "status": mover_document.status,
+        "status": "RELEASED" if payment.status == "RELEASED" else mover_document.status,
     }
+
+
+@transaction.atomic
+def sync_moving_financial_documents_on_release(*, payment_id):
+    """Synchronize the mover settlement after an escrow release."""
+    payment = MovingPayment.objects.select_for_update().filter(pk=payment_id).first()
+    if payment is None:
+        raise ValidationError("Moving payment not found")
+    if payment.status != "RELEASED":
+        raise ValidationError("Payment must be RELEASED before settlement synchronization")
+    return ensure_moving_financial_documents(payment_id=payment.id)
