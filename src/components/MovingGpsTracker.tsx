@@ -16,6 +16,7 @@ const TRACK_INTERVAL_MS = 5000;
 const GPS_MAX_AGE_MS = 5000;
 const GPS_TIMEOUT_MS = 20000;
 const RETRY_INTERVAL_MS = 5000;
+const BOOKING_STATE_INTERVAL_MS = 5000;
 
 /** Publishes mover GPS through the canonical Django mover API. */
 export default function MovingGpsTracker() {
@@ -40,7 +41,8 @@ export default function MovingGpsTracker() {
     };
     const stop = () => {
       if (watchIdRef.current !== null && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null;
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
       clearRetry();
       startingRef.current = false;
@@ -51,7 +53,8 @@ export default function MovingGpsTracker() {
       (view === 'mover-booking-detail' || view === 'mover-tracking') &&
       Boolean(selectedMoverBookingId) && 'geolocation' in navigator;
     if (!canTrack) {
-      stop(); bookingIdRef.current = null;
+      stop();
+      bookingIdRef.current = null;
       return () => { cancelledRef.current = true; stop(); };
     }
     const bookingId = selectedMoverBookingId!;
@@ -98,37 +101,57 @@ export default function MovingGpsTracker() {
       void sendPending();
     };
 
-    const start = async () => {
+    const start = () => {
       if (startingRef.current || watchIdRef.current !== null || cancelledRef.current) return;
       startingRef.current = true;
       try {
-        const detail = await moverApi.getBookingDetail(bookingId);
-        const booking = detail?.booking as BookingState | undefined;
-        if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
-        if (!booking || !active(booking.status) || booking.payment_status !== 'paid') { stop(); return; }
-        navigator.geolocation.getCurrentPosition(publish, error => console.warn('Initial mover GPS unavailable:', error.message), { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_TIMEOUT_MS });
         watchIdRef.current = navigator.geolocation.watchPosition(
           publish,
           error => console.warn('Mover GPS unavailable:', error.message),
           { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS },
         );
-      } catch (error) { console.warn('Unable to start mover GPS tracking:', error); }
-      finally { startingRef.current = false; }
+      } finally {
+        startingRef.current = false;
+      }
     };
+
+    const syncBookingState = async () => {
+      if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
+      try {
+        const detail = await moverApi.getBookingDetail(bookingId);
+        const booking = detail?.booking as BookingState | undefined;
+        if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
+        if (booking && active(booking.status) && booking.payment_status === 'paid') {
+          start();
+        } else {
+          stop();
+        }
+      } catch (error) {
+        // A temporary state-fetch failure must not fabricate a new GPS session.
+        // Keep an already-running watcher alive; the server remains authoritative.
+        console.warn('Unable to refresh mover journey state:', error);
+      }
+    };
+
     const restart = () => {
-      if (!cancelledRef.current) { stop(); void start(); }
+      if (!cancelledRef.current) void syncBookingState();
     };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', restart);
     window.addEventListener('pageshow', restart);
-    void start();
+
+    void syncBookingState();
+    const stateTimer = window.setInterval(() => { void syncBookingState(); }, BOOKING_STATE_INTERVAL_MS);
+
     return () => {
       cancelledRef.current = true;
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', restart);
       window.removeEventListener('pageshow', restart);
-      stop(); bookingIdRef.current = null;
+      window.clearInterval(stateTimer);
+      stop();
+      bookingIdRef.current = null;
     };
   }, [profile, view, selectedMoverBookingId]);
   return null;
