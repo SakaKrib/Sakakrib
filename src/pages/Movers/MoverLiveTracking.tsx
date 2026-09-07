@@ -5,7 +5,7 @@ import { moverApi, type MoverTrackingPoint, type MoverTrackingResponse } from '@
 import { cn } from '@/lib/utils';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
-type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'unavailable' | 'timeout';
+type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'accepted' | 'denied' | 'unavailable' | 'timeout' | 'rejected';
 const active = (status: string | null | undefined) => String(status ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
 function socketUrl(bookingId: string) {
   const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '');
@@ -48,7 +48,7 @@ export default function MoverLiveTracking() {
         gpsTimeoutRef.current = null;
         setGpsState('received');
         setGpsPosition(position.coords);
-        setGpsMessage(`GPS position received. Accuracy: ${Number.isFinite(position.coords.accuracy) ? `${Math.round(position.coords.accuracy)} m` : 'unknown'}. Live location is now available to the tracker.`);
+        setGpsMessage(`GPS position received. Accuracy: ${Number.isFinite(position.coords.accuracy) ? `${Math.round(position.coords.accuracy)} m` : 'unknown'}. Waiting for the tracker to submit it to Django.`);
       },
       err => {
         if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
@@ -79,13 +79,36 @@ export default function MoverLiveTracking() {
       setGpsPermission(status.state);
       const handleChange = () => setGpsPermission(status.state);
       status.addEventListener('change', handleChange);
-      return () => status.removeEventListener('change', handleChange);
     }).catch(() => { if (!disposed) setGpsPermission('not reported by browser'); });
     return () => {
       disposed = true;
       if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const handleTrackerState = (event: Event) => {
+      const detail = (event as CustomEvent<{ state?: GpsState; latitude?: number; longitude?: number; accuracy?: number | null; message?: string }>).detail;
+      if (!detail?.state) return;
+      if (detail.state === 'received') {
+        setGpsState('received');
+        setGpsMessage(`GPS position received by the live tracker. Accuracy: ${detail.accuracy == null ? 'unknown' : `${Math.round(detail.accuracy)} m`}. Sending to Django…`);
+      } else if (detail.state === 'accepted') {
+        setGpsState('accepted');
+        if (detail.latitude != null && detail.longitude != null) setGpsPosition({ latitude: detail.latitude, longitude: detail.longitude, accuracy: detail.accuracy ?? null, altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON() { return this; } });
+        setGpsMessage('✓ GPS location was accepted by the Django tracking API. The location is now recorded for this journey.');
+        void load(true);
+      } else if (detail.state === 'rejected') {
+        setGpsState('rejected');
+        setGpsMessage(`GPS was received by the browser, but Django rejected the tracking update${detail.message ? `: ${detail.message}` : '.'}`);
+      } else if (detail.state === 'denied' || detail.state === 'unavailable' || detail.state === 'timeout') {
+        setGpsState(detail.state);
+        setGpsMessage(detail.message || 'The browser could not provide a GPS position.');
+      }
+    };
+    window.addEventListener('sakakrib:mover-gps-state', handleTrackerState);
+    return () => window.removeEventListener('sakakrib:mover-gps-state', handleTrackerState);
+  }, [load]);
 
   const load = useCallback(async (silent = false) => {
     if (!bookingId) { setError('No moving booking was selected.'); setLoading(false); return null; }
