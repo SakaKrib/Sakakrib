@@ -5,6 +5,7 @@ from django.utils import timezone
 from apps.accounts.models import Profile
 
 from .domain_bookings import Booking, MovingDispute, MoverPayout
+from .domain_journeys import MovingJourney
 from .domain_platform import Mover, UserNotification
 
 DISPUTE_REASONS = {
@@ -27,67 +28,91 @@ def _booking_for_participant(booking_id, user_id):
 @transaction.atomic
 def confirm_moving_delivery(*, user_id, booking_id):
     booking = _booking_for_participant(booking_id, user_id)
+
+    # Delivery completion is a renter-authorized action. The mover may operate
+    # the journey and provide tracking, but cannot end the authoritative journey.
+    is_renter = booking.renter_id == user_id
+    if not is_renter:
+        raise ValidationError("Only the renter can confirm delivery and complete the journey")
+
     if booking.payment_status != "paid":
         raise ValidationError("Booking must be paid before delivery confirmation")
     if booking.status not in {"in_progress", "completed"}:
-        raise ValidationError("Journey must be active or completed before delivery confirmation")
+        raise ValidationError("Journey must be active before delivery confirmation")
 
     mover = Mover.objects.filter(pk=booking.mover_id).first()
     if mover is None:
         raise ValidationError("Mover not found")
-    is_renter = booking.renter_id == user_id
-    already_confirmed = bool(
-        booking.renter_confirmed_delivery_at if is_renter else booking.mover_confirmed_delivery_at
-    )
-    now = timezone.now()
-    if not already_confirmed:
-        if is_renter:
-            booking.renter_confirmed_delivery_at = now
-        else:
-            booking.mover_confirmed_delivery_at = now
-        booking.updated_at = now
-        booking.save(update_fields=[
-            "renter_confirmed_delivery_at" if is_renter else "mover_confirmed_delivery_at",
-            "updated_at",
-        ])
 
-    both_confirmed = bool(booking.renter_confirmed_delivery_at and booking.mover_confirmed_delivery_at)
-
-    if both_confirmed:
-        notification_data = {
+    journey = MovingJourney.objects.select_for_update().filter(booking_id=booking.id).first()
+    if journey is None:
+        raise ValidationError("Active moving journey not found")
+    if journey.mover_id != mover.id:
+        raise ValidationError("Moving journey mover does not match booking")
+    if journey.status == MovingJourney.STATUS_COMPLETED or booking.status == "completed":
+        return {
             "booking_id": str(booking.id),
-            "renter_confirmed_at": booking.renter_confirmed_delivery_at.isoformat(),
-            "mover_confirmed_at": booking.mover_confirmed_delivery_at.isoformat(),
+            "renter_confirmed": bool(booking.renter_confirmed_delivery_at),
+            "mover_confirmed": False,
+            "both_confirmed": False,
+            "status": "completed",
+            "already_confirmed": True,
+            "next_step": "ADMIN_ESCROW_RELEASE",
         }
-        UserNotification.objects.get_or_create(
-            event_key=f"moving-delivery-confirmed:renter:{booking.id}",
-            defaults={
-                "user_id": booking.renter_id,
-                "notification_type": "MOVING_DELIVERY_CONFIRMED",
-                "title": "Delivery confirmed",
-                "message": "Both parties have confirmed delivery. Saka Krib can now process the admin escrow-release step.",
-                "data": notification_data,
-            },
-        )
-        UserNotification.objects.get_or_create(
-            event_key=f"moving-delivery-confirmed:mover:{booking.id}",
-            defaults={
-                "user_id": mover.user_id,
-                "notification_type": "MOVING_DELIVERY_CONFIRMED",
-                "title": "Delivery confirmed",
-                "message": "Both parties have confirmed delivery. Your payout will be completed after admin release and provider confirmation.",
-                "data": notification_data,
-            },
-        )
+    if journey.status not in {MovingJourney.STATUS_ACTIVE, MovingJourney.STATUS_DELIVERY_PENDING}:
+        raise ValidationError("Journey is not active")
+
+    now = timezone.now()
+    booking.renter_confirmed_delivery_at = now
+    booking.completed_at = now
+    booking.status = "completed"
+    booking.updated_at = now
+    booking.save(update_fields=[
+        "renter_confirmed_delivery_at", "completed_at", "status", "updated_at",
+    ])
+
+    journey.status = MovingJourney.STATUS_COMPLETED
+    journey.completed_at = now
+    journey.completed_by = user_id
+    journey.updated_at = now
+    journey.save(update_fields=["status", "completed_at", "completed_by", "updated_at"])
+
+    notification_data = {
+        "booking_id": str(booking.id),
+        "journey_id": str(journey.id),
+        "tracking_number": journey.tracking_number,
+        "renter_confirmed_at": now.isoformat(),
+        "completed_at": now.isoformat(),
+    }
+    UserNotification.objects.get_or_create(
+        event_key=f"moving-delivery-confirmed:renter:{booking.id}",
+        defaults={
+            "user_id": booking.renter_id,
+            "notification_type": "MOVING_DELIVERY_CONFIRMED",
+            "title": "Delivery confirmed",
+            "message": "You confirmed delivery. The moving journey is now complete and the delivery record has been saved.",
+            "data": notification_data,
+        },
+    )
+    UserNotification.objects.get_or_create(
+        event_key=f"moving-delivery-confirmed:mover:{booking.id}",
+        defaults={
+            "user_id": mover.user_id,
+            "notification_type": "MOVING_DELIVERY_CONFIRMED",
+            "title": "Delivery confirmed",
+            "message": "The renter confirmed delivery. The moving journey is now complete and the payout can proceed through the configured settlement flow.",
+            "data": notification_data,
+        },
+    )
 
     return {
         "booking_id": str(booking.id),
-        "renter_confirmed": bool(booking.renter_confirmed_delivery_at),
-        "mover_confirmed": bool(booking.mover_confirmed_delivery_at),
-        "both_confirmed": both_confirmed,
-        "status": booking.status,
-        "already_confirmed": already_confirmed,
-        "next_step": "ADMIN_ESCROW_RELEASE" if both_confirmed else "AWAIT_OTHER_PARTY_CONFIRMATION",
+        "renter_confirmed": True,
+        "mover_confirmed": False,
+        "both_confirmed": False,
+        "status": "completed",
+        "already_confirmed": False,
+        "next_step": "ADMIN_ESCROW_RELEASE",
     }
 
 
