@@ -11,6 +11,7 @@ import {
 
 import { useEffect, useState } from 'react';
 
+import { useAuth } from '@/context/AuthContext';
 import { renterApi, type MovingInvoice } from '@/lib/Renter/renterApi';
 import { formatKES } from '@/lib/utils';
 
@@ -72,12 +73,14 @@ type MovingInvoiceAccounting = MovingInvoice & {
 };
 
 export default function RenterMoveCard({ booking, onTrack, onFindMover }: RenterMoveCardProps) {
+  const { profile } = useAuth();
   const status = getBookingStatus(booking?.status);
   const [invoice, setInvoice] = useState<MovingInvoice | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [mpesaPhone, setMpesaPhone] = useState('');
 
   const refreshInvoice = async () => {
     if (!booking?.id) { setInvoice(null); return; }
@@ -114,13 +117,22 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
     setPaymentError(null);
   }, [booking?.id, booking?.status, booking?.payment_status]);
 
+  useEffect(() => {
+    setMpesaPhone(profile?.phone?.trim() ?? '');
+  }, [booking?.id, profile?.phone]);
+
   const handleMpesaPayment = async () => {
     if (!booking?.id) return;
+    const phone = mpesaPhone.trim();
+    if (!phone) {
+      setPaymentError('Enter the M-Pesa phone number to receive the payment prompt.');
+      return;
+    }
     setPaymentLoading(true);
     setPaymentMessage(null);
     setPaymentError(null);
     try {
-      const result = await renterApi.startMovingMpesaPayment(booking.id);
+      const result = await renterApi.startMovingMpesaPayment(booking.id, phone);
       setPaymentMessage(result.customer_message || 'M-Pesa payment prompt sent. Complete the prompt on your phone; payment will be confirmed automatically.');
       const startedAt = Date.now();
       const poll = async () => {
@@ -225,7 +237,7 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
               <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">The moving invoice is created when the mover confirms the request. It is the authoritative amount used for payment.</p>
             ) : null}
 
-            {canPay && <div className="mt-4 border-t border-gray-200 pt-4 dark:border-brand-800"><p className="mb-3 text-xs text-gray-500 dark:text-gray-400">Payment is required after mover confirmation. Funds are held securely until delivery is confirmed.</p><div className="grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void handleMpesaPayment()} disabled={paymentLoading} className="btn-primary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with M-Pesa</button><button type="button" onClick={() => void handlePaypalPayment()} disabled={paymentLoading} className="btn-secondary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with PayPal</button></div></div>}
+            {canPay && <div className="mt-4 border-t border-gray-200 pt-4 dark:border-brand-800"><p className="mb-3 text-xs text-gray-500 dark:text-gray-400">Payment is required after mover confirmation. Funds are held securely until delivery is confirmed.</p><div className="mb-4"><label htmlFor="moving-mpesa-phone" className="block text-xs font-semibold text-gray-700 dark:text-gray-300">M-Pesa phone number</label><input id="moving-mpesa-phone" type="tel" inputMode="tel" autoComplete="tel" value={mpesaPhone} onChange={(event) => setMpesaPhone(event.target.value)} placeholder="e.g. 0712 345 678" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-brand-900 dark:text-white" /><p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Your profile number is prefilled. You can change it if you want the M-Pesa prompt sent to another number.</p></div><div className="grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void handleMpesaPayment()} disabled={paymentLoading} className="btn-primary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with M-Pesa</button><button type="button" onClick={() => void handlePaypalPayment()} disabled={paymentLoading} className="btn-secondary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with PayPal</button></div></div>}
             {paymentMessage && <div className="mt-3 rounded-lg bg-success-50 px-3 py-2 text-xs text-success-700 dark:bg-success-900/20 dark:text-success-400">{paymentMessage}</div>}
             {paymentError && <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700 dark:bg-error-900/20 dark:text-error-400">{paymentError}</div>}
           </div>
