@@ -25,7 +25,7 @@ type TimelineBooking = {
 
 const money = (value: number | null) => value == null ? '—' : `KES ${Number(value).toLocaleString('en-KE')}`;
 const date = (value: string) => new Date(value).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
-const label = (value: string) => value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+const label = (value: string) => value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
 
 function eventIcon(type: string) {
   if (type.includes('PAYMENT') || type.includes('PAYOUT') || type.includes('ESCROW')) return WalletCards;
