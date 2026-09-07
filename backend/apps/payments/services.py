@@ -103,7 +103,9 @@ class MpesaProvider(PaymentProvider):
             return PaymentResult(False, message='M-Pesa phone number is required')
         shortcode = settings.MPESA_SHORTCODE
         passkey = settings.MPESA_PASSKEY
-        callback = metadata.get('callback_url') or settings.MPESA_CALLBACK_URL
+        callback = metadata.get('callback_url')
+        if not callback:
+            callback = settings.MPESA_CALLBACK_URL if reference.startswith('SAKACRIB-MOV-') else settings.MPESA_LISTING_CALLBACK_URL
         if not all((shortcode, passkey, callback)):
             return PaymentResult(False, message='M-Pesa shortcode, passkey and callback URL must be configured')
         timestamp, password = self._timestamp_password(shortcode, passkey)
