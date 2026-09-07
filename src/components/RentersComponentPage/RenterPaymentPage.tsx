@@ -1,1 +1,1 @@
-export { RenterPaymentPage as default } from '@/pages/RenterPages';
+export { default } from './RenterPaymentCenter';
