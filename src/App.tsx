@@ -110,6 +110,6 @@ function AppContent() {
     }
   };
   const showLiveMap = view === 'mover-tracking' && (profile?.role === 'mover' || profile?.role === 'renter');
-  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal />{showLiveMap && <div className="mx-auto w-full max-w-7xl px-2 pb-8 sm:px-6 lg:px-8"><LiveMovingMap /></div>}<MovingGpsTracker /><RenterBookingChatRedirector /></div>;
+  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}{showLiveMap && <div className="mx-auto w-full max-w-7xl px-2 pb-8 sm:px-6 lg:px-8"><LiveMovingMap /></div>}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal /><MovingGpsTracker /><RenterBookingChatRedirector /></div>;
 }
 export default function App() { return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>; }
