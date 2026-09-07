@@ -4,10 +4,12 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.core.exceptions import ValidationError
 
-from .chat_services import (
-    send_message,
-    validate_conversation_for_user,
-)
+from .chat_services import send_message, validate_conversation_for_user
+
+
+def user_chat_group_name(user_id):
+    digest = hashlib.sha256(str(user_id).encode()).hexdigest()[:40]
+    return f"chat_inbox_{digest}"
 
 
 class MovingChatConsumer(AsyncJsonWebsocketConsumer):
@@ -69,3 +71,28 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _send(self, **kwargs):
         return send_message(sender_id=self.user.pk, **kwargs)
+
+
+class MovingChatInboxConsumer(AsyncJsonWebsocketConsumer):
+    async def connect(self):
+        self.user = self.scope.get("user")
+        if not self.user or not getattr(self.user, "is_authenticated", False):
+            await self.close(code=4403)
+            return
+        self.group_name = user_chat_group_name(self.user.pk)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        await self.send_json({"type": "ready", "scope": "chat_inbox"})
+
+    async def disconnect(self, close_code):
+        if hasattr(self, "group_name"):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def receive_json(self, content, **kwargs):
+        if isinstance(content, dict) and content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+            return
+        await self.send_json({"type": "info", "detail": "Booking and chat events are server-pushed."})
+
+    async def chat_inbox_message(self, event):
+        await self.send_json({"type": "message", "message": event["message"]})
