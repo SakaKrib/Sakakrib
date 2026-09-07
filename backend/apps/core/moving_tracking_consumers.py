@@ -3,7 +3,6 @@ import uuid
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from django.core.exceptions import ValidationError
 
 from .domain_bookings import Booking, MovingTrackingPoint
 from .domain_platform import Mover
@@ -40,6 +39,9 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
     async def receive_json(self, content, **kwargs):
         # GPS writes stay on the authenticated HTTPS endpoint so Django's
         # CSRF/authentication and server-side throttling remain authoritative.
+        if isinstance(content, dict) and content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+            return
         await self.send_json({"type": "info", "detail": "Send GPS updates through the tracking API."})
 
     async def moving_location(self, event):
