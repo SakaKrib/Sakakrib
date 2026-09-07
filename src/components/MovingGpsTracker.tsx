@@ -11,18 +11,22 @@ interface PendingLocation {
   speed_kph: number | null;
   heading_degrees: number | null;
 }
-const active = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
+const normalized = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase().replace(/-/g, '_');
+const active = (value: string | null | undefined) => normalized(value) === 'in_progress';
+const paid = (value: string | null | undefined) => normalized(value) === 'paid';
 const TRACK_INTERVAL_MS = 5000;
 const GPS_MAX_AGE_MS = 5000;
 const GPS_TIMEOUT_MS = 20000;
 const RETRY_INTERVAL_MS = 5000;
 const BOOKING_STATE_INTERVAL_MS = 5000;
+const GPS_PROBE_INTERVAL_MS = 5000;
 
 /** Publishes mover GPS through the canonical Django mover API. */
 export default function MovingGpsTracker() {
   const { profile } = useAuth();
   const { view, selectedMoverBookingId } = useNav();
   const watchIdRef = useRef<number | null>(null);
+  const gpsProbeTimerRef = useRef<number | null>(null);
   const bookingIdRef = useRef<string | null>(null);
   const lastSentAtRef = useRef(0);
   const startingRef = useRef(false);
@@ -39,17 +43,24 @@ export default function MovingGpsTracker() {
         retryTimerRef.current = null;
       }
     };
+    const clearGpsProbe = () => {
+      if (gpsProbeTimerRef.current !== null) {
+        window.clearInterval(gpsProbeTimerRef.current);
+        gpsProbeTimerRef.current = null;
+      }
+    };
     const stop = () => {
       if (watchIdRef.current !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
       clearRetry();
+      clearGpsProbe();
       startingRef.current = false;
       sendingRef.current = false;
       pendingRef.current = null;
     };
-    const canTrack = Boolean(profile) && profile?.role === 'mover' &&
+    const canTrack = Boolean(profile) && normalized(profile?.role) === 'mover' &&
       (view === 'mover-booking-detail' || view === 'mover-tracking') &&
       Boolean(selectedMoverBookingId) && 'geolocation' in navigator;
     if (!canTrack) {
@@ -76,6 +87,7 @@ export default function MovingGpsTracker() {
       } catch (error) {
         console.warn('Live GPS update was rejected or unavailable:', error);
         if (!cancelledRef.current && bookingIdRef.current === bookingId) {
+          clearRetry();
           retryTimerRef.current = window.setTimeout(() => {
             retryTimerRef.current = null;
             void sendPending();
@@ -101,15 +113,36 @@ export default function MovingGpsTracker() {
       void sendPending();
     };
 
+    const handleGpsError = (error: GeolocationPositionError) => {
+      console.warn('Mover GPS unavailable:', error.code, error.message);
+      // watchPosition may not recover on its own after a transient timeout. The
+      // periodic probe below deliberately asks the browser for another fresh fix.
+    };
+
+    const probeGps = () => {
+      if (cancelledRef.current || bookingIdRef.current !== bookingId || !navigator.onLine) return;
+      navigator.geolocation.getCurrentPosition(publish, handleGpsError, {
+        enableHighAccuracy: true,
+        maximumAge: GPS_MAX_AGE_MS,
+        timeout: GPS_TIMEOUT_MS,
+      });
+    };
+
     const start = () => {
       if (startingRef.current || watchIdRef.current !== null || cancelledRef.current) return;
       startingRef.current = true;
       try {
         watchIdRef.current = navigator.geolocation.watchPosition(
           publish,
-          error => console.warn('Mover GPS unavailable:', error.message),
+          handleGpsError,
           { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS },
         );
+        // Some mobile browsers deliver watchPosition fixes unreliably while the
+        // page is backgrounded or the device's location provider changes. Keep a
+        // lightweight explicit probe as a recovery path; server throttling still
+        // limits accepted writes to one point per five seconds.
+        probeGps();
+        gpsProbeTimerRef.current = window.setInterval(probeGps, GPS_PROBE_INTERVAL_MS);
       } finally {
         startingRef.current = false;
       }
@@ -121,7 +154,7 @@ export default function MovingGpsTracker() {
         const detail = await moverApi.getBookingDetail(bookingId);
         const booking = detail?.booking as BookingState | undefined;
         if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
-        if (booking && active(booking.status) && booking.payment_status === 'paid') {
+        if (booking && active(booking.status) && paid(booking.payment_status)) {
           start();
         } else {
           stop();
@@ -133,9 +166,7 @@ export default function MovingGpsTracker() {
       }
     };
 
-    const restart = () => {
-      if (!cancelledRef.current) void syncBookingState();
-    };
+    const restart = () => { if (!cancelledRef.current) void syncBookingState(); };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', restart);
