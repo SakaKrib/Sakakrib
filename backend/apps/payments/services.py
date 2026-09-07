@@ -103,7 +103,7 @@ class MpesaProvider(PaymentProvider):
             return PaymentResult(False, message='M-Pesa phone number is required')
         shortcode = settings.MPESA_SHORTCODE
         passkey = settings.MPESA_PASSKEY
-        callback = settings.MPESA_CALLBACK_URL
+        callback = metadata.get('callback_url') or settings.MPESA_CALLBACK_URL
         if not all((shortcode, passkey, callback)):
             return PaymentResult(False, message='M-Pesa shortcode, passkey and callback URL must be configured')
         timestamp, password = self._timestamp_password(shortcode, passkey)
@@ -121,7 +121,7 @@ class MpesaProvider(PaymentProvider):
             'TransactionDesc': metadata.get('description', 'SakaKrib payment')[:13],
         }
         result = _request_json(
-            f'{settings.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest',
+            settings.MPESA_STK_URL,
             method='POST', data=payload,
             headers={'Authorization': f'Bearer {self._access_token()}'},
         )
