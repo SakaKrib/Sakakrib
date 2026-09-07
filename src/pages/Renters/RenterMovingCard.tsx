@@ -38,6 +38,22 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function getPaymentErrorMessage(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const cleaned = raw
+    .replace(/^\s*\[\s*['"]?/, '')
+    .replace(/['"]?\s*\]\s*$/, '')
+    .trim();
+
+  if (/profile phone number required|m-?pesa phone number is required/i.test(cleaned)) {
+    return 'Please enter the M-Pesa phone number you want to use for this payment.';
+  }
+  if (/valid kenyan m-?pesa phone number/i.test(cleaned)) {
+    return 'Please enter a valid Kenyan M-Pesa number, for example 0712 345 678.';
+  }
+  return cleaned || 'We could not start the M-Pesa payment. Please check the number and try again.';
+}
+
 function getBookingStatus(status?: string | null) {
   const normalized = status?.trim().toLowerCase();
   if (normalized === 'completed' || normalized === 'complete') return { label: 'Completed', className: 'bg-success-50 text-success-700 dark:bg-success-900/20 dark:text-success-400' };
@@ -125,7 +141,7 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
     if (!booking?.id) return;
     const phone = mpesaPhone.trim();
     if (!phone) {
-      setPaymentError('Enter the M-Pesa phone number to receive the payment prompt.');
+      setPaymentError('Please enter the M-Pesa phone number you want to use for this payment.');
       return;
     }
     setPaymentLoading(true);
@@ -151,7 +167,7 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
       };
       window.setTimeout(() => void poll(), 3000);
     } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : 'Unable to start M-Pesa payment.');
+      setPaymentError(getPaymentErrorMessage(error));
     } finally {
       setPaymentLoading(false);
     }
@@ -237,9 +253,9 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
               <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">The moving invoice is created when the mover confirms the request. It is the authoritative amount used for payment.</p>
             ) : null}
 
-            {canPay && <div className="mt-4 border-t border-gray-200 pt-4 dark:border-brand-800"><p className="mb-3 text-xs text-gray-500 dark:text-gray-400">Payment is required after mover confirmation. Funds are held securely until delivery is confirmed.</p><div className="mb-4"><label htmlFor="moving-mpesa-phone" className="block text-xs font-semibold text-gray-700 dark:text-gray-300">M-Pesa phone number</label><input id="moving-mpesa-phone" type="tel" inputMode="tel" autoComplete="tel" value={mpesaPhone} onChange={(event) => setMpesaPhone(event.target.value)} placeholder="e.g. 0712 345 678" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-brand-900 dark:text-white" /><p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Your profile number is prefilled. You can change it if you want the M-Pesa prompt sent to another number.</p></div><div className="grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void handleMpesaPayment()} disabled={paymentLoading} className="btn-primary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with M-Pesa</button><button type="button" onClick={() => void handlePaypalPayment()} disabled={paymentLoading} className="btn-secondary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with PayPal</button></div></div>}
-            {paymentMessage && <div className="mt-3 rounded-lg bg-success-50 px-3 py-2 text-xs text-success-700 dark:bg-success-900/20 dark:text-success-400">{paymentMessage}</div>}
-            {paymentError && <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700 dark:bg-error-900/20 dark:text-error-400">{paymentError}</div>}
+            {canPay && <div className="mt-4 border-t border-gray-200 pt-4 dark:border-brand-800"><p className="mb-3 text-xs text-gray-500 dark:text-gray-400">Payment is required after mover confirmation. Funds are held securely until delivery is confirmed.</p><div className="mb-4"><label htmlFor="moving-mpesa-phone" className="block text-xs font-semibold text-gray-700 dark:text-gray-300">M-Pesa phone number</label><input id="moving-mpesa-phone" type="tel" inputMode="tel" autoComplete="tel" value={mpesaPhone} onChange={(event) => setMpesaPhone(event.target.value)} placeholder="e.g. 0712 345 678" aria-describedby="moving-mpesa-phone-help" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-brand-900 dark:text-white" /><p id="moving-mpesa-phone-help" className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Your profile number is only a convenience and is prefilled when available. You can replace it with any valid Kenyan M-Pesa number.</p></div><div className="grid gap-2 sm:grid-cols-2"><button type="button" onClick={() => void handleMpesaPayment()} disabled={paymentLoading} className="btn-primary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with M-Pesa</button><button type="button" onClick={() => void handlePaypalPayment()} disabled={paymentLoading} className="btn-secondary inline-flex items-center justify-center gap-2 text-sm">{paymentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}Pay with PayPal</button></div></div>}
+            {paymentMessage && <div className="mt-3 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-xs font-medium text-success-700 dark:border-success-800 dark:bg-success-900/20 dark:text-success-400">{paymentMessage}</div>}
+            {paymentError && <div role="alert" aria-live="polite" className="mt-3 flex items-start gap-2 rounded-lg border border-error-200 bg-error-50 px-3 py-3 text-sm font-semibold text-error-700 shadow-sm dark:border-error-800 dark:bg-error-900/20 dark:text-error-400"><span className="mt-0.5" aria-hidden="true">!</span><span>{paymentError}</span></div>}
           </div>
 
           {onTrack && <button type="button" onClick={() => onTrack(booking.id)} className="btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 text-sm sm:w-auto">Track Mover<ArrowRight className="h-4 w-4" /></button>}
