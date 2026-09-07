@@ -42,8 +42,9 @@ import MovingTransactionTimelinePage from './pages/MovingTransactionTimelinePage
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
-import { RenterInvoicesPage, RenterPaymentPage, RenterMovingHistoryPage } from '@/pages/RenterPages';
-import RenterCalendarPage from '@/pages/Renters/RenterCalendarPage';
+import { RenterInvoicesPage, RenterMovingHistoryPage } from '@/pages/RenterPages';
+import RenterCalendarPage from '@/components/RentersComponentPage/RenterCalendarPage';
+import RenterPaymentPage from '@/components/RentersComponentPage/RenterPaymentPage';
 import RenterActivitiesPage from '@/pages/Renters/RenterActivitiesPage';
 import RenterChatPerformancePage from '@/pages/Renters/RenterChatPerformancePage';
 import RenterMessagesPage from '@/pages/Renters/RenterMessagesPage';
