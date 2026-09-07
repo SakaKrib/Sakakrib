@@ -5,6 +5,7 @@ import { moverApi, type MoverTrackingPoint, type MoverTrackingResponse } from '@
 import { cn } from '@/lib/utils';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
+type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'unavailable' | 'timeout';
 const active = (status: string | null | undefined) => String(status ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
 function socketUrl(bookingId: string) {
   const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '');
@@ -20,21 +21,71 @@ export default function MoverLiveTracking() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gpsMessage, setGpsMessage] = useState<string | null>(null);
+  const [gpsState, setGpsState] = useState<GpsState>('idle');
+  const [gpsPermission, setGpsPermission] = useState<string>('unknown');
+  const [gpsPosition, setGpsPosition] = useState<GeolocationCoordinates | null>(null);
+  const gpsTimeoutRef = useRef<number | null>(null);
   const [socketState, setSocketState] = useState<SocketState>('closed');
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
 
   const requestGps = useCallback(() => {
-    if (!bookingId || !('geolocation' in navigator)) { setGpsMessage('Live location is not available in this browser.'); return; }
-    setGpsMessage('Requesting live location permission…');
+    if (!bookingId || !('geolocation' in navigator)) { setGpsState('unavailable'); setGpsMessage('Live location is not available in this browser.'); return; }
+    if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
+    setGpsState('requesting');
+    setGpsPosition(null);
+    setGpsMessage('Requesting GPS location from this browser…');
     window.dispatchEvent(new Event('sakakrib:request-mover-gps'));
+    gpsTimeoutRef.current = window.setTimeout(() => {
+      setGpsTimeoutRef.current = null;
+      setGpsState('timeout');
+      setGpsMessage('The browser has not returned a GPS position yet. Check the browser location prompt/permission and try again.');
+    }, 22000);
     navigator.geolocation.getCurrentPosition(
-      () => setGpsMessage('Location access is enabled. Your live location is being shared with the renter.'),
-      err => setGpsMessage(err.code === err.PERMISSION_DENIED ? 'Location permission was denied. Allow location access for this site in your browser settings, then try again.' : `Unable to get your location: ${err.message}`),
+      position => {
+        if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
+        gpsTimeoutRef.current = null;
+        setGpsState('received');
+        setGpsPosition(position.coords);
+        setGpsMessage(`GPS position received. Accuracy: ${Number.isFinite(position.coords.accuracy) ? `${Math.round(position.coords.accuracy)} m` : 'unknown'}. Live location is now available to the tracker.`);
+      },
+      err => {
+        if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
+        gpsTimeoutRef.current = null;
+        if (err.code === err.PERMISSION_DENIED) {
+          setGpsState('denied');
+          setGpsMessage('Location permission was denied. Allow location access for this site in your browser settings, then try again.');
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setGpsState('unavailable');
+          setGpsMessage(`The browser could not determine your position: ${err.message || 'position unavailable'}`);
+        } else {
+          setGpsState('timeout');
+          setGpsMessage(`The browser could not return a GPS position in time: ${err.message || 'request timed out'}`);
+        }
+      },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
     );
   }, [bookingId]);
+
+  useEffect(() => {
+    let disposed = false;
+    if (!('geolocation' in navigator)) { setGpsPermission('unsupported'); return; }
+    setGpsPermission('checking');
+    const permissions = navigator.permissions;
+    if (!permissions?.query) { setGpsPermission('not reported by browser'); return; }
+    permissions.query({ name: 'geolocation' as PermissionName }).then(status => {
+      if (disposed) return;
+      setGpsPermission(status.state);
+      const handleChange = () => setGpsPermission(status.state);
+      status.addEventListener('change', handleChange);
+      return () => status.removeEventListener('change', handleChange);
+    }).catch(() => { if (!disposed) setGpsPermission('not reported by browser'); });
+    return () => {
+      disposed = true;
+      if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
+    };
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (!bookingId) { setError('No moving booking was selected.'); setLoading(false); return null; }
@@ -79,7 +130,7 @@ export default function MoverLiveTracking() {
         <div className="rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center gap-3"><Truck className="h-5 w-5 text-brand-500" /><h2 className="font-semibold">Journey status</h2></div><p className="mt-4 text-2xl font-bold capitalize">{statusLabel}</p><p className="mt-2 text-sm text-gray-500">Tracking number: {data.booking.tracking_number || '—'}</p><p className="mt-1 text-sm text-gray-500">Started: {data.booking.started_at ? new Date(data.booking.started_at).toLocaleString('en-KE') : '—'}</p></div>
         <div className="rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center gap-3"><MapPin className="h-5 w-5 text-brand-500" /><h2 className="font-semibold">Current position</h2></div><p className="mt-4 text-lg font-semibold">{lat !== null && lng !== null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Waiting for GPS location'}</p><p className="mt-2 text-sm text-gray-500">Last update: {point?.recorded_at || data.booking.last_location_at ? new Date(point?.recorded_at || data.booking.last_location_at!).toLocaleString('en-KE') : '—'}</p>{point?.speed_kph != null && <p className="mt-1 text-sm text-gray-500">Speed: {point.speed_kph.toFixed(1)} km/h</p>}</div>
       </div>
-      <div className="mt-5 rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center justify-between"><h2 className="font-semibold">Live location sharing</h2><Navigation className="h-5 w-5 text-brand-500" /></div><p className="mt-3 text-sm text-gray-500">Allow location access so your current position can be shared with the renter during this journey.</p><button type="button" onClick={requestGps} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><MapPin className="h-4 w-4" /> Enable live location</button>{gpsMessage && <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">{gpsMessage}</p>}</div>
+      <div className="mt-5 rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center justify-between"><h2 className="font-semibold">Live location sharing</h2><Navigation className="h-5 w-5 text-brand-500" /></div><p className="mt-3 text-sm text-gray-500">Allow location access so your current position can be shared with the renter during this journey.</p><div className="mt-4 grid gap-2 text-sm text-gray-600 dark:text-gray-300"><div>Browser location API: <span className="font-medium">{'geolocation' in navigator ? 'Available' : 'Unavailable'}</span></div><div>Secure context: <span className="font-medium">{window.isSecureContext ? 'Yes' : 'No'}</span></div><div>Permission: <span className="font-medium">{gpsPermission}</span></div><div>GPS state: <span className="font-medium">{gpsState}</span></div>{gpsPosition && <div>GPS received: <span className="font-medium">{gpsPosition.latitude.toFixed(6)}, {gpsPosition.longitude.toFixed(6)}</span></div>}</div><button type="button" onClick={requestGps} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><MapPin className="h-4 w-4" /> Enable live location</button>{gpsMessage && <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">{gpsMessage}</p>}</div>
       <div className="mt-5 rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center justify-between"><h2 className="font-semibold">Recent GPS points</h2><Navigation className="h-5 w-5 text-brand-500" /></div>{data.tracking_points.length === 0 ? <p className="mt-4 text-sm text-gray-500">No accepted GPS points have been recorded yet. Enable live location and keep the journey active.</p> : <div className="mt-4 space-y-2">{data.tracking_points.slice(0, 10).map(item => <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-brand-950"><span>{item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</span><span className="text-gray-500">{new Date(item.recorded_at).toLocaleString('en-KE')}</span></div>)}</div>}</div>
     </>}
   </section>;
