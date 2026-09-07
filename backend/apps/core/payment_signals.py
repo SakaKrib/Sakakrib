@@ -1,12 +1,15 @@
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+import hashlib
 
 from apps.accounts.models import Profile
 from apps.payments.models import ListingPayment
 from apps.subscriptions.models import SubscriptionInvoice
 
-from .domain_bookings import MovingInvoice, MovingPayment
+from .domain_bookings import ChatMessage, MovingInvoice, MovingPayment
 from .domain_platform import UserNotification
 
 
@@ -91,6 +94,32 @@ def _schedule_moving_payout_processing_notifications(payment):
             )
 
     transaction.on_commit(create_notifications)
+
+
+def _chat_group_name(conversation_id):
+    digest = hashlib.sha256(str(conversation_id).encode()).hexdigest()[:40]
+    return f"chat_{digest}"
+
+
+def _broadcast_chat_message(message_id):
+    message = ChatMessage.objects.filter(pk=message_id).first()
+    if message is None:
+        return
+    from .chat_services import serialize_message
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    async_to_sync(channel_layer.group_send)(
+        _chat_group_name(message.conversation_id),
+        {"type": "chat.message", "message": serialize_message(message)},
+    )
+
+
+@receiver(post_save, sender=ChatMessage)
+def broadcast_chat_message(sender, instance, created, **kwargs):
+    if not created:
+        return
+    transaction.on_commit(lambda: _broadcast_chat_message(instance.id))
 
 
 @receiver(post_save, sender=MovingPayment)
