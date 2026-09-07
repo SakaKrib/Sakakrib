@@ -5,9 +5,12 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
+from apps.accounts.models import Profile
+
 from .booking_email_templates import mover_booking_request
-from .domain_platform import NotificationEmail
-from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES
+from .domain_bookings import Booking
+from .domain_platform import Mover, NotificationEmail
+from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES, SITE_URL
 
 # Keep booking email presentation separate while registering it with the
 # existing template/queue architecture used by all other notification emails.
@@ -69,11 +72,68 @@ def queue_mover_payout_success_emails(*, payout, mover_email: str, mover_name: s
     return queued
 
 
+def _styled_mover_request_email(email: NotificationEmail) -> str | None:
+    """Render legacy MOVER_REQUEST queue rows with the shared styled template.
+
+    Older booking creation code stores only the recipient and plain HTML body.
+    Resolve the booking at send time using the mover's email and the request
+    window represented by the queued email timestamp, then render the existing
+    shared booking template. If no matching booking can be resolved, preserve
+    the queued body instead of guessing at a different booking.
+    """
+    if email.template_type != "MOVER_REQUEST":
+        return None
+
+    mover_user_id = Profile.objects.filter(
+        email__iexact=email.recipient,
+    ).values_list("id", flat=True).first()
+    if not mover_user_id:
+        return None
+
+    mover = Mover.objects.filter(user_id=mover_user_id).first()
+    if not mover:
+        return None
+
+    queued_at = email.created_at or timezone.now()
+    booking = (
+        Booking.objects
+        .filter(
+            mover_id=mover.id,
+            requested_at__lte=queued_at,
+            request_expires_at__gte=queued_at,
+        )
+        .order_by("-requested_at")
+        .first()
+    )
+    if not booking:
+        return None
+
+    renter = Profile.objects.filter(pk=booking.renter_id).first()
+    renter_name = getattr(renter, "full_name", "") if renter else "A renter"
+    payload = {
+        "first_name": getattr(mover, "driver_full_name", "") or "there",
+        "renter_name": renter_name or "A renter",
+        "pickup_address": booking.pickup_address,
+        "dropoff_address": booking.dropoff_address,
+        "moving_date": booking.moving_date,
+        "distance_km": booking.distance_km,
+        "total_amount_kes": booking.total_amount,
+        "payment_status": booking.payment_status,
+        "requested_at": booking.requested_at,
+        "response_expires_at": booking.request_expires_at,
+        "booking_id": booking.id,
+        "booking_url": f"{SITE_URL}/#mover-messages/{booking.renter_id}",
+    }
+    return mover_booking_request(payload)
+
+
 def send_notification_email(email: NotificationEmail) -> dict:
     from_address = str(getattr(settings, "EMAIL_FROM", "") or getattr(settings, "DEFAULT_FROM_EMAIL", "") or getattr(settings, "EMAIL_HOST_USER", "") or "").strip()
     if not from_address: raise RuntimeError("EMAIL_FROM, DEFAULT_FROM_EMAIL, or EMAIL_HOST_USER is not configured")
-    message = EmailMultiAlternatives(subject=email.subject, body=email.html_body, from_email=from_address, to=[email.recipient], reply_to=[from_address])
-    message.attach_alternative(email.html_body, "text/html")
+
+    html_body = _styled_mover_request_email(email) or email.html_body
+    message = EmailMultiAlternatives(subject=email.subject, body=html_body, from_email=from_address, to=[email.recipient], reply_to=[from_address])
+    message.attach_alternative(html_body, "text/html")
     sent = message.send(fail_silently=False)
     if sent != 1: raise RuntimeError("SMTP server did not accept the email")
     email.status = "sent"; email.sent_at = timezone.now(); email.save(update_fields=["status", "sent_at"])
