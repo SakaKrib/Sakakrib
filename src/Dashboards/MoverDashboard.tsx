@@ -24,13 +24,20 @@ function getInboxWebSocketUrl() {
 
 export default function MoverDashboard(){
  const {profile,loading:authLoading}=useAuth(); const {navigate}=useNav(); const [mover,setMover]=useState<MoverRecord|null>(null); const [bookings,setBookings]=useState(emptyBookings); const [customers,setCustomers]=useState(emptyCustomers); const [schedule,setSchedule]=useState(emptySchedule); const [invoices,setInvoices]=useState(emptyInvoices); const [payouts,setPayouts]=useState(emptyPayouts); const [notifications,setNotifications]=useState(emptyNotifications); const [loading,setLoading]=useState(true); const [refreshing,setRefreshing]=useState(false); const [error,setError]=useState<string|null>(null);
- const inboxSocketRef=useRef<WebSocket|null>(null); const inboxReconnectTimerRef=useRef<number|null>(null); const inboxReconnectAttemptRef=useRef(0);
+ const inboxSocketRef=useRef<WebSocket|null>(null); const inboxReconnectTimerRef=useRef<number|null>(null); const inboxReconnectAttemptRef=useRef(0); const bookingRefreshTimerRef=useRef<number|null>(null);
  useEffect(()=>{if(authLoading)return;if(!profile){navigate('home');return;}if(profile.role!=='mover')navigate('home');},[authLoading,profile,navigate]);
  const loadDashboard=useCallback(async(silent=false)=>{if(!profile?.id||profile.role!=='mover')return;silent?setRefreshing(true):setLoading(true);setError(null);const results=await Promise.allSettled([moverApi.getMover(profile.id),moverApi.getBookings(),moverApi.getCustomers(),moverApi.getSchedule(),moverApi.getInvoices(),moverApi.getPayouts(),moverApi.getNotifications(20)]);const [mr,br,cr,sr,ir,pr,nr]=results;if(mr.status==='fulfilled')setMover(mr.value);if(br.status==='fulfilled')setBookings(br.value??[]);if(cr.status==='fulfilled')setCustomers(cr.value??[]);if(sr.status==='fulfilled')setSchedule(sr.value??[]);if(ir.status==='fulfilled')setInvoices(ir.value??[]);if(pr.status==='fulfilled')setPayouts(pr.value??[]);if(nr.status==='fulfilled')setNotifications(nr.value?.notifications??[]);const failed=results.filter(r=>r.status==='rejected');if(failed.length===results.length)setError('Unable to load mover dashboard data. Please try again.');else if(failed.length>0)setError('Some mover dashboard sections could not be refreshed.');setLoading(false);setRefreshing(false);},[profile?.id,profile?.role]);
  useEffect(()=>{if(!authLoading&&profile?.role==='mover'&&profile.id)void loadDashboard();},[authLoading,profile?.id,profile?.role,loadDashboard]);
  useEffect(()=>{
   if(!profile?.id||profile.role!=='mover')return;
   let cancelled=false;
+  const queueBookingRefresh=()=>{
+   if(bookingRefreshTimerRef.current!==null)return;
+   bookingRefreshTimerRef.current=window.setTimeout(()=>{
+    bookingRefreshTimerRef.current=null;
+    if(!cancelled)void loadDashboard(true);
+   },150);
+  };
   const connect=()=>{
    if(cancelled)return;
    inboxSocketRef.current?.close();
@@ -39,10 +46,17 @@ export default function MoverDashboard(){
    socket.onopen=()=>{inboxReconnectAttemptRef.current=0;};
    socket.onmessage=event=>{
     try{
-     const payload=JSON.parse(event.data) as {type?:string;message?:{message_type?:string}};
-     const type=payload.message?.message_type;
-     if(payload.type!=='message'||(type!=='booking_request'&&type!=='booking_response'))return;
-     void loadDashboard(true);
+     const payload=JSON.parse(event.data) as {
+      type?:string;
+      message?:{message_type?:string};
+      notification?:{data?:Record<string,unknown>};
+      booking?:{id?:string};
+     };
+     const messageType=payload.message?.message_type;
+     const isBookingChatEvent=payload.type==='message'&&(messageType==='booking_request'||messageType==='booking_response');
+     const isBookingEvent=payload.type==='booking'&&typeof payload.booking?.id==='string';
+     const isBookingNotification=payload.type==='notification'&&typeof payload.notification?.data?.booking_id==='string';
+     if(isBookingChatEvent||isBookingEvent||isBookingNotification)queueBookingRefresh();
     }catch{/* ignore malformed websocket events */}
    };
    socket.onerror=()=>socket.close();
@@ -57,6 +71,7 @@ export default function MoverDashboard(){
   return()=>{
    cancelled=true;
    if(inboxReconnectTimerRef.current)window.clearTimeout(inboxReconnectTimerRef.current);
+   if(bookingRefreshTimerRef.current)window.clearTimeout(bookingRefreshTimerRef.current);
    inboxSocketRef.current?.close();
    inboxSocketRef.current=null;
   };
