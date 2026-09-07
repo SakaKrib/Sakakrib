@@ -10,7 +10,7 @@ from apps.payments.models import ListingPayment
 from apps.subscriptions.models import SubscriptionInvoice
 
 from .chat_consumers import user_chat_group_name
-from .domain_bookings import ChatMessage, MovingInvoice, MovingPayment
+from .domain_bookings import Booking, ChatMessage, MovingInvoice, MovingPayment
 from .domain_platform import UserNotification
 
 
@@ -117,11 +117,79 @@ def _broadcast_chat_message(message_id):
         async_to_sync(channel_layer.group_send)(user_chat_group_name(user_id), inbox_payload)
 
 
+def _broadcast_user_notification(notification_id):
+    notification = UserNotification.objects.filter(pk=notification_id).first()
+    if notification is None:
+        return
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    payload = {
+        "type": "notification",
+        "notification": {
+            "id": str(notification.id),
+            "notification_type": notification.notification_type,
+            "title": notification.title,
+            "message": notification.message,
+            "data": notification.data or {},
+            "read_at": notification.read_at.isoformat() if notification.read_at else None,
+            "created_at": notification.created_at.isoformat() if notification.created_at else None,
+        },
+    }
+    async_to_sync(channel_layer.group_send)(user_chat_group_name(notification.user_id), payload)
+
+
+def _broadcast_booking_update(booking_id):
+    booking = Booking.objects.filter(pk=booking_id).values(
+        "id", "renter_id", "mover_id", "status", "payment_status", "payment_method",
+        "moving_date", "scheduled_start_at", "scheduled_end_at", "started_at", "completed_at",
+        "cancelled_at", "renter_confirmed_delivery_at", "mover_confirmed_delivery_at",
+    ).first()
+    if booking is None:
+        return
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+    payload = {
+        "type": "booking",
+        "booking": {
+            "id": str(booking["id"]),
+            "renter_id": str(booking["renter_id"]),
+            "mover_id": str(booking["mover_id"]),
+            "status": booking["status"],
+            "payment_status": booking["payment_status"],
+            "payment_method": booking["payment_method"],
+            "moving_date": booking["moving_date"].isoformat() if booking["moving_date"] else None,
+            "scheduled_start_at": booking["scheduled_start_at"].isoformat() if booking["scheduled_start_at"] else None,
+            "scheduled_end_at": booking["scheduled_end_at"].isoformat() if booking["scheduled_end_at"] else None,
+            "started_at": booking["started_at"].isoformat() if booking["started_at"] else None,
+            "completed_at": booking["completed_at"].isoformat() if booking["completed_at"] else None,
+            "cancelled_at": booking["cancelled_at"].isoformat() if booking["cancelled_at"] else None,
+            "renter_confirmed_delivery_at": booking["renter_confirmed_delivery_at"].isoformat() if booking["renter_confirmed_delivery_at"] else None,
+            "mover_confirmed_delivery_at": booking["mover_confirmed_delivery_at"].isoformat() if booking["mover_confirmed_delivery_at"] else None,
+        },
+    }
+    for user_id in {booking["renter_id"], booking["mover_id"]}:
+        async_to_sync(channel_layer.group_send)(user_chat_group_name(user_id), payload)
+
+
 @receiver(post_save, sender=ChatMessage)
 def broadcast_chat_message(sender, instance, created, **kwargs):
     if not created:
         return
     transaction.on_commit(lambda: _broadcast_chat_message(instance.id))
+
+
+@receiver(post_save, sender=UserNotification)
+def broadcast_user_notification(sender, instance, created, **kwargs):
+    if not created:
+        return
+    transaction.on_commit(lambda: _broadcast_user_notification(instance.id))
+
+
+@receiver(post_save, sender=Booking)
+def broadcast_booking_update(sender, instance, **kwargs):
+    transaction.on_commit(lambda: _broadcast_booking_update(instance.id))
 
 
 @receiver(post_save, sender=MovingPayment)
