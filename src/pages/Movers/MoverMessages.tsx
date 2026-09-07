@@ -93,6 +93,27 @@ export default function MoverMessages() {
 
   const selectedBooking = customers.find(([renterId]) => renterId === selectedRenterId)?.[1] ?? null;
   const activeConversationId = profile?.id && selectedRenterId ? conversationId(profile.id, selectedRenterId) : '';
+  const visibleMessages = useMemo(() => {
+    const latestByBooking = new Map<string, MoverChatMessage>();
+    for (const message of messages) {
+      const type = messageType(message);
+      if (type !== 'booking_request' && type !== 'booking_response') continue;
+      const eventData = messageEventData(message);
+      const eventBookingId = typeof eventData?.booking_id === 'string' ? eventData.booking_id : null;
+      const key = eventBookingId || selectedBooking?.id;
+      if (!key) continue;
+      const current = latestByBooking.get(key);
+      if (!current || new Date(messageCreatedAt(message)).getTime() >= new Date(messageCreatedAt(current)).getTime()) latestByBooking.set(key, message);
+    }
+    return messages.filter(message => {
+      const type = messageType(message);
+      if (type !== 'booking_request' && type !== 'booking_response') return true;
+      const eventData = messageEventData(message);
+      const eventBookingId = typeof eventData?.booking_id === 'string' ? eventData.booking_id : null;
+      const key = eventBookingId || selectedBooking?.id;
+      return !key || latestByBooking.get(key)?.id === message.id;
+    });
+  }, [messages, selectedBooking?.id]);
 
   const loadConversation = useCallback(async () => {
     if (!activeConversationId) { setMessages([]); return; }
@@ -198,7 +219,7 @@ export default function MoverMessages() {
                   {selectedBooking && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Booking {selectedBooking.id} · {selectedBooking.pickup_address} → {selectedBooking.dropoff_address}</p>}
                 </header>
                 <div className="flex-1 space-y-3 overflow-y-auto p-4">
-                  {chatLoading && messages.length === 0 ? <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-500" /></div> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">No messages yet. Start the conversation with the renter.</div> : messages.map((message, index) => {
+                  {chatLoading && messages.length === 0 ? <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-500" /></div> : messages.length === 0 ? <div className="flex h-full items-center justify-center text-center text-sm text-gray-500 dark:text-gray-400">No messages yet. Start the conversation with the renter.</div> : visibleMessages.map((message, index) => {
                     const type = messageType(message);
                     if (type === 'booking_request' || type === 'booking_response') {
                       const eventData = messageEventData(message);
