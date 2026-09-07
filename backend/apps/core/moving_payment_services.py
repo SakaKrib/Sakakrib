@@ -10,7 +10,6 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounts.models import Profile
 from apps.payments.services import get_provider
 
 from .domain_bookings import Booking, MoverPayout, MovingInvoice, MovingPayment, MovingDispute
@@ -119,38 +118,78 @@ def _settle_payment(payment, booking, invoice, *, provider_transaction_id, provi
 @transaction.atomic
 def start_moving_mpesa_payment(*, renter_id, booking_id, phone_number=None):
     booking = _booking(booking_id)
-    if booking.renter_id != renter_id: raise ValidationError("Booking not found")
-    if booking.status != "confirmed": raise ValidationError("Booking must be confirmed before payment")
-    if booking.payment_status == "paid": raise ValidationError("Booking is already paid")
+    if booking.renter_id != renter_id:
+        raise ValidationError("Booking not found")
+    if booking.status != "confirmed":
+        raise ValidationError("Booking must be confirmed before payment")
+    if booking.payment_status == "paid":
+        raise ValidationError("Booking is already paid")
     invoice = _require_invoice(booking)
-    profile = Profile.objects.filter(pk=renter_id).first()
-    requested_phone = str(phone_number or "").strip()
-    profile_phone = str(profile.phone or "").strip() if profile else ""
-    phone = _normalize_mpesa_phone(requested_phone or profile_phone)
+
+    # The payment destination is selected by the renter at checkout. The
+    # profile phone is not a payment requirement and is never read here.
+    phone = _normalize_mpesa_phone(phone_number)
+
     existing = MovingPayment.objects.select_for_update().filter(booking_id=booking.id, status__in=["PENDING", "PROCESSING", "HELD"]).order_by("-created_at").first()
-    if existing and existing.status == "HELD": raise ValidationError("Booking payment is already held")
-    if existing and existing.provider != "MPESA": raise ValidationError("An active payment attempt exists for another provider")
-    result = get_provider("mpesa").create_payment(amount=_money(booking.total_amount), currency="KES", reference=f"SAKACRIB-MOV-{str(booking.id)[:8]}", metadata={"phone_number": phone, "description": f"Saka Krib moving service {invoice.invoice_number}"})
-    if not result.success or not result.provider_reference: raise ValidationError(result.message or "Unable to start M-Pesa payment")
+    if existing and existing.status == "HELD":
+        raise ValidationError("Booking payment is already held")
+    if existing and existing.provider != "MPESA":
+        raise ValidationError("An active payment attempt exists for another provider")
+    result = get_provider("mpesa").create_payment(
+        amount=_money(booking.total_amount),
+        currency="KES",
+        reference=f"SAKACRIB-MOV-{str(booking.id)[:8]}",
+        metadata={"phone_number": phone, "description": f"Saka Krib moving service {invoice.invoice_number}"},
+    )
+    if not result.success or not result.provider_reference:
+        raise ValidationError(result.message or "Unable to start M-Pesa payment")
     if existing:
-        existing.provider_reference=result.provider_reference; existing.provider_amount=_money(booking.total_amount); existing.provider_currency="KES"; existing.status="PROCESSING"; existing.updated_at=timezone.now(); existing.save(update_fields=["provider_reference","provider_amount","provider_currency","status","updated_at"]); payment=existing
+        existing.provider_reference = result.provider_reference
+        existing.provider_amount = _money(booking.total_amount)
+        existing.provider_currency = "KES"
+        existing.status = "PROCESSING"
+        existing.updated_at = timezone.now()
+        existing.save(update_fields=["provider_reference", "provider_amount", "provider_currency", "status", "updated_at"])
+        payment = existing
     else:
-        payment=MovingPayment.objects.create(booking_id=booking.id,invoice_id=invoice.id,payer_id=renter_id,amount_kes=_money(booking.total_amount),provider="MPESA",status="PROCESSING",provider_reference=result.provider_reference,provider_amount=_money(booking.total_amount),provider_currency="KES")
-    return {"success":True,"booking_id":str(booking.id),"payment_id":str(payment.id),"invoice_id":str(invoice.id),"checkout_request_id":result.provider_reference,"amount_kes":_money(booking.total_amount),"status":"PROCESSING","customer_message":result.message}
+        payment = MovingPayment.objects.create(
+            booking_id=booking.id,
+            invoice_id=invoice.id,
+            payer_id=renter_id,
+            amount_kes=_money(booking.total_amount),
+            provider="MPESA",
+            status="PROCESSING",
+            provider_reference=result.provider_reference,
+            provider_amount=_money(booking.total_amount),
+            provider_currency="KES",
+        )
+    return {"success": True, "booking_id": str(booking.id), "payment_id": str(payment.id), "invoice_id": str(invoice.id), "checkout_request_id": result.provider_reference, "amount_kes": _money(booking.total_amount), "status": "PROCESSING", "customer_message": result.message}
 
 
 @transaction.atomic
 def finalize_moving_mpesa_callback(*, checkout_request_id, result_code, result_description, callback_metadata=None, merchant_request_id=None):
-    payment=MovingPayment.objects.select_for_update().filter(provider="MPESA",provider_reference=checkout_request_id).first()
-    if payment is None: return {"status":"IGNORED","reason":"Unknown payment reference"}
-    if payment.status in {"HELD","RELEASED"}: return {"status":"ALREADY_PROCESSED","payment_id":str(payment.id)}
-    if int(result_code or 1)!=0:
-        payment.status="FAILED"; payment.provider_currency="KES"; payment.save(update_fields=["status","provider_currency","updated_at"]); return {"status":"FAILED","payment_id":str(payment.id),"result_code":result_code}
-    booking=_booking(payment.booking_id); invoice=_require_invoice(booking); items=callback_metadata or {}; receipt=items.get("MpesaReceiptNumber"); amount=_money(items.get("Amount"))
-    if not receipt: raise ValidationError("M-Pesa receipt is missing")
-    if amount<=0 or amount!=_money(payment.amount_kes) or amount!=_money(booking.total_amount):
-        payment.status="FAILED"; payment.save(update_fields=["status","updated_at"]); raise ValidationError("M-Pesa amount does not match booking total")
-    return _settle_payment(payment,booking,invoice,provider_transaction_id=receipt,provider_currency="KES",provider_amount=amount,mpesa_receipt=receipt)
+    payment = MovingPayment.objects.select_for_update().filter(provider="MPESA", provider_reference=checkout_request_id).first()
+    if payment is None:
+        return {"status": "IGNORED", "reason": "Unknown payment reference"}
+    if payment.status in {"HELD", "RELEASED"}:
+        return {"status": "ALREADY_PROCESSED", "payment_id": str(payment.id)}
+    if int(result_code or 1) != 0:
+        payment.status = "FAILED"
+        payment.provider_currency = "KES"
+        payment.save(update_fields=["status", "provider_currency", "updated_at"])
+        return {"status": "FAILED", "payment_id": str(payment.id), "result_code": result_code}
+    booking = _booking(payment.booking_id)
+    invoice = _require_invoice(booking)
+    items = callback_metadata or {}
+    receipt = items.get("MpesaReceiptNumber")
+    amount = _money(items.get("Amount"))
+    if not receipt:
+        raise ValidationError("M-Pesa receipt is missing")
+    if amount <= 0 or amount != _money(payment.amount_kes) or amount != _money(booking.total_amount):
+        payment.status = "FAILED"
+        payment.save(update_fields=["status", "updated_at"])
+        raise ValidationError("M-Pesa amount does not match booking total")
+    return _settle_payment(payment, booking, invoice, provider_transaction_id=receipt, provider_currency="KES", provider_amount=amount, mpesa_receipt=receipt)
 
 
 def _paypal_token():
