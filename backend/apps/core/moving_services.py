@@ -486,4 +486,25 @@ def cancel_moving_booking(*, user_id, booking_id, reason_code, reason_text=""):
     MovingCancellationEvent.objects.create(
         booking_id=booking.id, cancelled_by=user_id, reason_code=reason_code, reason_text=reason_text,
     )
+
+    other_user_id = mover_user_id if actor == "RENTER" else booking.renter_id
+    cancellation_message = (
+        "The renter cancelled this moving request. No response is required."
+        if actor == "RENTER"
+        else "The mover cancelled this moving request."
+    )
+    ChatMessage.objects.create(
+        conversation_id=_conversation(booking.renter_id, mover_user_id),
+        sender_id=user_id,
+        receiver_id=other_user_id,
+        content=cancellation_message,
+        message_type="booking_response",
+        event_data={
+            "booking_id": str(booking.id),
+            "decision": "cancel",
+            "status": "cancelled",
+            "action_required": None,
+            "reason": str(reason_text) if reason_text else reason_code,
+        },
+    )
     return {"booking_id": str(booking.id), "status": "cancelled", "cancelled_by": actor}
