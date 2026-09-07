@@ -5,7 +5,7 @@ import { moverApi, type MoverTrackingPoint, type MoverTrackingResponse } from '@
 import { cn } from '@/lib/utils';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
-type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'accepted' | 'denied' | 'unavailable' | 'timeout' | 'rejected';
+type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'unavailable' | 'timeout';
 const active = (status: string | null | undefined) => String(status ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
 function socketUrl(bookingId: string) {
   const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '');
@@ -38,7 +38,7 @@ export default function MoverLiveTracking() {
     setGpsMessage('Requesting GPS location from this browser…');
     window.dispatchEvent(new Event('sakakrib:request-mover-gps'));
     gpsTimeoutRef.current = window.setTimeout(() => {
-      setGpsTimeoutRef.current = null;
+      gpsTimeoutRef.current = null;
       setGpsState('timeout');
       setGpsMessage('The browser has not returned a GPS position yet. Check the browser location prompt/permission and try again.');
     }, 22000);
@@ -85,30 +85,6 @@ export default function MoverLiveTracking() {
       if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    const handleTrackerState = (event: Event) => {
-      const detail = (event as CustomEvent<{ state?: GpsState; latitude?: number; longitude?: number; accuracy?: number | null; message?: string }>).detail;
-      if (!detail?.state) return;
-      if (detail.state === 'received') {
-        setGpsState('received');
-        setGpsMessage(`GPS position received by the live tracker. Accuracy: ${detail.accuracy == null ? 'unknown' : `${Math.round(detail.accuracy)} m`}. Sending to Django…`);
-      } else if (detail.state === 'accepted') {
-        setGpsState('accepted');
-        if (detail.latitude != null && detail.longitude != null) setGpsPosition({ latitude: detail.latitude, longitude: detail.longitude, accuracy: detail.accuracy ?? null, altitude: null, altitudeAccuracy: null, heading: null, speed: null, toJSON() { return this; } });
-        setGpsMessage('✓ GPS location was accepted by the Django tracking API. The location is now recorded for this journey.');
-        void load(true);
-      } else if (detail.state === 'rejected') {
-        setGpsState('rejected');
-        setGpsMessage(`GPS was received by the browser, but Django rejected the tracking update${detail.message ? `: ${detail.message}` : '.'}`);
-      } else if (detail.state === 'denied' || detail.state === 'unavailable' || detail.state === 'timeout') {
-        setGpsState(detail.state);
-        setGpsMessage(detail.message || 'The browser could not provide a GPS position.');
-      }
-    };
-    window.addEventListener('sakakrib:mover-gps-state', handleTrackerState);
-    return () => window.removeEventListener('sakakrib:mover-gps-state', handleTrackerState);
-  }, [load]);
 
   const load = useCallback(async (silent = false) => {
     if (!bookingId) { setError('No moving booking was selected.'); setLoading(false); return null; }
