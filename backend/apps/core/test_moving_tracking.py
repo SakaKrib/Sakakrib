@@ -200,3 +200,26 @@ class MovingTrackingTests(TestCase):
         self.assertEqual(healthy, {"status": "HEALTHY", "is_live": True, "age_seconds": 30})
         self.assertEqual(stale, {"status": "STALE", "is_live": False, "age_seconds": 31})
         self.assertEqual(offline, {"status": "OFFLINE", "is_live": False, "age_seconds": 121})
+
+    def test_tracking_health_keeps_exact_stale_boundary(self):
+        now = timezone.now()
+        boundary = _tracking_health(now - timedelta(seconds=120), now=now)
+        self.assertEqual(boundary, {"status": "STALE", "is_live": False, "age_seconds": 120})
+
+    def test_accepted_location_updates_booking_and_mover_last_known_position(self):
+        booking = self._active_booking()
+        record_mover_location(
+            mover_user_id=self.mover_user.id,
+            booking_id=booking.id,
+            latitude=-1.3001,
+            longitude=36.8002,
+        )
+
+        booking.refresh_from_db()
+        mover = Mover.objects.get(pk=self.mover.id)
+        self.assertEqual(booking.last_known_latitude, -1.3001)
+        self.assertEqual(booking.last_known_longitude, 36.8002)
+        self.assertIsNotNone(booking.last_location_at)
+        self.assertEqual(mover.current_latitude, -1.3001)
+        self.assertEqual(mover.current_longitude, 36.8002)
+        self.assertIsNotNone(mover.location_updated_at)
