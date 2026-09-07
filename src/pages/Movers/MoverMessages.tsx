@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
@@ -9,6 +9,13 @@ type BookingCardMessage = { id: string; sender_id: string; content: string; mess
 
 function conversationId(userA: string, userB: string) {
   return [userA, userB].sort().join('__');
+}
+
+function getInboxWebSocketUrl() {
+  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '').replace(/\/api$/, '');
+  const url = new URL(`${configured || window.location.origin}/ws/chat/inbox/`);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
 }
 
 function messageText(message: MoverChatMessage) {
@@ -64,6 +71,9 @@ export default function MoverMessages() {
   const [sending, setSending] = useState(false);
   const [responding, setResponding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inboxSocketRef = useRef<WebSocket | null>(null);
+  const inboxReconnectTimerRef = useRef<number | null>(null);
+  const inboxReconnectAttemptRef = useRef(0);
 
   const loadBookings = useCallback(async () => {
     if (!profile?.id || profile.role !== 'mover') { setLoading(false); return; }
@@ -135,6 +145,48 @@ export default function MoverMessages() {
     const timer = window.setInterval(() => { void loadConversation(); }, 5000);
     return () => window.clearInterval(timer);
   }, [activeConversationId, loadConversation]);
+
+  useEffect(() => {
+    if (!profile?.id || profile.role !== 'mover') return;
+    let cancelled = false;
+    const connect = () => {
+      if (cancelled) return;
+      inboxSocketRef.current?.close();
+      const socket = new WebSocket(getInboxWebSocketUrl());
+      inboxSocketRef.current = socket;
+      socket.onopen = () => { inboxReconnectAttemptRef.current = 0; };
+      socket.onmessage = event => {
+        try {
+          const payload = JSON.parse(event.data) as { type?: string; message?: MoverChatMessage };
+          const message = payload.message;
+          if (payload.type !== 'message' || !message) return;
+          const type = messageType(message);
+          const messageConversationId = typeof message.conversation_id === 'string' ? message.conversation_id : '';
+          if (messageConversationId === activeConversationId) {
+            setMessages(previous => [...previous.filter(item => messageId(item) !== messageId(message)), message].sort((a, b) => new Date(messageCreatedAt(a)).getTime() - new Date(messageCreatedAt(b)).getTime()));
+          }
+          if (type === 'booking_request' || type === 'booking_response') {
+            void loadBookings();
+            if (messageConversationId === activeConversationId) void loadConversation();
+          }
+        } catch { /* ignore malformed websocket events */ }
+      };
+      socket.onerror = () => socket.close();
+      socket.onclose = () => {
+        if (cancelled) return;
+        const delay = Math.min(1000 * 2 ** inboxReconnectAttemptRef.current, 15000);
+        inboxReconnectAttemptRef.current += 1;
+        inboxReconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
+    };
+    connect();
+    return () => {
+      cancelled = true;
+      if (inboxReconnectTimerRef.current) window.clearTimeout(inboxReconnectTimerRef.current);
+      inboxSocketRef.current?.close();
+      inboxSocketRef.current = null;
+    };
+  }, [profile?.id, profile?.role, activeConversationId, loadBookings, loadConversation]);
 
   const respond = useCallback(async (bookingId: string, decision: 'confirm' | 'not_sure' | 'cancel') => {
     if (responding) return;
