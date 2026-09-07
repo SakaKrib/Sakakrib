@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NavProvider, useNav } from '@/context/NavContext';
@@ -51,8 +52,16 @@ import RenterMessagesPage from '@/pages/Renters/RenterMessagesPage';
 import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
 
 function AppContent() {
-  const { view, selectedAdminUserId } = useNav();
-  const { profile } = useAuth();
+  const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
+  const { profile, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (view === 'mover-messages' && !authLoading && !profile && !authModalOpen) {
+      setAuthMode('signin');
+      setAuthModalOpen(true);
+    }
+  }, [view, authLoading, profile, authModalOpen, setAuthMode, setAuthModalOpen]);
+
   if (window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
   if (window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
   if (window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
