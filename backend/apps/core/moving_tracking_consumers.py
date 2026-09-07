@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import uuid
 
@@ -31,10 +32,22 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         await self.accept()
         latest = await self._latest()
         await self.send_json({"type": "ready", "booking_id": str(self.booking_id), "location": latest})
+        self.heartbeat_task = asyncio.create_task(self._heartbeat())
 
     async def disconnect(self, close_code):
+        heartbeat = getattr(self, "heartbeat_task", None)
+        if heartbeat is not None:
+            heartbeat.cancel()
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def _heartbeat(self):
+        try:
+            while True:
+                await asyncio.sleep(20)
+                await self.send_json({"type": "heartbeat"})
+        except (asyncio.CancelledError, RuntimeError):
+            return
 
     async def receive_json(self, content, **kwargs):
         # GPS writes stay on the authenticated HTTPS endpoint so Django's
