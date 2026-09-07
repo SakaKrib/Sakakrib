@@ -5,9 +5,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.core.exceptions import ValidationError
 
 from .chat_services import (
-    conversation_id_for_users,
     send_message,
-    serialize_message,
     validate_conversation_for_user,
 )
 
@@ -38,15 +36,11 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
             if str(receiver_id) != str(expected_receiver):
                 raise ValidationError("Receiver is not a participant in this conversation")
 
-            message = await self._send(
+            await self._send(
                 receiver_id=expected_receiver,
                 content=content.get("content", ""),
                 message_type=content.get("message_type", "text"),
                 event_data=content.get("event_data"),
-            )
-            await self.channel_layer.group_send(
-                self.group_name,
-                {"type": "chat.message", "message": serialize_message(message)},
             )
         except (ValidationError, ValueError, TypeError) as exc:
             await self.send_json({"type": "error", "detail": str(exc)})
