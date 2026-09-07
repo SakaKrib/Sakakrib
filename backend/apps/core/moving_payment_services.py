@@ -174,7 +174,7 @@ def finalize_moving_mpesa_callback(*, checkout_request_id, result_code, result_d
         return {"status": "IGNORED", "reason": "Unknown payment reference"}
     if payment.status in {"HELD", "RELEASED"}:
         return {"status": "ALREADY_PROCESSED", "payment_id": str(payment.id)}
-    if int(result_code or 1) != 0:
+    if result_code is None or int(result_code) != 0:
         payment.status = "FAILED"
         payment.provider_currency = "KES"
         payment.save(update_fields=["status", "provider_currency", "updated_at"])
