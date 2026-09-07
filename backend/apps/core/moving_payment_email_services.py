@@ -64,7 +64,7 @@ def _payment_email(*, title, message, rows, extra_rows=(), panel_message=None, p
     content = (
         f'<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello,</p>'
         f'<p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#444444;">{escape(message)}</p>'
-        f'{_details(list(rows) + list(extra_rows), heading="PAYMENT DETAILS", bordered=True)}'
+        f'{_details(list(rows) + list(extra_rows), heading="PAYMENT DETAILS", bordered=False, row_padding=7)}'
     )
     return _layout("Moving Payment Confirmation", panel + _body(content))
 
