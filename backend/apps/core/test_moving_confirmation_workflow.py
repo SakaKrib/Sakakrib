@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -70,14 +71,19 @@ class MovingConfirmationWorkflowTests(TestCase):
         self.assertEqual(invoice.mover_id, booking.mover_id)
         self.assertEqual(invoice.status, "ISSUED")
 
-    def test_confirmation_is_atomic_if_invoice_creation_fails(self):
+    @patch(
+        "apps.core.moving_workflow_services._ensure_moving_invoice",
+        side_effect=ValidationError("invoice creation failed"),
+    )
+    def test_confirmation_rolls_back_if_invoice_creation_fails(self, _mock_ensure_invoice):
         booking = self._booking()
 
-        with self.assertRaises(ValidationError):
+        with self.assertRaisesMessage(ValidationError, "invoice creation failed"):
             confirm_mover_booking_workflow(
                 mover_user_id=self.mover_user.id,
                 booking_id=booking.id,
             )
 
         booking.refresh_from_db()
-        self.assertEqual(booking.status, "confirmed")
+        self.assertEqual(booking.status, "pending")
+        self.assertFalse(MovingInvoice.objects.filter(booking_id=booking.id).exists())
