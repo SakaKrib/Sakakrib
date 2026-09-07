@@ -15,11 +15,31 @@ from .domain_property import Review
 from .moving_tracking_consumers import tracking_group_name
 from .notification_services import dispatch_user_notification
 
+TRACKING_HEALTHY_AFTER_SECONDS = 30
+TRACKING_STALE_AFTER_SECONDS = 120
+
 
 def _serialize_point(point):
     if point is None:
         return None
     return {"id": point.id, "booking_id": str(point.booking_id), "mover_id": str(point.mover_id), "latitude": point.latitude, "longitude": point.longitude, "accuracy_meters": point.accuracy_meters, "speed_kph": point.speed_kph, "heading_degrees": point.heading_degrees, "recorded_at": point.recorded_at.isoformat()}
+
+
+def _tracking_health(recorded_at, *, now=None):
+    if recorded_at is None:
+        return {"status": "OFFLINE", "is_live": False, "age_seconds": None}
+    now = now or timezone.now()
+    age_seconds = max(0, int((now - recorded_at).total_seconds()))
+    if age_seconds <= TRACKING_HEALTHY_AFTER_SECONDS:
+        status = "HEALTHY"
+        is_live = True
+    elif age_seconds <= TRACKING_STALE_AFTER_SECONDS:
+        status = "STALE"
+        is_live = False
+    else:
+        status = "OFFLINE"
+        is_live = False
+    return {"status": status, "is_live": is_live, "age_seconds": age_seconds}
 
 
 def _participant_booking(user, booking_id):
@@ -129,6 +149,9 @@ def record_mover_location(*, mover_user_id, booking_id, latitude, longitude, acc
     booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
     mover = Mover.objects.filter(pk=booking.mover_id, user_id=mover_user_id).first() if booking else None
     if booking is None or mover is None: raise ValidationError("Booking not found or unauthorized")
+    journey = MovingJourney.objects.select_for_update().filter(booking_id=booking.id).first()
+    if journey is None or journey.mover_id != mover.id: raise ValidationError("Active moving journey not found")
+    if journey.status != MovingJourney.STATUS_ACTIVE: raise ValidationError("Journey is not active")
     if booking.status != "in_progress" or booking.started_at is None or booking.completed_at is not None: raise ValidationError("Journey is not active")
     if booking.payment_status != "paid": raise ValidationError("Payment required before tracking")
     now = timezone.now()
@@ -159,7 +182,8 @@ class MovingTrackingView(APIView):
         booking = _participant_booking(request.user, booking_id)
         if booking is None: return Response({"detail": "Booking not found or unauthorized."}, status=404)
         mover = Mover.objects.filter(pk=booking.mover_id).first(); points = MovingTrackingPoint.objects.filter(booking_id=booking.id).order_by("-recorded_at")[:50]
-        return Response({"booking": {"id": str(booking.id), "status": booking.status, "tracking_number": booking.tracking_number, "started_at": booking.started_at, "completed_at": booking.completed_at, "last_known_latitude": booking.last_known_latitude, "last_known_longitude": booking.last_known_longitude, "last_location_at": booking.last_location_at}, "mover": {"id": str(mover.id), "user_id": str(mover.user_id), "driver_full_name": mover.driver_full_name, "phone": mover.phone, "profile_photo_url": mover.profile_photo_url, "vehicle_type": mover.vehicle_type, "number_plate": mover.number_plate, "operating_city": mover.operating_city, "operating_county": mover.operating_county, "is_available": mover.is_available, "current_latitude": mover.current_latitude, "current_longitude": mover.current_longitude, "location_updated_at": mover.location_updated_at, "approval_status": mover.approval_status} if mover else None, "tracking_points": [_serialize_point(point) for point in points]})
+        now = timezone.now()
+        return Response({"booking": {"id": str(booking.id), "status": booking.status, "tracking_number": booking.tracking_number, "started_at": booking.started_at, "completed_at": booking.completed_at, "last_known_latitude": booking.last_known_latitude, "last_known_longitude": booking.last_known_longitude, "last_location_at": booking.last_location_at, "tracking_health": _tracking_health(booking.last_location_at, now=now)}, "mover": {"id": str(mover.id), "user_id": str(mover.user_id), "driver_full_name": mover.driver_full_name, "phone": mover.phone, "profile_photo_url": mover.profile_photo_url, "vehicle_type": mover.vehicle_type, "number_plate": mover.number_plate, "operating_city": mover.operating_city, "operating_county": mover.operating_county, "is_available": mover.is_available, "current_latitude": mover.current_latitude, "current_longitude": mover.current_longitude, "location_updated_at": mover.location_updated_at, "approval_status": mover.approval_status, "tracking_health": _tracking_health(mover.location_updated_at, now=now)} if mover else None, "tracking_points": [_serialize_point(point) for point in points]})
     def post(self, request, booking_id):
         try:
             return Response(record_mover_location(mover_user_id=request.user.id, booking_id=booking_id, latitude=request.data.get("latitude"), longitude=request.data.get("longitude"), accuracy_meters=request.data.get("accuracy_meters"), speed_kph=request.data.get("speed_kph"), heading_degrees=request.data.get("heading_degrees")))
@@ -171,7 +195,9 @@ class ActiveMovingLocationView(APIView):
     def get(self, request, booking_id):
         booking = _participant_booking(request.user, booking_id)
         if booking is None or booking.status != "in_progress": return Response({"detail": "Active moving journey not found."}, status=404)
-        return Response(_serialize_point(MovingTrackingPoint.objects.filter(booking_id=booking.id).order_by("-recorded_at").first()))
+        point = MovingTrackingPoint.objects.filter(booking_id=booking.id).order_by("-recorded_at").first()
+        now = timezone.now()
+        return Response({"location": _serialize_point(point), "tracking_health": _tracking_health(point.recorded_at if point else None, now=now)})
 
 
 class MoverReviewAfterDeliveryView(APIView):
