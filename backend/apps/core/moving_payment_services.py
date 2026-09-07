@@ -121,7 +121,7 @@ def start_moving_mpesa_payment(*, renter_id, booking_id, phone_number=None):
     if existing:
         existing.provider_reference=result.provider_reference; existing.provider_amount=_money(booking.total_amount); existing.provider_currency="KES"; existing.status="PROCESSING"; existing.updated_at=timezone.now(); existing.save(update_fields=["provider_reference","provider_amount","provider_currency","status","updated_at"]); payment=existing
     else:
-        payment=MovingPayment.objects.create(booking_id=booking.id, invoice_id=invoice.id, payer_id=renter_id, amount_kes=_money(booking.total_amount), provider="MPESA", status="PROCESSING", provider_reference=result.provider_reference, provider_amount=_money(booking.total_amount), provider_currency="KES")
+        payment=MovingPayment.objects.create(booking_id=booking.id,invoice_id=invoice.id,payer_id=renter_id,amount_kes=_money(booking.total_amount),provider="MPESA",status="PROCESSING",provider_reference=result.provider_reference,provider_amount=_money(booking.total_amount),provider_currency="KES")
     return {"success":True,"booking_id":str(booking.id),"payment_id":str(payment.id),"invoice_id":str(invoice.id),"checkout_request_id":result.provider_reference,"amount_kes":_money(booking.total_amount),"status":"PROCESSING","customer_message":result.message}
 
 
@@ -248,7 +248,8 @@ def release_moving_escrow(*, admin_user_id, booking_id):
     if booking.status=="cancelled": raise ValidationError("Cancelled booking cannot be released")
     if booking.payment_status!="paid": raise ValidationError("Renter payment is not settled")
     if booking.dispute_status=="OPEN": raise ValidationError("Escrow release blocked while dispute is open")
-    if not booking.renter_confirmed_delivery_at or not booking.mover_confirmed_delivery_at: raise ValidationError("Both renter and mover must confirm safe delivery")
+    if not booking.renter_confirmed_delivery_at:
+        raise ValidationError("Renter must confirm safe delivery before escrow release")
     if booking.dispute_status=="RESOLVED":
         resolution=MovingDispute.objects.filter(booking_id=booking.id,status="RESOLVED").order_by("-resolved_at").values_list("resolution_code",flat=True).first()
         if resolution!="RELEASE_TO_MOVER": raise ValidationError("Resolved dispute does not authorize mover payout")
