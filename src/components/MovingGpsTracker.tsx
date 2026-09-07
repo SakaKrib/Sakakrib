@@ -100,6 +100,12 @@ export default function MovingGpsTracker() {
     const restart = () => { if (!cancelledRef.current) void syncBookingState(); };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
     document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('online', restart); window.addEventListener('pageshow', restart);
+
+    // The mover live-tracking route is the explicit journey-sharing screen.
+    // Start the browser GPS watcher immediately so the browser can request
+    // location permission instead of waiting for the booking-detail request.
+    // Django remains the authority that accepts/rejects every location point.
+    if (view === 'mover-tracking') start();
     void syncBookingState();
     const stateTimer = window.setInterval(() => { void syncBookingState(); }, BOOKING_STATE_INTERVAL_MS);
     return () => { cancelledRef.current = true; document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('online', restart); window.removeEventListener('pageshow', restart); window.clearInterval(stateTimer); stop(); bookingIdRef.current = null; };
