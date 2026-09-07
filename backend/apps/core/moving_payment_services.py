@@ -41,6 +41,19 @@ def _require_invoice(booking):
     return invoice
 
 
+def _normalize_mpesa_phone(value):
+    phone = str(value or "").strip().replace(" ", "").replace("-", "")
+    if phone.startswith("+"):
+        phone = phone[1:]
+    if phone.startswith("0") and len(phone) == 10 and phone[:2] in {"07", "01"}:
+        phone = "254" + phone[1:]
+    elif len(phone) == 9 and phone[0] in {"7", "1"}:
+        phone = "254" + phone
+    if len(phone) != 12 or not phone.isdigit() or not phone.startswith("254") or phone[3] not in {"7", "1"}:
+        raise ValidationError("Enter a valid Kenyan M-Pesa phone number")
+    return phone
+
+
 def _ensure_payout(booking, mover):
     fee = _money(booking.commission_amount)
     payout, _ = MoverPayout.objects.get_or_create(
@@ -111,8 +124,9 @@ def start_moving_mpesa_payment(*, renter_id, booking_id, phone_number=None):
     if booking.payment_status == "paid": raise ValidationError("Booking is already paid")
     invoice = _require_invoice(booking)
     profile = Profile.objects.filter(pk=renter_id).first()
-    phone = str(profile.phone or "").strip() if profile else ""
-    if not phone: raise ValidationError("Profile phone number required")
+    requested_phone = str(phone_number or "").strip()
+    profile_phone = str(profile.phone or "").strip() if profile else ""
+    phone = _normalize_mpesa_phone(requested_phone or profile_phone)
     existing = MovingPayment.objects.select_for_update().filter(booking_id=booking.id, status__in=["PENDING", "PROCESSING", "HELD"]).order_by("-created_at").first()
     if existing and existing.status == "HELD": raise ValidationError("Booking payment is already held")
     if existing and existing.provider != "MPESA": raise ValidationError("An active payment attempt exists for another provider")
