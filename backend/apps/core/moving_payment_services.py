@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.models import Profile
 from apps.payments.services import get_provider
 
 from .domain_bookings import Booking, MoverPayout, MovingInvoice, MovingPayment, MovingDispute
@@ -126,8 +127,8 @@ def start_moving_mpesa_payment(*, renter_id, booking_id, phone_number=None):
         raise ValidationError("Booking is already paid")
     invoice = _require_invoice(booking)
 
-    # The payment destination is selected by the renter at checkout. The
-    # profile phone is not a payment requirement and is never read here.
+    # The payment destination belongs to this checkout attempt. The renter's
+    # profile phone is not required and is never used as a payment prerequisite.
     phone = _normalize_mpesa_phone(phone_number)
 
     existing = MovingPayment.objects.select_for_update().filter(booking_id=booking.id, status__in=["PENDING", "PROCESSING", "HELD"]).order_by("-created_at").first()
