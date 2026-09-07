@@ -7,6 +7,7 @@ from apps.accounts.models import Profile
 from .domain_bookings import Booking, MovingInvoice, MovingPayment
 from .domain_financial import MovingFinancialDocument
 from .domain_platform import Mover, NotificationEmail
+from .email_templates import _body, _details, _layout, _status_panel
 
 
 def _profile_email(user_id):
@@ -18,10 +19,54 @@ def _queue_once(*, recipient, template_type, subject, html_body, payment_id):
     recipient = str(recipient or "").strip().lower()
     if not recipient:
         return False
-    if NotificationEmail.objects.filter(recipient=recipient, template_type=template_type, html_body__contains=str(payment_id)).exists():
+    if NotificationEmail.objects.filter(
+        recipient=recipient,
+        template_type=template_type,
+        html_body__contains=str(payment_id),
+    ).exists():
         return False
-    NotificationEmail.objects.create(recipient=recipient, subject=subject, html_body=html_body, template_type=template_type, status="pending", created_at=timezone.now())
+    NotificationEmail.objects.create(
+        recipient=recipient,
+        subject=subject,
+        html_body=html_body,
+        template_type=template_type,
+        status="pending",
+        created_at=timezone.now(),
+    )
     return True
+
+
+def _payment_rows(payment, booking, invoice):
+    paid_at = payment.paid_at or timezone.now()
+    return [
+        ("Booking", str(booking.id)),
+        ("Invoice", str(invoice.invoice_number or "N/A")),
+        ("Amount", f"KES {payment.amount_kes:,.2f}"),
+        ("Payment method", str(payment.provider or "N/A")),
+        ("Provider reference", str(payment.provider_reference or "N/A")),
+        ("Transaction ID", str(payment.provider_transaction_id or "N/A")),
+        ("Paid at", paid_at.strftime("%d %b %Y, %H:%M")),
+    ]
+
+
+def _payment_email(*, title, message, rows, extra_rows=(), panel_message=None, panel_heading=None):
+    panel = _status_panel(
+        panel_heading or title,
+        panel_message or message,
+        "#e8f5e9",
+        "#c8e6c9",
+        heading_color="#1b5e20",
+        message_color="#4b6350",
+        icon="✓",
+        icon_background="#c8e6c9",
+        icon_color="#1b5e20",
+    )
+    content = (
+        f'<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello,</p>'
+        f'<p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#444444;">{escape(message)}</p>'
+        f'{_details(list(rows) + list(extra_rows), heading="PAYMENT DETAILS", bordered=True)}'
+    )
+    return _layout("Moving Payment Confirmation", panel + _body(content))
 
 
 def queue_moving_payment_emails(payment_id):
@@ -37,40 +82,87 @@ def queue_moving_payment_emails(payment_id):
     renter_email = _profile_email(booking.renter_id)
     mover = Mover.objects.filter(pk=booking.mover_id).first()
     mover_email = _profile_email(mover.user_id) if mover else ""
-    admin_emails = list(Profile.objects.filter(is_active=True, is_admin=True).exclude(email__isnull=True).values_list("email", flat=True))
-    receipt = MovingFinancialDocument.objects.filter(booking_id=booking.id, document_type="RENTER_RECEIPT").first()
-    settlement = MovingFinancialDocument.objects.filter(booking_id=booking.id, document_type="MOVER_SETTLEMENT").first()
+    admin_emails = list(
+        Profile.objects.filter(is_active=True, is_admin=True)
+        .exclude(email__isnull=True)
+        .values_list("email", flat=True)
+    )
+    receipt = MovingFinancialDocument.objects.filter(
+        booking_id=booking.id, document_type="RENTER_RECEIPT"
+    ).first()
+    settlement = MovingFinancialDocument.objects.filter(
+        booking_id=booking.id, document_type="MOVER_SETTLEMENT"
+    ).first()
 
-    amount = f"KES {payment.amount_kes:,.2f}"
-    paid_at = payment.paid_at or timezone.now()
+    rows = _payment_rows(payment, booking, invoice)
     pid = str(payment.id)
     bid = str(booking.id)
-    invoice_number = str(invoice.invoice_number or "")
-    provider = escape(str(payment.provider or ""))
-    provider_reference = escape(str(payment.provider_reference or "N/A"))
-    provider_transaction = escape(str(payment.provider_transaction_id or "N/A"))
-    base_rows = f"""<tr><td>Booking</td><td align=\"right\"><strong>{escape(bid)}</strong></td></tr><tr><td>Invoice</td><td align=\"right\"><strong>{escape(invoice_number)}</strong></td></tr><tr><td>Amount</td><td align=\"right\"><strong>{escape(amount)}</strong></td></tr><tr><td>Payment method</td><td align=\"right\"><strong>{provider}</strong></td></tr><tr><td>Provider reference</td><td align=\"right\"><strong>{provider_reference}</strong></td></tr><tr><td>Transaction ID</td><td align=\"right\"><strong>{provider_transaction}</strong></td></tr><tr><td>Paid at</td><td align=\"right\"><strong>{escape(paid_at.isoformat())}</strong></td></tr>"""
-
-    def page(title, greeting, message, extra=""):
-        return f"""<!DOCTYPE html><html><body style=\"margin:0;padding:30px 15px;background:#f6f7f9;color:#222;font-family:Arial,Helvetica,sans-serif;\"><div style=\"max-width:620px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;\"><div style=\"padding:28px;text-align:center;\"><h1 style=\"margin:0;color:#255d3a;\">Saka Krib</h1><p style=\"color:#777;\">Moving payment confirmation</p></div><div style=\"padding:30px;\"><h2 style=\"margin-top:0;color:#1b5e20;\">{escape(title)}</h2><p>Hello {escape(greeting)},</p><p style=\"line-height:1.7;color:#444;\">{escape(message)}</p><table width=\"100%\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse;background:#f5f7f6;\">{base_rows}{extra}</table><p style=\"margin-top:24px;color:#777;font-size:13px;\">Payment record: {escape(pid)}. Please keep this email for your records.</p></div><div style=\"padding:20px;text-align:center;background:#1e1e1e;color:#aaa;font-size:12px;\">Saka Krib · support@sakakrib.com</div></div></body></html>"""
-
     queued = 0
+
     if renter_email:
-        extra = f"<tr><td>Receipt</td><td align=\"right\"><strong>{escape(receipt.document_number if receipt else 'N/A')}</strong></td></tr>"
-        if _queue_once(recipient=renter_email, template_type="moving_payment_renter", subject="Saka Krib moving payment receipt", payment_id=pid, html_body=page("Payment received", "Renter", "Your payment for the moving service has been received and is being held securely until the booking is completed.", extra)):
+        extra = [("Receipt", receipt.document_number if receipt else "N/A")]
+        html = _payment_email(
+            title="Payment received",
+            message="Your moving payment has been received and is being held securely until delivery is confirmed.",
+            rows=rows,
+            extra_rows=extra,
+            panel_heading="Payment received",
+            panel_message="Your moving payment was received successfully.",
+        )
+        if _queue_once(
+            recipient=renter_email,
+            template_type="moving_payment_renter",
+            subject="Saka Krib moving payment receipt",
+            payment_id=pid,
+            html_body=html,
+        ):
             queued += 1
+
     if mover_email:
-        extra = f"<tr><td>Settlement</td><td align=\"right\"><strong>{escape(settlement.document_number if settlement else 'N/A')}</strong></td></tr>"
+        extra = [("Settlement", settlement.document_number if settlement else "N/A")]
         if settlement:
-            extra += f"<tr><td>Mover net settlement</td><td align=\"right\"><strong>KES {settlement.mover_net_kes:,.2f}</strong></td></tr>"
-        if _queue_once(recipient=mover_email, template_type="moving_payment_mover", subject="Saka Krib: renter payment received for your move", payment_id=pid, html_body=page("Renter payment received", mover.driver_full_name if mover else "Mover", "The renter has completed payment for this moving booking. The funds are held securely and your settlement will be released according to the completed-delivery process.", extra)):
+            extra.append(("Mover net settlement", f"KES {settlement.mover_net_kes:,.2f}"))
+        html = _payment_email(
+            title="Renter payment received",
+            message="The renter has completed payment for this moving booking. The funds are held securely and settlement will follow the completed-delivery process.",
+            rows=rows,
+            extra_rows=extra,
+            panel_heading="Renter payment received",
+            panel_message="Payment is confirmed and securely held for this booking.",
+        )
+        if _queue_once(
+            recipient=mover_email,
+            template_type="moving_payment_mover",
+            subject="Saka Krib: renter payment received for your move",
+            payment_id=pid,
+            html_body=html,
+        ):
             queued += 1
+
     for admin_email in {str(email or "").strip().lower() for email in admin_emails}:
         if not admin_email:
             continue
-        extra = f"<tr><td>Renter ID</td><td align=\"right\"><strong>{escape(str(booking.renter_id))}</strong></td></tr><tr><td>Mover ID</td><td align=\"right\"><strong>{escape(str(booking.mover_id))}</strong></td></tr>"
+        extra = [
+            ("Renter ID", str(booking.renter_id)),
+            ("Mover ID", str(booking.mover_id)),
+        ]
         if settlement:
-            extra += f"<tr><td>Mover net payable</td><td align=\"right\"><strong>KES {settlement.mover_net_kes:,.2f}</strong></td></tr>"
-        if _queue_once(recipient=admin_email, template_type="moving_payment_admin", subject="Saka Krib: moving payment received — action tracking", payment_id=pid, html_body=page("Moving payment received", "Administrator", "A renter has completed payment for a moving booking. Review the payment, escrow status and mover settlement in the admin dashboard.", extra)):
+            extra.append(("Mover net payable", f"KES {settlement.mover_net_kes:,.2f}"))
+        html = _payment_email(
+            title="Moving payment received",
+            message="A renter has completed payment for a moving booking. Review the payment, escrow status and mover settlement in the admin dashboard.",
+            rows=rows,
+            extra_rows=extra,
+            panel_heading="Moving payment received",
+            panel_message="A new moving payment is confirmed and held in escrow.",
+        )
+        if _queue_once(
+            recipient=admin_email,
+            template_type="moving_payment_admin",
+            subject="Saka Krib: moving payment received — action tracking",
+            payment_id=pid,
+            html_body=html,
+        ):
             queued += 1
+
     return {"queued": queued, "payment_id": pid, "booking_id": bid}
