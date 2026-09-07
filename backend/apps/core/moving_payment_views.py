@@ -27,7 +27,7 @@ def _error(exc):
 class MovingMpesaStartView(APIView):
     permission_classes=[IsAuthenticated]
     def post(self,request,booking_id):
-        try: return Response(start_moving_mpesa_payment(renter_id=request.user.id,booking_id=booking_id))
+        try: return Response(start_moving_mpesa_payment(renter_id=request.user.id,booking_id=booking_id,phone_number=request.data.get("phone_number")))
         except (ValidationError,TypeError,ValueError,RuntimeError) as exc: return _error(exc)
 
 
