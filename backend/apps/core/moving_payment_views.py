@@ -1,4 +1,5 @@
 import hmac
+import logging
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -20,6 +21,8 @@ from .moving_payment_services import (
 from .moving_payment_success_services import finalize_successful_moving_mpesa_payment
 from .moving_paypal_webhook_services import finalize_moving_paypal_webhook
 
+logger = logging.getLogger(__name__)
+
 
 def _error(exc):
     return Response({"detail": str(exc)}, status=400)
@@ -34,22 +37,65 @@ class MovingMpesaStartView(APIView):
 
 class MovingMpesaCallbackView(APIView):
     permission_classes=[AllowAny]; authentication_classes=[]
+
     def post(self,request):
-        callback=request.data.get("Body",{}).get("stkCallback",{}); checkout_id=callback.get("CheckoutRequestID")
-        if not checkout_id: return Response({"ResultCode":0,"ResultDesc":"Accepted"})
+        callback=(request.data or {}).get("Body",{}).get("stkCallback",{})
+        checkout_id=callback.get("CheckoutRequestID")
+        if not checkout_id:
+            logger.warning("Moving M-Pesa callback missing CheckoutRequestID")
+            return Response({"ResultCode":0,"ResultDesc":"Accepted"})
+
+        raw_result_code=callback.get("ResultCode")
         try:
-            items={item.get("Name"):item.get("Value") for item in callback.get("CallbackMetadata",{}).get("Item",[])}
+            normalized_result_code=int(raw_result_code)
+        except (TypeError,ValueError):
+            normalized_result_code=None
+
+        try:
+            items={
+                item.get("Name"): item.get("Value")
+                for item in callback.get("CallbackMetadata",{}).get("Item",[])
+                if isinstance(item,dict) and item.get("Name")
+            }
+
+            logger.info(
+                "Moving M-Pesa callback received: checkout=%s merchant=%s result_code=%r metadata=%s",
+                checkout_id,
+                callback.get("MerchantRequestID"),
+                normalized_result_code,
+                items,
+            )
+
             result=finalize_successful_moving_mpesa_payment(
                 checkout_request_id=checkout_id,
-                result_code=callback.get("ResultCode"),
+                result_code=normalized_result_code,
                 result_description=callback.get("ResultDesc"),
                 callback_metadata=items,
                 merchant_request_id=callback.get("MerchantRequestID"),
             )
+
+            logger.info(
+                "Moving M-Pesa callback processed: checkout=%s result_code=%r status=%s payment_id=%s",
+                checkout_id,
+                normalized_result_code,
+                result.get("status"),
+                result.get("payment_id"),
+            )
+
             return Response({"ResultCode":0,"ResultDesc":"Accepted",**result})
         except (ValidationError,TypeError,ValueError) as exc:
+            logger.exception(
+                "Moving M-Pesa callback validation/processing failure: checkout=%s result_code=%r",
+                checkout_id,
+                normalized_result_code,
+            )
             return Response({"ResultCode":1,"ResultDesc":"Processing failed","processing_error":str(exc)},status=500)
         except Exception:
+            logger.exception(
+                "Moving M-Pesa callback unexpected processing failure: checkout=%s result_code=%r",
+                checkout_id,
+                normalized_result_code,
+            )
             return Response({"ResultCode":1,"ResultDesc":"Processing failed"},status=500)
 
 
