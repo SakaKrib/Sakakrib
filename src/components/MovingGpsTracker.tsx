@@ -58,9 +58,10 @@ export default function MovingGpsTracker() {
       sendingRef.current = true;
       try {
         await moverApi.recordLocation(bookingId, location);
-        if (!cancelledRef.current && bookingIdRef.current === bookingId && pendingRef.current === location) { pendingRef.current = null; lastSentAtRef.current = Date.now(); }
+        if (!cancelledRef.current && bookingIdRef.current === bookingId && pendingRef.current === location) { pendingRef.current = null; lastSentAtRef.current = Date.now(); window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-state', { detail: { state: 'accepted', latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy_meters } })); }
       } catch (error) {
         console.warn('Live GPS update was rejected or unavailable:', error);
+        window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-state', { detail: { state: 'rejected', message: error instanceof Error ? error.message : 'Location update was rejected or unavailable.' } }));
         if (!cancelledRef.current && bookingIdRef.current === bookingId) { clearRetry(); retryTimerRef.current = window.setTimeout(() => { retryTimerRef.current = null; void sendPending(); }, RETRY_INTERVAL_MS); }
       } finally { sendingRef.current = false; }
     };
@@ -68,10 +69,15 @@ export default function MovingGpsTracker() {
     const publish = (position: GeolocationPosition) => {
       if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
       const accuracy = Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null;
-      pendingRef.current = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_meters: accuracy, speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6), heading_degrees: position.coords.heading == null ? null : position.coords.heading };
+      const location = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_meters: accuracy, speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6), heading_degrees: position.coords.heading == null ? null : position.coords.heading };
+      pendingRef.current = location;
+      window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-state', { detail: { state: 'received', latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy_meters } }));
       void sendPending();
     };
-    const handleGpsError = (error: GeolocationPositionError) => { console.warn('Mover GPS unavailable:', error.code, error.message); };
+    const handleGpsError = (error: GeolocationPositionError) => {
+      console.warn('Mover GPS unavailable:', error.code, error.message);
+      window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-state', { detail: { state: error.code === error.PERMISSION_DENIED ? 'denied' : error.code === error.POSITION_UNAVAILABLE ? 'unavailable' : 'timeout', message: error.message } }));
+    };
     const probeGps = () => {
       if (cancelledRef.current || bookingIdRef.current !== bookingId || !navigator.onLine) return;
       navigator.geolocation.getCurrentPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
