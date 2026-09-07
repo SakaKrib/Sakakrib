@@ -48,7 +48,10 @@ class MovingJourneyDomainTests(TestCase):
         first.full_clean()
         first.save()
 
-        duplicate_booking = self._journey(tracking_number="SK-MOV-20260909-A1B2C")
+        duplicate_booking = self._journey(
+            booking_id=first.booking_id,
+            tracking_number="SK-MOV-20260909-A1B2C",
+        )
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 duplicate_booking.save(force_insert=True)
