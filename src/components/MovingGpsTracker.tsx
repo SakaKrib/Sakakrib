@@ -42,9 +42,6 @@ export default function MovingGpsTracker() {
       'geolocation' in navigator;
     if (!canTrack) { stop(); bookingIdRef.current = null; return () => { cancelledRef.current = true; stop(); }; }
 
-    // mover-tracking historically stores the route id in selectedMoverId, while
-    // mover-booking-detail stores it in selectedMoverBookingId. Accept both so
-    // navigation cannot silently disable the browser GPS watcher.
     const bookingId = selectedMoverBookingId ?? (view === 'mover-tracking' ? selectedMoverId : null);
     if (!bookingId) {
       stop(); bookingIdRef.current = null;
@@ -99,16 +96,13 @@ export default function MovingGpsTracker() {
     };
     const restart = () => { if (!cancelledRef.current) void syncBookingState(); };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
-    document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('online', restart); window.addEventListener('pageshow', restart);
+    const handleExplicitGpsRequest = () => start();
+    document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('online', restart); window.addEventListener('pageshow', restart); window.addEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest);
 
-    // The mover live-tracking route is the explicit journey-sharing screen.
-    // Start the browser GPS watcher immediately so the browser can request
-    // location permission instead of waiting for the booking-detail request.
-    // Django remains the authority that accepts/rejects every location point.
     if (view === 'mover-tracking') start();
     void syncBookingState();
     const stateTimer = window.setInterval(() => { void syncBookingState(); }, BOOKING_STATE_INTERVAL_MS);
-    return () => { cancelledRef.current = true; document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('online', restart); window.removeEventListener('pageshow', restart); window.clearInterval(stateTimer); stop(); bookingIdRef.current = null; };
+    return () => { cancelledRef.current = true; document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('online', restart); window.removeEventListener('pageshow', restart); window.removeEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest); window.clearInterval(stateTimer); stop(); bookingIdRef.current = null; };
   }, [profile, view, selectedMoverBookingId, selectedMoverId]);
   return null;
 }
