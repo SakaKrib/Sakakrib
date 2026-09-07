@@ -49,8 +49,6 @@ def request_mover_booking_with_schedule(*, renter_id, mover_id, pickup_address, 
         dropoff_longitude=dropoff_longitude,
         listing_id=listing_id,
         moving_date=moving_date,
-        moving_time=moving_time,
-        moving_end_time=moving_end_time,
         preferred_payment_method=preferred_payment_method,
     )
 
