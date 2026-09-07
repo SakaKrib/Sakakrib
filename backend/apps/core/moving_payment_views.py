@@ -11,11 +11,11 @@ from apps.accounts.models import Profile
 from .domain_bookings import MoverPayout, MovingPayment
 from .domain_platform import Mover, UserNotification
 from .email_services import queue_mover_payout_success_emails
-from .moving_financial_services import sync_moving_financial_documents_on_release
+from .moving_financial_services import ensure_moving_financial_documents, sync_moving_financial_documents_on_release
 from .moving_lifecycle_services import confirm_moving_delivery, open_moving_dispute, resolve_moving_dispute
 from .moving_payment_services import (
-    finalize_mover_payout, release_moving_escrow, start_moving_mpesa_payment,
-    start_moving_paypal_payment,
+    finalize_mover_payout, finalize_moving_mpesa_callback,
+    release_moving_escrow, start_moving_mpesa_payment, start_moving_paypal_payment,
 )
 from .moving_payment_success_services import finalize_successful_moving_mpesa_payment
 from .moving_paypal_webhook_services import finalize_moving_paypal_webhook
@@ -65,6 +65,9 @@ class MovingPaypalWebhookView(APIView):
     def post(self,request):
         try:
             result=finalize_moving_paypal_webhook(headers=request.headers,raw_body=request.body)
+            if result.get("payment_id"):
+                documents=ensure_moving_financial_documents(payment_id=result["payment_id"])
+                result={**result,"financial_documents":documents}
             return Response(result)
         except PermissionError as exc: return Response({"success":False,"error":str(exc)},status=401)
         except (ValidationError,TypeError,ValueError) as exc: return Response({"success":False,"error":str(exc)},status=400)
