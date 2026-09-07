@@ -62,6 +62,23 @@ export default function ChatPage() {
   const unreadNotifications = notifications.filter(item => !item.read_at).length;
   const latestSchedule = useMemo(() => scheduleEvents.filter(item => item.booking_id === booking?.id).sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())[0] ?? null, [scheduleEvents, booking?.id]);
   const blockedIntervals: MoverBlockedInterval[] = useMemo(() => scheduleEvents.filter(item => item.booking_id !== booking?.id).map(item => ({ id: item.id, starts_at: item.starts_at, ends_at: item.ends_at, status: item.status })), [scheduleEvents, booking?.id]);
+  const visibleMessages = useMemo(() => {
+    const latestByBooking = new Map<string, ChatMessage>();
+    for (const message of messages) {
+      if (message.message_type !== 'booking_request' && message.message_type !== 'booking_response') continue;
+      const eventBookingId = typeof message.event_data?.booking_id === 'string' ? message.event_data.booking_id : null;
+      const key = eventBookingId || booking?.id;
+      if (!key) continue;
+      const current = latestByBooking.get(key);
+      if (!current || new Date(message.created_at).getTime() >= new Date(current.created_at).getTime()) latestByBooking.set(key, message);
+    }
+    return messages.filter(message => {
+      if (message.message_type !== 'booking_request' && message.message_type !== 'booking_response') return true;
+      const eventBookingId = typeof message.event_data?.booking_id === 'string' ? message.event_data.booking_id : null;
+      const key = eventBookingId || booking?.id;
+      return !key || latestByBooking.get(key)?.id === message.id;
+    });
+  }, [messages, booking?.id]);
 
   const load = useCallback(async () => {
     if (!profile || !mover || !conversationId) return;
@@ -133,7 +150,7 @@ export default function ChatPage() {
     {pageError && <div className="mx-4 mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">{pageError}</div>}
     <main className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
       {booking && <div className="mb-5 rounded-2xl border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-800 dark:bg-brand-950/50"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Booking</p><p className="mt-1 text-sm font-semibold">{dateOnly(booking.moving_date)} · {formatKES(Number(booking.total_amount ?? booking.booking_amount ?? 0))}</p></div><span className="rounded-full bg-background px-3 py-1 text-xs font-semibold uppercase">{booking.status || 'pending'}</span></div></div>}
-      <div className="space-y-4">{messages.map(message => {
+      <div className="space-y-4">{visibleMessages.map(message => {
         const eventBookingId = typeof message.event_data?.booking_id === 'string' ? message.event_data.booking_id : null;
         if (message.message_type === 'booking_request' || message.message_type === 'booking_response') return <div key={message.id} className={cn('flex', message.sender_id === profile?.id ? 'justify-end' : 'justify-start')}><ChatBookingCard message={message} booking={eventBookingId && booking?.id === eventBookingId ? booking : booking} isMover={isMover} responding={responding} onRespond={respond} onCancel={cancelBooking} onSchedule={() => setShowScheduler(true)} /></div>;
         const raw = message.event_data?.attachments; const attachment = Array.isArray(raw) && raw[0] && typeof raw[0] === 'object' ? raw[0] as ChatAttachment : null;
