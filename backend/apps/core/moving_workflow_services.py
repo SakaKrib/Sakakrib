@@ -8,6 +8,7 @@ from django.utils import timezone
 from .domain_bookings import Booking, ChatMessage, MoverScheduleEvent
 from .domain_platform import Mover, UserNotification
 from .moving_services import (
+    _ensure_moving_invoice,
     _ensure_no_schedule_conflict,
     _mover_schedule_window,
     request_mover_booking,
@@ -48,6 +49,8 @@ def request_mover_booking_with_schedule(*, renter_id, mover_id, pickup_address, 
         dropoff_longitude=dropoff_longitude,
         listing_id=listing_id,
         moving_date=moving_date,
+        moving_time=moving_time,
+        moving_end_time=moving_end_time,
         preferred_payment_method=preferred_payment_method,
     )
 
@@ -115,6 +118,10 @@ def confirm_mover_booking_workflow(*, mover_user_id, booking_id):
     booking.confirmed_at = now
     booking.updated_at = now
     booking.save(update_fields=["status", "confirmed_at", "updated_at"])
+
+    # The active confirmation endpoint uses this workflow, so it must create
+    # the authoritative invoice before the renter can enter the payment flow.
+    invoice = _ensure_moving_invoice(booking, mover)
 
     conversation = _conversation(booking.renter_id, mover.user_id)
     ChatMessage.objects.create(
