@@ -96,3 +96,9 @@ class MovingChatInboxConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_inbox_message(self, event):
         await self.send_json({"type": "message", "message": event["message"]})
+
+    async def booking(self, event):
+        await self.send_json({"type": "booking", "booking": event["booking"]})
+
+    async def notification(self, event):
+        await self.send_json({"type": "notification", "notification": event["notification"]})
