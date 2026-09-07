@@ -12,6 +12,7 @@ export interface RenterCalendarEvent {
   detail: string;
   type: 'MOVING' | 'RENT';
   status: string;
+  actionLabel: string;
   action: () => void;
 }
 
@@ -59,7 +60,7 @@ export default function RenterCalendar({ events }: Props) {
         <div>
           <h2 className="font-bold text-gray-900 dark:text-white">Renter calendar</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            View your rent due dates and moving dates by date.
+            View your scheduled moves, rent due dates, and actions by date.
           </p>
         </div>
         <CalendarDays className="h-5 w-5 text-brand-600 dark:text-brand-400" />
@@ -162,7 +163,7 @@ export default function RenterCalendar({ events }: Props) {
                     year: 'numeric',
                   })}
                 </h3>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Your scheduled renter events</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Your scheduled renter events and outstanding actions</p>
               </div>
               <button
                 type="button"
@@ -178,11 +179,9 @@ export default function RenterCalendar({ events }: Props) {
             ) : (
               <div className="mt-4 space-y-2">
                 {eventsForDate.map((event) => (
-                  <button
+                  <div
                     key={event.id}
-                    type="button"
-                    onClick={event.action}
-                    className="w-full rounded-xl bg-brand-50 p-3 text-left hover:bg-brand-100 dark:bg-brand-900/30 dark:hover:bg-brand-900/50"
+                    className="rounded-xl bg-brand-50 p-3 dark:bg-brand-900/30"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -193,7 +192,14 @@ export default function RenterCalendar({ events }: Props) {
                         {event.status}
                       </span>
                     </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={event.action}
+                      className="mt-3 inline-flex rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-brand-950"
+                    >
+                      {event.actionLabel}
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
