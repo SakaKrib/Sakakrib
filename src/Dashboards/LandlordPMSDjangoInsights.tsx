@@ -15,7 +15,6 @@ import {
   Wallet,
 } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
-import LandlordPMS from './LandlordPMS';
 
 type RecordValue = Record<string, any>;
 
@@ -376,8 +375,6 @@ export default function LandlordPMSDjangoInsights() {
               </div>
             </div>
           </section>
-
-          <LandlordPMS />
         </>
       )}
     </div>
