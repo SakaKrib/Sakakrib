@@ -1,14 +1,15 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 import hashlib
 
 from apps.accounts.models import Profile
 from apps.payments.models import ListingPayment
 from apps.subscriptions.models import SubscriptionInvoice
 
+from .chat_consumers import user_chat_group_name
 from .domain_bookings import ChatMessage, MovingInvoice, MovingPayment
 from .domain_platform import UserNotification
 
@@ -109,10 +110,11 @@ def _broadcast_chat_message(message_id):
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return
-    async_to_sync(channel_layer.group_send)(
-        _chat_group_name(message.conversation_id),
-        {"type": "chat.message", "message": serialize_message(message)},
-    )
+    payload = {"type": "chat.message", "message": serialize_message(message)}
+    async_to_sync(channel_layer.group_send)(_chat_group_name(message.conversation_id), payload)
+    inbox_payload = {"type": "chat.inbox.message", "message": payload["message"]}
+    for user_id in {message.sender_id, message.receiver_id}:
+        async_to_sync(channel_layer.group_send)(user_chat_group_name(user_id), inbox_payload)
 
 
 @receiver(post_save, sender=ChatMessage)
