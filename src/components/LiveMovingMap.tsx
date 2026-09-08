@@ -74,27 +74,70 @@ export default function LiveMovingMap() {
   const attemptRef = useRef(0);
   const firstMapFitRef = useRef(false);
 
+  useEffect(() => {
+    console.log('[LiveMovingMap] component mounted', {
+      profileRole: profile?.role,
+      isMover,
+      selectedMoverBookingId,
+      selectedMoverId,
+      bookingId,
+      mapStyle: MAP_STYLE,
+    });
+
+    return () => {
+      console.log('[LiveMovingMap] component unmounted');
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('[LiveMovingMap] booking context changed', {
+      profileRole: profile?.role,
+      isMover,
+      selectedMoverBookingId,
+      selectedMoverId,
+      bookingId,
+    });
+  }, [profile?.role, isMover, selectedMoverBookingId, selectedMoverId, bookingId]);
+
   const load = useCallback(async () => {
+    console.log('[LiveMovingMap] load started', { bookingId, isMover });
+
     if (!bookingId) {
+      console.warn('[LiveMovingMap] load skipped: no bookingId');
       setLoading(false);
       return null;
     }
 
     try {
+      console.log('[LiveMovingMap] requesting booking/tracking data', {
+        bookingId,
+        source: isMover ? 'moverApi' : 'renterApi',
+      });
+
       const [tracking, selectedBooking] = isMover
         ? await Promise.all([moverApi.getTracking(bookingId), moverApi.getBooking(bookingId)])
         : await Promise.all([renterApi.getTracking(bookingId), renterApi.getBooking(bookingId)]);
 
       const trackingData = tracking as MoverTrackingResponse;
       const bookingData = selectedBooking as MapBooking;
+
+      console.log('[LiveMovingMap] booking/tracking data received', {
+        bookingId,
+        bookingStatus: bookingData.status,
+        trackingPoints: trackingData.tracking_points?.length ?? 0,
+        trackingBooking: trackingData.booking,
+      });
+
       setBooking({ ...bookingData, ...(trackingData.booking as Partial<MapBooking>) });
       setPoints(trackingData.tracking_points ?? []);
       setError(null);
       return trackingData;
     } catch (err) {
+      console.error('[LiveMovingMap] load failed', err);
       setError(err instanceof Error ? err.message : 'Unable to load live map.');
       return null;
     } finally {
+      console.log('[LiveMovingMap] load finished');
       setLoading(false);
     }
   }, [bookingId, isMover]);
@@ -104,7 +147,25 @@ export default function LiveMovingMap() {
   }, [load]);
 
   useEffect(() => {
-    if (!mapElementRef.current || mapRef.current) return;
+    console.log('[LiveMovingMap] map initialization effect entered', {
+      hasContainer: Boolean(mapElementRef.current),
+      hasExistingMap: Boolean(mapRef.current),
+    });
+
+    if (!mapElementRef.current || mapRef.current) {
+      console.warn('[LiveMovingMap] map initialization skipped', {
+        hasContainer: Boolean(mapElementRef.current),
+        hasExistingMap: Boolean(mapRef.current),
+      });
+      return;
+    }
+
+    console.log('[LiveMovingMap] creating MapLibre map', {
+      style: MAP_STYLE,
+      center: [36.817223, -1.286389],
+      zoom: 12,
+      workerUrl: maplibreWorkerUrl,
+    });
 
     try {
       const map = new MapLibreMap({
@@ -116,23 +177,63 @@ export default function LiveMovingMap() {
         cooperativeGestures: false,
       });
 
+      console.log('[LiveMovingMap] MapLibre instance created');
+
       map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
       map.addControl(new FullscreenControl(), 'top-right');
-      map.on('load', () => setMapLoading(false));
+
+      map.on('style.load', () => {
+        console.log('[LiveMovingMap] MapLibre style.load fired', {
+          isStyleLoaded: map.isStyleLoaded(),
+        });
+      });
+
+      map.on('load', () => {
+        console.log('[LiveMovingMap] MapLibre load fired', {
+          isStyleLoaded: map.isStyleLoaded(),
+          center: map.getCenter().toArray(),
+          zoom: map.getZoom(),
+        });
+        setMapLoading(false);
+      });
+
       map.on('error', event => {
+        console.error('[LiveMovingMap] MapLibre error event', {
+          event,
+          error: event.error,
+          message: event.error?.message,
+          stack: event.error?.stack,
+        });
         if (event.error) {
           setMapError(event.error.message || 'Unable to load the map.');
           setMapLoading(false);
         }
       });
 
+      map.on('idle', () => {
+        console.log('[LiveMovingMap] MapLibre idle fired', {
+          isStyleLoaded: map.isStyleLoaded(),
+        });
+      });
+
+      map.on('webglcontextlost', event => {
+        console.error('[LiveMovingMap] WebGL context lost', event);
+      });
+
+      map.on('webglcontextrestored', () => {
+        console.log('[LiveMovingMap] WebGL context restored');
+      });
+
       mapRef.current = map;
+      console.log('[LiveMovingMap] MapLibre map stored in mapRef');
     } catch (err) {
+      console.error('[LiveMovingMap] MapLibre initialization threw', err);
       setMapLoading(false);
       setMapError(err instanceof Error ? err.message : 'Unable to initialize MapLibre.');
     }
 
     return () => {
+      console.log('[LiveMovingMap] map initialization cleanup');
       popupRef.current?.remove();
       popupRef.current = null;
       moverMarkerRef.current?.remove();
@@ -148,7 +249,14 @@ export default function LiveMovingMap() {
   }, []);
 
   useEffect(() => {
+    console.log('[LiveMovingMap] websocket effect evaluated', {
+      bookingId,
+      bookingStatus: booking?.status,
+      isActive: active(booking?.status),
+    });
+
     if (!bookingId || !booking || !active(booking.status)) {
+      console.log('[LiveMovingMap] websocket not started: booking is not active');
       socketRef.current?.close();
       socketRef.current = null;
       if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current);
@@ -166,25 +274,33 @@ export default function LiveMovingMap() {
 
     const schedule = () => {
       if (disposed || !navigator.onLine) {
+        console.warn('[LiveMovingMap] websocket reconnect skipped', {
+          disposed,
+          online: navigator.onLine,
+        });
         setSocketState('offline');
         return;
       }
       clearTimer();
       setSocketState('reconnecting');
       const delay = Math.min(15000, 750 * Math.pow(2, Math.min(attemptRef.current++, 4)));
+      console.log('[LiveMovingMap] scheduling websocket reconnect', { delay });
       reconnectRef.current = window.setTimeout(connect, delay);
     };
 
     const connect = () => {
       if (disposed) return;
       clearTimer();
+      const url = socketUrl(bookingId);
+      console.log('[LiveMovingMap] opening websocket', { url });
       socketRef.current?.close();
       setSocketState(attemptRef.current ? 'reconnecting' : 'connecting');
 
       let socket: WebSocket;
       try {
-        socket = new WebSocket(socketUrl(bookingId));
-      } catch {
+        socket = new WebSocket(url);
+      } catch (err) {
+        console.error('[LiveMovingMap] websocket constructor failed', err);
         schedule();
         return;
       }
@@ -192,12 +308,14 @@ export default function LiveMovingMap() {
       socketRef.current = socket;
 
       socket.onopen = () => {
+        console.log('[LiveMovingMap] websocket opened', { url });
         if (socketRef.current !== socket) return;
         attemptRef.current = 0;
         setSocketState('live');
       };
 
       socket.onmessage = event => {
+        console.log('[LiveMovingMap] websocket message received', event.data);
         if (socketRef.current !== socket) return;
         try {
           const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null };
@@ -217,16 +335,23 @@ export default function LiveMovingMap() {
             last_known_longitude: point.longitude,
             last_location_at: point.recorded_at,
           } : previous);
-        } catch {
+        } catch (err) {
+          console.error('[LiveMovingMap] malformed websocket frame', err);
           // Ignore malformed frames; HTTP remains authoritative.
         }
       };
 
-      socket.onerror = () => {
+      socket.onerror = event => {
+        console.error('[LiveMovingMap] websocket error', event);
         if (socketRef.current === socket) setSocketState('reconnecting');
       };
 
-      socket.onclose = () => {
+      socket.onclose = event => {
+        console.warn('[LiveMovingMap] websocket closed', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+        });
         if (!disposed && socketRef.current === socket) {
           socketRef.current = null;
           void load().then(snapshot => {
@@ -237,20 +362,28 @@ export default function LiveMovingMap() {
     };
 
     const recover = () => {
+      console.log('[LiveMovingMap] websocket recovery triggered');
       attemptRef.current = 0;
       void load().then(snapshot => {
         if (snapshot && active(snapshot.booking.status)) connect();
       });
     };
 
-    const online = () => recover();
-    const offline = () => setSocketState('offline');
+    const online = () => {
+      console.log('[LiveMovingMap] browser online event');
+      recover();
+    };
+    const offline = () => {
+      console.warn('[LiveMovingMap] browser offline event');
+      setSocketState('offline');
+    };
 
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
     connect();
 
     return () => {
+      console.log('[LiveMovingMap] websocket effect cleanup');
       disposed = true;
       clearTimer();
       socketRef.current?.close();
@@ -275,7 +408,21 @@ export default function LiveMovingMap() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !booking || !map.isStyleLoaded()) return;
+    console.log('[LiveMovingMap] map rendering effect evaluated', {
+      hasMap: Boolean(map),
+      hasBooking: Boolean(booking),
+      bookingStatus: booking?.status,
+      styleLoaded: map?.isStyleLoaded() ?? false,
+      latestPoint: latest,
+      pathPoints: path.length,
+    });
+
+    if (!map || !booking || !map.isStyleLoaded()) {
+      console.warn('[LiveMovingMap] map rendering skipped', {
+        reason: !map ? 'map unavailable' : !booking ? 'booking unavailable' : 'map style not loaded',
+      });
+      return;
+    }
 
     const pickup = validCoordinate(booking.pickup_latitude) && validCoordinate(booking.pickup_longitude)
       ? [booking.pickup_longitude!, booking.pickup_latitude!] as [number, number]
@@ -283,6 +430,13 @@ export default function LiveMovingMap() {
     const dropoff = validCoordinate(booking.dropoff_latitude) && validCoordinate(booking.dropoff_longitude)
       ? [booking.dropoff_longitude!, booking.dropoff_latitude!] as [number, number]
       : null;
+
+    console.log('[LiveMovingMap] rendering map data', {
+      pickup,
+      dropoff,
+      latest,
+      pathPoints: path.length,
+    });
 
     if (pickup) {
       if (!pickupMarkerRef.current) {
