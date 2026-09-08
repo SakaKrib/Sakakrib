@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FullscreenControl, LngLatBounds, Map as MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl } from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { ArrowLeft, CheckCircle2, Crosshair, Loader2, Navigation, PackageCheck, Radio, Route, ShieldCheck, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Crosshair, Loader2, MapPinned, Navigation, PackageCheck, Radio, Route, ShieldCheck, Truck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
@@ -16,6 +16,7 @@ type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed'
 type JourneyPhase = 'HEADING_TO_PICKUP' | 'IN_TRANSIT' | null;
 type Coordinate = [number, number];
 type DeviceGpsPosition = { latitude: number; longitude: number; accuracy_meters: number | null; speed_kph: number | null; heading_degrees: number | null; timestamp?: number; bookingId?: string };
+type LocationPermissionState = 'checking' | 'granted' | 'prompt' | 'denied' | 'unsupported';
 
 interface MapBooking extends MoverBooking { pickup_latitude: number | null; pickup_longitude: number | null; dropoff_latitude: number | null; dropoff_longitude: number | null; }
 interface OsrmRouteResponse { code: string; routes?: Array<{ geometry?: { coordinates?: Coordinate[] }; distance?: number; duration?: number }> }
@@ -54,6 +55,9 @@ export default function LiveMovingMap() {
   const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
   const [followMover, setFollowMover] = useState(true);
   const [deviceGps, setDeviceGps] = useState<DeviceGpsPosition | null>(null);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  const [locationPermission, setLocationPermission] = useState<LocationPermissionState>('checking');
+  const [locationError, setLocationError] = useState<string | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const moverMarkerRef = useRef<Marker | null>(null);
@@ -104,6 +108,39 @@ export default function LiveMovingMap() {
     window.addEventListener('sakakrib:mover-gps-position', handleDeviceGps);
     return () => window.removeEventListener('sakakrib:mover-gps-position', handleDeviceGps);
   }, [bookingId, isMover]);
+
+  useEffect(() => {
+    if (!isMover) { setLocationPermission('unsupported'); return; }
+    if (!window.isSecureContext) { setLocationPermission('denied'); setLocationError('Live location requires a secure HTTPS connection.'); return; }
+    if (!('geolocation' in navigator)) { setLocationPermission('unsupported'); setLocationError('This browser does not provide device location.'); return; }
+    let disposed = false;
+    let permissionStatus: PermissionStatus | null = null;
+    const refresh = async () => {
+      try {
+        if (!navigator.permissions?.query) { if (!disposed) setLocationPermission('prompt'); return; }
+        permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+        if (!disposed) setLocationPermission(permissionStatus.state as LocationPermissionState);
+        permissionStatus.addEventListener('change', () => { if (!disposed && permissionStatus) setLocationPermission(permissionStatus.state as LocationPermissionState); });
+      } catch { if (!disposed) setLocationPermission('prompt'); }
+    };
+    void refresh();
+    return () => { disposed = true; permissionStatus?.removeEventListener('change', () => undefined); };
+  }, [isMover]);
+
+  const requestLocation = useCallback(() => {
+    if (!isMover) return;
+    setLocationError(null);
+    if (!window.isSecureContext) { setLocationPermission('denied'); setLocationError('This page is not running in a secure context. Open SakaKrib over HTTPS on your phone.'); return; }
+    if (!('geolocation' in navigator)) { setLocationPermission('unsupported'); setLocationError('Your browser does not support device location.'); return; }
+    navigator.geolocation.getCurrentPosition(
+      () => { setLocationPermission('granted'); window.dispatchEvent(new Event('sakakrib:request-mover-gps')); },
+      (error) => {
+        if (error.code === 1) { setLocationPermission('denied'); setLocationError('Location permission was denied or blocked. Allow location for this site in the browser site settings, then try again.'); }
+        else setLocationError(error.message || 'Unable to obtain your current location. Check the phone Location setting and try again.');
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 },
+    );
+  }, [isMover]);
 
   useEffect(() => {
     if (!mapElementRef.current || mapRef.current) return;
@@ -224,10 +261,21 @@ export default function LiveMovingMap() {
     <div ref={mapElementRef} className="min-h-0 flex-1 bg-gray-900" aria-label={isMover ? 'Live mover navigation map' : 'MapLibre live mover tracking map'} />
     {(mapLoading || mapError) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950/80 p-6 backdrop-blur-sm"><div className="max-w-md rounded-2xl bg-brand-900 p-6 text-center shadow-2xl">{mapLoading ? <><Loader2 className="mx-auto h-8 w-8 animate-spin" /><p className="mt-3 font-semibold">Loading live map…</p></> : <><p className="text-sm font-semibold">Map is not available</p><p className="mt-2 text-sm text-gray-300">{mapError}</p></>}</div></div>}
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3 sm:p-5"><div className="mx-auto flex max-w-6xl flex-col gap-3">
+      <div className="pointer-events-auto flex items-center justify-between gap-3 rounded-2xl bg-gray-950/90 p-3 shadow-xl backdrop-blur-md sm:hidden">
+        <div className="min-w-0"><p className="truncate text-xs font-semibold">{mobilePanelOpen ? 'Journey details' : phaseTitle}</p><p className="truncate text-[11px] text-gray-400">{mobilePanelOpen ? 'Tap to collapse' : 'Map is ready for navigation'}</p></div>
+        <button type="button" onClick={() => setMobilePanelOpen(value => !value)} aria-expanded={mobilePanelOpen} aria-label={mobilePanelOpen ? 'Collapse journey details' : 'Expand journey details'} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 hover:bg-white/15">{mobilePanelOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}</button>
+      </div>
+      {isMover && locationPermission !== 'granted' && locationPermission !== 'checking' && (
+        <div className="pointer-events-auto rounded-2xl border border-blue-400/30 bg-gray-950/95 p-3 shadow-xl backdrop-blur-md sm:hidden">
+          <div className="flex items-start gap-3"><MapPinned className="mt-0.5 h-5 w-5 shrink-0 text-blue-400" /><div className="min-w-0 flex-1"><p className="text-xs font-bold">Enable live location</p><p className="mt-1 text-[11px] leading-4 text-gray-300">SakaKrib needs your phone location to navigate you to pickup and destination.</p>{locationError && <p className="mt-1 text-[11px] leading-4 text-amber-300">{locationError}</p>}<button type="button" onClick={requestLocation} className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">{locationPermission === 'denied' ? 'Check location settings' : 'Use my location'}</button></div></div>
+        </div>
+      )}
+      <div className={cn('flex flex-col gap-3', mobilePanelOpen ? 'flex' : 'hidden', 'sm:flex')}>
       <div className="pointer-events-auto rounded-2xl bg-gray-950/90 p-4 shadow-2xl backdrop-blur-md"><div className="flex items-start gap-3">{journeyPhase === 'IN_TRANSIT' ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-400" /> : <Navigation className="mt-0.5 h-5 w-5 shrink-0 text-blue-400" />}<div className="min-w-0"><p className="text-sm font-bold">{phaseTitle}</p><p className="mt-1 text-xs leading-5 text-gray-300">{phaseDescription}</p></div></div></div>
       {isMover && showPickupConfirmation && (<div className="pointer-events-auto rounded-2xl border border-amber-300 bg-amber-50 p-4 text-gray-900 shadow-2xl dark:border-amber-700 dark:bg-amber-950/95 dark:text-white"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-amber-600 dark:text-amber-400" /><div className="min-w-0 flex-1"><p className="text-sm font-bold">You have reached the pickup area</p><p className="mt-1 text-xs leading-5 text-gray-700 dark:text-gray-200">Pickup Point A is approximately {Math.round(pickupDistanceMeters ?? 0)} m away. Confirm only after the renter's belongings have been handed over to you.</p>{pickupConfirmationError && <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">{pickupConfirmationError}</p>}<button type="button" onClick={() => void confirmPickup()} disabled={confirmingPickup} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">{confirmingPickup ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}{confirmingPickup ? 'Confirming pickup…' : 'Confirm pickup'}</button></div></div></div>)}
       <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end rounded-2xl bg-gray-950/90 p-2 shadow-xl"><button type="button" onClick={() => { setFollowMover(true); if (currentPosition) mapRef.current?.easeTo({ center: currentPosition, duration: 500 }); }} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-white/10"><Crosshair className="h-4 w-4" /> {isMover ? 'Center on my location' : 'Follow mover'}</button><button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4" /> {isMover ? (followMover ? 'Follow route' : 'Explore map') : (followMover ? 'Following' : 'Explore map')}</button></div>
       {isMover ? (<div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl sm:grid-cols-3"><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Current objective</p><p className="mt-1 text-sm font-bold">{journeyPhase === 'IN_TRANSIT' ? 'Destination B' : 'Pickup point A'}</p><p className="mt-1 text-[11px] text-gray-400">{routeDistanceKm != null ? `${routeDistanceKm.toFixed(1)} km remaining` : routeStatus}</p><p className="mt-1 text-[11px] text-gray-400">{routeDurationMinutes != null ? `Approx. ${Math.round(routeDurationMinutes)} min` : ''}</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Your current position</p><p className="mt-1 truncate text-sm font-bold">{lat !== null && lng !== null ? `Lat ${lat.toFixed(6)} · Lng ${lng.toFixed(6)}` : 'Waiting for GPS…'}</p><p className="mt-1 text-[11px] text-gray-400">{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-KE')}` : 'No accepted GPS point yet'}</p>{deviceGps?.accuracy_meters != null && <p className="mt-1 text-[11px] text-gray-400">GPS accuracy ±{Math.round(deviceGps.accuracy_meters)} m</p>}</div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Journey</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><Truck className="h-4 w-4" /> {journeyPhase === 'IN_TRANSIT' ? 'Pickup confirmed' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Heading to pickup' : 'Starting'}</p><p className="mt-1 text-[11px] text-gray-400">{points.length} GPS points received</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Pickup point A</p><p className="mt-1 text-sm font-bold">{coordinateLabel(pickup)}</p><p className="mt-1 text-[11px] text-gray-400">{journeyPhase === 'IN_TRANSIT' ? 'Collected' : 'Collect items here'}</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Destination B</p><p className="mt-1 text-sm font-bold">{coordinateLabel(dropoff)}</p><p className="mt-1 text-[11px] text-gray-400">{journeyPhase === 'IN_TRANSIT' ? 'Active route' : 'Next after pickup'}</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{deviceGps?.speed_kph != null ? `${deviceGps.speed_kph.toFixed(1)} km/h` : latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">Your device location is shared live.</p></div></div>) : (<div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl sm:grid-cols-4"><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Next destination</p><p className="mt-1 text-sm font-bold">{journeyPhase === 'IN_TRANSIT' ? 'Delivery destination' : 'Pickup location'}</p><p className="mt-1 text-[11px] text-gray-400">{routeDistanceKm != null ? `${routeDistanceKm.toFixed(1)} km remaining` : routeStatus}</p><p className="mt-1 text-[11px] text-gray-400">{routeDurationMinutes != null ? `Approx. ${Math.round(routeDurationMinutes)} min` : ''}</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Mover position</p><p className="mt-1 truncate text-sm font-bold">{lat !== null && lng !== null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Waiting for GPS…'}</p><p className="mt-1 text-[11px] text-gray-400">{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-KE')}` : 'No accepted GPS point yet'}</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Journey phase</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><Truck className="h-4 w-4" /> {journeyPhase === 'IN_TRANSIT' ? 'Items collected' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Heading to pickup' : 'Starting'}</p><p className="mt-1 text-[11px] text-gray-400">{points.length} GPS points received</p></div><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">Mover location is updated live.</p></div></div>)}
+      </div>
     </div></div>
   </div>;
 }
