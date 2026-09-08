@@ -50,7 +50,6 @@ import RenterActivitiesPage from '@/pages/Renters/RenterActivitiesPage';
 import RenterChatPerformancePage from '@/pages/Renters/RenterChatPerformancePage';
 import RenterMessagesPage from '@/pages/Renters/RenterMessagesPage';
 import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
-import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
 
 function AppContent() {
   const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
@@ -76,7 +75,7 @@ function AppContent() {
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetail />;
-      case 'mover-tracking': return profile?.role === 'mover' ? <MoverLiveTracking /> : <MoverTrackingPage />;
+      case 'mover-tracking': return profile?.role === 'mover' ? <MoverLiveTracking /> : <LiveMovingMap />;
       case 'live-mover-map': return <LiveMovingMap />;
       case 'mover-calendar': return <MoverCalendarPage />;
       case 'mover-booking-requests': return <MoverBookingRequestsPage />;
