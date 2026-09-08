@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
 type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'unavailable' | 'timeout';
+type DeviceGpsPosition = Pick<GeolocationCoordinates, 'latitude' | 'longitude' | 'accuracy' | 'speed' | 'heading'>;
+type DeviceGpsEventDetail = DeviceGpsPosition & { timestamp?: number; bookingId?: string };
 const active = (status: string | null | undefined) => String(status ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
 function socketUrl(bookingId: string) {
   const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '');
@@ -23,7 +25,8 @@ export default function MoverLiveTracking() {
   const [gpsMessage, setGpsMessage] = useState<string | null>(null);
   const [gpsState, setGpsState] = useState<GpsState>('idle');
   const [gpsPermission, setGpsPermission] = useState<string>('unknown');
-  const [gpsPosition, setGpsPosition] = useState<GeolocationCoordinates | null>(null);
+  const [gpsPosition, setGpsPosition] = useState<DeviceGpsPosition | null>(null);
+  const [gpsReceivedAt, setGpsReceivedAt] = useState<number | null>(null);
   const gpsTimeoutRef = useRef<number | null>(null);
   const [socketState, setSocketState] = useState<SocketState>('closed');
   const socketRef = useRef<WebSocket | null>(null);
@@ -35,6 +38,7 @@ export default function MoverLiveTracking() {
     if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
     setGpsState('requesting');
     setGpsPosition(null);
+    setGpsReceivedAt(null);
     setGpsMessage('Requesting GPS location from this browser…');
     window.dispatchEvent(new Event('sakakrib:request-mover-gps'));
     gpsTimeoutRef.current = window.setTimeout(() => {
@@ -48,7 +52,8 @@ export default function MoverLiveTracking() {
         gpsTimeoutRef.current = null;
         setGpsState('received');
         setGpsPosition(position.coords);
-        setGpsMessage(`GPS position received. Accuracy: ${Number.isFinite(position.coords.accuracy) ? `${Math.round(position.coords.accuracy)} m` : 'unknown'}. Waiting for the tracker to submit it to Django.`);
+        setGpsReceivedAt(position.timestamp || Date.now());
+        setGpsMessage(`GPS position received. Accuracy: ${Number.isFinite(position.coords.accuracy) ? `${Math.round(position.coords.accuracy)} m` : 'unknown'}. This device position is shown above while Django receives the update.`);
       },
       err => {
         if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
@@ -66,6 +71,26 @@ export default function MoverLiveTracking() {
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
     );
+  }, [bookingId]);
+
+  useEffect(() => {
+    const handleDeviceGps = (event: Event) => {
+      const detail = (event as CustomEvent<DeviceGpsEventDetail>).detail;
+      if (!detail || !Number.isFinite(detail.latitude) || !Number.isFinite(detail.longitude)) return;
+      if (detail.bookingId && bookingId && detail.bookingId !== bookingId) return;
+      setGpsPosition({
+        latitude: detail.latitude,
+        longitude: detail.longitude,
+        accuracy: detail.accuracy,
+        speed: detail.speed,
+        heading: detail.heading,
+      });
+      setGpsReceivedAt(detail.timestamp || Date.now());
+      setGpsState('received');
+      setGpsMessage(`Fresh device GPS received. Accuracy: ${Number.isFinite(detail.accuracy) ? `${Math.round(detail.accuracy)} m` : 'unknown'}.`);
+    };
+    window.addEventListener('sakakrib:mover-gps-position', handleDeviceGps);
+    return () => window.removeEventListener('sakakrib:mover-gps-position', handleDeviceGps);
   }, [bookingId]);
 
   useEffect(() => {
@@ -115,8 +140,10 @@ export default function MoverLiveTracking() {
   }, [bookingId, data?.booking.status, load]);
 
   const point = useMemo(() => data ? latest(data.tracking_points) : null, [data]);
-  const lat = point?.latitude ?? data?.booking.last_known_latitude ?? null;
-  const lng = point?.longitude ?? data?.booking.last_known_longitude ?? null;
+  const serverLat = point?.latitude ?? data?.booking.last_known_latitude ?? null;
+  const serverLng = point?.longitude ?? data?.booking.last_known_longitude ?? null;
+  const currentLat = gpsPosition?.latitude ?? serverLat;
+  const currentLng = gpsPosition?.longitude ?? serverLng;
   const statusLabel = data?.booking.status?.replace(/_/g, ' ') || 'Unknown';
   if (loading) return <div className="mx-auto flex min-h-[500px] max-w-5xl items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-brand-500" /></div>;
 
@@ -127,7 +154,7 @@ export default function MoverLiveTracking() {
     {!data ? null : <>
       <div className="grid gap-5 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center gap-3"><Truck className="h-5 w-5 text-brand-500" /><h2 className="font-semibold">Journey status</h2></div><p className="mt-4 text-2xl font-bold capitalize">{statusLabel}</p><p className="mt-2 text-sm text-gray-500">Tracking number: {data.booking.tracking_number || '—'}</p><p className="mt-1 text-sm text-gray-500">Started: {data.booking.started_at ? new Date(data.booking.started_at).toLocaleString('en-KE') : '—'}</p></div>
-        <div className="rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center gap-3"><MapPin className="h-5 w-5 text-brand-500" /><h2 className="font-semibold">Current position</h2></div><p className="mt-4 text-lg font-semibold">{lat !== null && lng !== null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Waiting for GPS location'}</p><p className="mt-2 text-sm text-gray-500">Last update: {point?.recorded_at || data.booking.last_location_at ? new Date(point?.recorded_at || data.booking.last_location_at!).toLocaleString('en-KE') : '—'}</p>{point?.speed_kph != null && <p className="mt-1 text-sm text-gray-500">Speed: {point.speed_kph.toFixed(1)} km/h</p>}</div>
+        <div className="rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center gap-3"><MapPin className="h-5 w-5 text-brand-500" /><h2 className="font-semibold">Current position</h2></div><p className="mt-4 text-lg font-semibold">{currentLat !== null && currentLng !== null ? `${currentLat.toFixed(6)}, ${currentLng.toFixed(6)}` : 'Waiting for GPS location'}</p><p className="mt-2 text-sm font-medium text-brand-600 dark:text-brand-300">{gpsPosition ? 'Device GPS position' : 'Django last accepted position'}</p><p className="mt-1 text-sm text-gray-500">{gpsPosition && gpsReceivedAt ? `GPS received: ${new Date(gpsReceivedAt).toLocaleString('en-KE')}` : serverLat !== null && serverLng !== null ? `Server update: ${point?.recorded_at || data.booking.last_location_at ? new Date(point?.recorded_at || data.booking.last_location_at!).toLocaleString('en-KE') : '—'}` : 'No position available yet'}</p>{gpsPosition?.accuracy != null && Number.isFinite(gpsPosition.accuracy) && <p className="mt-1 text-sm text-gray-500">GPS accuracy: {Math.round(gpsPosition.accuracy)} m</p>}{gpsPosition?.speed != null && <p className="mt-1 text-sm text-gray-500">Device speed: {Math.max(0, gpsPosition.speed * 3.6).toFixed(1)} km/h</p>}</div>
       </div>
       <div className="mt-5 rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center justify-between"><h2 className="font-semibold">Live location sharing</h2><Navigation className="h-5 w-5 text-brand-500" /></div><p className="mt-3 text-sm text-gray-500">Allow location access so your current position can be shared with the renter during this journey.</p><div className="mt-4 grid gap-2 text-sm text-gray-600 dark:text-gray-300"><div>Browser location API: <span className="font-medium">{'geolocation' in navigator ? 'Available' : 'Unavailable'}</span></div><div>Secure context: <span className="font-medium">{window.isSecureContext ? 'Yes' : 'No'}</span></div><div>Permission: <span className="font-medium">{gpsPermission}</span></div><div>GPS state: <span className="font-medium">{gpsState}</span></div>{gpsPosition && <div>GPS received: <span className="font-medium">{gpsPosition.latitude.toFixed(6)}, {gpsPosition.longitude.toFixed(6)}</span></div>}</div><button type="button" onClick={requestGps} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><MapPin className="h-4 w-4" /> Enable live location</button>{gpsMessage && <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">{gpsMessage}</p>}</div>
       <div className="mt-5 rounded-2xl border bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-900"><div className="flex items-center justify-between"><h2 className="font-semibold">Recent GPS points</h2><Navigation className="h-5 w-5 text-brand-500" /></div>{data.tracking_points.length === 0 ? <p className="mt-4 text-sm text-gray-500">No accepted GPS points have been recorded yet. Enable live location and keep the journey active.</p> : <div className="mt-4 space-y-2">{data.tracking_points.slice(0, 10).map(item => <div key={item.id} className="flex flex-wrap justify-between gap-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-brand-950"><span>{item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}</span><span className="text-gray-500">{new Date(item.recorded_at).toLocaleString('en-KE')}</span></div>)}</div>}</div>
