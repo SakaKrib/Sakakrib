@@ -91,15 +91,14 @@ export default function MovingGpsTracker() {
         const detail = await moverApi.getBookingDetail(bookingId);
         const booking = detail?.booking as BookingState | undefined;
         if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
-        if (booking && active(booking.status) && paid(booking.payment_status)) start(); else stop();
+        if (!(booking && active(booking.status) && paid(booking.payment_status))) stop();
       } catch (error) { console.warn('Unable to refresh mover journey state:', error); }
     };
     const restart = () => { if (!cancelledRef.current) void syncBookingState(); };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
-    const handleExplicitGpsRequest = () => start();
+    const handleExplicitGpsRequest = () => { start(); void syncBookingState(); };
     document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('online', restart); window.addEventListener('pageshow', restart); window.addEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest);
 
-    if (view === 'mover-tracking') start();
     void syncBookingState();
     const stateTimer = window.setInterval(() => { void syncBookingState(); }, BOOKING_STATE_INTERVAL_MS);
     return () => { cancelledRef.current = true; document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('online', restart); window.removeEventListener('pageshow', restart); window.removeEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest); window.clearInterval(stateTimer); stop(); bookingIdRef.current = null; };
