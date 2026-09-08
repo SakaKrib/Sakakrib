@@ -4,7 +4,9 @@ import uuid
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.conf import settings
 from django.utils import timezone
+from redis.asyncio import Redis
 
 from .domain_bookings import Booking, MovingTrackingPoint
 from .domain_journeys import JOURNEY_PHASE_HEADING_TO_PICKUP, MovingJourney
@@ -17,6 +19,8 @@ def tracking_group_name(booking_id):
 
 
 class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
+    PRESENCE_TTL_SECONDS = 15
+
     async def connect(self):
         self.user = self.scope.get("user")
         raw_booking_id = self.scope["url_route"]["kwargs"].get("booking_id")
@@ -34,15 +38,20 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         self.is_assigned_mover = await self._is_assigned_mover()
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+
+        if self.is_assigned_mover:
+            await self._set_mover_presence(True)
+
         latest, health = await self._tracking_snapshot()
         phase = await self._phase()
+        mover_connected = await self._mover_is_connected()
         await self.send_json({
             "type": "ready",
             "booking_id": str(self.booking_id),
             "location": latest,
             "phase": phase,
             "tracking_health": health,
-            "mover_connected": False,
+            "mover_connected": mover_connected,
         })
         if self.is_assigned_mover:
             await self._broadcast_mover_connection(True)
@@ -53,7 +62,8 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         if heartbeat is not None:
             heartbeat.cancel()
         if getattr(self, "is_assigned_mover", False) and hasattr(self, "group_name"):
-            await self._broadcast_mover_connection(False)
+            await self._set_mover_presence(False)
+            await self._broadcast_mover_connection(await self._mover_is_connected())
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
@@ -61,12 +71,55 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         try:
             while True:
                 await asyncio.sleep(5)
-                health = await self._current_tracking_health()
-                await self.send_json({"type": "tracking_health", "tracking_health": health})
                 if self.is_assigned_mover:
-                    await self._broadcast_mover_connection(True)
+                    await self._set_mover_presence(True)
+                health = await self._current_tracking_health()
+                mover_connected = await self._mover_is_connected()
+                await self.send_json({
+                    "type": "tracking_health",
+                    "tracking_health": health,
+                    "mover_connected": mover_connected,
+                })
+                if self.is_assigned_mover:
+                    await self._broadcast_mover_connection(mover_connected)
         except (asyncio.CancelledError, RuntimeError):
             return
+
+    async def _mover_presence_client(self):
+        redis_url = getattr(settings, "REDIS_URL", "")
+        if not redis_url:
+            return None
+        return Redis.from_url(redis_url, decode_responses=True)
+
+    def _mover_presence_key(self):
+        return f"sakakrib:mover-presence:{self.booking_id}"
+
+    async def _set_mover_presence(self, connected):
+        client = await self._mover_presence_client()
+        if client is None:
+            return
+        try:
+            key = self._mover_presence_key()
+            if connected:
+                await client.sadd(key, self.channel_name)
+                await client.expire(key, self.PRESENCE_TTL_SECONDS)
+            else:
+                await client.srem(key, self.channel_name)
+                if await client.scard(key):
+                    await client.expire(key, self.PRESENCE_TTL_SECONDS)
+                else:
+                    await client.delete(key)
+        finally:
+            await client.aclose()
+
+    async def _mover_is_connected(self):
+        client = await self._mover_presence_client()
+        if client is None:
+            return False
+        try:
+            return bool(await client.exists(self._mover_presence_key()))
+        finally:
+            await client.aclose()
 
     async def _broadcast_mover_connection(self, connected):
         health = await self._current_tracking_health()
