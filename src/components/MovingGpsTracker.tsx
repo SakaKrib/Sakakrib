@@ -8,22 +8,20 @@ interface PendingLocation { latitude: number; longitude: number; accuracy_meters
 const normalized = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase().replace(/-/g, '_');
 const active = (value: string | null | undefined) => normalized(value) === 'in_progress';
 const paid = (value: string | null | undefined) => normalized(value) === 'paid';
-const TRACK_INTERVAL_MS = 5000;
+const BOOKING_STATE_INTERVAL_MS = 5000;
 const GPS_MAX_AGE_MS = 0;
 const GPS_TIMEOUT_MS = 60000;
 const RETRY_INTERVAL_MS = 5000;
-const BOOKING_STATE_INTERVAL_MS = 5000;
 const GPS_PROBE_INTERVAL_MS = 5000;
 
 /** Publishes mover GPS through the canonical Django mover API. */
 export default function MovingGpsTracker() {
   const { profile } = useAuth();
-  const { view, selectedMoverBookingId, selectedMoverId } = useNav();
+  const { selectedMoverBookingId, selectedMoverId } = useNav();
   const watchIdRef = useRef<number | null>(null);
   const gpsProbeTimerRef = useRef<number | null>(null);
   const bookingIdRef = useRef<string | null>(null);
   const lastSentAtRef = useRef(0);
-  const startingRef = useRef(false);
   const cancelledRef = useRef(false);
   const pendingRef = useRef<PendingLocation | null>(null);
   const sendingRef = useRef(false);
@@ -35,74 +33,117 @@ export default function MovingGpsTracker() {
     const clearGpsProbe = () => { if (gpsProbeTimerRef.current !== null) { window.clearInterval(gpsProbeTimerRef.current); gpsProbeTimerRef.current = null; } };
     const stop = () => {
       if (watchIdRef.current !== null && 'geolocation' in navigator) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
-      clearRetry(); clearGpsProbe(); startingRef.current = false; sendingRef.current = false; pendingRef.current = null;
+      clearRetry(); clearGpsProbe(); pendingRef.current = null; sendingRef.current = false;
     };
-    const canTrack = Boolean(profile) && normalized(profile?.role) === 'mover' &&
-      (view === 'mover-booking-detail' || view === 'live-mover-map') &&
-      'geolocation' in navigator;
-    if (!canTrack) { stop(); bookingIdRef.current = null; return () => { cancelledRef.current = true; stop(); }; }
 
-    const bookingId = selectedMoverBookingId ?? (view === 'live-mover-map' ? selectedMoverId : null);
-    if (!bookingId) {
-      stop(); bookingIdRef.current = null;
-      console.warn('Mover GPS waiting for a booking id before publishing location.');
+    const canTrack = Boolean(profile) && normalized(profile?.role) === 'mover' && 'geolocation' in navigator;
+    if (!canTrack) {
+      stop();
+      bookingIdRef.current = null;
       return () => { cancelledRef.current = true; stop(); };
     }
-    bookingIdRef.current = bookingId;
 
-    const sendPending = async () => {
+    const sendPending = async (bookingId: string) => {
       if (cancelledRef.current || bookingIdRef.current !== bookingId || sendingRef.current) return;
       const location = pendingRef.current;
       if (!location || !navigator.onLine) return;
-      if (Date.now() - lastSentAtRef.current < TRACK_INTERVAL_MS) return;
       sendingRef.current = true;
       try {
         await moverApi.recordLocation(bookingId, location);
-        if (!cancelledRef.current && bookingIdRef.current === bookingId && pendingRef.current === location) { pendingRef.current = null; lastSentAtRef.current = Date.now(); }
+        if (!cancelledRef.current && bookingIdRef.current === bookingId && pendingRef.current === location) {
+          pendingRef.current = null;
+          lastSentAtRef.current = Date.now();
+        }
       } catch (error) {
         console.warn('Live GPS update was rejected or unavailable:', error);
-        if (!cancelledRef.current && bookingIdRef.current === bookingId) { clearRetry(); retryTimerRef.current = window.setTimeout(() => { retryTimerRef.current = null; void sendPending(); }, RETRY_INTERVAL_MS); }
+        if (!cancelledRef.current && bookingIdRef.current === bookingId) {
+          clearRetry();
+          retryTimerRef.current = window.setTimeout(() => { retryTimerRef.current = null; void sendPending(bookingId); }, RETRY_INTERVAL_MS);
+        }
       } finally { sendingRef.current = false; }
     };
 
     const publish = (position: GeolocationPosition) => {
-      if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
+      const bookingId = bookingIdRef.current;
+      if (cancelledRef.current || !bookingId) return;
       const rawAccuracy = position.coords.accuracy;
       const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy >= 0 && rawAccuracy <= 10000 ? rawAccuracy : null;
-      pendingRef.current = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_meters: accuracy, speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6), heading_degrees: position.coords.heading == null ? null : position.coords.heading };
-      void sendPending();
+      pendingRef.current = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy_meters: accuracy,
+        speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6),
+        heading_degrees: position.coords.heading == null ? null : position.coords.heading
+      };
+      void sendPending(bookingId);
     };
+
     const handleGpsError = (error: GeolocationPositionError) => { console.warn('Mover GPS unavailable:', error.code, error.message); };
+
     const probeGps = () => {
-      if (cancelledRef.current || bookingIdRef.current !== bookingId || !navigator.onLine) return;
+      if (cancelledRef.current || !bookingIdRef.current || !navigator.onLine) return;
       navigator.geolocation.getCurrentPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
     };
-    const start = () => {
-      if (startingRef.current || watchIdRef.current !== null || cancelledRef.current) return;
-      startingRef.current = true;
-      try {
-        watchIdRef.current = navigator.geolocation.watchPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
-        probeGps();
-        gpsProbeTimerRef.current = window.setInterval(probeGps, GPS_PROBE_INTERVAL_MS);
-      } finally { startingRef.current = false; }
-    };
-    const syncBookingState = async () => {
-      if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
-      try {
-        const detail = await moverApi.getBookingDetail(bookingId);
-        const booking = detail?.booking as BookingState | undefined;
-        if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
-        if (!(booking && active(booking.status) && paid(booking.payment_status))) stop();
-      } catch (error) { console.warn('Unable to refresh mover journey state:', error); }
-    };
-    const restart = () => { if (!cancelledRef.current) void syncBookingState(); };
-    const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
-    const handleExplicitGpsRequest = () => { start(); void syncBookingState(); };
-    document.addEventListener('visibilitychange', handleVisibility); window.addEventListener('online', restart); window.addEventListener('pageshow', restart); window.addEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest);
 
-    void syncBookingState();
-    const stateTimer = window.setInterval(() => { void syncBookingState(); }, BOOKING_STATE_INTERVAL_MS);
-    return () => { cancelledRef.current = true; document.removeEventListener('visibilitychange', handleVisibility); window.removeEventListener('online', restart); window.removeEventListener('pageshow', restart); window.removeEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest); window.clearInterval(stateTimer); stop(); bookingIdRef.current = null; };
-  }, [profile, view, selectedMoverBookingId, selectedMoverId]);
+    const startGps = () => {
+      if (cancelledRef.current || watchIdRef.current !== null) return;
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        publish,
+        handleGpsError,
+        { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS }
+      );
+      probeGps();
+      clearGpsProbe();
+      gpsProbeTimerRef.current = window.setInterval(probeGps, GPS_PROBE_INTERVAL_MS);
+    };
+
+    const selectActiveBooking = async () => {
+      if (cancelledRef.current) return;
+      try {
+        const bookings = await moverApi.getBookings();
+        if (cancelledRef.current) return;
+        const preferredId = selectedMoverBookingId || null;
+        const preferred = preferredId ? bookings.find((booking) => booking.id === preferredId) : null;
+        const candidate = preferred && active(preferred.status) && paid(preferred.payment_status)
+          ? preferred
+          : bookings.find((booking) => active(booking.status) && paid(booking.payment_status));
+        const nextBookingId = candidate?.id ?? null;
+
+        if (nextBookingId !== bookingIdRef.current) {
+          stop();
+          bookingIdRef.current = nextBookingId;
+          if (nextBookingId) startGps();
+        } else if (nextBookingId && watchIdRef.current === null) {
+          startGps();
+        }
+      } catch (error) {
+        console.warn('Unable to refresh mover active journey for GPS tracking:', error);
+      }
+    };
+
+    const restart = () => { void selectActiveBooking(); };
+    const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
+    const handleExplicitGpsRequest = () => { void selectActiveBooking(); };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', restart);
+    window.addEventListener('pageshow', restart);
+    window.addEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest);
+
+    void selectActiveBooking();
+    const stateTimer = window.setInterval(() => { void selectActiveBooking(); }, BOOKING_STATE_INTERVAL_MS);
+
+    return () => {
+      cancelledRef.current = true;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', restart);
+      window.removeEventListener('pageshow', restart);
+      window.removeEventListener('sakakrib:request-mover-gps', handleExplicitGpsRequest);
+      window.clearInterval(stateTimer);
+      stop();
+      bookingIdRef.current = null;
+    };
+  }, [profile, selectedMoverBookingId, selectedMoverId]);
+
   return null;
 }
