@@ -123,19 +123,6 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
 
     async def _broadcast_mover_connection(self, connected):
         health = await self._current_tracking_health()
-        if connected:
-            health = {
-                **health,
-                "status": "HEALTHY",
-                "is_live": True,
-                "age_seconds": 0,
-            }
-        else:
-            health = {
-                **health,
-                "status": "OFFLINE",
-                "is_live": False,
-            }
         await self.channel_layer.group_send(
             self.group_name,
             {
