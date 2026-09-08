@@ -19,7 +19,7 @@ type DeviceGpsPosition = { latitude: number; longitude: number; accuracy_meters:
 type LocationPermissionState = 'checking' | 'granted' | 'prompt' | 'denied' | 'unsupported';
 type TrackingHealthStatus = 'HEALTHY' | 'STARTING' | 'STALE' | 'OFFLINE' | string;
 
-interface TrackingHealth { status: TrackingHealthStatus; is_live: boolean; age_seconds: number | null; recent_point_count: number; }
+interface TrackingHealth { status: TrackingHealthStatus; is_live: boolean; age_seconds: number | null; recent_point_count: number; mover_connected?: boolean; }
 interface MapBooking extends MoverBooking { pickup_latitude: number | null; pickup_longitude: number | null; dropoff_latitude: number | null; dropoff_longitude: number | null; tracking_health?: TrackingHealth | null; }
 interface OsrmRouteResponse { code: string; routes?: Array<{ geometry?: { coordinates?: Coordinate[] }; distance?: number; duration?: number }> }
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -44,6 +44,7 @@ export default function LiveMovingMap() {
   const [points, setPoints] = useState<TrackingPoint[]>([]);
   const [journeyPhase, setJourneyPhase] = useState<JourneyPhase>(null);
   const [socketState, setSocketState] = useState<SocketState>('closed');
+  const [moverConnected, setMoverConnected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
@@ -81,6 +82,7 @@ export default function LiveMovingMap() {
       const trackingData = tracking as MoverTrackingResponse;
       const bookingData = selectedBooking as MapBooking;
       setBooking({ ...bookingData, ...(trackingData.booking as Partial<MapBooking>) });
+      setMoverConnected(!isMover && Boolean(trackingData.booking?.tracking_health?.is_live));
       setPoints(trackingData.tracking_points ?? []);
       const phaseApi = isMover ? moverApi.getJourneyPhase : renterApi.getJourneyPhase;
       try {
@@ -175,7 +177,7 @@ export default function LiveMovingMap() {
   }, []);
 
   useEffect(() => {
-    if (!bookingId || !booking || !active(booking.status)) { socketRef.current?.close(); socketRef.current = null; if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current); reconnectRef.current = null; setSocketState('closed'); return; }
+    if (!bookingId || !booking || !active(booking.status)) { socketRef.current?.close(); socketRef.current = null; if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current); reconnectRef.current = null; setSocketState('closed'); if (!isMover) setMoverConnected(false); return; }
     let disposed = false;
     const clearTimer = () => { if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current); reconnectRef.current = null; };
     const schedule = () => { if (disposed || !navigator.onLine) { setSocketState('offline'); return; } clearTimer(); setSocketState('reconnecting'); const delay = Math.min(15000, 750 * Math.pow(2, Math.min(attemptRef.current++, 4))); reconnectRef.current = window.setTimeout(connect, delay); };
@@ -189,23 +191,25 @@ export default function LiveMovingMap() {
       socket.onmessage = event => {
         if (socketRef.current !== socket) return;
         try {
-          const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null; phase?: string; tracking_health?: TrackingHealth | null };
-          if (message.tracking_health) setBooking(previous => previous ? { ...previous, tracking_health: message.tracking_health } : previous);
+          const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null; phase?: string; tracking_health?: TrackingHealth | null; mover_connected?: boolean };
+          if (message.mover_connected !== undefined && !isMover) setMoverConnected(Boolean(message.mover_connected));
+          if (message.tracking_health) setBooking(previous => previous ? { ...previous, tracking_health: { ...message.tracking_health, mover_connected: message.mover_connected ?? previous.tracking_health?.mover_connected } } : previous);
           if (message.type === 'tracking_health') return;
           if (message.type === 'phase') { if (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT') { setJourneyPhase(message.phase); if (message.phase === 'IN_TRANSIT') { setPickupConfirmationError(null); setConfirmingPickup(false); } } return; }
           const point = message.location;
           if (!point || (message.type !== 'location' && message.type !== 'ready')) return;
+          if (!isMover) setMoverConnected(true);
           setPoints(previous => previous.some(item => item.id === point.id) ? previous : [point, ...previous].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()).slice(0, 200));
-          setBooking(previous => previous ? { ...previous, last_known_latitude: point.latitude, last_known_longitude: point.longitude, last_location_at: point.recorded_at, tracking_health: { status: 'HEALTHY', is_live: true, age_seconds: 0, recent_point_count: Math.max(1, previous.tracking_health?.recent_point_count ?? 0) } } : previous);
+          setBooking(previous => previous ? { ...previous, last_known_latitude: point.latitude, last_known_longitude: point.longitude, last_location_at: point.recorded_at, tracking_health: { status: 'HEALTHY', is_live: true, age_seconds: 0, recent_point_count: Math.max(1, previous.tracking_health?.recent_point_count ?? 0), mover_connected: isMover ? previous.tracking_health?.mover_connected : true } } : previous);
           if (message.type === 'ready' && (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT')) setJourneyPhase(message.phase);
         } catch { /* Ignore malformed telemetry frames; the next valid frame will restore the live state. */ }
       };
       socket.onerror = () => { if (socketRef.current === socket) setSocketState('reconnecting'); };
-      socket.onclose = () => { if (!disposed && socketRef.current === socket) { socketRef.current = null; void load().then(snapshot => { if (snapshot && active(snapshot.tracking.booking.status)) schedule(); }); } };
+      socket.onclose = () => { if (!disposed && socketRef.current === socket) { socketRef.current = null; if (!isMover) setMoverConnected(false); void load().then(snapshot => { if (snapshot && active(snapshot.tracking.booking.status)) schedule(); }); } };
     };
     connect();
     return () => { disposed = true; clearTimer(); if (socketRef.current) socketRef.current.close(); socketRef.current = null; };
-  }, [booking, bookingId, load]);
+  }, [booking, bookingId, isMover, load]);
 
   const latest = points[0] ?? null;
   const currentPosition = useMemo<Coordinate | null>(() => {
@@ -218,7 +222,7 @@ export default function LiveMovingMap() {
   const dropoff = booking && validCoordinate(booking.dropoff_latitude) && validCoordinate(booking.dropoff_longitude) ? [booking.dropoff_longitude, booking.dropoff_latitude] as Coordinate : null;
   const activeTarget = journeyPhase === 'IN_TRANSIT' ? dropoff : pickup;
   const trackingHealth = booking?.tracking_health ?? null;
-  const trackingIsLive = socketState === 'live' || trackingHealth?.is_live === true || trackingHealth?.status === 'HEALTHY';
+  const trackingIsLive = isMover ? (socketState === 'live' || trackingHealth?.is_live === true || trackingHealth?.status === 'HEALTHY') : moverConnected && (trackingHealth?.is_live === true || trackingHealth?.status === 'HEALTHY');
   const latestGpsIsFresh = isMover && deviceGps ? true : latest ? Date.now() - new Date(latest.recorded_at).getTime() <= GPS_FRESHNESS_MS : false;
   const pickupDistanceMeters = currentPosition && pickup ? distanceMeters(currentPosition, pickup) : null;
   const showPickupConfirmation = Boolean(isMover && journeyPhase === 'HEADING_TO_PICKUP' && latestGpsIsFresh && pickupDistanceMeters !== null && pickupDistanceMeters <= PICKUP_CONFIRMATION_RADIUS_METERS);
