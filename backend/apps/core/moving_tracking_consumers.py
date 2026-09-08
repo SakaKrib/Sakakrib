@@ -45,14 +45,7 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             "mover_connected": False,
         })
         if self.is_assigned_mover:
-            await self.channel_layer.group_send(
-                self.group_name,
-                {
-                    "type": "mover.presence",
-                    "connected": True,
-                    "changed_at": timezone.now().isoformat(),
-                },
-            )
+            await self._broadcast_mover_connection(True)
         self.heartbeat_task = asyncio.create_task(self._heartbeat())
 
     async def disconnect(self, close_code):
@@ -60,14 +53,7 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         if heartbeat is not None:
             heartbeat.cancel()
         if getattr(self, "is_assigned_mover", False) and hasattr(self, "group_name"):
-            await self.channel_layer.group_send(
-                self.group_name,
-                {
-                    "type": "mover.presence",
-                    "connected": False,
-                    "changed_at": timezone.now().isoformat(),
-                },
-            )
+            await self._broadcast_mover_connection(False)
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
@@ -78,16 +64,34 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
                 health = await self._current_tracking_health()
                 await self.send_json({"type": "tracking_health", "tracking_health": health})
                 if self.is_assigned_mover:
-                    await self.channel_layer.group_send(
-                        self.group_name,
-                        {
-                            "type": "mover.presence",
-                            "connected": True,
-                            "changed_at": timezone.now().isoformat(),
-                        },
-                    )
+                    await self._broadcast_mover_connection(True)
         except (asyncio.CancelledError, RuntimeError):
             return
+
+    async def _broadcast_mover_connection(self, connected):
+        health = await self._current_tracking_health()
+        if connected:
+            health = {
+                **health,
+                "status": "HEALTHY",
+                "is_live": True,
+                "age_seconds": 0,
+            }
+        else:
+            health = {
+                **health,
+                "status": "OFFLINE",
+                "is_live": False,
+            }
+        await self.channel_layer.group_send(
+            self.group_name,
+            {
+                "type": "mover.tracking_health",
+                "tracking_health": health,
+                "mover_connected": connected,
+                "changed_at": timezone.now().isoformat(),
+            },
+        )
 
     async def receive_json(self, content, **kwargs):
         # GPS writes stay on the authenticated HTTPS endpoint so Django's
@@ -113,11 +117,11 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             "changed_at": event["changed_at"],
         })
 
-    async def mover_presence(self, event):
+    async def mover_tracking_health(self, event):
         await self.send_json({
-            "type": "mover_presence",
-            "booking_id": str(self.booking_id),
-            "connected": bool(event.get("connected")),
+            "type": "tracking_health",
+            "tracking_health": event.get("tracking_health"),
+            "mover_connected": bool(event.get("mover_connected")),
             "changed_at": event.get("changed_at") or timezone.now().isoformat(),
         })
 
