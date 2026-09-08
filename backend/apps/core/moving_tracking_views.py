@@ -143,7 +143,7 @@ def record_mover_location(*, mover_user_id, booking_id, latitude, longitude, acc
     except (TypeError, ValueError) as exc:
         raise ValidationError("Invalid tracking coordinates or telemetry") from exc
     if not -90 <= latitude <= 90 or not -180 <= longitude <= 180: raise ValidationError("Invalid coordinates")
-    if accuracy_meters is not None and not 0 <= accuracy_meters <= 10000: raise ValidationError("Invalid accuracy")
+    if accuracy_meters is not None and not accuracy_meters >= 0: raise ValidationError("Invalid accuracy")
     if speed_kph is not None and not 0 <= speed_kph <= 300: raise ValidationError("Invalid speed")
     if heading_degrees is not None and not 0 <= heading_degrees < 360: raise ValidationError("Invalid heading")
     booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
