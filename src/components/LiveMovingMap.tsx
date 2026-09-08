@@ -21,6 +21,7 @@ setWorkerUrl(maplibreWorkerUrl);
 
 type TrackingPoint = MoverTrackingPoint;
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
+type Coordinate = [number, number];
 
 interface MapBooking extends MoverBooking {
   pickup_latitude: number | null;
@@ -29,7 +30,13 @@ interface MapBooking extends MoverBooking {
   dropoff_longitude: number | null;
 }
 
+interface OsrmRouteResponse {
+  code: string;
+  routes?: Array<{ geometry?: { coordinates?: Coordinate[] }; distance?: number; duration?: number }>;
+}
+
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+const ROUTING_URL = 'https://router.project-osrm.org/route/v1/driving';
 
 const active = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
@@ -47,6 +54,29 @@ function validCoordinate(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function routeUrl(from: Coordinate, to: Coordinate) {
+  return `${ROUTING_URL}/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson&steps=false`;
+}
+
+function markerElement(label: string, color: string, icon: string) {
+  const element = document.createElement('div');
+  element.setAttribute('role', 'img');
+  element.setAttribute('aria-label', label);
+  element.title = label;
+  element.style.width = '38px';
+  element.style.height = '38px';
+  element.style.borderRadius = '50%';
+  element.style.background = color;
+  element.style.border = '4px solid white';
+  element.style.boxShadow = '0 3px 12px rgba(0,0,0,.35)';
+  element.style.display = 'flex';
+  element.style.alignItems = 'center';
+  element.style.justifyContent = 'center';
+  element.style.fontSize = '18px';
+  element.textContent = icon;
+  return element;
+}
+
 export default function LiveMovingMap() {
   const { profile } = useAuth();
   const { selectedMoverBookingId, selectedMoverId, navigate } = useNav();
@@ -58,8 +88,13 @@ export default function LiveMovingMap() {
   const [socketState, setSocketState] = useState<SocketState>('closed');
   const [loading, setLoading] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [roadRoute, setRoadRoute] = useState<Coordinate[]>([]);
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
+  const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
   const [followMover, setFollowMover] = useState(true);
 
   const mapElementRef = useRef<HTMLDivElement | null>(null);
@@ -68,66 +103,36 @@ export default function LiveMovingMap() {
   const pickupMarkerRef = useRef<Marker | null>(null);
   const dropoffMarkerRef = useRef<Marker | null>(null);
   const popupRef = useRef<Popup | null>(null);
-  const routeSourceReadyRef = useRef(false);
   const reconnectRef = useRef<number | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const attemptRef = useRef(0);
   const firstMapFitRef = useRef(false);
+  const routeRequestRef = useRef(0);
 
   useEffect(() => {
-    console.log('[LiveMovingMap] component mounted', {
-      profileRole: profile?.role,
-      isMover,
-      selectedMoverBookingId,
-      selectedMoverId,
-      bookingId,
-      mapStyle: MAP_STYLE,
-    });
-
-    return () => {
-      console.log('[LiveMovingMap] component unmounted');
-    };
+    console.log('[LiveMovingMap] component mounted', { profileRole: profile?.role, isMover, selectedMoverBookingId, selectedMoverId, bookingId, mapStyle: MAP_STYLE });
+    return () => console.log('[LiveMovingMap] component unmounted');
   }, []);
 
   useEffect(() => {
-    console.log('[LiveMovingMap] booking context changed', {
-      profileRole: profile?.role,
-      isMover,
-      selectedMoverBookingId,
-      selectedMoverId,
-      bookingId,
-    });
+    console.log('[LiveMovingMap] booking context changed', { profileRole: profile?.role, isMover, selectedMoverBookingId, selectedMoverId, bookingId });
   }, [profile?.role, isMover, selectedMoverBookingId, selectedMoverId, bookingId]);
 
   const load = useCallback(async () => {
     console.log('[LiveMovingMap] load started', { bookingId, isMover });
-
     if (!bookingId) {
       console.warn('[LiveMovingMap] load skipped: no bookingId');
       setLoading(false);
       return null;
     }
-
     try {
-      console.log('[LiveMovingMap] requesting booking/tracking data', {
-        bookingId,
-        source: isMover ? 'moverApi' : 'renterApi',
-      });
-
+      console.log('[LiveMovingMap] requesting booking/tracking data', { bookingId, source: isMover ? 'moverApi' : 'renterApi' });
       const [tracking, selectedBooking] = isMover
         ? await Promise.all([moverApi.getTracking(bookingId), moverApi.getBooking(bookingId)])
         : await Promise.all([renterApi.getTracking(bookingId), renterApi.getBooking(bookingId)]);
-
       const trackingData = tracking as MoverTrackingResponse;
       const bookingData = selectedBooking as MapBooking;
-
-      console.log('[LiveMovingMap] booking/tracking data received', {
-        bookingId,
-        bookingStatus: bookingData.status,
-        trackingPoints: trackingData.tracking_points?.length ?? 0,
-        trackingBooking: trackingData.booking,
-      });
-
+      console.log('[LiveMovingMap] booking/tracking data received', { bookingId, bookingStatus: bookingData.status, trackingPoints: trackingData.tracking_points?.length ?? 0, trackingBooking: trackingData.booking });
       setBooking({ ...bookingData, ...(trackingData.booking as Partial<MapBooking>) });
       setPoints(trackingData.tracking_points ?? []);
       setError(null);
@@ -142,88 +147,36 @@ export default function LiveMovingMap() {
     }
   }, [bookingId, isMover]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    console.log('[LiveMovingMap] map initialization effect entered', {
-      hasContainer: Boolean(mapElementRef.current),
-      hasExistingMap: Boolean(mapRef.current),
-    });
-
+    console.log('[LiveMovingMap] map initialization effect entered', { hasContainer: Boolean(mapElementRef.current), hasExistingMap: Boolean(mapRef.current) });
     if (!mapElementRef.current || mapRef.current) {
-      console.warn('[LiveMovingMap] map initialization skipped', {
-        hasContainer: Boolean(mapElementRef.current),
-        hasExistingMap: Boolean(mapRef.current),
-      });
+      console.warn('[LiveMovingMap] map initialization skipped', { hasContainer: Boolean(mapElementRef.current), hasExistingMap: Boolean(mapRef.current) });
       return;
     }
-
-    console.log('[LiveMovingMap] creating MapLibre map', {
-      style: MAP_STYLE,
-      center: [36.817223, -1.286389],
-      zoom: 12,
-      workerUrl: maplibreWorkerUrl,
-    });
-
+    console.log('[LiveMovingMap] creating MapLibre map', { style: MAP_STYLE, center: [36.817223, -1.286389], zoom: 12, workerUrl: maplibreWorkerUrl });
     try {
-      const map = new MapLibreMap({
-        container: mapElementRef.current,
-        style: MAP_STYLE,
-        center: [36.817223, -1.286389],
-        zoom: 12,
-        attributionControl: {},
-        cooperativeGestures: false,
-      });
-
+      const map = new MapLibreMap({ container: mapElementRef.current, style: MAP_STYLE, center: [36.817223, -1.286389], zoom: 12, attributionControl: {}, cooperativeGestures: false });
       console.log('[LiveMovingMap] MapLibre instance created');
-
       map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
       map.addControl(new FullscreenControl(), 'top-right');
-
       map.on('style.load', () => {
-        console.log('[LiveMovingMap] MapLibre style.load fired', {
-          isStyleLoaded: map.isStyleLoaded(),
-        });
+        console.log('[LiveMovingMap] MapLibre style.load fired', { isStyleLoaded: map.isStyleLoaded() });
+        setMapReady(true);
       });
-
       map.on('load', () => {
-        console.log('[LiveMovingMap] MapLibre load fired', {
-          isStyleLoaded: map.isStyleLoaded(),
-          center: map.getCenter().toArray(),
-          zoom: map.getZoom(),
-        });
+        console.log('[LiveMovingMap] MapLibre load fired', { isStyleLoaded: map.isStyleLoaded(), center: map.getCenter().toArray(), zoom: map.getZoom() });
+        setMapReady(true);
         setMapLoading(false);
       });
-
       map.on('error', event => {
-        console.error('[LiveMovingMap] MapLibre error event', {
-          event,
-          error: event.error,
-          message: event.error?.message,
-          stack: event.error?.stack,
-        });
-        if (event.error) {
-          setMapError(event.error.message || 'Unable to load the map.');
-          setMapLoading(false);
-        }
+        console.error('[LiveMovingMap] MapLibre error event', { event, error: event.error, message: event.error?.message, stack: event.error?.stack });
+        if (event.error) { setMapError(event.error.message || 'Unable to load the map.'); setMapLoading(false); }
       });
-
-      map.on('idle', () => {
-        console.log('[LiveMovingMap] MapLibre idle fired', {
-          isStyleLoaded: map.isStyleLoaded(),
-        });
-      });
-
-      map.on('webglcontextlost', event => {
-        console.error('[LiveMovingMap] WebGL context lost', event);
-      });
-
-      map.on('webglcontextrestored', () => {
-        console.log('[LiveMovingMap] WebGL context restored');
-      });
-
+      map.on('idle', () => console.log('[LiveMovingMap] MapLibre idle fired', { isStyleLoaded: map.isStyleLoaded() }));
+      map.on('webglcontextlost', event => console.error('[LiveMovingMap] WebGL context lost', event));
+      map.on('webglcontextrestored', () => console.log('[LiveMovingMap] WebGL context restored'));
       mapRef.current = map;
       console.log('[LiveMovingMap] MapLibre map stored in mapRef');
     } catch (err) {
@@ -231,7 +184,6 @@ export default function LiveMovingMap() {
       setMapLoading(false);
       setMapError(err instanceof Error ? err.message : 'Unable to initialize MapLibre.');
     }
-
     return () => {
       console.log('[LiveMovingMap] map initialization cleanup');
       popupRef.current?.remove();
@@ -242,19 +194,13 @@ export default function LiveMovingMap() {
       moverMarkerRef.current = null;
       pickupMarkerRef.current = null;
       dropoffMarkerRef.current = null;
-      routeSourceReadyRef.current = false;
       mapRef.current?.remove();
       mapRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    console.log('[LiveMovingMap] websocket effect evaluated', {
-      bookingId,
-      bookingStatus: booking?.status,
-      isActive: active(booking?.status),
-    });
-
+    console.log('[LiveMovingMap] websocket effect evaluated', { bookingId, bookingStatus: booking?.status, isActive: active(booking?.status) });
     if (!bookingId || !booking || !active(booking.status)) {
       console.log('[LiveMovingMap] websocket not started: booking is not active');
       socketRef.current?.close();
@@ -264,30 +210,16 @@ export default function LiveMovingMap() {
       setSocketState('closed');
       return;
     }
-
     let disposed = false;
-
-    const clearTimer = () => {
-      if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current);
-      reconnectRef.current = null;
-    };
-
+    const clearTimer = () => { if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current); reconnectRef.current = null; };
     const schedule = () => {
-      if (disposed || !navigator.onLine) {
-        console.warn('[LiveMovingMap] websocket reconnect skipped', {
-          disposed,
-          online: navigator.onLine,
-        });
-        setSocketState('offline');
-        return;
-      }
+      if (disposed || !navigator.onLine) { console.warn('[LiveMovingMap] websocket reconnect skipped', { disposed, online: navigator.onLine }); setSocketState('offline'); return; }
       clearTimer();
       setSocketState('reconnecting');
       const delay = Math.min(15000, 750 * Math.pow(2, Math.min(attemptRef.current++, 4)));
       console.log('[LiveMovingMap] scheduling websocket reconnect', { delay });
       reconnectRef.current = window.setTimeout(connect, delay);
     };
-
     const connect = () => {
       if (disposed) return;
       clearTimer();
@@ -295,25 +227,10 @@ export default function LiveMovingMap() {
       console.log('[LiveMovingMap] opening websocket', { url });
       socketRef.current?.close();
       setSocketState(attemptRef.current ? 'reconnecting' : 'connecting');
-
       let socket: WebSocket;
-      try {
-        socket = new WebSocket(url);
-      } catch (err) {
-        console.error('[LiveMovingMap] websocket constructor failed', err);
-        schedule();
-        return;
-      }
-
+      try { socket = new WebSocket(url); } catch (err) { console.error('[LiveMovingMap] websocket constructor failed', err); schedule(); return; }
       socketRef.current = socket;
-
-      socket.onopen = () => {
-        console.log('[LiveMovingMap] websocket opened', { url });
-        if (socketRef.current !== socket) return;
-        attemptRef.current = 0;
-        setSocketState('live');
-      };
-
+      socket.onopen = () => { console.log('[LiveMovingMap] websocket opened', { url }); if (socketRef.current !== socket) return; attemptRef.current = 0; setSocketState('live'); };
       socket.onmessage = event => {
         console.log('[LiveMovingMap] websocket message received', event.data);
         if (socketRef.current !== socket) return;
@@ -321,233 +238,156 @@ export default function LiveMovingMap() {
           const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null };
           const point = message.location;
           if (!point || (message.type !== 'location' && message.type !== 'ready')) return;
-
-          setPoints(previous => {
-            if (previous.some(item => item.id === point.id)) return previous;
-            return [point, ...previous]
-              .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
-              .slice(0, 200);
-          });
-
-          setBooking(previous => previous ? {
-            ...previous,
-            last_known_latitude: point.latitude,
-            last_known_longitude: point.longitude,
-            last_location_at: point.recorded_at,
-          } : previous);
-        } catch (err) {
-          console.error('[LiveMovingMap] malformed websocket frame', err);
-          // Ignore malformed frames; HTTP remains authoritative.
-        }
+          setPoints(previous => previous.some(item => item.id === point.id) ? previous : [point, ...previous].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()).slice(0, 200));
+          setBooking(previous => previous ? { ...previous, last_known_latitude: point.latitude, last_known_longitude: point.longitude, last_location_at: point.recorded_at } : previous);
+        } catch (err) { console.error('[LiveMovingMap] malformed websocket frame', err); }
       };
-
-      socket.onerror = event => {
-        console.error('[LiveMovingMap] websocket error', event);
-        if (socketRef.current === socket) setSocketState('reconnecting');
-      };
-
+      socket.onerror = event => { console.error('[LiveMovingMap] websocket error', event); if (socketRef.current === socket) setSocketState('reconnecting'); };
       socket.onclose = event => {
-        console.warn('[LiveMovingMap] websocket closed', {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean,
-        });
-        if (!disposed && socketRef.current === socket) {
-          socketRef.current = null;
-          void load().then(snapshot => {
-            if (snapshot && active(snapshot.booking.status)) schedule();
-          });
-        }
+        console.warn('[LiveMovingMap] websocket closed', { code: event.code, reason: event.reason, wasClean: event.wasClean });
+        if (!disposed && socketRef.current === socket) { socketRef.current = null; void load().then(snapshot => { if (snapshot && active(snapshot.booking.status)) schedule(); }); }
       };
     };
-
-    const recover = () => {
-      console.log('[LiveMovingMap] websocket recovery triggered');
-      attemptRef.current = 0;
-      void load().then(snapshot => {
-        if (snapshot && active(snapshot.booking.status)) connect();
-      });
-    };
-
-    const online = () => {
-      console.log('[LiveMovingMap] browser online event');
-      recover();
-    };
-    const offline = () => {
-      console.warn('[LiveMovingMap] browser offline event');
-      setSocketState('offline');
-    };
-
+    const recover = () => { console.log('[LiveMovingMap] websocket recovery triggered'); attemptRef.current = 0; void load().then(snapshot => { if (snapshot && active(snapshot.booking.status)) connect(); }); };
+    const online = () => { console.log('[LiveMovingMap] browser online event'); recover(); };
+    const offline = () => { console.warn('[LiveMovingMap] browser offline event'); setSocketState('offline'); };
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
     connect();
-
-    return () => {
-      console.log('[LiveMovingMap] websocket effect cleanup');
-      disposed = true;
-      clearTimer();
-      socketRef.current?.close();
-      socketRef.current = null;
-      window.removeEventListener('online', online);
-      window.removeEventListener('offline', offline);
-    };
+    return () => { console.log('[LiveMovingMap] websocket effect cleanup'); disposed = true; clearTimer(); socketRef.current?.close(); socketRef.current = null; window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
   }, [bookingId, booking?.status, load]);
 
-  const latest = useMemo(
-    () => [...points].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())[0] ?? null,
-    [points],
-  );
+  const latest = useMemo(() => [...points].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())[0] ?? null, [points]);
+  const path = useMemo(() => [...points].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()).slice(-200).map(point => [point.longitude, point.latitude] as Coordinate), [points]);
 
-  const path = useMemo(
-    () => [...points]
-      .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime())
-      .slice(-200)
-      .map(point => [point.longitude, point.latitude] as [number, number]),
-    [points],
-  );
+  const pickup = useMemo<Coordinate | null>(() => booking && validCoordinate(booking.pickup_latitude) && validCoordinate(booking.pickup_longitude) ? [booking.pickup_longitude!, booking.pickup_latitude!] : null, [booking]);
+  const dropoff = useMemo<Coordinate | null>(() => booking && validCoordinate(booking.dropoff_latitude) && validCoordinate(booking.dropoff_longitude) ? [booking.dropoff_longitude!, booking.dropoff_latitude!] : null, [booking]);
+
+  useEffect(() => {
+    if (!pickup || !dropoff) {
+      setRoadRoute([]);
+      setRouteDistanceKm(null);
+      setRouteDurationMinutes(null);
+      setRouteError(pickup || dropoff ? 'Pickup and destination coordinates are required for the road route.' : null);
+      return;
+    }
+    const requestId = ++routeRequestRef.current;
+    const controller = new AbortController();
+    console.log('[LiveMovingMap] requesting road route', { pickup, dropoff });
+    setRouteError(null);
+    setRoadRoute([]);
+    fetch(routeUrl(pickup, dropoff), { signal: controller.signal, headers: { Accept: 'application/json' } })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Routing service returned HTTP ${response.status}.`);
+        return response.json() as Promise<OsrmRouteResponse>;
+      })
+      .then(data => {
+        if (requestId !== routeRequestRef.current) return;
+        const route = data.routes?.[0];
+        const coordinates = route?.geometry?.coordinates ?? [];
+        if (data.code !== 'Ok' || coordinates.length < 2) throw new Error('No drivable road route was found between the pickup and destination.');
+        setRoadRoute(coordinates);
+        setRouteDistanceKm(typeof route?.distance === 'number' ? route.distance / 1000 : null);
+        setRouteDurationMinutes(typeof route?.duration === 'number' ? route.duration / 60 : null);
+        console.log('[LiveMovingMap] road route received', { points: coordinates.length, distanceKm: route?.distance ? route.distance / 1000 : null, durationMinutes: route?.duration ? route.duration / 60 : null });
+      })
+      .catch(err => {
+        if (controller.signal.aborted || requestId !== routeRequestRef.current) return;
+        console.error('[LiveMovingMap] road route failed', err);
+        setRoadRoute([]);
+        setRouteError(err instanceof Error ? err.message : 'Unable to calculate the road route.');
+      });
+    return () => controller.abort();
+  }, [pickup, dropoff]);
 
   useEffect(() => {
     const map = mapRef.current;
-    console.log('[LiveMovingMap] map rendering effect evaluated', {
-      hasMap: Boolean(map),
-      hasBooking: Boolean(booking),
-      bookingStatus: booking?.status,
-      styleLoaded: map?.isStyleLoaded() ?? false,
-      latestPoint: latest,
-      pathPoints: path.length,
-    });
-
-    if (!map || !booking || !map.isStyleLoaded()) {
-      console.warn('[LiveMovingMap] map rendering skipped', {
-        reason: !map ? 'map unavailable' : !booking ? 'booking unavailable' : 'map style not loaded',
-      });
+    console.log('[LiveMovingMap] map rendering effect evaluated', { hasMap: Boolean(map), mapReady, hasBooking: Boolean(booking), bookingStatus: booking?.status, styleLoaded: map?.isStyleLoaded() ?? false, latestPoint: latest, pathPoints: path.length, roadRoutePoints: roadRoute.length });
+    if (!map || !mapReady || !booking || !map.isStyleLoaded()) {
+      console.warn('[LiveMovingMap] map rendering skipped', { reason: !map ? 'map unavailable' : !mapReady ? 'map not ready' : !booking ? 'booking unavailable' : 'map style not loaded' });
       return;
     }
 
-    const pickup = validCoordinate(booking.pickup_latitude) && validCoordinate(booking.pickup_longitude)
-      ? [booking.pickup_longitude!, booking.pickup_latitude!] as [number, number]
-      : null;
-    const dropoff = validCoordinate(booking.dropoff_latitude) && validCoordinate(booking.dropoff_longitude)
-      ? [booking.dropoff_longitude!, booking.dropoff_latitude!] as [number, number]
-      : null;
-
-    console.log('[LiveMovingMap] rendering map data', {
-      pickup,
-      dropoff,
-      latest,
-      pathPoints: path.length,
-    });
-
-    if (pickup) {
-      if (!pickupMarkerRef.current) {
-        pickupMarkerRef.current = new Marker({ color: '#2563eb' })
-          .setLngLat(pickup)
-          .setPopup(new Popup({ offset: 18 }).setHTML('<strong>Pickup location</strong>'))
-          .addTo(map);
-      } else {
-        pickupMarkerRef.current.setLngLat(pickup);
+    const setLine = (id: string, sourceId: string, coordinates: Coordinate[], paint: Record<string, unknown>) => {
+      const data = { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates } };
+      const existing = map.getSource(sourceId) as import('maplibre-gl').GeoJSONSource | undefined;
+      if (existing) existing.setData(data);
+      else {
+        map.addSource(sourceId, { type: 'geojson', data });
+        map.addLayer({ id, type: 'line', source: sourceId, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint });
       }
-    }
-
-    if (dropoff) {
-      if (!dropoffMarkerRef.current) {
-        dropoffMarkerRef.current = new Marker({ color: '#dc2626' })
-          .setLngLat(dropoff)
-          .setPopup(new Popup({ offset: 18 }).setHTML('<strong>Drop-off location</strong>'))
-          .addTo(map);
-      } else {
-        dropoffMarkerRef.current.setLngLat(dropoff);
-      }
-    }
-
-    const routeGeoJson = {
-      type: 'Feature' as const,
-      properties: {},
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: path,
-      },
     };
 
-    if (map.getSource('mover-travel-path')) {
-      (map.getSource('mover-travel-path') as import('maplibre-gl').GeoJSONSource).setData(routeGeoJson);
-    } else {
-      map.addSource('mover-travel-path', { type: 'geojson', data: routeGeoJson });
-      map.addLayer({
-        id: 'mover-travel-path-line',
-        type: 'line',
-        source: 'mover-travel-path',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-width': 5, 'line-opacity': 0.85 },
-      });
+    if (pickup) {
+      const element = markerElement('Pickup location', '#2563eb', 'A');
+      if (!pickupMarkerRef.current) pickupMarkerRef.current = new Marker({ element }).setLngLat(pickup).setPopup(new Popup({ offset: 22 }).setHTML('<strong>Pickup location</strong>')).addTo(map);
+      else pickupMarkerRef.current.setLngLat(pickup);
     }
-    routeSourceReadyRef.current = true;
+    if (dropoff) {
+      const element = markerElement('Destination', '#dc2626', 'B');
+      if (!dropoffMarkerRef.current) dropoffMarkerRef.current = new Marker({ element }).setLngLat(dropoff).setPopup(new Popup({ offset: 22 }).setHTML('<strong>Destination</strong>')).addTo(map);
+      else dropoffMarkerRef.current.setLngLat(dropoff);
+    }
+
+    if (roadRoute.length >= 2) setLine('planned-road-route-line', 'planned-road-route', roadRoute, { 'line-color': '#2563eb', 'line-width': 7, 'line-opacity': 0.9 });
+    if (path.length >= 2) setLine('mover-travelled-path-line', 'mover-travelled-path', path, { 'line-color': '#60a5fa', 'line-width': 4, 'line-opacity': 0.9, 'line-dasharray': [1, 0] });
 
     if (latest) {
-      const position: [number, number] = [latest.longitude, latest.latitude];
+      const position: Coordinate = [latest.longitude, latest.latitude];
       if (!moverMarkerRef.current) {
-        moverMarkerRef.current = new Marker({ color: '#16a34a' }).setLngLat(position).addTo(map);
-        moverMarkerRef.current.getElement().setAttribute('aria-label', 'Mover current location');
-        moverMarkerRef.current.getElement().title = 'Mover current location';
-        moverMarkerRef.current.getElement().addEventListener('click', () => {
+        const element = markerElement('Mover current location', '#111827', '🚚');
+        moverMarkerRef.current = new Marker({ element }).setLngLat(position).addTo(map);
+        element.addEventListener('click', () => {
           popupRef.current?.remove();
-          popupRef.current = new Popup({ offset: 28 })
-            .setLngLat(position)
-            .setHTML(`<strong>Live mover location</strong><br/>${latest.latitude.toFixed(6)}, ${latest.longitude.toFixed(6)}<br/>${new Date(latest.recorded_at).toLocaleTimeString('en-KE')}${latest.speed_kph != null ? `<br/>Speed: ${latest.speed_kph.toFixed(1)} km/h` : ''}`)
-            .addTo(map);
+          popupRef.current = new Popup({ offset: 28 }).setLngLat(position).setHTML(`<strong>Live mover location</strong><br/>${latest.latitude.toFixed(6)}, ${latest.longitude.toFixed(6)}<br/>${new Date(latest.recorded_at).toLocaleTimeString('en-KE')}${latest.speed_kph != null ? `<br/>Speed: ${latest.speed_kph.toFixed(1)} km/h` : ''}`).addTo(map);
         });
-      } else {
-        moverMarkerRef.current.setLngLat(position);
-      }
+      } else moverMarkerRef.current.setLngLat(position);
 
       if (!firstMapFitRef.current) {
         const bounds = new LngLatBounds(position, position);
         if (pickup) bounds.extend(pickup);
         if (dropoff) bounds.extend(dropoff);
+        if (roadRoute.length >= 2) roadRoute.forEach(coordinate => bounds.extend(coordinate));
         map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 });
         firstMapFitRef.current = true;
-      } else if (followMover) {
-        map.easeTo({ center: position, duration: 500 });
-      }
+      } else if (followMover) map.easeTo({ center: position, duration: 500 });
+    } else if (!firstMapFitRef.current && roadRoute.length >= 2) {
+      const bounds = new LngLatBounds(roadRoute[0], roadRoute[0]);
+      roadRoute.forEach(coordinate => bounds.extend(coordinate));
+      map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 });
+      firstMapFitRef.current = true;
     }
-  }, [booking, latest, path, followMover]);
+  }, [booking, dropoff, followMover, latest, mapReady, path, pickup, roadRoute]);
+
+  useEffect(() => {
+    firstMapFitRef.current = false;
+    setRoadRoute([]);
+    setRouteError(null);
+    setRouteDistanceKm(null);
+    setRouteDurationMinutes(null);
+  }, [bookingId]);
 
   if (!bookingId) return null;
-
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  }
-
-  if (error && !booking) {
-    return <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-white"><div className="max-w-lg rounded-2xl bg-brand-900 p-6 text-center"><p className="text-sm text-error-300">{error}</p><button type="button" onClick={() => navigate('mover-booking-detail', bookingId)} className="mt-5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold">Back to booking</button></div></div>;
-  }
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  if (error && !booking) return <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-white"><div className="max-w-lg rounded-2xl bg-brand-900 p-6 text-center"><p className="text-sm text-error-300">{error}</p><button type="button" onClick={() => navigate('mover-booking-detail', bookingId)} className="mt-5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold">Back to booking</button></div></div>;
 
   const lat = latest?.latitude ?? booking?.last_known_latitude ?? null;
   const lng = latest?.longitude ?? booking?.last_known_longitude ?? null;
   const lastUpdated = latest?.recorded_at ?? booking?.last_location_at ?? null;
+  const routeStatus = routeError ? routeError : roadRoute.length >= 2 ? 'Road route active' : 'Calculating road route…';
 
   return <div className="fixed inset-0 z-[70] flex flex-col bg-gray-950 text-white">
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 sm:p-5">
       <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 p-2 shadow-xl backdrop-blur-md">
         <button type="button" onClick={() => navigate('mover-booking-detail', bookingId)} aria-label="Back to booking" className="inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white/10"><ArrowLeft className="h-5 w-5" /></button>
-        <div className="pr-2">
-          <p className="text-sm font-bold">Live moving map</p>
-          <p className="text-[11px] text-gray-300">Booking {bookingId.slice(0, 8)}…</p>
-        </div>
+        <div className="pr-2"><p className="text-sm font-bold">Live moving map</p><p className="text-[11px] text-gray-300">Booking {bookingId.slice(0, 8)}…</p></div>
       </div>
-      <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 px-3 py-2 shadow-xl backdrop-blur-md">
-        <Radio className="h-4 w-4" />
-        <span className={cn('text-xs font-semibold', socketState === 'live' ? 'text-green-300' : 'text-gray-200')}>{socketState === 'live' ? 'LIVE' : socketState.toUpperCase()}</span>
-      </div>
+      <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 px-3 py-2 shadow-xl backdrop-blur-md"><Radio className="h-4 w-4" /><span className={cn('text-xs font-semibold', socketState === 'live' ? 'text-green-300' : 'text-gray-200')}>{socketState === 'live' ? 'LIVE' : socketState.toUpperCase()}</span></div>
     </div>
 
     <div ref={mapElementRef} className="min-h-0 flex-1 bg-gray-900" aria-label="MapLibre live mover tracking map" />
 
-    {(mapLoading || mapError) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950/80 p-6 backdrop-blur-sm">
-      <div className="max-w-md rounded-2xl bg-brand-900 p-6 text-center shadow-2xl">
-        {mapLoading ? <><Loader2 className="mx-auto h-8 w-8 animate-spin" /><p className="mt-3 font-semibold">Loading live map…</p></> : <><p className="text-sm font-semibold">Map is not available</p><p className="mt-2 text-sm text-gray-300">{mapError}</p></>}
-      </div>
-    </div>}
+    {(mapLoading || mapError) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950/80 p-6 backdrop-blur-sm"><div className="max-w-md rounded-2xl bg-brand-900 p-6 text-center shadow-2xl">{mapLoading ? <><Loader2 className="mx-auto h-8 w-8 animate-spin" /><p className="mt-3 font-semibold">Loading live map…</p></> : <><p className="text-sm font-semibold">Map is not available</p><p className="mt-2 text-sm text-gray-300">{mapError}</p></>}</div></div>}
 
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3 sm:p-5">
       <div className="mx-auto flex max-w-6xl flex-col gap-3">
@@ -555,10 +395,11 @@ export default function LiveMovingMap() {
           <button type="button" onClick={() => { setFollowMover(true); if (latest) mapRef.current?.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 }); }} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-white/10"><Crosshair className="h-4 w-4" /> Follow mover</button>
           <button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4" /> {followMover ? 'Following' : 'Explore map'}</button>
         </div>
-        <div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl backdrop-blur-md sm:grid-cols-3">
+        <div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl backdrop-blur-md sm:grid-cols-4">
+          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Route</p><p className="mt-1 text-sm font-bold">{routeDistanceKm != null ? `${routeDistanceKm.toFixed(1)} km` : routeStatus}</p><p className="mt-1 text-[11px] text-gray-400">{routeDurationMinutes != null ? `Approx. ${Math.round(routeDurationMinutes)} min` : 'Pickup → destination'}</p></div>
           <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Mover position</p><p className="mt-1 truncate text-sm font-bold">{lat !== null && lng !== null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Waiting for GPS…'}</p><p className="mt-1 text-[11px] text-gray-400">{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-KE')}` : 'No accepted GPS point yet'}</p></div>
           <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Journey</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><Truck className="h-4 w-4" /> {String(booking?.status ?? 'unknown').replace(/_/g, ' ')}</p><p className="mt-1 text-[11px] text-gray-400">{points.length} GPS points received</p></div>
-          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">{isMover ? 'Your current device location is being shared.' : 'Mover location is updated from the tracking service.'}</p></div>
+          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">{isMover ? 'Your location is being shared live.' : 'Mover location is updated live.'}</p></div>
         </div>
       </div>
     </div>
