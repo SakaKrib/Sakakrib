@@ -75,6 +75,7 @@ export default function MovingGpsTracker() {
         speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6),
         heading_degrees: position.coords.heading == null ? null : position.coords.heading,
         timestamp: position.timestamp,
+        bookingId,
       };
       window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-position', { detail: devicePosition }));
       pendingRef.current = {
