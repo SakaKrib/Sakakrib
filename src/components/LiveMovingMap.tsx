@@ -55,7 +55,7 @@ export default function LiveMovingMap() {
   const [roadRoute, setRoadRoute] = useState<Coordinate[]>([]);
   const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
   const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
-  const [followMover, setFollowMover] = useState(true);
+  const [followMover, setFollowMover] = useState(false);
   const [deviceGps, setDeviceGps] = useState<DeviceGpsPosition | null>(null);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [locationPermission, setLocationPermission] = useState<LocationPermissionState>('checking');
