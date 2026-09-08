@@ -133,7 +133,13 @@ export default function MovingGpsTracker() {
 
     const restart = () => { void selectActiveBooking(); };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
-    const handleExplicitGpsRequest = () => { void selectActiveBooking(); };
+    const handleExplicitGpsRequest = () => {
+      if (bookingIdRef.current && watchIdRef.current !== null) {
+        probeGps();
+        return;
+      }
+      void selectActiveBooking();
+    };
 
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', restart);
