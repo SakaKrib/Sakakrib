@@ -210,7 +210,6 @@ export default function LiveMovingMap() {
   }, [bookingId, booking?.status, load]);
 
   const latest = useMemo(() => [...points].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())[0] ?? null, [points]);
-  const path = useMemo(() => [...points].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime()).slice(-200).map(point => [point.longitude, point.latitude] as Coordinate), [points]);
   const pickup = useMemo<Coordinate | null>(() => booking && validCoordinate(booking.pickup_latitude) && validCoordinate(booking.pickup_longitude) ? [booking.pickup_longitude!, booking.pickup_latitude!] : null, [booking]);
   const dropoff = useMemo<Coordinate | null>(() => booking && validCoordinate(booking.dropoff_latitude) && validCoordinate(booking.dropoff_longitude) ? [booking.dropoff_longitude!, booking.dropoff_latitude!] : null, [booking]);
   const currentPosition = useMemo<Coordinate | null>(() => {
@@ -256,7 +255,8 @@ export default function LiveMovingMap() {
     }
     if (dropoff) { const element = markerElement(isMover ? 'Destination B' : 'Destination', '#dc2626', 'B'); if (!dropoffMarkerRef.current) dropoffMarkerRef.current = new Marker({ element }).setLngLat(dropoff).setPopup(new Popup({ offset: 22 }).setHTML(isMover ? '<strong>Destination B</strong><br/>Proceed here after pickup' : '<strong>Destination</strong>')).addTo(map); else dropoffMarkerRef.current.setLngLat(dropoff); }
     if (roadRoute.length >= 2) setLine('active-road-route-line', 'active-road-route', roadRoute, { 'line-color': '#2563eb', 'line-width': 7, 'line-opacity': 0.9 });
-    if (path.length >= 2) setLine('mover-travelled-path-line', 'mover-travelled-path', path, { 'line-color': '#60a5fa', 'line-width': 4, 'line-opacity': 0.9, 'line-dasharray': [1, 0] });
+    if (map.getLayer('mover-travelled-path-line')) map.removeLayer('mover-travelled-path-line');
+    if (map.getSource('mover-travelled-path')) map.removeSource('mover-travelled-path');
     if (currentPosition) {
       const position: Coordinate = currentPosition;
       if (!moverMarkerRef.current) {
@@ -266,7 +266,7 @@ export default function LiveMovingMap() {
       } else moverMarkerRef.current.setLngLat(position);
       if (!firstMapFitRef.current) { const bounds = new LngLatBounds(position, position); if (pickup) bounds.extend(pickup); if (dropoff) bounds.extend(dropoff); if (roadRoute.length >= 2) roadRoute.forEach(coordinate => bounds.extend(coordinate)); map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 }); firstMapFitRef.current = true; } else if (followMover) map.easeTo({ center: position, duration: 500 });
     } else if (!firstMapFitRef.current && roadRoute.length >= 2) { const bounds = new LngLatBounds(roadRoute[0], roadRoute[0]); roadRoute.forEach(coordinate => bounds.extend(coordinate)); map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 }); firstMapFitRef.current = true; }
-  }, [booking, currentPosition, deviceGps, dropoff, followMover, isMover, journeyPhase, latest, mapReady, path, pickup, roadRoute]);
+  }, [booking, currentPosition, deviceGps, dropoff, followMover, isMover, journeyPhase, latest, mapReady, pickup, roadRoute]);
 
   useEffect(() => { firstMapFitRef.current = false; pickupMarkerPhaseRef.current = null; setJourneyPhase(null); setPickupConfirmationError(null); setConfirmingPickup(false); setRoadRoute([]); setRouteError(null); setRouteDistanceKm(null); setRouteDurationMinutes(null); setDeviceGps(null); }, [bookingId]);
 
