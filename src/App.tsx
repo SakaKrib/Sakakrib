@@ -49,6 +49,7 @@ import RenterActivitiesPage from '@/pages/Renters/RenterActivitiesPage';
 import RenterChatPerformancePage from '@/pages/Renters/RenterChatPerformancePage';
 import RenterMessagesPage from '@/pages/Renters/RenterMessagesPage';
 import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
+import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
 
 function AppContent() {
   const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
@@ -74,7 +75,8 @@ function AppContent() {
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetail />;
-      case 'mover-tracking': return <LiveMovingMap />;
+      case 'mover-tracking': return <MoverTrackingPage />;
+      case 'live-mover-map': return <LiveMovingMap />;
       case 'mover-calendar': return <MoverCalendarPage />;
       case 'mover-booking-requests': return <MoverBookingRequestsPage />;
       case 'mover-upcoming-jobs': return <MoverUpcomingJobsPage />;
@@ -109,7 +111,7 @@ function AppContent() {
     }
   };
 
-  if (view === 'mover-tracking' && (profile?.role === 'mover' || profile?.role === 'renter')) {
+  if (view === 'live-mover-map' && (profile?.role === 'mover' || profile?.role === 'renter')) {
     return <><LiveMovingMap /><MovingGpsTracker /></>;
   }
 
