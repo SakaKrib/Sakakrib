@@ -62,3 +62,70 @@
   transition-property: background-color, border-color;
   transition-duration: 200ms;
 }
+
+/* MapLibre chrome follows the same light/dark surface and text tokens as the app.
+   ThemeContext toggles the `dark` class on <html>, so the map stays synchronized
+   without introducing a second theme system. */
+.maplibregl-popup-content {
+  @apply rounded-xl border border-gray-200 bg-white text-gray-900 shadow-lg;
+  min-width: 220px;
+  padding: 14px 16px;
+}
+
+.maplibregl-popup-close-button {
+  @apply rounded-full px-2 py-1 text-lg font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+.maplibregl-ctrl-group {
+  @apply overflow-hidden rounded-xl border border-gray-200 bg-white shadow-md;
+}
+
+.maplibregl-ctrl-group button {
+  @apply border-gray-200 bg-white text-gray-700;
+}
+
+.maplibregl-ctrl-group button:hover {
+  @apply bg-gray-50 text-gray-900;
+}
+
+.maplibregl-ctrl-attrib {
+  @apply rounded-tl-lg border border-gray-200 bg-white/90 text-gray-600 shadow-sm;
+}
+
+html.dark .maplibregl-popup-content {
+  @apply border-brand-800 bg-brand-900 text-gray-100 shadow-xl;
+}
+
+html.dark .maplibregl-popup-close-button {
+  @apply text-gray-400 hover:bg-brand-800 hover:text-gray-100;
+}
+
+html.dark .maplibregl-popup-tip {
+  border-top-color: #0B132B;
+  border-bottom-color: #0B132B;
+}
+
+html.dark .maplibregl-ctrl-group {
+  @apply border-brand-800 bg-brand-900 shadow-xl;
+}
+
+html.dark .maplibregl-ctrl-group button {
+  @apply border-brand-800 bg-brand-900 text-gray-200;
+}
+
+html.dark .maplibregl-ctrl-group button:hover {
+  @apply bg-brand-800 text-white;
+}
+
+html.dark .maplibregl-ctrl-attrib {
+  @apply border-brand-800 bg-brand-900/90 text-gray-300;
+}
+
+html.dark .maplibregl-ctrl-attrib a {
+  @apply text-gray-200;
+}
