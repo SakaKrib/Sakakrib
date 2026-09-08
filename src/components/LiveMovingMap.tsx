@@ -92,6 +92,11 @@ function distanceMeters(a: Coordinate, b: Coordinate) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
+function coordinateLabel(coordinate: Coordinate | null) {
+  if (!coordinate) return 'Unavailable';
+  return `${coordinate[1].toFixed(6)}, ${coordinate[0].toFixed(6)}`;
+}
+
 export default function LiveMovingMap() {
   const { profile } = useAuth();
   const { selectedMoverBookingId, selectedMoverId, navigate } = useNav();
@@ -278,8 +283,28 @@ export default function LiveMovingMap() {
     return null;
   }, [booking, latest]);
   const activeTarget = journeyPhase === 'IN_TRANSIT' ? dropoff : pickup;
-  const phaseTitle = journeyPhase === 'IN_TRANSIT' ? 'Items collected — heading to destination' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Mover heading to pickup' : 'Live mover location';
-  const phaseDescription = journeyPhase === 'IN_TRANSIT' ? 'Pickup is confirmed. The mover is now travelling with the items to the destination.' : journeyPhase === 'HEADING_TO_PICKUP' ? 'The mover is travelling to the pickup location. Pickup has not been confirmed yet.' : 'Waiting for the journey phase and live GPS position.';
+  const phaseTitle = isMover
+    ? journeyPhase === 'IN_TRANSIT'
+      ? 'Pickup confirmed — head to destination'
+      : journeyPhase === 'HEADING_TO_PICKUP'
+        ? 'Head to pickup point'
+        : 'Live journey map'
+    : journeyPhase === 'IN_TRANSIT'
+      ? 'Items collected — heading to destination'
+      : journeyPhase === 'HEADING_TO_PICKUP'
+        ? 'Mover heading to pickup'
+        : 'Live mover location';
+  const phaseDescription = isMover
+    ? journeyPhase === 'IN_TRANSIT'
+      ? 'Pickup is confirmed. Proceed to the destination shown on the map.'
+      : journeyPhase === 'HEADING_TO_PICKUP'
+        ? 'Proceed to pickup point A and collect the items. Your current position and the pickup route are shown live.'
+        : 'Waiting for the journey phase and live GPS position.'
+    : journeyPhase === 'IN_TRANSIT'
+      ? 'Pickup is confirmed. The mover is now travelling with the items to the destination.'
+      : journeyPhase === 'HEADING_TO_PICKUP'
+        ? 'The mover is travelling to the pickup location. Pickup has not been confirmed yet.'
+        : 'Waiting for the journey phase and live GPS position.';
 
   useEffect(() => {
     if (!currentPosition || !activeTarget) {
@@ -341,14 +366,15 @@ export default function LiveMovingMap() {
       const pickupPhase = journeyPhase === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'HEADING_TO_PICKUP';
       if (!pickupMarkerRef.current || pickupMarkerPhaseRef.current !== pickupPhase) {
         pickupMarkerRef.current?.remove();
-        const element = pickupPhase === 'IN_TRANSIT' ? markerElement('Pickup location — collected', '#16a34a', '✓') : markerElement('Pickup location', '#2563eb', 'A');
-        pickupMarkerRef.current = new Marker({ element }).setLngLat(pickup).setPopup(new Popup({ offset: 22 }).setHTML(pickupPhase === 'IN_TRANSIT' ? '<strong>Pickup confirmed</strong><br/>Items collected' : '<strong>Pickup location</strong>')).addTo(map);
+        const pickupLabel = isMover ? 'Pickup point A' : 'Pickup location';
+        const element = pickupPhase === 'IN_TRANSIT' ? markerElement(isMover ? 'Pickup point A — collected' : 'Pickup location — collected', '#16a34a', '✓') : markerElement(pickupLabel, '#2563eb', 'A');
+        pickupMarkerRef.current = new Marker({ element }).setLngLat(pickup).setPopup(new Popup({ offset: 22 }).setHTML(pickupPhase === 'IN_TRANSIT' ? '<strong>Pickup confirmed</strong><br/>Items collected' : isMover ? '<strong>Pickup point A</strong><br/>Proceed here to collect the items' : '<strong>Pickup location</strong>')).addTo(map);
         pickupMarkerPhaseRef.current = pickupPhase;
       } else pickupMarkerRef.current.setLngLat(pickup);
     }
     if (dropoff) {
-      const element = markerElement('Destination', '#dc2626', 'B');
-      if (!dropoffMarkerRef.current) dropoffMarkerRef.current = new Marker({ element }).setLngLat(dropoff).setPopup(new Popup({ offset: 22 }).setHTML('<strong>Destination</strong>')).addTo(map);
+      const element = markerElement(isMover ? 'Destination B' : 'Destination', '#dc2626', 'B');
+      if (!dropoffMarkerRef.current) dropoffMarkerRef.current = new Marker({ element }).setLngLat(dropoff).setPopup(new Popup({ offset: 22 }).setHTML(isMover ? '<strong>Destination B</strong><br/>Proceed here after pickup' : '<strong>Destination</strong>')).addTo(map);
       else dropoffMarkerRef.current.setLngLat(dropoff);
     }
 
@@ -358,11 +384,11 @@ export default function LiveMovingMap() {
     if (latest) {
       const position: Coordinate = [latest.longitude, latest.latitude];
       if (!moverMarkerRef.current) {
-        const element = markerElement('Mover current location', '#111827', '🚚');
+        const element = markerElement(isMover ? 'Your current location' : 'Mover current location', '#111827', '🚚');
         moverMarkerRef.current = new Marker({ element }).setLngLat(position).addTo(map);
         element.addEventListener('click', () => {
           popupRef.current?.remove();
-          popupRef.current = new Popup({ offset: 28 }).setLngLat(position).setHTML(`<strong>Live mover location</strong><br/>${latest.latitude.toFixed(6)}, ${latest.longitude.toFixed(6)}<br/>${new Date(latest.recorded_at).toLocaleTimeString('en-KE')}${latest.speed_kph != null ? `<br/>Speed: ${latest.speed_kph.toFixed(1)} km/h` : ''}`).addTo(map);
+          popupRef.current = new Popup({ offset: 28 }).setLngLat(position).setHTML(`<strong>${isMover ? 'Your current location' : 'Live mover location'}</strong><br/>Latitude: ${latest.latitude.toFixed(6)}<br/>Longitude: ${latest.longitude.toFixed(6)}<br/>${new Date(latest.recorded_at).toLocaleTimeString('en-KE')}${latest.speed_kph != null ? `<br/>Speed: ${latest.speed_kph.toFixed(1)} km/h` : ''}`).addTo(map);
         });
       } else moverMarkerRef.current.setLngLat(position);
 
@@ -380,7 +406,7 @@ export default function LiveMovingMap() {
       map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 });
       firstMapFitRef.current = true;
     }
-  }, [booking, dropoff, followMover, journeyPhase, latest, mapReady, path, pickup, roadRoute]);
+  }, [booking, dropoff, followMover, isMover, journeyPhase, latest, mapReady, path, pickup, roadRoute]);
 
   useEffect(() => {
     firstMapFitRef.current = false;
@@ -405,12 +431,12 @@ export default function LiveMovingMap() {
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 sm:p-5">
       <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 p-2 shadow-xl backdrop-blur-md">
         <button type="button" onClick={() => navigate(isMover ? 'mover-booking-detail' : 'mover-tracking', bookingId)} aria-label="Back to tracking" className="inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white/10"><ArrowLeft className="h-5 w-5" /></button>
-        <div className="pr-2"><p className="text-sm font-bold">Live moving map</p><p className="text-[11px] text-gray-300">Booking {bookingId.slice(0, 8)}…</p></div>
+        <div className="pr-2"><p className="text-sm font-bold">{isMover ? 'Move navigation' : 'Live moving map'}</p><p className="text-[11px] text-gray-300">Booking {bookingId.slice(0, 8)}…</p></div>
       </div>
       <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 px-3 py-2 shadow-xl backdrop-blur-md"><Radio className="h-4 w-4" /><span className={cn('text-xs font-semibold', socketState === 'live' ? 'text-green-300' : 'text-gray-200')}>{socketState === 'live' ? 'LIVE' : socketState.toUpperCase()}</span></div>
     </div>
 
-    <div ref={mapElementRef} className="min-h-0 flex-1 bg-gray-900" aria-label="MapLibre live mover tracking map" />
+    <div ref={mapElementRef} className="min-h-0 flex-1 bg-gray-900" aria-label={isMover ? 'Live mover navigation map' : 'MapLibre live mover tracking map'} />
 
     {(mapLoading || mapError) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950/80 p-6 backdrop-blur-sm"><div className="max-w-md rounded-2xl bg-brand-900 p-6 text-center shadow-2xl">{mapLoading ? <><Loader2 className="mx-auto h-8 w-8 animate-spin" /><p className="mt-3 font-semibold">Loading live map…</p></> : <><p className="text-sm font-semibold">Map is not available</p><p className="mt-2 text-sm text-gray-300">{mapError}</p></>}</div></div>}
 
@@ -423,15 +449,26 @@ export default function LiveMovingMap() {
           </div>
         </div>
         <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end rounded-2xl bg-gray-950/90 p-2 shadow-xl backdrop-blur-md">
-          <button type="button" onClick={() => { setFollowMover(true); if (latest) mapRef.current?.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 }); }} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-white/10"><Crosshair className="h-4 w-4" /> Follow mover</button>
-          <button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4" /> {followMover ? 'Following' : 'Explore map'}</button>
+          <button type="button" onClick={() => { setFollowMover(true); if (latest) mapRef.current?.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 }); }} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-white/10"><Crosshair className="h-4 w-4" /> {isMover ? 'Center on my location' : 'Follow mover'}</button>
+          <button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4" /> {isMover ? (followMover ? 'Follow route' : 'Explore map') : (followMover ? 'Following' : 'Explore map')}</button>
         </div>
-        <div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl backdrop-blur-md sm:grid-cols-4">
-          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Next destination</p><p className="mt-1 text-sm font-bold">{journeyPhase === 'IN_TRANSIT' ? 'Delivery destination' : 'Pickup location'}</p><p className="mt-1 text-[11px] text-gray-400">{routeDistanceKm != null ? `${routeDistanceKm.toFixed(1)} km remaining` : routeStatus}</p><p className="mt-1 text-[11px] text-gray-400">{routeDurationMinutes != null ? `Approx. ${Math.round(routeDurationMinutes)} min` : ''}</p></div>
-          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Mover position</p><p className="mt-1 truncate text-sm font-bold">{lat !== null && lng !== null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Waiting for GPS…'}</p><p className="mt-1 text-[11px] text-gray-400">{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-KE')}` : 'No accepted GPS point yet'}</p></div>
-          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Journey phase</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><Truck className="h-4 w-4" /> {journeyPhase === 'IN_TRANSIT' ? 'Items collected' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Heading to pickup' : 'Starting'}</p><p className="mt-1 text-[11px] text-gray-400">{points.length} GPS points received</p></div>
-          <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">{isMover ? 'Your device location is shared live.' : 'Mover location is updated live.'}</p></div>
-        </div>
+        {isMover ? (
+          <div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl sm:grid-cols-3">
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Current objective</p><p className="mt-1 text-sm font-bold">{journeyPhase === 'IN_TRANSIT' ? 'Destination B' : 'Pickup point A'}</p><p className="mt-1 text-[11px] text-gray-400">{routeDistanceKm != null ? `${routeDistanceKm.toFixed(1)} km remaining` : routeStatus}</p><p className="mt-1 text-[11px] text-gray-400">{routeDurationMinutes != null ? `Approx. ${Math.round(routeDurationMinutes)} min` : ''}</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Your current position</p><p className="mt-1 truncate text-sm font-bold">{lat !== null && lng !== null ? `Lat ${lat.toFixed(6)} · Lng ${lng.toFixed(6)}` : 'Waiting for GPS…'}</p><p className="mt-1 text-[11px] text-gray-400">{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-KE')}` : 'No accepted GPS point yet'}</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Journey</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><Truck className="h-4 w-4" /> {journeyPhase === 'IN_TRANSIT' ? 'Pickup confirmed' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Heading to pickup' : 'Starting'}</p><p className="mt-1 text-[11px] text-gray-400">{points.length} GPS points received</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Pickup point A</p><p className="mt-1 text-sm font-bold">{coordinateLabel(pickup)}</p><p className="mt-1 text-[11px] text-gray-400">{journeyPhase === 'IN_TRANSIT' ? 'Collected' : 'Collect items here'}</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Destination B</p><p className="mt-1 text-sm font-bold">{coordinateLabel(dropoff)}</p><p className="mt-1 text-[11px] text-gray-400">{journeyPhase === 'IN_TRANSIT' ? 'Active route' : 'Next after pickup'}</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">Your device location is shared live.</p></div>
+          </div>
+        ) : (
+          <div className="pointer-events-auto grid gap-3 rounded-2xl bg-gray-950/90 p-4 shadow-2xl sm:grid-cols-4">
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Next destination</p><p className="mt-1 text-sm font-bold">{journeyPhase === 'IN_TRANSIT' ? 'Delivery destination' : 'Pickup location'}</p><p className="mt-1 text-[11px] text-gray-400">{routeDistanceKm != null ? `${routeDistanceKm.toFixed(1)} km remaining` : routeStatus}</p><p className="mt-1 text-[11px] text-gray-400">{routeDurationMinutes != null ? `Approx. ${Math.round(routeDurationMinutes)} min` : ''}</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Mover position</p><p className="mt-1 truncate text-sm font-bold">{lat !== null && lng !== null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : 'Waiting for GPS…'}</p><p className="mt-1 text-[11px] text-gray-400">{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString('en-KE')}` : 'No accepted GPS point yet'}</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Journey phase</p><p className="mt-1 flex items-center gap-2 text-sm font-bold"><Truck className="h-4 w-4" /> {journeyPhase === 'IN_TRANSIT' ? 'Items collected' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Heading to pickup' : 'Starting'}</p><p className="mt-1 text-[11px] text-gray-400">{points.length} GPS points received</p></div>
+            <div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-gray-400">Movement</p><p className="mt-1 text-sm font-bold">{latest?.speed_kph != null ? `${latest.speed_kph.toFixed(1)} km/h` : 'Speed unavailable'}</p><p className="mt-1 text-[11px] text-gray-400">Mover location is updated live.</p></div>
+          </div>
+        )}
       </div>
     </div>
   </div>;
