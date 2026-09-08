@@ -31,6 +31,7 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             return
 
         self.group_name = tracking_group_name(self.booking_id)
+        self.is_assigned_mover = await self._is_assigned_mover()
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         latest, health = await self._tracking_snapshot()
@@ -41,13 +42,32 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             "location": latest,
             "phase": phase,
             "tracking_health": health,
+            "mover_connected": False,
         })
+        if self.is_assigned_mover:
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "mover.presence",
+                    "connected": True,
+                    "changed_at": timezone.now().isoformat(),
+                },
+            )
         self.heartbeat_task = asyncio.create_task(self._heartbeat())
 
     async def disconnect(self, close_code):
         heartbeat = getattr(self, "heartbeat_task", None)
         if heartbeat is not None:
             heartbeat.cancel()
+        if getattr(self, "is_assigned_mover", False) and hasattr(self, "group_name"):
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    "type": "mover.presence",
+                    "connected": False,
+                    "changed_at": timezone.now().isoformat(),
+                },
+            )
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
@@ -57,6 +77,15 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
                 await asyncio.sleep(5)
                 health = await self._current_tracking_health()
                 await self.send_json({"type": "tracking_health", "tracking_health": health})
+                if self.is_assigned_mover:
+                    await self.channel_layer.group_send(
+                        self.group_name,
+                        {
+                            "type": "mover.presence",
+                            "connected": True,
+                            "changed_at": timezone.now().isoformat(),
+                        },
+                    )
         except (asyncio.CancelledError, RuntimeError):
             return
 
@@ -84,6 +113,14 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             "changed_at": event["changed_at"],
         })
 
+    async def mover_presence(self, event):
+        await self.send_json({
+            "type": "mover_presence",
+            "booking_id": str(self.booking_id),
+            "connected": bool(event.get("connected")),
+            "changed_at": event.get("changed_at") or timezone.now().isoformat(),
+        })
+
     @database_sync_to_async
     def _authorized(self):
         booking = Booking.objects.filter(pk=self.booking_id).first()
@@ -92,6 +129,11 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         if booking.renter_id == self.user.pk:
             return True
         return Mover.objects.filter(pk=booking.mover_id, user_id=self.user.pk).exists()
+
+    @database_sync_to_async
+    def _is_assigned_mover(self):
+        booking = Booking.objects.filter(pk=self.booking_id).first()
+        return bool(booking and Mover.objects.filter(pk=booking.mover_id, user_id=self.user.pk).exists())
 
     @database_sync_to_async
     def _tracking_snapshot(self):
