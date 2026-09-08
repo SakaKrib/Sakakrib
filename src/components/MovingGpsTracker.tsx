@@ -68,12 +68,21 @@ export default function MovingGpsTracker() {
       if (cancelledRef.current || !bookingId) return;
       const rawAccuracy = position.coords.accuracy;
       const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy >= 0 && rawAccuracy <= 10000 ? rawAccuracy : null;
-      pendingRef.current = {
+      const devicePosition = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy_meters: accuracy,
         speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6),
-        heading_degrees: position.coords.heading == null ? null : position.coords.heading
+        heading_degrees: position.coords.heading == null ? null : position.coords.heading,
+        timestamp: position.timestamp,
+      };
+      window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-position', { detail: devicePosition }));
+      pendingRef.current = {
+        latitude: devicePosition.latitude,
+        longitude: devicePosition.longitude,
+        accuracy_meters: devicePosition.accuracy_meters,
+        speed_kph: devicePosition.speed_kph,
+        heading_degrees: devicePosition.heading_degrees,
       };
       void sendPending(bookingId);
     };
