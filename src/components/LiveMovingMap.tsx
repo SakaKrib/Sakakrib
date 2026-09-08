@@ -10,7 +10,7 @@ import {
 } from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { ArrowLeft, CheckCircle2, Crosshair, Loader2, Navigation, Radio, Route, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Crosshair, Loader2, Navigation, PackageCheck, Radio, Route, ShieldCheck, Truck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
@@ -39,6 +39,8 @@ interface OsrmRouteResponse {
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const ROUTING_URL = 'https://router.project-osrm.org/route/v1/driving';
 const ROUTE_REFRESH_METERS = 500;
+const PICKUP_CONFIRMATION_RADIUS_METERS = 250;
+const GPS_FRESHNESS_MS = 2 * 60 * 1000;
 
 const active = (value: string | null | undefined) =>
   String(value ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
@@ -113,6 +115,8 @@ export default function LiveMovingMap() {
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [pickupConfirmationError, setPickupConfirmationError] = useState<string | null>(null);
+  const [confirmingPickup, setConfirmingPickup] = useState(false);
   const [roadRoute, setRoadRoute] = useState<Coordinate[]>([]);
   const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
   const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
@@ -132,13 +136,7 @@ export default function LiveMovingMap() {
   const routeOriginRef = useRef<Coordinate | null>(null);
   const pickupMarkerPhaseRef = useRef<JourneyPhase>(null);
 
-  useEffect(() => {
-    console.log('[LiveMovingMap] component mounted', { profileRole: profile?.role, isMover, selectedMoverBookingId, selectedMoverId, bookingId, mapStyle: MAP_STYLE });
-    return () => console.log('[LiveMovingMap] component unmounted');
-  }, []);
-
   const load = useCallback(async () => {
-    console.log('[LiveMovingMap] load started', { bookingId, isMover });
     if (!bookingId) {
       setLoading(false);
       return null;
@@ -167,14 +165,12 @@ export default function LiveMovingMap() {
         );
         setError(null);
         return { tracking: trackingData, phase: phaseData };
-      } catch (phaseError) {
-        console.warn('[LiveMovingMap] journey phase endpoint unavailable; continuing with WebSocket phase', phaseError);
+      } catch {
         setJourneyPhase('HEADING_TO_PICKUP');
         setError(null);
         return { tracking: trackingData, phase: null };
       }
     } catch (err) {
-      console.error('[LiveMovingMap] load failed', err);
       setError(err instanceof Error ? err.message : 'Unable to load live map.');
       return null;
     } finally {
@@ -192,10 +188,9 @@ export default function LiveMovingMap() {
       map.addControl(new FullscreenControl(), 'top-right');
       map.on('style.load', () => setMapReady(true));
       map.on('load', () => { setMapReady(true); setMapLoading(false); });
-      map.on('error', event => { if (event.error) { console.error('[LiveMovingMap] MapLibre error event', event.error); setMapError(event.error.message || 'Unable to load the map.'); setMapLoading(false); } });
+      map.on('error', event => { if (event.error) { setMapError(event.error.message || 'Unable to load the map.'); setMapLoading(false); } });
       mapRef.current = map;
     } catch (err) {
-      console.error('[LiveMovingMap] MapLibre initialization threw', err);
       setMapLoading(false);
       setMapError(err instanceof Error ? err.message : 'Unable to initialize MapLibre.');
     }
@@ -246,7 +241,13 @@ export default function LiveMovingMap() {
         try {
           const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null; phase?: string };
           if (message.type === 'phase') {
-            if (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT') setJourneyPhase(message.phase);
+            if (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT') {
+              setJourneyPhase(message.phase);
+              if (message.phase === 'IN_TRANSIT') {
+                setPickupConfirmationError(null);
+                setConfirmingPickup(false);
+              }
+            }
             return;
           }
           const point = message.location;
@@ -254,7 +255,9 @@ export default function LiveMovingMap() {
           setPoints(previous => previous.some(item => item.id === point.id) ? previous : [point, ...previous].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime()).slice(0, 200));
           setBooking(previous => previous ? { ...previous, last_known_latitude: point.latitude, last_known_longitude: point.longitude, last_location_at: point.recorded_at } : previous);
           if (message.type === 'ready' && (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT')) setJourneyPhase(message.phase);
-        } catch (err) { console.error('[LiveMovingMap] malformed websocket frame', err); }
+        } catch {
+          // Ignore malformed telemetry frames; the next valid frame will restore the live state.
+        }
       };
       socket.onerror = () => { if (socketRef.current === socket) setSocketState('reconnecting'); };
       socket.onclose = () => {
@@ -283,6 +286,15 @@ export default function LiveMovingMap() {
     return null;
   }, [booking, latest]);
   const activeTarget = journeyPhase === 'IN_TRANSIT' ? dropoff : pickup;
+  const latestGpsIsFresh = latest ? Date.now() - new Date(latest.recorded_at).getTime() <= GPS_FRESHNESS_MS : false;
+  const pickupDistanceMeters = currentPosition && pickup ? distanceMeters(currentPosition, pickup) : null;
+  const showPickupConfirmation = Boolean(
+    isMover &&
+    journeyPhase === 'HEADING_TO_PICKUP' &&
+    latestGpsIsFresh &&
+    pickupDistanceMeters !== null &&
+    pickupDistanceMeters <= PICKUP_CONFIRMATION_RADIUS_METERS,
+  );
   const phaseTitle = isMover
     ? journeyPhase === 'IN_TRANSIT'
       ? 'Pickup confirmed — head to destination'
@@ -305,6 +317,20 @@ export default function LiveMovingMap() {
       : journeyPhase === 'HEADING_TO_PICKUP'
         ? 'The mover is travelling to the pickup location. Pickup has not been confirmed yet.'
         : 'Waiting for the journey phase and live GPS position.';
+
+  const confirmPickup = async () => {
+    if (!isMover || !bookingId || confirmingPickup || journeyPhase !== 'HEADING_TO_PICKUP') return;
+    setConfirmingPickup(true);
+    setPickupConfirmationError(null);
+    try {
+      const result = await moverApi.confirmPickup(bookingId);
+      setJourneyPhase(result.phase === 'IN_TRANSIT' ? 'IN_TRANSIT' : journeyPhase);
+    } catch (err) {
+      setPickupConfirmationError(err instanceof Error ? err.message : 'Unable to confirm pickup. Please try again.');
+    } finally {
+      setConfirmingPickup(false);
+    }
+  };
 
   useEffect(() => {
     if (!currentPosition || !activeTarget) {
@@ -334,7 +360,6 @@ export default function LiveMovingMap() {
       })
       .catch(err => {
         if (controller.signal.aborted || requestId !== routeRequestRef.current) return;
-        console.error('[LiveMovingMap] road route failed', err);
         setRoadRoute([]);
         setRouteDistanceKm(null);
         setRouteDurationMinutes(null);
@@ -412,6 +437,8 @@ export default function LiveMovingMap() {
     firstMapFitRef.current = false;
     pickupMarkerPhaseRef.current = null;
     setJourneyPhase(null);
+    setPickupConfirmationError(null);
+    setConfirmingPickup(false);
     setRoadRoute([]);
     setRouteError(null);
     setRouteDistanceKm(null);
@@ -448,7 +475,25 @@ export default function LiveMovingMap() {
             <div className="min-w-0"><p className="text-sm font-bold">{phaseTitle}</p><p className="mt-1 text-xs leading-5 text-gray-300">{phaseDescription}</p></div>
           </div>
         </div>
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end rounded-2xl bg-gray-950/90 p-2 shadow-xl backdrop-blur-md">
+
+        {isMover && showPickupConfirmation && (
+          <div className="pointer-events-auto rounded-2xl border border-amber-300 bg-amber-50 p-4 text-gray-900 shadow-2xl dark:border-amber-700 dark:bg-amber-950/95 dark:text-white">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">You have reached the pickup area</p>
+                <p className="mt-1 text-xs leading-5 text-gray-700 dark:text-gray-200">Pickup Point A is approximately {Math.round(pickupDistanceMeters ?? 0)} m away. Confirm only after the renter's belongings have been handed over to you.</p>
+                {pickupConfirmationError && <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">{pickupConfirmationError}</p>}
+                <button type="button" onClick={() => void confirmPickup()} disabled={confirmingPickup} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {confirmingPickup ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+                  {confirmingPickup ? 'Confirming pickup…' : 'Confirm pickup'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2 self-end rounded-2xl bg-gray-950/90 p-2 shadow-xl">
           <button type="button" onClick={() => { setFollowMover(true); if (latest) mapRef.current?.easeTo({ center: [latest.longitude, latest.latitude], duration: 500 }); }} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold hover:bg-white/10"><Crosshair className="h-4 w-4" /> {isMover ? 'Center on my location' : 'Follow mover'}</button>
           <button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4" /> {isMover ? (followMover ? 'Follow route' : 'Explore map') : (followMover ? 'Following' : 'Explore map')}</button>
         </div>
