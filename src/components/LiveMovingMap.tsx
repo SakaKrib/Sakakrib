@@ -139,16 +139,35 @@ export default function LiveMovingMap() {
       return null;
     }
     try {
-      const [tracking, selectedBooking, phaseData] = isMover
-        ? await Promise.all([moverApi.getTracking(bookingId), moverApi.getBooking(bookingId), moverApi.getJourneyPhase(bookingId)])
-        : await Promise.all([renterApi.getTracking(bookingId), renterApi.getBooking(bookingId), renterApi.getJourneyPhase(bookingId)]);
+      const [tracking, selectedBooking] = isMover
+        ? await Promise.all([moverApi.getTracking(bookingId), moverApi.getBooking(bookingId)])
+        : await Promise.all([renterApi.getTracking(bookingId), renterApi.getBooking(bookingId)]);
+
       const trackingData = tracking as MoverTrackingResponse;
       const bookingData = selectedBooking as MapBooking;
       setBooking({ ...bookingData, ...(trackingData.booking as Partial<MapBooking>) });
       setPoints(trackingData.tracking_points ?? []);
-      setJourneyPhase((phaseData.phase === 'HEADING_TO_PICKUP' || phaseData.phase === 'IN_TRANSIT') ? phaseData.phase : null);
-      setError(null);
-      return { tracking: trackingData, phase: phaseData };
+
+      // The journey phase endpoint is authoritative when available, but a temporary
+      // 404 must not prevent the live map itself from loading. A new journey starts
+      // in HEADING_TO_PICKUP, and the tracking WebSocket sends the authoritative
+      // phase in its ready/phase messages as soon as the socket connects.
+      const phaseApi = isMover ? moverApi.getJourneyPhase : renterApi.getJourneyPhase;
+      try {
+        const phaseData = await phaseApi(bookingId);
+        setJourneyPhase(
+          phaseData.phase === 'HEADING_TO_PICKUP' || phaseData.phase === 'IN_TRANSIT'
+            ? phaseData.phase
+            : null,
+        );
+        setError(null);
+        return { tracking: trackingData, phase: phaseData };
+      } catch (phaseError) {
+        console.warn('[LiveMovingMap] journey phase endpoint unavailable; continuing with WebSocket phase', phaseError);
+        setJourneyPhase('HEADING_TO_PICKUP');
+        setError(null);
+        return { tracking: trackingData, phase: null };
+      }
     } catch (err) {
       console.error('[LiveMovingMap] load failed', err);
       setError(err instanceof Error ? err.message : 'Unable to load live map.');
@@ -385,7 +404,7 @@ export default function LiveMovingMap() {
   return <div className="fixed inset-0 z-[70] flex flex-col bg-gray-950 text-white">
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 sm:p-5">
       <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 p-2 shadow-xl backdrop-blur-md">
-        <button type="button" onClick={() => navigate('mover-booking-detail', bookingId)} aria-label="Back to booking" className="inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white/10"><ArrowLeft className="h-5 w-5" /></button>
+        <button type="button" onClick={() => navigate(isMover ? 'mover-booking-detail' : 'mover-tracking', bookingId)} aria-label="Back to tracking" className="inline-flex h-10 w-10 items-center justify-center rounded-xl hover:bg-white/10"><ArrowLeft className="h-5 w-5" /></button>
         <div className="pr-2"><p className="text-sm font-bold">Live moving map</p><p className="text-[11px] text-gray-300">Booking {bookingId.slice(0, 8)}…</p></div>
       </div>
       <div className="pointer-events-auto flex items-center gap-2 rounded-2xl bg-gray-950/85 px-3 py-2 shadow-xl backdrop-blur-md"><Radio className="h-4 w-4" /><span className={cn('text-xs font-semibold', socketState === 'live' ? 'text-green-300' : 'text-gray-200')}>{socketState === 'live' ? 'LIVE' : socketState.toUpperCase()}</span></div>
