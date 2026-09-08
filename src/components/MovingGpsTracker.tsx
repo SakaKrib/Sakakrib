@@ -38,11 +38,11 @@ export default function MovingGpsTracker() {
       clearRetry(); clearGpsProbe(); startingRef.current = false; sendingRef.current = false; pendingRef.current = null;
     };
     const canTrack = Boolean(profile) && normalized(profile?.role) === 'mover' &&
-      (view === 'mover-booking-detail' || view === 'mover-tracking') &&
+      (view === 'mover-booking-detail' || view === 'live-mover-map') &&
       'geolocation' in navigator;
     if (!canTrack) { stop(); bookingIdRef.current = null; return () => { cancelledRef.current = true; stop(); }; }
 
-    const bookingId = selectedMoverBookingId ?? (view === 'mover-tracking' ? selectedMoverId : null);
+    const bookingId = selectedMoverBookingId ?? (view === 'live-mover-map' ? selectedMoverId : null);
     if (!bookingId) {
       stop(); bookingIdRef.current = null;
       console.warn('Mover GPS waiting for a booking id before publishing location.');
