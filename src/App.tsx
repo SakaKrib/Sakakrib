@@ -17,6 +17,7 @@ import ListingDetailPage from '@/pages/ListingDetailPage';
 import MoversPage from '@/pages/MoversPage';
 import MoverDetailPage from '@/pages/MoverDetailPage';
 import MoverBookingDetail from '@/pages/Movers/MoverBookingDetail';
+import MoverLiveTracking from '@/pages/Movers/MoverLiveTracking';
 import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
 import PostListingPage from '@/pages/PostListingPageV2';
@@ -75,7 +76,7 @@ function AppContent() {
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetail />;
-      case 'mover-tracking': return <MoverTrackingPage />;
+      case 'mover-tracking': return profile?.role === 'mover' ? <MoverLiveTracking /> : <MoverTrackingPage />;
       case 'live-mover-map': return <LiveMovingMap />;
       case 'mover-calendar': return <MoverCalendarPage />;
       case 'mover-booking-requests': return <MoverBookingRequestsPage />;
