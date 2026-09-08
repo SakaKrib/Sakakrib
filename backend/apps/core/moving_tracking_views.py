@@ -13,11 +13,8 @@ from .domain_journeys import JOURNEY_START_SOURCE_CHROME, JOURNEY_START_SOURCE_M
 from .domain_platform import Mover, UserNotification
 from .notification_services import dispatch_user_notification
 from .moving_tracking_consumers import tracking_group_name
+from .moving_tracking_health import TRACKING_HEALTHY_AFTER_SECONDS, tracking_health
 from .domain_property import Review
-
-TRACKING_HEALTHY_AFTER_SECONDS = 30
-TRACKING_STALE_AFTER_SECONDS = 120
-MIN_LIVE_TELEMETRY_POINTS = 2
 
 
 def _serialize_point(point):
@@ -27,24 +24,7 @@ def _serialize_point(point):
 
 
 def _tracking_health(recorded_at, *, recent_point_count=0, now=None):
-    if recorded_at is None:
-        return {"status": "OFFLINE", "is_live": False, "age_seconds": None, "recent_point_count": recent_point_count}
-    now = now or timezone.now()
-    age_seconds = max(0, int((now - recorded_at).total_seconds()))
-    if age_seconds <= TRACKING_HEALTHY_AFTER_SECONDS:
-        if recent_point_count >= MIN_LIVE_TELEMETRY_POINTS:
-            status = "HEALTHY"
-            is_live = True
-        else:
-            status = "STARTING"
-            is_live = False
-    elif age_seconds <= TRACKING_STALE_AFTER_SECONDS:
-        status = "STALE"
-        is_live = False
-    else:
-        status = "OFFLINE"
-        is_live = False
-    return {"status": status, "is_live": is_live, "age_seconds": age_seconds, "recent_point_count": recent_point_count}
+    return tracking_health(recorded_at, recent_point_count=recent_point_count, now=now)
 
 
 def _participant_booking(user, booking_id):
@@ -57,8 +37,12 @@ def _broadcast_location(point):
     if not layer:
         return
     location = _serialize_point(point)
+    now = timezone.now()
+    recent_cutoff = now - timezone.timedelta(seconds=TRACKING_HEALTHY_AFTER_SECONDS)
+    recent_point_count = MovingTrackingPoint.objects.filter(booking_id=point.booking_id, recorded_at__gte=recent_cutoff).count()
+    health = tracking_health(point.recorded_at, recent_point_count=recent_point_count, now=now)
     group_name = tracking_group_name(point.booking_id)
-    transaction.on_commit(lambda: async_to_sync(layer.group_send)(group_name, {"type": "moving.location", "location": location}))
+    transaction.on_commit(lambda: async_to_sync(layer.group_send)(group_name, {"type": "moving.location", "location": location, "tracking_health": health}))
 
 
 def _tracking_number():
@@ -161,7 +145,7 @@ class MovingTrackingView(APIView):
         if booking is None: return Response({"detail": "Booking not found or unauthorized."}, status=404)
         mover = Mover.objects.filter(pk=booking.mover_id).first(); points = MovingTrackingPoint.objects.filter(booking_id=booking.id).order_by("-recorded_at")[:50]
         now = timezone.now(); recent_cutoff = now - timezone.timedelta(seconds=TRACKING_HEALTHY_AFTER_SECONDS); recent_point_count = MovingTrackingPoint.objects.filter(booking_id=booking.id, recorded_at__gte=recent_cutoff).count()
-        return Response({"booking": {"id": str(booking.id), "status": booking.status, "tracking_number": booking.tracking_number, "started_at": booking.started_at, "completed_at": booking.completed_at, "last_known_latitude": booking.last_known_latitude, "last_known_longitude": booking.last_known_longitude, "last_location_at": booking.last_location_at, "tracking_health": _tracking_health(booking.last_location_at, recent_point_count=recent_point_count, now=now)}, "mover": {"id": str(mover.id), "user_id": str(mover.user_id), "driver_full_name": mover.driver_full_name, "phone": mover.phone, "profile_photo_url": mover.profile_photo_url, "vehicle_type": mover.vehicle_type, "number_plate": mover.number_plate, "operating_city": mover.operating_city, "operating_county": mover.operating_county, "is_available": mover.is_available, "current_latitude": mover.current_latitude, "current_longitude": mover.current_longitude, "location_updated_at": mover.location_updated_at, "approval_status": mover.approval_status, "tracking_health": _tracking_health(mover.location_updated_at, recent_point_count=recent_point_count, now=now)} if mover else None, "tracking_points": [_serialize_point(point) for point in points]})
+        return Response({"booking": {"id": str(booking.id), "status": booking.status, "tracking_number": booking.tracking_number, "started_at": booking.started_at, "completed_at": booking.completed_at, "last_known_latitude": booking.last_known_latitude, "last_known_longitude": booking.last_known_longitude, "last_location_at": booking.last_location_at, "tracking_health": tracking_health(booking.last_location_at, recent_point_count=recent_point_count, now=now)}, "mover": {"id": str(mover.id), "user_id": str(mover.user_id), "driver_full_name": mover.driver_full_name, "phone": mover.phone, "profile_photo_url": mover.profile_photo_url, "vehicle_type": mover.vehicle_type, "number_plate": mover.number_plate, "operating_city": mover.operating_city, "operating_county": mover.operating_county, "is_available": mover.is_available, "current_latitude": mover.current_latitude, "current_longitude": mover.current_longitude, "location_updated_at": mover.location_updated_at, "approval_status": mover.approval_status, "tracking_health": tracking_health(mover.location_updated_at, recent_point_count=recent_point_count, now=now)} if mover else None, "tracking_points": [_serialize_point(point) for point in points]})
     def post(self, request, booking_id):
         try:
             return Response(record_mover_location(mover_user_id=request.user.id, booking_id=booking_id, latitude=request.data.get("latitude"), longitude=request.data.get("longitude"), accuracy_meters=request.data.get("accuracy_meters"), speed_kph=request.data.get("speed_kph"), heading_degrees=request.data.get("heading_degrees")))
@@ -174,7 +158,7 @@ class ActiveMovingLocationView(APIView):
         booking = _participant_booking(request.user, booking_id)
         if booking is None or booking.status != "in_progress": return Response({"detail": "Active moving journey not found."}, status=404)
         point = MovingTrackingPoint.objects.filter(booking_id=booking.id).order_by("-recorded_at").first(); now = timezone.now(); recent_cutoff = now - timezone.timedelta(seconds=TRACKING_HEALTHY_AFTER_SECONDS); recent_point_count = MovingTrackingPoint.objects.filter(booking_id=booking.id, recorded_at__gte=recent_cutoff).count()
-        return Response({"location": _serialize_point(point), "tracking_health": _tracking_health(point.recorded_at if point else None, recent_point_count=recent_point_count, now=now)})
+        return Response({"location": _serialize_point(point), "tracking_health": tracking_health(point.recorded_at if point else None, recent_point_count=recent_point_count, now=now)})
 
 
 class MoverReviewAfterDeliveryView(APIView):
