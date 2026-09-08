@@ -98,6 +98,11 @@ export default function LiveMovingMap() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
+    if (!isMover || !bookingId || !active(booking?.status)) return;
+    window.dispatchEvent(new Event('sakakrib:request-mover-gps'));
+  }, [booking?.status, bookingId, isMover]);
+
+  useEffect(() => {
     if (!isMover) { setDeviceGps(null); return; }
     const handleDeviceGps = (event: Event) => {
       const detail = (event as CustomEvent<DeviceGpsPosition>).detail;
