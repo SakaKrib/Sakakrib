@@ -4,10 +4,12 @@ import uuid
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.utils import timezone
 
 from .domain_bookings import Booking, MovingTrackingPoint
 from .domain_journeys import JOURNEY_PHASE_HEADING_TO_PICKUP, MovingJourney
 from .domain_platform import Mover
+from .moving_tracking_health import TRACKING_HEALTHY_AFTER_SECONDS, tracking_health
 
 
 def tracking_group_name(booking_id):
@@ -31,13 +33,14 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         self.group_name = tracking_group_name(self.booking_id)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
-        latest = await self._latest()
+        latest, health = await self._tracking_snapshot()
         phase = await self._phase()
         await self.send_json({
             "type": "ready",
             "booking_id": str(self.booking_id),
             "location": latest,
             "phase": phase,
+            "tracking_health": health,
         })
         self.heartbeat_task = asyncio.create_task(self._heartbeat())
 
@@ -51,8 +54,9 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
     async def _heartbeat(self):
         try:
             while True:
-                await asyncio.sleep(20)
-                await self.send_json({"type": "heartbeat"})
+                await asyncio.sleep(5)
+                health = await self._current_tracking_health()
+                await self.send_json({"type": "tracking_health", "tracking_health": health})
         except (asyncio.CancelledError, RuntimeError):
             return
 
@@ -65,7 +69,12 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({"type": "info", "detail": "Send GPS updates through the tracking API."})
 
     async def moving_location(self, event):
-        await self.send_json({"type": "location", "location": event["location"]})
+        await self.send_json({
+            "type": "location",
+            "booking_id": str(self.booking_id),
+            "location": event["location"],
+            "tracking_health": event.get("tracking_health"),
+        })
 
     async def moving_phase(self, event):
         await self.send_json({
@@ -85,11 +94,14 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         return Mover.objects.filter(pk=booking.mover_id, user_id=self.user.pk).exists()
 
     @database_sync_to_async
-    def _latest(self):
+    def _tracking_snapshot(self):
         point = MovingTrackingPoint.objects.filter(booking_id=self.booking_id).order_by("-recorded_at").first()
+        now = timezone.now()
+        recent_cutoff = now - timezone.timedelta(seconds=TRACKING_HEALTHY_AFTER_SECONDS)
+        recent_point_count = MovingTrackingPoint.objects.filter(booking_id=self.booking_id, recorded_at__gte=recent_cutoff).count()
         if not point:
-            return None
-        return {
+            return None, tracking_health(None, recent_point_count=recent_point_count, now=now)
+        latest = {
             "id": point.id,
             "booking_id": str(point.booking_id),
             "mover_id": str(point.mover_id),
@@ -100,6 +112,15 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             "heading_degrees": point.heading_degrees,
             "recorded_at": point.recorded_at.isoformat(),
         }
+        return latest, tracking_health(point.recorded_at, recent_point_count=recent_point_count, now=now)
+
+    @database_sync_to_async
+    def _current_tracking_health(self):
+        point = MovingTrackingPoint.objects.filter(booking_id=self.booking_id).order_by("-recorded_at").first()
+        now = timezone.now()
+        recent_cutoff = now - timezone.timedelta(seconds=TRACKING_HEALTHY_AFTER_SECONDS)
+        recent_point_count = MovingTrackingPoint.objects.filter(booking_id=self.booking_id, recorded_at__gte=recent_cutoff).count()
+        return tracking_health(point.recorded_at if point else None, recent_point_count=recent_point_count, now=now)
 
     @database_sync_to_async
     def _phase(self):
