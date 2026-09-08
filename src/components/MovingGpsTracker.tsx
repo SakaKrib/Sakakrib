@@ -67,7 +67,8 @@ export default function MovingGpsTracker() {
 
     const publish = (position: GeolocationPosition) => {
       if (cancelledRef.current || bookingIdRef.current !== bookingId) return;
-      const accuracy = Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null;
+      const rawAccuracy = position.coords.accuracy;
+      const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy >= 0 && rawAccuracy <= 10000 ? rawAccuracy : null;
       pendingRef.current = { latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_meters: accuracy, speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6), heading_degrees: position.coords.heading == null ? null : position.coords.heading };
       void sendPending();
     };
