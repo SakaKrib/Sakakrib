@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft,
-  Crosshair,
   FullscreenControl,
   LngLatBounds,
-  Loader2,
   Map as MapLibreMap,
   Marker,
   NavigationControl,
@@ -13,7 +10,7 @@ import {
 } from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Radio, Route, Truck } from 'lucide-react';
+import { ArrowLeft, Crosshair, Loader2, Radio, Route, Truck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
@@ -115,7 +112,7 @@ export default function LiveMovingMap() {
         style: MAP_STYLE,
         center: [36.817223, -1.286389],
         zoom: 12,
-        attributionControl: true,
+        attributionControl: {},
         cooperativeGestures: false,
       });
 
