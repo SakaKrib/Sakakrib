@@ -29,7 +29,7 @@ const PICKUP_CONFIRMATION_RADIUS_METERS = 250;
 const GPS_FRESHNESS_MS = 2 * 60 * 1000;
 const active = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
 function socketUrl(bookingId: string) { const url = new URL(window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.pathname = `/ws/tracking/${encodeURIComponent(bookingId)}/`; url.search = ''; return url.toString(); }
-function validCoordinate(value: number | null | undefined) { return typeof value === 'number' && Number.isFinite(value); }
+function validCoordinate(value: number | null | undefined): value is number { return typeof value === 'number' && Number.isFinite(value); }
 function routeUrl(from: Coordinate, to: Coordinate) { return `${ROUTING_URL}/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson&steps=false`; }
 function markerElement(label: string, color: string, icon: string) { const element = document.createElement('div'); element.setAttribute('role', 'img'); element.setAttribute('aria-label', label); element.title = label; element.style.width = '38px'; element.style.height = '38px'; element.style.borderRadius = '50%'; element.style.background = color; element.style.border = '4px solid white'; element.style.boxShadow = '0 3px 12px rgba(0,0,0,.35)'; element.style.display = 'flex'; element.style.alignItems = 'center'; element.style.justifyContent = 'center'; element.style.fontSize = '18px'; element.textContent = icon; return element; }
 function distanceMeters(a: Coordinate, b: Coordinate) { const toRad = (value: number) => (value * Math.PI) / 180; const earthRadius = 6371000; const dLat = toRad(b[1] - a[1]); const dLng = toRad(b[0] - a[0]); const lat1 = toRad(a[1]); const lat2 = toRad(b[1]); const sinLat = Math.sin(dLat / 2); const sinLng = Math.sin(dLng / 2); const value = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng; return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value)); }
@@ -193,7 +193,17 @@ export default function LiveMovingMap() {
         try {
           const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null; phase?: string; tracking_health?: TrackingHealth | null; mover_connected?: boolean };
           if (message.mover_connected !== undefined && !isMover) setMoverConnected(Boolean(message.mover_connected));
-          if (message.tracking_health) setBooking(previous => previous ? { ...previous, tracking_health: { ...message.tracking_health, mover_connected: message.mover_connected ?? previous.tracking_health?.mover_connected } } : previous);
+          if (message.tracking_health) {
+            setBooking(previous => previous ? {
+              ...previous,
+              tracking_health: {
+                ...previous.tracking_health,
+                ...message.tracking_health,
+                status: message.tracking_health.status ?? previous.tracking_health?.status ?? 'OFFLINE',
+                mover_connected: message.mover_connected ?? previous.tracking_health?.mover_connected,
+              },
+            } : previous);
+          }
           if (message.type === 'tracking_health') return;
           if (message.type === 'phase') { if (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT') { setJourneyPhase(message.phase); if (message.phase === 'IN_TRANSIT') { setPickupConfirmationError(null); setConfirmingPickup(false); } } return; }
           const point = message.location;
