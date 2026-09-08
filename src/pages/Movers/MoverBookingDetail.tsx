@@ -70,7 +70,7 @@ export default function MoverBookingDetail() {
 
   {confirmed && <section className="card flex flex-col gap-3 border-success-200 bg-success-50/60 p-5 dark:border-success-800 dark:bg-success-900/20 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-success-800 dark:text-success-300">Booking confirmed</p><p className="mt-1 text-xs text-success-700/80 dark:text-success-400/80">The renter can now continue in the same conversation. No second scheduling step is required.</p></div><button type="button" onClick={() => navigate('mover-messages', booking.renter_id)} className="btn-primary inline-flex items-center justify-center gap-2"><MessageCircle className="h-4 w-4" />Continue in Chat</button></section>}
 
-  <MoverJourneyControls booking={booking} onChanged={() => load(true)} onTracking={() => navigate('mover-tracking', booking.id)} />
+  <MoverJourneyControls booking={booking} onChanged={() => load(true)} onTracking={() => navigate('live-mover-map', booking.id)} />
   <MoverDeliveryDisputePanel booking={booking} onChanged={() => load(true)} />
   </div></div>;
 }
