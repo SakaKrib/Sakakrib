@@ -56,7 +56,7 @@ export default function LiveMovingMap() {
   const [booking, setBooking] = useState<MapBooking | null>(null);
   const [points, setPoints] = useState<TrackingPoint[]>([]);
   const [socketState, setSocketState] = useState<SocketState>('closed');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [mapLoading, setMapLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
