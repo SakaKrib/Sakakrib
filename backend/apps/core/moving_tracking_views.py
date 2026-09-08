@@ -186,7 +186,7 @@ class MoverReviewAfterDeliveryView(APIView):
         if booking.status != "completed" or booking.renter_confirmed_delivery_at is None: return Response({"detail": "Delivery must be confirmed first."}, status=400)
         try: rating = int(request.data.get("rating"))
         except (TypeError, ValueError): return Response({"detail": "Rating must be an integer."}, status=400)
-        if not 1 <= rating <= 5: return Response({"detail": "Rating must be between 1 and 5"}, status=400)
+        if not 1 <= rating <= 5: return Response({"detail": "Rating must be between 1 and 5."}, status=400)
         if Review.objects.filter(booking_id=booking.id).exists(): return Response({"detail": "This booking has already been reviewed."}, status=409)
         mover = Mover.objects.filter(pk=booking.mover_id).first()
         if mover is None: return Response({"detail": "Mover not found."}, status=404)
