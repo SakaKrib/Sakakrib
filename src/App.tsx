@@ -17,13 +17,11 @@ import ListingDetailPage from '@/pages/ListingDetailPage';
 import MoversPage from '@/pages/MoversPage';
 import MoverDetailPage from '@/pages/MoverDetailPage';
 import MoverBookingDetail from '@/pages/Movers/MoverBookingDetail';
-import MoverLiveTracking from '@/pages/Movers/MoverLiveTracking';
 import ChatPage from '@/pages/ChatPage';
 import CommunityPage from '@/pages/CommunityPage';
 import PostListingPage from '@/pages/PostListingPageV2';
 import RegisterLandlordPage from '@/pages/RegisterLandlordPage';
 import KycVerifyPage from '@/pages/KycVerifyPage';
-import MoverTrackingPage from '@/components/RentersComponentPage/MoverTrackingPage';
 import RoleDashboardRouter from '@/Dashboards/RoleDashboardRouter';
 import DashboardPage from '@/Dashboards/DashboardPage';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
@@ -66,6 +64,7 @@ function AppContent() {
   if (window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
   if (window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
   if (window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
+
   const renderView = () => {
     switch (view) {
       case 'home': return <HomePage />;
@@ -75,7 +74,7 @@ function AppContent() {
       case 'movers': return <MoversPage />;
       case 'mover-detail': return <MoverDetailPage />;
       case 'mover-booking-detail': return <MoverBookingDetail />;
-      case 'mover-tracking': return profile?.role === 'mover' ? <MoverLiveTracking /> : <MoverTrackingPage />;
+      case 'mover-tracking': return <LiveMovingMap />;
       case 'mover-calendar': return <MoverCalendarPage />;
       case 'mover-booking-requests': return <MoverBookingRequestsPage />;
       case 'mover-upcoming-jobs': return <MoverUpcomingJobsPage />;
@@ -109,7 +108,24 @@ function AppContent() {
       default: return <HomePage />;
     }
   };
-  const showLiveMap = view === 'mover-tracking' && (profile?.role === 'mover' || profile?.role === 'renter');
-  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950"><SecurityBanner /><Header /><main className="flex-1 pb-20 md:pb-0">{renderView()}</main><Footer /><BottomBar /><AuthModal /><RoleSelectionModal />{showLiveMap && <div className="mx-auto w-full max-w-7xl px-2 pb-8 sm:px-6 lg:px-8"><LiveMovingMap /></div>}<MovingGpsTracker /><RenterBookingChatRedirector /></div>;
+
+  if (view === 'mover-tracking' && (profile?.role === 'mover' || profile?.role === 'renter')) {
+    return <><LiveMovingMap /><MovingGpsTracker /></>;
+  }
+
+  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950">
+    <SecurityBanner />
+    <Header />
+    <main className="flex-1 pb-20 md:pb-0">{renderView()}</main>
+    <Footer />
+    <BottomBar />
+    <AuthModal />
+    <RoleSelectionModal />
+    <MovingGpsTracker />
+    <RenterBookingChatRedirector />
+  </div>;
 }
-export default function App() { return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>; }
+
+export default function App() {
+  return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
+}
