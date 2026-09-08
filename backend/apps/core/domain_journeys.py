@@ -7,6 +7,9 @@ JOURNEY_STATUS_ACTIVE = "ACTIVE"
 JOURNEY_STATUS_DELIVERY_PENDING = "DELIVERY_PENDING"
 JOURNEY_STATUS_COMPLETED = "COMPLETED"
 
+JOURNEY_PHASE_HEADING_TO_PICKUP = "HEADING_TO_PICKUP"
+JOURNEY_PHASE_IN_TRANSIT = "IN_TRANSIT"
+
 JOURNEY_START_SOURCE_MOBILE_APP = "MOBILE_APP"
 JOURNEY_START_SOURCE_CHROME = "CHROME"
 
@@ -19,6 +22,9 @@ class MovingJourney(models.Model):
     STATUS_DELIVERY_PENDING = JOURNEY_STATUS_DELIVERY_PENDING
     STATUS_COMPLETED = JOURNEY_STATUS_COMPLETED
 
+    PHASE_HEADING_TO_PICKUP = JOURNEY_PHASE_HEADING_TO_PICKUP
+    PHASE_IN_TRANSIT = JOURNEY_PHASE_IN_TRANSIT
+
     START_SOURCE_MOBILE_APP = JOURNEY_START_SOURCE_MOBILE_APP
     START_SOURCE_CHROME = JOURNEY_START_SOURCE_CHROME
 
@@ -27,9 +33,12 @@ class MovingJourney(models.Model):
     mover_id = models.UUIDField()
     tracking_number = models.TextField(unique=True)
     status = models.TextField(default=JOURNEY_STATUS_READY)
+    phase = models.TextField(default=JOURNEY_PHASE_HEADING_TO_PICKUP)
     started_at = models.DateTimeField(null=True, blank=True)
     started_by = models.UUIDField(null=True, blank=True)
     start_source = models.TextField(null=True, blank=True)
+    pickup_confirmed_at = models.DateTimeField(null=True, blank=True)
+    pickup_confirmed_by = models.UUIDField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     completed_by = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -49,6 +58,13 @@ class MovingJourney(models.Model):
                 name="moving_journeys_status_check",
             ),
             models.CheckConstraint(
+                condition=models.Q(phase__in=[
+                    JOURNEY_PHASE_HEADING_TO_PICKUP,
+                    JOURNEY_PHASE_IN_TRANSIT,
+                ]),
+                name="moving_journeys_phase_check",
+            ),
+            models.CheckConstraint(
                 condition=models.Q(start_source__isnull=True)
                 | models.Q(start_source__in=[
                     JOURNEY_START_SOURCE_MOBILE_APP,
@@ -61,4 +77,5 @@ class MovingJourney(models.Model):
             models.Index(fields=["booking_id"], name="mv_journey_booking_idx"),
             models.Index(fields=["mover_id", "status"], name="mv_journey_mover_st_idx"),
             models.Index(fields=["status"], name="mv_journey_status_idx"),
+            models.Index(fields=["phase"], name="mv_journey_phase_idx"),
         ]
