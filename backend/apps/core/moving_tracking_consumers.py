@@ -6,6 +6,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from .domain_bookings import Booking, MovingTrackingPoint
+from .domain_journeys import JOURNEY_PHASE_HEADING_TO_PICKUP, MovingJourney
 from .domain_platform import Mover
 
 
@@ -31,7 +32,13 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
         latest = await self._latest()
-        await self.send_json({"type": "ready", "booking_id": str(self.booking_id), "location": latest})
+        phase = await self._phase()
+        await self.send_json({
+            "type": "ready",
+            "booking_id": str(self.booking_id),
+            "location": latest,
+            "phase": phase,
+        })
         self.heartbeat_task = asyncio.create_task(self._heartbeat())
 
     async def disconnect(self, close_code):
@@ -60,6 +67,14 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
     async def moving_location(self, event):
         await self.send_json({"type": "location", "location": event["location"]})
 
+    async def moving_phase(self, event):
+        await self.send_json({
+            "type": "phase",
+            "booking_id": str(self.booking_id),
+            "phase": event["phase"],
+            "changed_at": event["changed_at"],
+        })
+
     @database_sync_to_async
     def _authorized(self):
         booking = Booking.objects.filter(pk=self.booking_id).first()
@@ -85,3 +100,8 @@ class MovingTrackingConsumer(AsyncJsonWebsocketConsumer):
             "heading_degrees": point.heading_degrees,
             "recorded_at": point.recorded_at.isoformat(),
         }
+
+    @database_sync_to_async
+    def _phase(self):
+        journey = MovingJourney.objects.filter(booking_id=self.booking_id).first()
+        return journey.phase if journey else JOURNEY_PHASE_HEADING_TO_PICKUP
