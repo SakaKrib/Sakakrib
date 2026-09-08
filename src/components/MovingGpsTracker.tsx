@@ -9,7 +9,7 @@ const normalized = (value: string | null | undefined) => String(value ?? '').tri
 const active = (value: string | null | undefined) => normalized(value) === 'in_progress';
 const paid = (value: string | null | undefined) => normalized(value) === 'paid';
 const TRACK_INTERVAL_MS = 5000;
-const GPS_MAX_AGE_MS = 30000;
+const GPS_MAX_AGE_MS = 0;
 const GPS_TIMEOUT_MS = 60000;
 const RETRY_INTERVAL_MS = 5000;
 const BOOKING_STATE_INTERVAL_MS = 5000;
@@ -75,13 +75,13 @@ export default function MovingGpsTracker() {
     const handleGpsError = (error: GeolocationPositionError) => { console.warn('Mover GPS unavailable:', error.code, error.message); };
     const probeGps = () => {
       if (cancelledRef.current || bookingIdRef.current !== bookingId || !navigator.onLine) return;
-      navigator.geolocation.getCurrentPosition(publish, handleGpsError, { enableHighAccuracy: false, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
+      navigator.geolocation.getCurrentPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
     };
     const start = () => {
       if (startingRef.current || watchIdRef.current !== null || cancelledRef.current) return;
       startingRef.current = true;
       try {
-        watchIdRef.current = navigator.geolocation.watchPosition(publish, handleGpsError, { enableHighAccuracy: false, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
+        watchIdRef.current = navigator.geolocation.watchPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
         probeGps();
         gpsProbeTimerRef.current = window.setInterval(probeGps, GPS_PROBE_INTERVAL_MS);
       } finally { startingRef.current = false; }
