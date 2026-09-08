@@ -1,6 +1,7 @@
 from django.urls import path
 from .homepage_views import HomepageStatsView
 from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
+from .moving_journey_phase_views import MovingJourneyPhaseView
 from .moving_views import BookingEventView, BookingView, MoverCustomerView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
 from .moving_financial_views import MovingFinancialDocumentView
 from .moving_timeline_views import MovingTransactionTimelineView
@@ -43,6 +44,7 @@ urlpatterns = [
     path("bookings/<uuid:booking_id>/edit/", RenterMovingBookingEditView.as_view(), name="moving-booking-edit"),
     path("bookings/<uuid:booking_id>/schedule/propose/", RenterMovingScheduleProposalView.as_view(), name="moving-schedule-propose"), path("bookings/<uuid:booking_id>/schedule/confirm/", MoverMovingScheduleConfirmView.as_view(), name="moving-schedule-confirm"),
     path("bookings/<uuid:booking_id>/start/", MovingJourneyStartView.as_view(), name="moving-journey-start"),
+    path("bookings/<uuid:booking_id>/journey-phase/", MovingJourneyPhaseView.as_view(), name="moving-journey-phase"),
     path("bookings/<uuid:booking_id>/tracking/", MovingTrackingView.as_view(), name="moving-tracking"),
     path("bookings/<uuid:booking_id>/tracking/latest/", ActiveMovingLocationView.as_view(), name="moving-tracking-latest"),
     path("bookings/<uuid:booking_id>/review-mover/", MoverReviewAfterDeliveryView.as_view(), name="mover-review-after-delivery"),
