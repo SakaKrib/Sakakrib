@@ -16,6 +16,10 @@ interface PropertyUnit { id: string; unitNumber: string; unitType: string; rent:
 interface LocationSuggestion { display_name: string; lat: string; lon: string; place_id?: string | number; type?: string; address?: { city?: string; town?: string; village?: string; county?: string; state?: string; country?: string; }; }
 interface SocialLink { platform: string; url: string; }
 interface ExistingMedia { id: string; url: string; label: string | null; media_type: 'photo' | 'video'; position: number; unit_id?: string | null; }
+interface DraftSaveResponse {
+  id?: string;
+  listing_id?: string;
+}
 
 const MAX_PHOTOS = 7;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
@@ -59,6 +63,7 @@ export default function PostListingPageV2() {
   const listingRole: ListingRole | null = profile?.role === 'landlord' || profile?.role === 'real_estate' ? profile.role : null;
 
   const [draftId, setDraftId] = useState<string | null>(selectedPostListingDraftId);
+  const draftIdRef = useRef<string | null>(null);
   const [draftLoading, setDraftLoading] = useState(Boolean(selectedPostListingDraftId));
   const draftHydrated = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,7 +122,10 @@ export default function PostListingPageV2() {
   const [baths, setBaths] = useState('1');
 
   useEffect(() => {
-    if (selectedPostListingDraftId !== draftId) setDraftId(selectedPostListingDraftId);
+    if (selectedPostListingDraftId !== draftId) {
+      draftIdRef.current = selectedPostListingDraftId;
+      setDraftId(selectedPostListingDraftId);
+    }
   }, [selectedPostListingDraftId, draftId]);
 
   useEffect(() => {
@@ -197,14 +205,32 @@ export default function PostListingPageV2() {
     draft_ui: { customCity, customSize, units, termsAccepted, reviewConfirmed, step, pmsMode },
   });
 
-  const saveDraftNow = async (): Promise<string> => {
-    const result = await protectedPost<{ listing_id: string; id: string }>('/api/listings/drafts/', { draft_id: draftId || undefined, data: draftPayload() });
-    const id = String(result.listing_id || result.id);
-    if (!id) throw new Error('The listing draft could not be saved.');
-    setDraftId(id);
-    if (!draftId) navigate('post-listing', id);
-    return id;
-  };
+   const saveDraftNow = async (): Promise<string> => {
+      const currentDraftId = draftIdRef.current;
+
+      const result = await protectedPost<DraftSaveResponse>(
+        '/api/listings/drafts/',
+        {
+          draft_id: currentDraftId || undefined,
+          data: draftPayload(),
+        }
+      );
+
+      const id = String(result.listing_id || result.id || '');
+
+      if (!id) {
+        throw new Error('Draft save succeeded but no draft ID was returned.');
+      }
+
+      draftIdRef.current = id;
+      setDraftId(id);
+
+      if (!currentDraftId) {
+        navigate('post-listing', id);
+      }
+
+      return id;
+    };
 
   const ensureDraft = async () => draftId || saveDraftNow();
 
