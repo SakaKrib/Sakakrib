@@ -6,6 +6,7 @@ from apps.payments.services import get_provider
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan
 from .paypal_subscription_services import record_paypal_subscription_approval, process_paypal_subscription_webhook, verify_paypal_webhook
 from .payment_services import create_subscription_checkout, finalize_mpesa_subscription
+from .upgrade_services import finalize_mpesa_subscription_upgrade
 from .services import (
     add_listing_to_pms,
     get_available_pms_listings,
@@ -180,16 +181,28 @@ class MpesaSubscriptionCallbackView(APIView):
                 callback_code = None
             if provider_result_code is None or callback_code != provider_result_code:
                 return Response({'ResultCode': 1, 'ResultDesc': 'Provider callback/result mismatch.'}, status=500)
-            result = finalize_mpesa_subscription(
-                invoice.id,
-                provider_result_code,
-                provider_raw.get('ResultDesc') or callback.get('ResultDesc', ''),
-                mpesa_receipt=items.get('MpesaReceiptNumber'),
-                checkout_request_id=checkout_id,
-                merchant_request_id=callback.get('MerchantRequestID'),
-                phone_number=items.get('PhoneNumber'),
-                paid_amount=items.get('Amount'),
-            )
+            if invoice.upgrade_plan_id:
+                result = finalize_mpesa_subscription_upgrade(
+                    invoice.id,
+                    provider_result_code,
+                    provider_raw.get('ResultDesc') or callback.get('ResultDesc', ''),
+                    mpesa_receipt=items.get('MpesaReceiptNumber'),
+                    checkout_request_id=checkout_id,
+                    merchant_request_id=callback.get('MerchantRequestID'),
+                    phone_number=items.get('PhoneNumber'),
+                    paid_amount=items.get('Amount'),
+                )
+            else:
+                result = finalize_mpesa_subscription(
+                    invoice.id,
+                    provider_result_code,
+                    provider_raw.get('ResultDesc') or callback.get('ResultDesc', ''),
+                    mpesa_receipt=items.get('MpesaReceiptNumber'),
+                    checkout_request_id=checkout_id,
+                    merchant_request_id=callback.get('MerchantRequestID'),
+                    phone_number=items.get('PhoneNumber'),
+                    paid_amount=items.get('Amount'),
+                )
         except Exception as exc:
             return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', **result})
