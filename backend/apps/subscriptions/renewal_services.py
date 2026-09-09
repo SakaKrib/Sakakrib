@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -71,7 +72,7 @@ def create_mpesa_subscription_renewal(profile, phone_number=None):
         metadata={
             'phone_number': phone_number,
             'description': 'SakaKrib subscription renewal',
-            'callback_url': __import__('django.conf', fromlist=['settings']).settings.MPESA_SUBSCRIPTION_CALLBACK_URL,
+            'callback_url': settings.MPESA_SUBSCRIPTION_CALLBACK_URL,
         },
     )
     if not result.success:
