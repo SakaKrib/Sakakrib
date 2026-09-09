@@ -3,11 +3,17 @@ export type PMSBillingCycle = 'MONTHLY' | 'ANNUAL';
 export type PMSCheckoutAudience = 'LANDLORD' | 'REAL_ESTATE';
 export interface PMSMpesaCheckoutResponse { success: boolean; error?: string; detail?: string; invoice_id?: string; subscription_id?: string; listing_id?: string | null; plan?: string; plan_id?: string; billing_cycle?: PMSBillingCycle; amount_kes?: number; checkout_request_id?: string; merchant_request_id?: string | null; customer_message?: string; }
 export interface PMSPayPalCheckoutResponse { success: boolean; error?: string; detail?: string; subscription_id?: string; paypal_subscription_id?: string; paypal_plan_id?: string; approval_url?: string | null; plan_name?: string; audience?: PMSCheckoutAudience; billing_cycle?: PMSBillingCycle; invoice_id?: string; listing_id?: string | null; }
+export interface PMSMpesaRenewalResponse { success: boolean; error?: string; detail?: string; invoice_id?: string; subscription_id?: string; amount_kes?: number; provider_reference?: string; status?: string; renewal?: boolean; }
 export type PMSInvoiceStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED';
 export async function initiateMpesaSubscriptionCheckout(audience: PMSCheckoutAudience, planId: string, billingCycle: PMSBillingCycle, phoneNumber: string, listingId?: string): Promise<PMSMpesaCheckoutResponse> {
   void audience;
   const data = await protectedPost<PMSMpesaCheckoutResponse>('/api/subscriptions/checkout/', { plan_id: planId, billing_cycle: billingCycle, provider: 'mpesa', phone_number: phoneNumber, listing_id: listingId || undefined });
   if (!data?.success) throw new Error(data?.detail || data?.error || 'Unable to initiate M-Pesa payment.');
+  return data;
+}
+export async function initiateMpesaSubscriptionRenewal(phoneNumber?: string): Promise<PMSMpesaRenewalResponse> {
+  const data = await protectedPost<PMSMpesaRenewalResponse>('/api/subscriptions/renew/', { phone_number: phoneNumber || undefined });
+  if (!data?.success) throw new Error(data?.detail || data?.error || 'Unable to initiate M-Pesa subscription renewal.');
   return data;
 }
 export async function initiatePayPalSubscriptionCheckout(planId: string, billingCycle: PMSBillingCycle, listingId?: string): Promise<PMSPayPalCheckoutResponse> {
