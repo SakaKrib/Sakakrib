@@ -18,10 +18,12 @@ class ListingMediaSerializer(serializers.ModelSerializer):
         value = obj.url or ''
         if not value.startswith('django-media://'):
             return value
-        request = self.context.get('request')
-        if request is None:
-            return f'/api/listings/media/{obj.id}/'
-        return request.build_absolute_uri(f'/api/listings/media/{obj.id}/')
+        # Keep Django-managed media same-origin so the browser goes through
+        # the existing Vite /api proxy in development and the normal API
+        # origin in production. Building an absolute URL from the proxied
+        # request can expose the Docker service hostname (for example
+        # "backend:8000"), which is not resolvable by the user's browser.
+        return f'/api/listings/media/{obj.id}/'
 
 
 class ListingSerializer(serializers.ModelSerializer):
