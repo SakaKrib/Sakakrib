@@ -3058,33 +3058,51 @@ const pmsBenefits = [
                             </span>
 
                             <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  navigateExternal(
-                                    'listing-detail',
-                                    listing.id
-                                  )
-                                }
-                                className="btn-ghost px-3 py-2 text-xs"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                View
-                              </button>
+                              {isDraftListing(listing) ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navigateExternal(
+                                      'post-listing',
+                                      listing.id
+                                    )
+                                  }
+                                  className="btn-primary px-3 py-2 text-xs"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Continue Posting
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      navigateExternal(
+                                        'listing-detail',
+                                        listing.id
+                                      )
+                                    }
+                                    className="btn-ghost px-3 py-2 text-xs"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    View
+                                  </button>
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  navigateExternal(
-                                    'listing-manage',
-                                    listing.id
-                                  )
-                                }
-                                className="btn-primary px-3 py-2 text-xs"
-                              >
-                                <Settings className="h-3.5 w-3.5" />
-                                Manage
-                              </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      navigateExternal(
+                                        'listing-manage',
+                                        listing.id
+                                      )
+                                    }
+                                    className="btn-primary px-3 py-2 text-xs"
+                                  >
+                                    <Settings className="h-3.5 w-3.5" />
+                                    Manage
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>

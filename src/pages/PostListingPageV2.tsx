@@ -122,11 +122,11 @@ export default function PostListingPageV2() {
   const [baths, setBaths] = useState('1');
 
   useEffect(() => {
-    if (selectedPostListingDraftId !== draftId) {
-      draftIdRef.current = selectedPostListingDraftId;
-      setDraftId(selectedPostListingDraftId);
-    }
-  }, [selectedPostListingDraftId, draftId]);
+  if (selectedPostListingDraftId !== draftId) {
+    draftIdRef.current = selectedPostListingDraftId;
+    setDraftId(selectedPostListingDraftId);
+  }
+}, [selectedPostListingDraftId, draftId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,33 +206,35 @@ export default function PostListingPageV2() {
   });
 
    const saveDraftNow = async (): Promise<string> => {
-      const currentDraftId = draftIdRef.current;
+    const currentDraftId = draftIdRef.current;
 
-      const result = await protectedPost<DraftSaveResponse>(
-        '/api/listings/drafts/',
-        {
-          draft_id: currentDraftId || undefined,
-          data: draftPayload(),
-        }
-      );
-
-      const id = String(result.listing_id || result.id || '');
-
-      if (!id) {
-        throw new Error('Draft save succeeded but no draft ID was returned.');
+    const result = await protectedPost<DraftSaveResponse>(
+      '/api/listings/drafts/',
+      {
+        draft_id: currentDraftId || undefined,
+        data: draftPayload(),
       }
+    );
 
-      draftIdRef.current = id;
-      setDraftId(id);
+    const id = String(result.listing_id || result.id || '');
 
-      if (!currentDraftId) {
-        navigate('post-listing', id);
-      }
+    if (!id) {
+      throw new Error('Draft save succeeded but no draft ID was returned.');
+    }
 
-      return id;
-    };
+    draftIdRef.current = id;
+    setDraftId(id);
 
-  const ensureDraft = async () => draftId || saveDraftNow();
+    if (!currentDraftId) {
+      navigate('post-listing', id);
+    }
+
+    return id;
+  };
+
+  const ensureDraft = async (): Promise<string> => {
+    return draftIdRef.current || saveDraftNow();
+  };
 
   useEffect(() => {
     let cancelled = false;
