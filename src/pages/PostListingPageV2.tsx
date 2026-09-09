@@ -377,7 +377,21 @@ export default function PostListingPageV2() {
     if (remaining <= 0) { setError(`You can upload a maximum of ${MAX_PHOTOS} photos.`); return; }
     try {
       const id = await ensureDraft();
-      const validFiles = Array.from(files).filter((file) =>file.type.startsWith('image/') &&file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
+      const validFiles = Array.from(files)
+  .filter((file) => {
+    console.log('PHOTO FILE:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      sizeMB: (file.size / 1024 / 1024).toFixed(2),
+    });
+
+    return (
+      file.type.startsWith('image/') &&
+      file.size <= MAX_PHOTO_SIZE
+    );
+  })
+  .slice(0, remaining);
       if (!validFiles.length) { setError('Please select valid image files no larger than 10 MB.'); return; }
       for (const [index, file] of validFiles.entries()) {
         const formData = new FormData(); formData.append('listing_id', id); formData.append('file', file); formData.append('media_type', 'photo'); formData.append('label', `Photo ${photos.length + index + 1}`); formData.append('position', String(photos.length + index));
