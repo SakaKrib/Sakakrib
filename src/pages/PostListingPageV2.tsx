@@ -43,7 +43,6 @@ export default function PostListingPageV2() {
 
   const [pmsMode, setPmsMode] = useState(false);
   const [pmsSelectorOpen, setPmsSelectorOpen] = useState(false);
-  const [pmsPaymentCompleted, setPmsPaymentCompleted] = useState(false);
 
   const [aiCaption, setAiCaption] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -475,14 +474,14 @@ export default function PostListingPageV2() {
       if (!email.trim()) throw new Error('A contact email is required.');
       if (isPropertyManagementListing && !units.length) throw new Error('At least one property unit is required.');
       if (isPropertyManagementListing) {
-        if (listingEntitlement?.pms_access && listingEntitlement.subscriptionStatus === 'active' && Number(listingEntitlement.subscription_listings_remaining ?? 0) > 0) {
+        if (listingEntitlement?.pmsAccess && listingEntitlement.subscriptionStatus === 'active' && Number(listingEntitlement.subscriptionListingsRemaining ?? 0) > 0) {
           await finalizeNormalListing();
           return;
         }
         if (listingEntitlement?.subscriptionStatus === 'grace_period') {
           throw new Error('Your PMS subscription is in its grace period. Property-management listings are read-only until the subscription is active again.');
         }
-        if (listingEntitlement?.subscriptionStatus === 'active' && Number(listingEntitlement.subscription_listings_remaining ?? 0) <= 0) {
+        if (listingEntitlement?.subscriptionStatus === 'active' && Number(listingEntitlement.subscriptionListingsRemaining ?? 0) <= 0) {
           throw new Error('Your active PMS subscription has reached its listing capacity. Please upgrade your subscription before adding another property.');
         }
         const id = await saveDraftNow();
@@ -500,7 +499,6 @@ export default function PostListingPageV2() {
       const id = await saveDraftNow();
       if (!id) throw new Error('Unable to save this listing before subscription checkout.');
       setPmsMode(true);
-      setPmsPaymentCompleted(false);
       setPaymentCompleted(false);
       setPaymentIntentId(null);
       setPaymentModalOpen(false);
@@ -511,16 +509,15 @@ export default function PostListingPageV2() {
 
   const handlePmsPaymentSuccess = async () => {
     setPmsSelectorOpen(false);
-    setPmsPaymentCompleted(true);
     setError(null);
     try {
       if (listingRole && profile?.id) {
         const entitlement = await fetchListingEntitlement(listingRole, profile.id);
         setListingEntitlement(entitlement);
         setSubscriptionStatus(entitlement.subscriptionStatus);
-        if (!(entitlement.pms_access && entitlement.subscriptionStatus === 'active' && Number(entitlement.subscription_listings_remaining ?? 0) > 0)) {
+        if (!(entitlement.pmsAccess && entitlement.subscriptionStatus === 'active' && Number(entitlement.subscriptionListingsRemaining ?? 0) > 0)) {
           if (entitlement.subscriptionStatus === 'grace_period') throw new Error('The subscription is in a grace period. The listing was not submitted.');
-          if (entitlement.subscriptionStatus === 'active' && Number(entitlement.subscription_listings_remaining ?? 0) <= 0) throw new Error('The subscription is active but has no remaining listing capacity. The listing was not submitted.');
+          if (entitlement.subscriptionStatus === 'active' && Number(entitlement.subscriptionListingsRemaining ?? 0) <= 0) throw new Error('The subscription is active but has no remaining listing capacity. The listing was not submitted.');
           throw new Error('The subscription payment was not reflected as an active PMS entitlement yet. The listing was not submitted.');
         }
       } else {
@@ -533,7 +530,7 @@ export default function PostListingPageV2() {
   };
 
   const removePmsMode = () => {
-    setPmsMode(false); setPmsSelectorOpen(false); setStep(0); setPmsPaymentCompleted(false); setError(null);
+    setPmsMode(false); setPmsSelectorOpen(false); setStep(0); setError(null);
   };
 
   if (!profile) return <div className="mx-auto max-w-md px-2 py-20 text-center"><p className="text-gray-500 dark:text-gray-400">Please sign in to post a listing.</p></div>;
@@ -553,7 +550,7 @@ export default function PostListingPageV2() {
   if (success) return <div className="mx-auto max-w-2xl px-2 py-12"><div className="card p-8 text-center animate-scale-in"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30"><CheckCircle2 className="h-10 w-10 text-success-600 dark:text-success-400" /></div><h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Listing Submitted for Review</h2><p className="mt-2 text-gray-500 dark:text-gray-400">Your property has been successfully submitted and is now awaiting approval. Once approved, it will be published and made visible to renters and buyers.</p><div className="mt-4 rounded-lg bg-success-50 px-2 py-3"><p className="text-sm font-medium text-success-700">Your listing has been submitted successfully.</p></div><div className="mt-3 rounded-lg bg-brand-50 px-2 py-3"><p className="text-sm font-medium text-brand-700">Approval Status: Pending Review</p></div>{aiCaption && <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left"><p className="mb-2 text-xs font-semibold text-brand-600">AI-Generated Community Caption</p><p className="whitespace-pre-line text-sm text-gray-700">{aiCaption}</p></div>}<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center"><button onClick={() => navigate('listings')} className="btn-primary">View My Listings</button><button onClick={() => navigate('community')} className="btn-secondary">See Community</button></div></div></div>;
 
   return <>
-    {pmsMode && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30"><div><p className="text-sm font-semibold text-brand-800 dark:text-brand-200">Property Management listing selected</p><p className="text-xs text-brand-700 dark:text-brand-300">{listingEntitlement?.subscriptionStatus === 'grace_period' ? 'Your PMS subscription is in a read-only grace period. Renew before adding a new property.' : listingEntitlement?.subscriptionStatus === 'active' && Number(listingEntitlement.subscription_listings_remaining ?? 0) <= 0 ? 'Your active PMS subscription has reached its listing capacity. Upgrade before adding another property.' : listingEntitlement?.pms_access && listingEntitlement.subscriptionStatus === 'active' ? 'This listing will use your active PMS subscription capacity.' : 'Complete the property, units, media and review steps, then choose your subscription.'}</p></div><button type="button" onClick={removePmsMode} className="inline-flex items-center gap-1 rounded-lg border border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 dark:border-brand-600 dark:text-brand-200"><X className="h-4 w-4" />Use standard listing</button></div></div>}
+    {pmsMode && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30"><div><p className="text-sm font-semibold text-brand-800 dark:text-brand-200">Property Management listing selected</p><p className="text-xs text-brand-700 dark:text-brand-300">{listingEntitlement?.subscriptionStatus === 'grace_period' ? 'Your PMS subscription is in a read-only grace period. Renew before adding a new property.' : listingEntitlement?.subscriptionStatus === 'active' && Number(listingEntitlement.subscriptionListingsRemaining ?? 0) <= 0 ? 'Your active PMS subscription has reached its listing capacity. Upgrade before adding another property.' : listingEntitlement?.pmsAccess && listingEntitlement.subscriptionStatus === 'active' ? 'This listing will use your active PMS subscription capacity.' : 'Complete the property, units, media and review steps, then choose your subscription.'}</p></div><button type="button" onClick={removePmsMode} className="inline-flex items-center gap-1 rounded-lg border border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 dark:border-brand-600 dark:text-brand-200"><X className="h-4 w-4" />Use standard listing</button></div></div>}
     <PropertyListingForm
       step={step} STEPS={STEPS} error={error} submitting={submitting} setStep={setStep} canProceed={canProceed} handleSubmit={handleSubmit}
       reviewConfirmed={reviewConfirmed} setReviewConfirmed={setReviewConfirmed} selectedPaymentMethod={selectedPaymentMethod} setSelectedPaymentMethod={setSelectedPaymentMethod}
