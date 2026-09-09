@@ -105,7 +105,7 @@ class SubscriptionInvoice(models.Model):
     landlord_subscription_id = models.UUIDField(null=True, blank=True)
     real_estate_subscription_id = models.UUIDField(null=True, blank=True)
     currency = models.TextField(null=True, blank=True)
-    amount_usd = models.DecimalField(max_digits=14, decimal_places=8, null=True, blank=True)
+    amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
     exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     exchange_rate_source = models.TextField(null=True, blank=True)
     exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
