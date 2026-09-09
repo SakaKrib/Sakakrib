@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.core.payment_events import publish_payment_status
 from apps.payments.services import get_provider
 
 from .models import (
@@ -158,3 +159,128 @@ def create_mpesa_subscription_upgrade(profile, target_plan_id, billing_cycle, ph
         'status': 'PENDING_PAYMENT',
         'upgrade': True,
     }
+
+
+def finalize_mpesa_subscription_upgrade(invoice_id, result_code, result_description='', mpesa_receipt=None, checkout_request_id=None, merchant_request_id=None, phone_number=None, paid_amount=None):
+    with transaction.atomic():
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(pk=invoice_id).first()
+        if not invoice:
+            return {'success': True, 'already_settled': True}
+        if invoice.status == 'PAID':
+            return {
+                'success': True,
+                'already_settled': True,
+                'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id),
+            }
+        if not invoice.upgrade_plan_id:
+            raise ValueError('Invoice is not a subscription upgrade invoice')
+        if invoice.payment_provider != 'MPESA':
+            raise ValueError('Upgrade invoice is not an M-Pesa invoice')
+
+        result_code_int = int(result_code) if result_code is not None else None
+        invoice.result_code = result_code_int
+        invoice.result_description = result_description
+        invoice.checkout_request_id = checkout_request_id or invoice.checkout_request_id
+        invoice.merchant_request_id = merchant_request_id
+        invoice.phone_number = phone_number or invoice.phone_number
+        invoice.mpesa_receipt = mpesa_receipt
+
+        subscription = (
+            LandlordSubscription.objects.select_for_update().get(pk=invoice.landlord_subscription_id)
+            if invoice.landlord_subscription_id
+            else RealEstateSubscription.objects.select_for_update().get(pk=invoice.real_estate_subscription_id)
+            if invoice.real_estate_subscription_id
+            else None
+        )
+        if subscription is None:
+            raise ValueError('Upgrade invoice is not linked to a subscription')
+
+        owner_id = getattr(subscription, 'landlord_id', None) or getattr(subscription, 'real_estate_id', None)
+        subscription_id = subscription.id
+
+        if result_code_int != 0:
+            invoice.status = 'FAILED'
+            invoice.save(update_fields=['result_code', 'result_description', 'checkout_request_id', 'merchant_request_id', 'phone_number', 'mpesa_receipt', 'status'])
+            transaction.on_commit(lambda: publish_payment_status(
+                user_id=owner_id,
+                invoice_id=invoice.id,
+                status='FAILED',
+                message=result_description or 'M-Pesa upgrade payment failed.',
+                provider='MPESA',
+                event_type='MPESA.STK.CALLBACK.FAILED',
+                listing_id=None,
+                subscription_id=subscription_id,
+                subscription_status=subscription.status,
+                details={'result_code': result_code_int, 'upgrade': True},
+            ))
+            return {'success': False, 'status': 'FAILED'}
+
+        if result_code_int is None:
+            raise ValueError('M-Pesa result code is required')
+        if not mpesa_receipt:
+            raise ValueError('M-Pesa receipt is required for successful settlement')
+        reference = (checkout_request_id or invoice.provider_reference or '').strip()
+        if not reference:
+            raise ValueError('M-Pesa provider reference is required for successful settlement')
+        if paid_amount is None:
+            raise ValueError('M-Pesa paid amount is required for successful settlement')
+        if Decimal(str(paid_amount)) != invoice.amount_kes:
+            raise ValueError('M-Pesa paid amount does not match invoice amount')
+
+        target_plan = SubscriptionPlan.objects.select_for_update().filter(
+            pk=invoice.upgrade_plan_id,
+            audience='LANDLORD' if invoice.landlord_subscription_id else 'REAL_ESTATE',
+        ).first()
+        if not target_plan:
+            raise ValueError('Target subscription plan no longer exists')
+
+        now = timezone.now()
+        if subscription.status == 'ACTIVE' and subscription.current_period_end and subscription.current_period_end > now:
+            start = subscription.current_period_start
+            end = subscription.current_period_end
+        else:
+            start = now
+            end = start + timezone.timedelta(days=365 if invoice.upgrade_billing_cycle == 'ANNUAL' else 30)
+
+        invoice.status = 'PAID'
+        invoice.payment_provider = 'MPESA'
+        invoice.payment_method = 'MPESA'
+        invoice.provider_reference = reference
+        invoice.provider_transaction_id = mpesa_receipt
+        invoice.paid_at = now
+        invoice.billing_period_start = start
+        invoice.billing_period_end = end
+        invoice.save(update_fields=['result_code', 'result_description', 'checkout_request_id', 'merchant_request_id', 'phone_number', 'mpesa_receipt', 'status', 'payment_provider', 'payment_method', 'provider_reference', 'provider_transaction_id', 'paid_at', 'billing_period_start', 'billing_period_end'])
+
+        billing_cycle = invoice.upgrade_billing_cycle or subscription.billing_cycle
+        billing_amount_kes = target_plan.annual_price_kes if billing_cycle == 'ANNUAL' else target_plan.monthly_price_kes
+        subscription.plan_id = target_plan.id
+        subscription.billing_cycle = billing_cycle
+        subscription.billing_amount_kes = billing_amount_kes
+        subscription.billing_amount_usd = target_plan.paypal_annual_price_usd if billing_cycle == 'ANNUAL' else target_plan.paypal_monthly_price_usd
+        subscription.status = 'ACTIVE'
+        subscription.current_period_start = start
+        subscription.current_period_end = end
+        subscription.grace_period_end = None
+        subscription.updated_at = now
+        subscription.save(update_fields=['plan_id', 'billing_cycle', 'billing_amount_kes', 'billing_amount_usd', 'status', 'current_period_start', 'current_period_end', 'grace_period_end', 'updated_at'])
+
+        transaction.on_commit(lambda: publish_payment_status(
+            user_id=owner_id,
+            invoice_id=invoice.id,
+            status='PAID',
+            message=f'M-Pesa subscription upgrade to {target_plan.name} confirmed successfully.',
+            provider='MPESA',
+            event_type='MPESA.STK.CALLBACK.SUCCESS',
+            listing_id=None,
+            subscription_id=subscription_id,
+            subscription_status='ACTIVE',
+            details={'mpesa_receipt': mpesa_receipt, 'upgrade': True, 'target_plan_id': str(target_plan.id)},
+        ))
+        return {
+            'success': True,
+            'status': 'PAID',
+            'subscription_id': str(subscription.id),
+            'target_plan_id': str(target_plan.id),
+            'target_plan_name': target_plan.name,
+        }
