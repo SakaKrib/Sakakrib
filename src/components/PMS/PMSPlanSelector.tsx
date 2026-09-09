@@ -325,7 +325,7 @@ export default function PMSPlanSelector({
 
                       <span className="mb-1 text-sm text-gray-500">
                         /
-                        {billingCycle ===
+                        {effectiveBillingCycle ===
                         "MONTHLY"
                           ? "month"
                           : "year"}
@@ -412,21 +412,14 @@ export default function PMSPlanSelector({
             )}
             /{effectiveBillingCycle === 'MONTHLY' ? 'month' : 'year'}
           </p>
+
           <button
             type="button"
             disabled={disabled}
             onClick={handlePayClick}
-            className={`inline-flex min-w-[240px] items-center justify-center rounded-xl px-6 py-3.5 text-sm font-bold shadow-sm transition-all ${
-                disabled
-                  ? "cursor-not-allowed bg-gray-300 text-gray-500"
-                  : "bg-gray-900 text-white hover:-translate-y-0.5 hover:bg-gray-800 hover:shadow-md dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
-              }`}
+            className="rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
           >
-            {hasCurrentSubscription && isCurrentPlan
-              ? 'Go to PMS Dashboard'
-              : hasCurrentSubscription
-                ? 'Upgrade'
-                : 'Proceed to Payment'}
+            {hasCurrentSubscription && isCurrentPlan ? 'Manage Subscription' : 'Continue to Payment'}
           </button>
         </div>
       )}
