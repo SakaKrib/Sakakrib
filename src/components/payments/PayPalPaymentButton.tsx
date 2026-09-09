@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { PayPalProvider, PayPalOneTimePaymentButton, PayPalSubscriptionButton, type OnApproveDataOneTimePayments, type OnApproveDataSubscriptions } from '@paypal/react-paypal-js/sdk-v6';
 import { protectedPost } from '@/lib/djangoApi';
+import { pollMpesaInvoiceStatus } from '@/lib/LandlordTs/Pmspayments';
 
 export type PayPalButtonMode = 'ONE_TIME' | 'SUBSCRIPTION';
 interface PayPalPaymentButtonProps { mode: PayPalButtonMode; paymentIntentId?: string | null; planId?: string | null; billingCycle?: 'MONTHLY' | 'ANNUAL'; listingId?: string | null; onPreparePayPalPayment?: () => Promise<string>; onSuccess: () => Promise<void> | void; onError?: (message: string) => void; disabled?: boolean; }
@@ -87,13 +88,19 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
         paypal_subscription_id: subscriptionId,
       });
       if (!response?.success) throw new Error(errorMessage(response, 'Unable to register the PayPal subscription.'));
+
+      setError(null);
+      const invoiceStatus = await pollMpesaInvoiceStatus(invoiceId, { maxAttempts: 40, intervalMs: 3000 });
+      if (invoiceStatus !== 'PAID') {
+        throw new Error('PayPal approval was received, but Django has not confirmed the subscription yet. Please wait a moment and try again.');
+      }
+
       subscriptionInvoiceIdRef.current = null;
       setWorking(false);
       setError(null);
-      const params = new URLSearchParams({ invoice_id: invoiceId, subscription_id: subscriptionId });
-      window.location.assign(`/paypal/subscription/return?${params.toString()}`);
+      await onSuccess();
     } catch (error) {
-      fail(error instanceof Error ? error.message : 'Unable to register the PayPal subscription.');
+      fail(error instanceof Error ? error.message : 'Unable to confirm the PayPal subscription.');
     }
   };
 
