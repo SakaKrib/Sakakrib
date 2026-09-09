@@ -34,6 +34,8 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
         raise ValueError('Only landlord and real estate accounts can subscribe')
     if profile.verification_status != 'verified':
         raise ValueError('Identity verification is required before subscription checkout')
+    if not getattr(profile, 'email_verified', False):
+        raise ValueError('Email verification is required before subscription checkout')
     if profile.role == 'landlord' and profile.landlord_application_status != 'approved':
         raise ValueError('Landlord application approval is required before subscription checkout')
     if profile.role == 'real_estate' and profile.real_estate_application_status != 'approved':
