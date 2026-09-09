@@ -8,13 +8,13 @@ import PayPalPaymentButton from '@/components/payments/PayPalPaymentButton';
 type PaymentMethod = 'MPESA' | 'PAYPAL';
 type Step = 'select-method' | 'mpesa-waiting' | 'paypal-waiting' | 'success' | 'failed';
 export interface PMSCheckoutPlan { planId: string; planName: string; billingCycle: PMSBillingCycle; amountKes: number; }
-interface PMSCheckoutModalProps { open: boolean; onOpenChange: (open: boolean) => void; audience: PMSCheckoutAudience; plan: PMSCheckoutPlan | null; listingId?: string | null; onSuccess?: () => void; }
+interface PMSCheckoutModalProps { open: boolean; onClose: () => void; role: PMSCheckoutAudience; plan: PMSCheckoutPlan | null; listingId?: string | null; onSuccess?: () => void; }
 interface InvoiceStatusResponse { id: string; status: string; result_description?: string | null; listing_id?: string | null; }
 
 function formatKES(value: number) { return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(value); }
 function normalizePhone(value: string) { return value.replace(/\s+/g, '').trim(); }
 
-export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, listingId, onSuccess }: PMSCheckoutModalProps) {
+export default function PMSCheckoutModal({ open, onClose, role, plan, listingId, onSuccess }: PMSCheckoutModalProps) {
   const [method, setMethod] = useState<PaymentMethod>('MPESA');
   const [step, setStep] = useState<Step>('select-method');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -84,7 +84,7 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
     setStarting(true);
     setError(null);
     try {
-      const result = await initiateMpesaSubscriptionCheckout(audience, plan.planId, plan.billingCycle, phone, listingId || undefined);
+      const result = await initiateMpesaSubscriptionCheckout(role, plan.planId, plan.billingCycle, phone, listingId || undefined);
       if (!result.invoice_id) throw new Error('Payment did not return an invoice reference.');
       setInvoiceId(result.invoice_id);
       setCustomerMessage(result.customer_message || 'Check your phone and enter your M-Pesa PIN to approve the payment.');
@@ -98,7 +98,7 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
   };
 
   const continueAfterSuccess = () => {
-    onOpenChange(false);
+    onClose();
     if (listingId) {
       window.location.hash = `post-listing/${encodeURIComponent(listingId)}`;
       return;
@@ -106,7 +106,7 @@ export default function PMSCheckoutModal({ open, onOpenChange, audience, plan, l
     onSuccess?.();
   };
 
-  const handleClose = () => onOpenChange(false);
+  const handleClose = () => onClose();
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true"><div className="card relative w-full max-w-md overflow-hidden rounded-2xl shadow-xl"><div className="flex items-start justify-between border-b border-gray-200 p-5 dark:border-gray-800"><div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Complete payment</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{plan.planName} · {plan.billingCycle === 'MONTHLY' ? 'Monthly' : 'Annual'} · {formatKES(plan.amountKes)}</p></div><button type="button" onClick={handleClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close"><X className="h-5 w-5" /></button></div><div className="p-5">
     {step === 'select-method' && <div className="space-y-4"><div className="grid grid-cols-2 gap-3"><button type="button" aria-pressed={method === 'MPESA'} onClick={() => setMethod('MPESA')} className="rounded-2xl border p-4 text-left"><Smartphone className="mb-2 h-5 w-5" />M-Pesa<span className="mt-1 block text-xs text-gray-500">STK Push</span></button><button type="button" aria-pressed={method === 'PAYPAL'} onClick={() => setMethod('PAYPAL')} className="rounded-2xl border p-4 text-left"><Crown className="mb-2 h-5 w-5" />PayPal<span className="mt-1 block text-xs text-gray-500">Secure recurring payment</span></button></div>{method === 'MPESA' && <div className="space-y-2"><label htmlFor="pms-mpesa-phone" className="text-sm font-semibold">M-Pesa phone number</label><input id="pms-mpesa-phone" value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} inputMode="tel" autoComplete="tel" placeholder="2547XXXXXXXX" className="w-full rounded-xl border px-4 py-3 text-sm" /><p className="text-xs text-gray-500">The STK Push will be sent to this number.</p></div>}{error && <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}{method === 'MPESA' ? <button type="button" disabled={starting} onClick={startMpesa} className="btn-primary inline-flex w-full items-center justify-center gap-2 disabled:opacity-50">{starting ? <><Loader2 className="h-4 w-4 animate-spin" />Starting STK Push…</> : 'Send STK Push'}</button> : <PayPalPaymentButton mode="SUBSCRIPTION" planId={plan.planId} billingCycle={plan.billingCycle} listingId={listingId} onSuccess={() => {}} onError={message => { setError(message); setStep('failed'); }} disabled={starting} />}</div>}
