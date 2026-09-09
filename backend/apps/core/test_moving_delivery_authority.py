@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -56,9 +57,9 @@ class MovingDeliveryAuthorityTests(TestCase):
             renter_id=self.renter.id,
             mover_id=self.mover.id,
             moving_date=start.date(),
-            booking_amount="1000.00",
-            commission_amount="100.00",
-            total_amount="1100.00",
+            booking_amount=Decimal("1000.00"),
+            commission_amount=Decimal("100.00"),
+            total_amount=Decimal("1100.00"),
             status="in_progress",
             payment_status="paid",
             payment_method="mpesa",
