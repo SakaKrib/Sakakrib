@@ -110,6 +110,14 @@ def save_listing_draft(profile, data, draft_id=None):
         draft = Listing.objects.select_for_update().filter(id=draft_id, user_id=owner.id, is_draft=True).first()
         if not draft:
             raise ValidationError('Draft not found.')
+    else:
+        # A draft save without an id must resume the owner's existing draft.
+        # The profile row is locked above, so concurrent saves for this owner
+        # cannot create multiple drafts while performing this lookup.
+        draft = Listing.objects.select_for_update().filter(
+            user_id=owner.id,
+            is_draft=True,
+        ).order_by('-updated_at', '-created_at').first()
 
     defaults = {
         'title': str(data.get('title') or ''),
