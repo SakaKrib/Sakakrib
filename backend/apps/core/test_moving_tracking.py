@@ -193,18 +193,18 @@ class MovingTrackingTests(TestCase):
 
     def test_tracking_health_distinguishes_healthy_stale_and_offline(self):
         now = timezone.now()
-        self.assertEqual(_tracking_health(None, now=now)["status"], "OFFLINE")
-        healthy = _tracking_health(now - timedelta(seconds=30), now=now)
-        stale = _tracking_health(now - timedelta(seconds=31), now=now)
-        offline = _tracking_health(now - timedelta(seconds=121), now=now)
-        self.assertEqual(healthy, {"status": "HEALTHY", "is_live": True, "age_seconds": 30})
-        self.assertEqual(stale, {"status": "STALE", "is_live": False, "age_seconds": 31})
-        self.assertEqual(offline, {"status": "OFFLINE", "is_live": False, "age_seconds": 121})
+        self.assertEqual(_tracking_health(None, now=now), {"status": "OFFLINE", "is_live": False, "age_seconds": None, "recent_point_count": 0})
+        healthy = _tracking_health(now - timedelta(seconds=30), recent_point_count=2, now=now)
+        stale = _tracking_health(now - timedelta(seconds=31), recent_point_count=2, now=now)
+        offline = _tracking_health(now - timedelta(seconds=121), recent_point_count=2, now=now)
+        self.assertEqual(healthy, {"status": "HEALTHY", "is_live": True, "age_seconds": 30, "recent_point_count": 2})
+        self.assertEqual(stale, {"status": "STALE", "is_live": False, "age_seconds": 31, "recent_point_count": 2})
+        self.assertEqual(offline, {"status": "OFFLINE", "is_live": False, "age_seconds": 121, "recent_point_count": 2})
 
     def test_tracking_health_keeps_exact_stale_boundary(self):
         now = timezone.now()
-        boundary = _tracking_health(now - timedelta(seconds=120), now=now)
-        self.assertEqual(boundary, {"status": "STALE", "is_live": False, "age_seconds": 120})
+        boundary = _tracking_health(now - timedelta(seconds=120), recent_point_count=2, now=now)
+        self.assertEqual(boundary, {"status": "STALE", "is_live": False, "age_seconds": 120, "recent_point_count": 2})
 
     def test_accepted_location_updates_booking_and_mover_last_known_position(self):
         booking = self._active_booking()
