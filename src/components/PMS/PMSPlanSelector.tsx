@@ -264,7 +264,7 @@ export default function PMSPlanSelector({
                   disabled={disabled}
                   aria-pressed={selected}
                   onClick={() =>
-                    onPlanChange(plan)
+                    handlePlanChange(plan)
                   }
                   className={`group relative flex h-full flex-col rounded-2xl border bg-white p-6 text-left shadow-sm transition-all dark:bg-gray-900 ${
                     selected
@@ -431,17 +431,10 @@ export default function PMSPlanSelector({
         </div>
       )}
 
-      {!loading && !error && plans.length === 0 && (
-        <div className="rounded-2xl border p-10 text-center">
-          <Crown className="mx-auto h-8 w-8" />
-          <h3 className="mt-4 text-base font-semibold">No subscription plans available</h3>
-        </div>
-      )}
-
       <PMSCheckoutModal
         open={checkoutOpen}
-        onOpenChange={setCheckoutOpen}
-        audience={checkoutAudience}
+        onClose={() => setCheckoutOpen(false)}
+        role={checkoutAudience}
         plan={checkoutPlan}
         listingId={listingId}
         onSuccess={() => {
