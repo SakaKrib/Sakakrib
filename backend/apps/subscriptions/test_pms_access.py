@@ -14,6 +14,7 @@ class PMSAccessRegressionTests(SimpleTestCase):
         profile.role = role
         profile.verification_status = 'verified'
         profile.kyc_completed = True
+        profile.email_verified = True
         profile.landlord_application_status = 'approved'
         profile.real_estate_application_status = 'approved'
         return profile
@@ -57,3 +58,12 @@ class PMSAccessRegressionTests(SimpleTestCase):
 
         self.assertFalse(result['allowed'])
         self.assertEqual(result['reason'], 'REAL_ESTATE_APPLICATION_NOT_APPROVED')
+
+    def test_unverified_email_cannot_access_pms(self):
+        profile = self.make_profile('landlord')
+        profile.email_verified = False
+
+        result = get_pms_access(profile)
+
+        self.assertFalse(result['allowed'])
+        self.assertEqual(result['reason'], 'EMAIL_VERIFICATION_REQUIRED')
