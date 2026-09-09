@@ -27,13 +27,15 @@ def review_listing(admin_user, listing_id, decision, note=''):
 
     was_approved = listing.approval_status == 'approved'
     listing.approval_status = decision
-    # Approval controls publication; the legacy is_approved field is intentionally
-    # left unchanged to match the production workflow contract.
+    listing.is_approved = decision == 'approved'
+    listing.status = decision
     listing.is_published = decision == 'approved'
     listing.admin_reviewed_at = timezone.now()
     listing.admin_review_note = note
     listing.save(update_fields=[
         'approval_status',
+        'is_approved',
+        'status',
         'is_published',
         'admin_reviewed_at',
         'admin_review_note',
@@ -61,7 +63,6 @@ def review_listing(admin_user, listing_id, decision, note=''):
             for field, value in post_defaults.items():
                 setattr(post, field, value)
             post.save(update_fields=['user_id', 'content', 'ai_caption', 'post_type'])
-            # Remove accidental historical duplicates for the same listing.
             CommunityPost.objects.filter(listing_id=listing.id).exclude(pk=post.pk).delete()
         else:
             CommunityPost.objects.create(listing_id=listing.id, **post_defaults)
