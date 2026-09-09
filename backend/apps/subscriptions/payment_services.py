@@ -63,7 +63,15 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     subscription_model = LandlordSubscription if profile.role == 'landlord' else RealEstateSubscription
     owner_field = 'landlord_id' if profile.role == 'landlord' else 'real_estate_id'
     if subscription_model.objects.filter(**{owner_field: profile.id}, status__in=('ACTIVE', 'GRACE_PERIOD')).exists():
-        raise ValueError('You already have an active subscription. Use the upgrade or renewal flow.')
+        if provider == 'mpesa':
+            from .upgrade_services import create_mpesa_subscription_upgrade
+            return create_mpesa_subscription_upgrade(
+                profile=profile,
+                target_plan_id=plan_id,
+                billing_cycle=billing_cycle,
+                phone_number=phone_number,
+            )
+        raise ValueError('You already have an active subscription. Use the M-Pesa upgrade or renewal flow.')
 
     amount_kes = plan.annual_price_kes if billing_cycle == 'ANNUAL' else plan.monthly_price_kes
     amount_usd = plan.paypal_annual_price_usd if billing_cycle == 'ANNUAL' else plan.paypal_monthly_price_usd
