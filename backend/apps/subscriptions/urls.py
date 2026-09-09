@@ -3,6 +3,7 @@ from django.urls import path
 from .pms_access_views import MyPMSAccessView
 from .pms_units_views import MyPMSUnitsView
 from .renewal_views import SubscriptionRenewalView
+from .upgrade_views import SubscriptionUpgradeView
 from .views import (
     MpesaSubscriptionCallbackView,
     MyAvailablePMSListingsView,
@@ -31,6 +32,7 @@ urlpatterns = [
     path('invoices/<uuid:invoice_id>/', MySubscriptionInvoiceView.as_view(), name='subscription-invoice-detail'),
     path('checkout/', SubscriptionCheckoutView.as_view(), name='subscription-checkout'),
     path('renew/', SubscriptionRenewalView.as_view(), name='subscription-renewal'),
+    path('upgrade/', SubscriptionUpgradeView.as_view(), name='subscription-upgrade'),
     path('paypal/approve/', PayPalSubscriptionApproveView.as_view(), name='paypal-subscription-approve'),
     path('callbacks/mpesa/', MpesaSubscriptionCallbackView.as_view(), name='mpesa-subscription-callback'),
     path('callbacks/paypal/', PayPalSubscriptionWebhookView.as_view(), name='paypal-subscription-webhook'),
