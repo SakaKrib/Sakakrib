@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -110,6 +112,17 @@ def save_listing_draft(profile, data, draft_id=None):
         draft = Listing.objects.select_for_update().filter(id=draft_id, user_id=owner.id, is_draft=True).first()
         if not draft:
             raise ValidationError('Draft not found.')
+    else:
+        # Auto-save requests can overlap before React receives the first
+        # listing ID. Reuse a draft updated moments ago rather than creating
+        # a second listing for the same in-flight draft session. The owner row
+        # is locked above, so concurrent saves are serialized.
+        recent_cutoff = timezone.now() - timedelta(seconds=5)
+        draft = Listing.objects.select_for_update().filter(
+            user_id=owner.id,
+            is_draft=True,
+            updated_at__gte=recent_cutoff,
+        ).order_by('-updated_at', '-created_at').first()
 
     defaults = {
         'title': str(data.get('title') or ''),
