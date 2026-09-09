@@ -215,11 +215,17 @@ def finalize_mpesa_subscription(invoice_id, result_code, result_description='', 
                 RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id, status='PENDING_PAYMENT').update(status='CANCELLED', updated_at=timezone.now())
             owner_id = None
             subscription_id = invoice.landlord_subscription_id or invoice.real_estate_subscription_id
-            subscription_status = 'CANCELLED'
+            subscription_status = None
             if invoice.landlord_subscription_id:
-                owner_id = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).values_list('landlord_id', flat=True).first()
+                subscription = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).first()
+                if subscription:
+                    owner_id = subscription.landlord_id
+                    subscription_status = subscription.status
             elif invoice.real_estate_subscription_id:
-                owner_id = RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).values_list('real_estate_id', flat=True).first()
+                subscription = RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).first()
+                if subscription:
+                    owner_id = subscription.real_estate_id
+                    subscription_status = subscription.status
             transaction.on_commit(lambda: publish_payment_status(
                 user_id=owner_id,
                 invoice_id=invoice.id,
