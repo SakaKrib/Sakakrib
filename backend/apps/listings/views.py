@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
-from apps.core.domain_property import ListingMedia, PropertyUnit
+from apps.core.domain_property import CommunityPost, ListingMedia, PropertyUnit
 
 from .models import Listing, ListingPaymentIntent
 from .review_services import review_listing
@@ -249,7 +249,18 @@ class ListingDetailView(APIView):
             if application_status != 'approved': return Response({'error': 'Application approval is required to update listings.'}, status=status.HTTP_403_FORBIDDEN)
             allowed_to_update = True
         if not allowed_to_update: return Response({'error': 'You are not authorized to update this listing.'}, status=status.HTTP_403_FORBIDDEN)
-        serializer = ListingUpdateSerializer(listing, data=request.data, partial=True); serializer.is_valid(raise_exception=True); serializer.save(updated_at=timezone.now()); return Response(ListingSerializer(listing, context={'request': request}).data)
+        was_approved = listing.approval_status == 'approved' or listing.is_approved
+        serializer = ListingUpdateSerializer(listing, data=request.data, partial=True); serializer.is_valid(raise_exception=True); serializer.save(updated_at=timezone.now())
+        if was_approved and not is_admin(request.user):
+            listing.approval_status = 'pending_review'
+            listing.is_approved = False
+            listing.is_published = False
+            listing.status = 'pending'
+            listing.admin_reviewed_at = None
+            listing.admin_review_note = ''
+            listing.save(update_fields=['approval_status', 'is_approved', 'is_published', 'status', 'admin_reviewed_at', 'admin_review_note', 'updated_at'])
+            CommunityPost.objects.filter(listing_id=listing.id).update(is_published=False)
+        return Response(ListingSerializer(listing, context={'request': request}).data)
     def put(self, request, listing_id): return self.patch(request, listing_id)
 
 
