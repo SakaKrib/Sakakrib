@@ -105,7 +105,7 @@ class SubscriptionInvoice(models.Model):
     landlord_subscription_id = models.UUIDField(null=True, blank=True)
     real_estate_subscription_id = models.UUIDField(null=True, blank=True)
     currency = models.TextField(null=True, blank=True)
-    amount_usd = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    amount_usd = models.DecimalField(max_digits=14, decimal_places=8, null=True, blank=True)
     exchange_rate = models.DecimalField(max_digits=18, decimal_places=8, null=True, blank=True)
     exchange_rate_source = models.TextField(null=True, blank=True)
     exchange_rate_timestamp = models.DateTimeField(null=True, blank=True)
@@ -114,6 +114,8 @@ class SubscriptionInvoice(models.Model):
     billing_period_end = models.DateTimeField(null=True, blank=True)
     webhook_event_id = models.TextField(null=True, blank=True)
     pricing_snapshot_source = models.TextField(null=True, blank=True)
+    upgrade_plan_id = models.UUIDField(null=True, blank=True)
+    upgrade_billing_cycle = models.TextField(null=True, blank=True)
     listing = models.ForeignKey('listings.Listing', on_delete=models.SET_NULL, null=True, blank=True, related_name='subscription_invoices', db_column='listing_id')
     class Meta:
         db_table = 'subscription_invoices'
