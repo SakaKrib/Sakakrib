@@ -20,6 +20,9 @@ interface ExistingMedia { id: string; url: string; label: string | null; media_t
 const MAX_PHOTOS = 7;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
+const SUPPORTED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const SUPPORTED_PHOTO_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
+const isSupportedPhoto = (file: File) => SUPPORTED_PHOTO_TYPES.has(file.type) || SUPPORTED_PHOTO_EXTENSIONS.test(file.name);
 const SOCIAL_PLATFORMS = ['WhatsApp', 'Instagram', 'Facebook', 'Website', 'TikTok'];
 
 export default function PostListingPageV2() {
@@ -377,22 +380,15 @@ export default function PostListingPageV2() {
     if (remaining <= 0) { setError(`You can upload a maximum of ${MAX_PHOTOS} photos.`); return; }
     try {
       const id = await ensureDraft();
-      const validFiles = Array.from(files)
-  .filter((file) => {
-    console.log('PHOTO FILE:', {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      sizeMB: (file.size / 1024 / 1024).toFixed(2),
-    });
-
-    return (
-      file.type.startsWith('image/') &&
-      file.size <= MAX_PHOTO_SIZE
-    );
-  })
-  .slice(0, remaining);
-      if (!validFiles.length) { setError('Please select valid image files no larger than 10 MB.'); return; }
+      const imageFiles = Array.from(files).filter(isSupportedPhoto);
+      const oversizedFiles = imageFiles.filter((file) => file.size > MAX_PHOTO_SIZE);
+      const validFiles = imageFiles.filter((file) => file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
+      if (!validFiles.length) {
+        if (imageFiles.length === 0) setError('Please select JPEG, PNG, or WebP image files.');
+        else if (oversizedFiles.length === imageFiles.length) setError('Each photo must be 10 MB or smaller.');
+        else setError('Some selected photos are over the 10 MB limit.');
+        return;
+      }
       for (const [index, file] of validFiles.entries()) {
         const formData = new FormData(); formData.append('listing_id', id); formData.append('file', file); formData.append('media_type', 'photo'); formData.append('label', `Photo ${photos.length + index + 1}`); formData.append('position', String(photos.length + index));
         await protectedUpload<ExistingMedia>('/api/listings/media/', formData);
