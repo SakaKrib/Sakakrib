@@ -38,12 +38,12 @@ class ListingSerializer(serializers.ModelSerializer):
             'listing_type', 'deposit_required', 'deposit_structure', 'deposit_amount',
             'size', 'beds', 'baths', 'contact_phone', 'contact_email', 'social_links',
             'booking_enabled', 'payment_enabled', 'is_property_management', 'is_paid',
-            'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at',
+            'is_draft', 'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at',
             'admin_review_note', 'ai_caption', 'ai_caption_generated_at', 'created_at',
             'updated_at', 'media', 'landlord',
         ]
         read_only_fields = [
-            'id', 'user_id', 'is_paid', 'is_published', 'approval_status', 'is_approved',
+            'id', 'user_id', 'is_paid', 'is_draft', 'is_published', 'approval_status', 'is_approved',
             'status', 'admin_reviewed_at', 'admin_review_note', 'ai_caption',
             'ai_caption_generated_at', 'created_at', 'updated_at', 'media', 'landlord',
         ]
