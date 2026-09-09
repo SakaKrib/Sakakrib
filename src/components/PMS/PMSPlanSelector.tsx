@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { Check, Crown, Home, Users } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
 import PMSCheckoutModal, { type PMSCheckoutPlan } from '@/modals/Pmscheckoutmodal';
+import {
+  initiateMpesaSubscriptionRenewal,
+  pollMpesaInvoiceStatus,
+} from '@/lib/LandlordTs/Pmspayments';
 import type { PMSCheckoutAudience } from '@/lib/LandlordTs/Pmspayments';
 
 export type PMSAudience = 'landlord' | 'real_estate';
@@ -80,6 +84,9 @@ export default function PMSPlanSelector({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [renewalProcessing, setRenewalProcessing] = useState(false);
+  const [renewalError, setRenewalError] = useState<string | null>(null);
+  const [renewalMessage, setRenewalMessage] = useState<string | null>(null);
   const [localSelectedPlanId, setLocalSelectedPlanId] = useState<string | null>(selectedPlanId ?? null);
   const [localSelectedPlanName, setLocalSelectedPlanName] = useState<PMSPlanName | null>(selectedPlanName ?? null);
   const [localBillingCycle, setLocalBillingCycle] = useState<PMSBillingCycle>(billingCycle ?? 'MONTHLY');
@@ -168,6 +175,7 @@ export default function PMSPlanSelector({
   );
 
   const hasCurrentSubscription = Boolean(currentPlanId || currentPlanName);
+  const canRenew = Boolean(hasCurrentSubscription && isCurrentPlan && !renewalProcessing);
   const checkoutAudience: PMSCheckoutAudience = role === 'landlord' ? 'LANDLORD' : 'REAL_ESTATE';
   const checkoutPlan: PMSCheckoutPlan | null = selectedPlan
     ? {
@@ -184,12 +192,56 @@ export default function PMSPlanSelector({
   const handlePlanChange = (plan: PMSSubscriptionPlan) => {
     setLocalSelectedPlanId(plan.id);
     setLocalSelectedPlanName(plan.name);
+    setRenewalError(null);
+    setRenewalMessage(null);
     onPlanChange(plan);
   };
 
   const handleBillingCycleChange = (cycle: PMSBillingCycle) => {
     setLocalBillingCycle(cycle);
+    setRenewalError(null);
+    setRenewalMessage(null);
     onBillingCycleChange(cycle);
+  };
+
+  const handleRenew = async () => {
+    if (!canRenew) return;
+
+    setRenewalProcessing(true);
+    setRenewalError(null);
+    setRenewalMessage(null);
+
+    try {
+      const response = await initiateMpesaSubscriptionRenewal();
+      const invoiceId = response.invoice_id;
+
+      if (!invoiceId) {
+        throw new Error('Django did not return a renewal invoice.');
+      }
+
+      const status = await pollMpesaInvoiceStatus(invoiceId);
+
+      if (status === 'PAID') {
+        setRenewalMessage('M-Pesa renewal confirmed. Your PMS subscription is active.');
+        onPaymentSuccess?.();
+        return;
+      }
+
+      if (status === 'FAILED' || status === 'CANCELLED') {
+        setRenewalError('The M-Pesa renewal was not completed. Your existing subscription was not cancelled.');
+        return;
+      }
+
+      setRenewalError('M-Pesa payment is still pending. Please check your phone and try again if it does not complete.');
+    } catch (err) {
+      setRenewalError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to start M-Pesa subscription renewal.',
+      );
+    } finally {
+      setRenewalProcessing(false);
+    }
   };
 
   const handlePayClick = () => {
@@ -210,13 +262,13 @@ export default function PMSPlanSelector({
             <button
               key={cycle}
               type="button"
-              disabled={disabled}
+              disabled={disabled || renewalProcessing}
               onClick={() => handleBillingCycleChange(cycle)}
               className={`rounded-lg px-5 py-2.5 text-sm font-semibold transition ${
                 effectiveBillingCycle === cycle
                   ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
                   : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
-              } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+              } ${disabled || renewalProcessing ? 'cursor-not-allowed opacity-60' : ''}`}
             >
               {cycle === 'MONTHLY' ? 'Monthly' : 'Annual'}
             </button>
@@ -261,7 +313,7 @@ export default function PMSPlanSelector({
                 <button
                   key={plan.id}
                   type="button"
-                  disabled={disabled}
+                  disabled={disabled || renewalProcessing}
                   aria-pressed={selected}
                   onClick={() =>
                     handlePlanChange(plan)
@@ -271,7 +323,7 @@ export default function PMSPlanSelector({
                       ? "border-gray-900 shadow-md ring-2 ring-gray-900/10 dark:border-white"
                       : "border-gray-200 hover:-translate-y-0.5 hover:border-gray-400 hover:shadow-md dark:border-gray-700"
                   } ${
-                    disabled
+                    disabled || renewalProcessing
                       ? "cursor-not-allowed opacity-60"
                       : "cursor-pointer"
                   }`}
@@ -413,9 +465,35 @@ export default function PMSPlanSelector({
             /{effectiveBillingCycle === 'MONTHLY' ? 'month' : 'year'}
           </p>
 
+          {canRenew && (
+            <button
+              type="button"
+              disabled={disabled || renewalProcessing}
+              onClick={() => void handleRenew()}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800"
+            >
+              {renewalProcessing ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-gray-900 dark:border-gray-500 dark:border-t-white" />
+              ) : null}
+              {renewalProcessing ? 'Waiting for M-Pesa confirmation...' : 'Renew Subscription with M-Pesa'}
+            </button>
+          )}
+
+          {renewalError && (
+            <p className="max-w-xl text-center text-sm text-red-600 dark:text-red-400">
+              {renewalError}
+            </p>
+          )}
+
+          {renewalMessage && (
+            <p className="max-w-xl text-center text-sm text-green-600 dark:text-green-400">
+              {renewalMessage}
+            </p>
+          )}
+
           <button
             type="button"
-            disabled={disabled}
+            disabled={disabled || renewalProcessing}
             onClick={handlePayClick}
             className="rounded-xl bg-gray-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
           >
