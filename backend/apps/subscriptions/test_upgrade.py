@@ -4,13 +4,13 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from .upgrade_services import create_mpesa_subscription_upgrade, finalize_mpesa_subscription_upgrade
 
 
-class SubscriptionUpgradeTests(SimpleTestCase):
+class SubscriptionUpgradeTests(TestCase):
     def make_profile(self, role='landlord'):
         profile = Mock()
         profile.id = uuid4()
@@ -70,7 +70,7 @@ class SubscriptionUpgradeTests(SimpleTestCase):
         invoice_objects.create.return_value = invoice
         get_provider.return_value.create_payment.return_value = provider_result
 
-        result = create_mpesa_subscription_upgrade(profile, target_plan_id, 'MONTHLY')
+        result = create_mpesa_subscription_upgrade(profile, target_plan_id, 'MONTHLY', profile.phone)
 
         self.assertTrue(result['success'])
         self.assertTrue(result['upgrade'])
