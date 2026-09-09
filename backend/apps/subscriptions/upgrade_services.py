@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -240,7 +241,7 @@ def finalize_mpesa_subscription_upgrade(invoice_id, result_code, result_descript
             end = subscription.current_period_end
         else:
             start = now
-            end = start + timezone.timedelta(days=365 if invoice.upgrade_billing_cycle == 'ANNUAL' else 30)
+            end = start + timedelta(days=365 if invoice.upgrade_billing_cycle == 'ANNUAL' else 30)
 
         invoice.status = 'PAID'
         invoice.payment_provider = 'MPESA'
