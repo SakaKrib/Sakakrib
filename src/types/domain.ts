@@ -70,6 +70,7 @@ export interface Listing extends Record<string, any> {
   payment_enabled?: boolean;
   ai_caption?: string | null;
   ai_caption_generated_at?: string | null;
+  is_draft?: boolean;
   is_published?: boolean;
   is_approved?: boolean;
   is_paid?: boolean;
