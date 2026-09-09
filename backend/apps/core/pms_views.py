@@ -19,16 +19,7 @@ from apps.listings.models import Listing
 from apps.listings.services import get_listing_entitlement
 from apps.payments.models import ListingPayment
 from apps.subscriptions.models import LandlordSubscription, SubscriptionInvoice, SubscriptionListing, SubscriptionPlan
-from apps.subscriptions.services import (
-    get_current_subscription,
-    get_subscription_access,
-    get_subscription_plan,
-    get_pms_access,
-    get_my_pms_listings,
-    add_listing_to_pms,
-    remove_listing_from_pms,
-    _pms_listing_key,
-)
+from apps.subscriptions.services import get_current_subscription, get_subscription_access, get_subscription_plan
 
 
 def _decimal(value):
@@ -96,13 +87,10 @@ def _pms_listings(profile):
     sub, _ = _subscription(profile)
     if not sub:
         return []
-    key = _pms_listing_key(profile)
-    rows = SubscriptionListing.objects.filter(**{key: sub.id}, status='ACTIVE')
+    rows = SubscriptionListing.objects.filter(subscription_id=sub.id, status='ACTIVE')
     listings = {str(x.id): x for x in Listing.objects.filter(id__in=[r.listing_id for r in rows])}
     return [{
-        'subscription_listing_id': str(r.id),
-        'subscription_id': str(r.subscription_id) if r.subscription_id else None,
-        'real_estate_subscription_id': str(r.real_estate_subscription_id) if r.real_estate_subscription_id else None,
+        'subscription_listing_id': str(r.id), 'subscription_id': str(r.subscription_id),
         'listing_id': str(r.listing_id), 'listing_title': listings.get(str(r.listing_id)).title if listings.get(str(r.listing_id)) else '',
         'listing_city': listings.get(str(r.listing_id)).city if listings.get(str(r.listing_id)) else '',
         'listing_price_kes': _decimal(listings.get(str(r.listing_id)).price_kes) if listings.get(str(r.listing_id)) else None,
@@ -213,8 +201,7 @@ class PMSDashboardView(APIView):
         rent_invoices, rent_payments, submissions = _rent_data(profile)
         listing_payments = ListingPayment.objects.filter(user_id=profile.id).order_by('-created_at')
         methods = LandlordPaymentMethod.objects.filter(landlord_id=profile.id).order_by('-is_default', '-created_at')
-        invoice_key = 'landlord_subscription_id' if profile.role == 'landlord' else 'real_estate_subscription_id'
-        invoices = SubscriptionInvoice.objects.filter(**{invoice_key: sub.id}).order_by('-created_at') if sub else SubscriptionInvoice.objects.none()
+        invoices = SubscriptionInvoice.objects.filter(landlord_subscription_id=sub.id).order_by('-created_at') if sub else SubscriptionInvoice.objects.none()
         return Response({
             'subscription': _subscription_payload(profile),
             'subscriptionAccess': access,
@@ -288,11 +275,28 @@ class PMSActionView(APIView):
         action = request.data.get('action')
         try:
             if action == 'add_listing':
-                result = add_listing_to_pms(profile, request.data.get('listing_id'))
-                return Response(result)
+                from apps.subscriptions.services import get_pms_access
+                access = get_pms_access(profile)
+                if not access.get('allowed'):
+                    raise ValueError(access.get('reason', 'An active PMS subscription is required.'))
+                if access.get('read_only'):
+                    raise ValueError('PMS is read-only during the subscription grace period.')
+                sub, _ = _subscription(profile)
+                if not sub or sub.status != 'ACTIVE':
+                    raise ValueError('An active PMS subscription is required.')
+                listing_id = request.data.get('listing_id')
+                if not listing_id:
+                    raise ValueError('A listing is required.')
+                listing = Listing.objects.get(id=listing_id, user_id=profile.id, is_property_management=True)
+                obj, _ = SubscriptionListing.objects.get_or_create(subscription_id=sub.id, listing_id=listing.id, defaults={'status': 'ACTIVE', 'activated_at': timezone.now(), 'created_at': timezone.now()})
+                if obj.status != 'ACTIVE':
+                    obj.status = 'ACTIVE'; obj.activated_at = timezone.now(); obj.deactivated_at = None; obj.save(update_fields=['status','activated_at','deactivated_at'])
+                return Response({'success': True, 'subscription_listing_id': str(obj.id)})
             if action == 'remove_listing':
-                result = remove_listing_from_pms(profile, request.data.get('listing_id'))
-                return Response(result)
+                sub, _ = _subscription(profile)
+                obj = SubscriptionListing.objects.get(subscription_id=sub.id, listing_id=request.data.get('listing_id'), status='ACTIVE')
+                obj.status = 'INACTIVE'; obj.deactivated_at = timezone.now(); obj.save(update_fields=['status','deactivated_at'])
+                return Response({'success': True})
             if action == 'set_payment_method_default':
                 method = LandlordPaymentMethod.objects.get(id=request.data.get('payment_method_id'), landlord_id=profile.id, is_active=True)
                 with transaction.atomic():
