@@ -22,7 +22,35 @@ const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const SUPPORTED_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const SUPPORTED_PHOTO_EXTENSIONS = /\.(jpe?g|png|webp)$/i;
-const isSupportedPhoto = (file: File) => SUPPORTED_PHOTO_TYPES.has(file.type) || SUPPORTED_PHOTO_EXTENSIONS.test(file.name);
+// Some mobile browsers / OS file pickers hand back a valid JPEG, PNG, or WebP
+// with an empty, generic ("application/octet-stream"), or non-standard
+// (e.g. "image/jpg") `file.type`, and occasionally a filename with no
+// extension at all. Relying on that metadata alone is why genuinely valid
+// photos were being rejected. As a last resort (metadata missing/wrong) we
+// read the file's actual byte signature, which tells us what the file
+// really is regardless of what the browser labeled it.
+const IMAGE_SIGNATURES: Array<{ mime: 'image/jpeg' | 'image/png' | 'image/webp'; matches: (bytes: Uint8Array) => boolean }> = [
+  { mime: 'image/jpeg', matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { mime: 'image/png', matches: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
+  { mime: 'image/webp', matches: (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50 },
+];
+const readFileHeader = (file: File): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+    reader.readAsArrayBuffer(file.slice(0, 12));
+  });
+const isSupportedPhoto = async (file: File): Promise<boolean> => {
+  if (SUPPORTED_PHOTO_TYPES.has(file.type)) return true;
+  if (SUPPORTED_PHOTO_EXTENSIONS.test(file.name)) return true;
+  try {
+    const header = await readFileHeader(file);
+    return IMAGE_SIGNATURES.some((signature) => signature.matches(header));
+  } catch {
+    return false;
+  }
+};
 const SOCIAL_PLATFORMS = ['WhatsApp', 'Instagram', 'Facebook', 'Website', 'TikTok'];
 
 export default function PostListingPageV2() {
@@ -280,9 +308,19 @@ export default function PostListingPageV2() {
     if (!files?.length) return;
     const remaining = Math.max(0, MAX_PHOTOS - unit.photos.length);
     if (!remaining) { setError('You can upload a maximum of 7 photos per unit.'); return; }
+    // Snapshot the FileList into a plain array immediately, synchronously,
+    // before any `await`. The <input>'s onChange handler resets
+    // `e.target.value = ''` right after calling this function (so the same
+    // file can be re-selected later), and that reset clears the *live*
+    // FileList this `files` parameter points to. If we don't copy the
+    // files out before yielding to the event loop, the list is empty by
+    // the time we get around to reading it, and every upload — regardless
+    // of file type — looks like zero valid images were selected.
+    const candidateFiles = Array.from(files);
     try {
       const id = await ensureDraft();
-      const imageFiles = Array.from(files).filter(isSupportedPhoto);
+      const supportFlags = await Promise.all(candidateFiles.map(isSupportedPhoto));
+      const imageFiles = candidateFiles.filter((_file, index) => supportFlags[index]);
       const oversizedFiles = imageFiles.filter((file) => file.size > MAX_PHOTO_SIZE);
       const validFiles = imageFiles.filter((file) => file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
       if (!validFiles.length) {
@@ -392,9 +430,15 @@ export default function PostListingPageV2() {
     if (!files?.length) return;
     const remaining = MAX_PHOTOS - photos.length;
     if (remaining <= 0) { setError(`You can upload a maximum of ${MAX_PHOTOS} photos.`); return; }
+    // See handleUnitPhotoUpload above: snapshot the FileList into a plain
+    // array before any `await`, since the input's onChange resets
+    // `e.target.value` right after calling this handler, which clears the
+    // live FileList this `files` parameter points to.
+    const candidateFiles = Array.from(files);
     try {
       const id = await ensureDraft();
-      const imageFiles = Array.from(files).filter(isSupportedPhoto);
+      const supportFlags = await Promise.all(candidateFiles.map(isSupportedPhoto));
+      const imageFiles = candidateFiles.filter((_file, index) => supportFlags[index]);
       const oversizedFiles = imageFiles.filter((file) => file.size > MAX_PHOTO_SIZE);
       const validFiles = imageFiles.filter((file) => file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
       if (!validFiles.length) {

@@ -331,7 +331,11 @@ export default function LandlordDashboard({
   const [success, setSuccess] =
     useState(false);  
   
-
+  const isDraftListing = (
+    listing: Listing
+  ): boolean => {
+    return listing.is_draft === true;
+  };
 
   /* =========================================================
      Listin Entitlement
@@ -600,7 +604,7 @@ export default function LandlordDashboard({
         }
 
         const listingsResponse = await protectedGet<Listing[]>(
-          `/rest/v1/listings?select=id,user_id,title,description,city,county,price_kes,listing_type,deposit_required,deposit_structure,deposit_amount,size,beds,baths,contact_phone,contact_email,social_links,status,approval_status,is_approved,is_published,admin_reviewed_at,admin_review_note,is_property_management,property_name,property_type,location_search,latitude,longitude,booking_enabled,payment_enabled,ai_caption,ai_caption_generated_at,created_at,updated_at&user_id=eq.${profile.id}&order=updated_at.desc`
+          `/rest/v1/listings?select=id,user_id,title,description,city,county,price_kes,listing_type,deposit_required,deposit_structure,deposit_amount,size,beds,baths,contact_phone,contact_email,social_links,status,approval_status,is_approved,is_published,is_draft,admin_reviewed_at,admin_review_note,is_property_management,property_name,property_type,location_search,latitude,longitude,booking_enabled,payment_enabled,ai_caption,ai_caption_generated_at,created_at,updated_at&user_id=eq.${profile.id}&order=updated_at.desc`
         );
 
         const listingIds =
@@ -736,48 +740,57 @@ export default function LandlordDashboard({
     ]);
 
   /* =========================================================
-     LISTING FILTERS
+    LISTING FILTERS
   ========================================================= */
 
-  const approvedListings =
-    useMemo(
-      () =>
-        listings.filter(
-          (listing) =>
-            getListingStatus(
-              listing
-            ) === 'approved'
-        ),
-      [listings]
-    );
+  /*
+  * Drafts are not submitted listings.
+  * They must never appear in Approved, Pending, or Rejected.
+  */
+  const publishedListings = useMemo(
+    () =>
+      listings.filter(
+        (listing) =>
+          !isDraftListing(listing)
+      ),
+    [listings]
+  );
 
-  const pendingListings =
-    useMemo(
-      () =>
-        listings.filter(
-          (listing) =>
-            getListingStatus(
-              listing
-            ) === 'pending'
-        ),
-      [listings]
-    );
+  const draftListings = useMemo(
+    () =>
+      listings.filter(
+        (listing) =>
+          isDraftListing(listing)
+      ),
+    [listings]
+  );
 
-  const rejectedListings =
-    useMemo(
-      () =>
-        listings.filter(
-          (listing) =>
-            getListingStatus(
-              listing
-            ) === 'rejected'
-        ),
-      [listings]
-    );
+  const approvedListings = useMemo(
+    () =>
+      publishedListings.filter(
+        (listing) =>
+          getListingStatus(listing) === 'approved'
+      ),
+    [publishedListings]
+  );
 
-  /* =========================================================
-     ACTIVE SUBSCRIPTION
-  ========================================================= */
+  const pendingListings = useMemo(
+    () =>
+      publishedListings.filter(
+        (listing) =>
+          getListingStatus(listing) === 'pending'
+      ),
+    [publishedListings]
+  );
+
+  const rejectedListings = useMemo(
+    () =>
+      publishedListings.filter(
+        (listing) =>
+          getListingStatus(listing) === 'rejected'
+      ),
+    [publishedListings]
+  );
 
   /* =========================================================
    ACTIVE SUBSCRIPTION
@@ -999,160 +1012,189 @@ const pmsBenefits = [
   };
 
   /* =========================================================
-     ACTIVITY FEED
+    ACTIVITY FEED
   ========================================================= */
 
-  const activities =
-    useMemo<ActivityItem[]>(
-      () => {
-        const activityList: ActivityItem[] =
-          [];
+  const activities = useMemo<ActivityItem[]>(
+    () => {
+      const activityList: ActivityItem[] = [];
 
-        listings.forEach(
-          (listing) => {
-            const status =
-              getListingStatus(
-                listing
-              );
+      /*
+      * -------------------------------------------------------
+      * LISTING ACTIVITY
+      * -------------------------------------------------------
+      *
+      * IMPORTANT:
+      * A draft save is NOT a listing submission.
+      *
+      * Only a non-draft listing with a pending approval status
+      * is treated as submitted for review.
+      */
+      listings.forEach((listing) => {
+        const date =
+          listing.updated_at ||
+          listing.created_at ||
+          '';
 
-            if (
-              status === 'approved'
-            ) {
-              activityList.push({
-                id: `approved-${listing.id}`,
-                type: 'listing',
-                title:
-                  'Listing approved',
-                description:
-                  listing.title ||
-                  'Your property listing was approved.',
-                date:
-                  listing.updated_at ||
-                  listing.created_at ||
-                  '',
-                icon:
-                  CheckCircle2,
-                tone:
-                  'success',
-              });
-            }
-
-            if (
-              status === 'pending'
-            ) {
-              activityList.push({
-                id: `pending-${listing.id}`,
-                type: 'listing',
-                title:
-                  'Listing submitted',
-                description:
-                  listing.title ||
-                  'Your property listing is awaiting review.',
-                date:
-                  listing.updated_at ||
-                  listing.created_at ||
-                  '',
-                icon: Clock,
-                tone:
-                  'warning',
-              });
-            }
-
-            if (
-              status === 'rejected'
-            ) {
-              activityList.push({
-                id: `rejected-${listing.id}`,
-                type: 'listing',
-                title:
-                  'Listing rejected',
-                description:
-                  listing.title ||
-                  'Your property listing was rejected.',
-                date:
-                  listing.updated_at ||
-                  listing.created_at ||
-                  '',
-                icon: XCircle,
-                tone:
-                  'error',
-              });
-            }
-          }
-        );
-
-        subscriptions.forEach(
-          (subscription) => {
-            const planName =
-              subscription.plan
-                ?.name ||
-              'Property Management';
-
-            activityList.push({
-              id: `subscription-${subscription.id}`,
-              type:
-                'subscription',
-              title:
-                'Subscription updated',
-              description:
-                `${planName} subscription`,
-              date:
-                subscription.updated_at ||
-                subscription.created_at ||
-                '',
-              icon:
-                CreditCard,
-              tone:
-                'brand',
-            });
-          }
-        );
-
-        if (
-          landlord?.updated_at
-        ) {
+        /*
+        * DRAFT
+        *
+        * Drafts get their own activity type.
+        * They must never generate "Listing submitted".
+        */
+        if (isDraftListing(listing)) {
           activityList.push({
-            id: `profile-${landlord.id}`,
-            type: 'profile',
-            title:
-              'Profile updated',
+            id: `draft-${listing.id}`,
+            type: 'listing',
+            title: 'Draft saved',
             description:
-              'Your landlord profile was updated.',
-            date:
-              landlord.updated_at,
-            icon: User,
-            tone:
-              'brand',
+              listing.title?.trim()
+                ? `Draft saved for "${listing.title}"`
+                : 'Your property listing draft was saved.',
+            date,
+            icon: Pencil,
+            tone: 'brand',
           });
+
+          return;
         }
 
-        return activityList
-          .filter(
-            (item) =>
-              item.date &&
-              !Number.isNaN(
-                new Date(
-                  item.date
-                ).getTime()
-              )
-          )
-          .sort(
-            (a, b) =>
-              new Date(
-                b.date
-              ).getTime() -
-              new Date(
-                a.date
-              ).getTime()
-          )
-          .slice(0, 8);
-      },
-      [
-        listings,
-        subscriptions,
-        landlord,
-      ]
-    );
+        /*
+        * APPROVED
+        */
+        const status =
+          getListingStatus(listing);
+
+        if (status === 'approved') {
+          activityList.push({
+            id: `approved-${listing.id}`,
+            type: 'listing',
+            title: 'Listing approved',
+            description:
+              listing.title?.trim()
+                ? listing.title
+                : 'Your property listing was approved.',
+            date,
+            icon: CheckCircle2,
+            tone: 'success',
+          });
+
+          return;
+        }
+
+        /*
+        * PENDING / ACTUALLY SUBMITTED
+        *
+        * Because drafts returned above, this now means an
+        * actual non-draft listing waiting for review.
+        */
+        if (status === 'pending') {
+          activityList.push({
+            id: `pending-${listing.id}`,
+            type: 'listing',
+            title: 'Listing submitted for review',
+            description:
+              listing.title?.trim()
+                ? listing.title
+                : 'Your property listing was submitted for review.',
+            date,
+            icon: Clock,
+            tone: 'warning',
+          });
+
+          return;
+        }
+
+        /*
+        * REJECTED
+        */
+        if (status === 'rejected') {
+          activityList.push({
+            id: `rejected-${listing.id}`,
+            type: 'listing',
+            title: 'Listing rejected',
+            description:
+              listing.title?.trim()
+                ? listing.title
+                : 'Your property listing was rejected.',
+            date,
+            icon: XCircle,
+            tone: 'error',
+          });
+
+          return;
+        }
+      });
+
+      /*
+      * -------------------------------------------------------
+      * SUBSCRIPTION ACTIVITY
+      * -------------------------------------------------------
+      */
+      subscriptions.forEach((subscription) => {
+        const planName =
+          subscription.plan?.name ||
+          'Property Management';
+
+        activityList.push({
+          id: `subscription-${subscription.id}`,
+          type: 'subscription',
+          title: 'Subscription updated',
+          description:
+            `${planName} subscription`,
+          date:
+            subscription.updated_at ||
+            subscription.created_at ||
+            '',
+          icon: CreditCard,
+          tone: 'brand',
+        });
+      });
+
+      /*
+      * -------------------------------------------------------
+      * PROFILE ACTIVITY
+      * -------------------------------------------------------
+      */
+      if (landlord?.updated_at) {
+        activityList.push({
+          id: `profile-${landlord.id}`,
+          type: 'profile',
+          title: 'Profile updated',
+          description:
+            'Your landlord profile was updated.',
+          date: landlord.updated_at,
+          icon: User,
+          tone: 'brand',
+        });
+      }
+
+      /*
+      * -------------------------------------------------------
+      * SORT + LIMIT
+      * -------------------------------------------------------
+      */
+      return activityList
+        .filter(
+          (item) =>
+            item.date &&
+            !Number.isNaN(
+              new Date(item.date).getTime()
+            )
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.date).getTime() -
+            new Date(a.date).getTime()
+        )
+        .slice(0, 8);
+    },
+    [
+      listings,
+      subscriptions,
+      landlord,
+    ]
+  );
 
   /* =========================================================
      STATS
@@ -1244,58 +1286,61 @@ const pmsBenefits = [
  
 
   /* =========================================================
-     LISTING STATUS BADGE
+    LISTING STATUS BADGE
   ========================================================= */
 
-  const listingStatusBadge =
-    useCallback(
-      (listing: Listing) => {
-        const status =
-          getListingStatus(
-            listing
-          );
-
-        if (
-          status === 'approved'
-        ) {
-          return (
-            <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
-              <CheckCircle2 className="h-3 w-3" />
-              Approved
-            </span>
-          );
-        }
-
-        if (
-          status === 'pending'
-        ) {
-          return (
-            <span className="badge bg-warning-50 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400">
-              <Clock className="h-3 w-3" />
-              Pending
-            </span>
-          );
-        }
-
-        if (
-          status === 'rejected'
-        ) {
-          return (
-            <span className="badge bg-error-50 text-error-700 dark:bg-error-900/30 dark:text-error-400">
-              <XCircle className="h-3 w-3" />
-              Rejected
-            </span>
-          );
-        }
-
+  const listingStatusBadge = useCallback(
+    (listing: Listing) => {
+      /*
+      * Draft takes priority over every other status.
+      */
+      if (isDraftListing(listing)) {
         return (
-          <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-400">
-            Unknown
+          <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
+            <Pencil className="h-3 w-3" />
+            Draft
           </span>
         );
-      },
-      []
-    );
+      }
+
+      const status =
+        getListingStatus(listing);
+
+      if (status === 'approved') {
+        return (
+          <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400">
+            <CheckCircle2 className="h-3 w-3" />
+            Approved
+          </span>
+        );
+      }
+
+      if (status === 'pending') {
+        return (
+          <span className="badge bg-warning-50 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400">
+            <Clock className="h-3 w-3" />
+            Pending
+          </span>
+        );
+      }
+
+      if (status === 'rejected') {
+        return (
+          <span className="badge bg-error-50 text-error-700 dark:bg-error-900/30 dark:text-error-400">
+            <XCircle className="h-3 w-3" />
+            Rejected
+          </span>
+        );
+      }
+
+      return (
+        <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-400">
+          Unknown
+        </span>
+      );
+    },
+    []
+  );
 
   /* =========================================================
      ACTIVITY COLOR
@@ -1526,6 +1571,9 @@ const pmsBenefits = [
                       listing
                     );
 
+                  const isDraft =
+                    isDraftListing(listing);  
+
                   return (
                     <div
                       key={listing.id}
@@ -1645,33 +1693,51 @@ const pmsBenefits = [
                           </div>
 
                           <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                navigateExternal(
-                                  'listing-detail',
-                                  listing.id
-                                )
-                              }
-                              className="btn-secondary px-3 py-2 text-xs"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              View
-                            </button>
+                            {isDraft ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigateExternal(
+                                    'post-listing',
+                                    listing.id
+                                  )
+                                }
+                                className="btn-primary px-3 py-2 text-xs"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Continue Posting
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navigateExternal(
+                                      'listing-detail',
+                                      listing.id
+                                    )
+                                  }
+                                  className="btn-secondary px-3 py-2 text-xs"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  View
+                                </button>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                navigateExternal(
-                                  'listing-manage',
-                                  listing.id
-                                )
-                              }
-                              className="btn-primary px-3 py-2 text-xs"
-                            >
-                              <Settings className="h-3.5 w-3.5" />
-                              Manage
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navigateExternal(
+                                      'listing-manage',
+                                      listing.id
+                                    )
+                                  }
+                                  className="btn-primary px-3 py-2 text-xs"
+                                >
+                                  <Settings className="h-3.5 w-3.5" />
+                                  Manage
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1684,6 +1750,8 @@ const pmsBenefits = [
         </div>
       </div>
     );
+
+    
 
   /* =========================================================
      PROFILE PAGE
@@ -3033,7 +3101,7 @@ const pmsBenefits = [
                   type="button"
                   onClick={() =>
                     goTo(
-                      'approved'
+                      'all'
                     )
                   }
                   className="flex w-full items-center justify-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400"

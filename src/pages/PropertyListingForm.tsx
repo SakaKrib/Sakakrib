@@ -62,6 +62,21 @@ interface LocationSuggestion {
   lon: string | number;
 }
 
+// The <video> element was relying on the browser to sniff the file type
+// from a bare `src` URL. Some browsers (notably on Android) refuse to
+// negotiate playback — or misreport a 0:00 duration — when they can't
+// confirm the codec/container from the URL alone, and React does not
+// reload an already-mounted <video> element when only its `src` changes,
+// which is why playback was inconsistent after uploading a new file.
+// Declaring the type explicitly via a <source> element fixes both.
+const guessVideoMimeType = (url: string): string => {
+  const clean = url.split('?')[0].split('#')[0];
+  const ext = clean.split('.').pop()?.toLowerCase();
+  if (ext === 'webm') return 'video/webm';
+  if (ext === 'mov') return 'video/quicktime';
+  return 'video/mp4';
+};
+
 export default function PropertyListingForm({
   isPropertyManagementListing,
   subscriptionStatus,
@@ -2203,7 +2218,7 @@ export default function PropertyListingForm({
                         <div className="relative">
 
                          <video
-                            src={video.url}
+                            key={video.url}
                             className="h-40 w-full rounded-lg object-contain bg-black"
                             controls
                             playsInline
@@ -2214,7 +2229,13 @@ export default function PropertyListingForm({
                                 event.currentTarget.error
                               );
                             }}
-                          />
+                          >
+                            <source
+                              src={video.url}
+                              type={guessVideoMimeType(video.url)}
+                            />
+                            Your browser doesn't support playing this video.
+                          </video>
 
                           <button
                             type="button"
