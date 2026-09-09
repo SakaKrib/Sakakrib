@@ -154,8 +154,6 @@ def add_listing_to_pms(profile, listing_id):
         raise ValueError(access.get('reason', 'PMS access denied.'))
     if access.get('read_only'):
         raise ValueError('PMS is read-only during the grace period.')
-    if profile.role != 'landlord':
-        raise ValueError('PMS listing management is currently available only to landlord accounts.')
 
     try:
         listing = Listing.objects.get(pk=listing_id, user_id=profile.id)
@@ -163,8 +161,10 @@ def add_listing_to_pms(profile, listing_id):
         raise ValueError('Listing not found or not owned by you.') from exc
 
     key = _pms_listing_key(profile)
+    subscription_model = LandlordSubscription if profile.role == 'landlord' else RealEstateSubscription
+    owner_field = 'landlord_id' if profile.role == 'landlord' else 'real_estate_id'
     with transaction.atomic():
-        subscription = LandlordSubscription.objects.select_for_update().filter(pk=access['subscription_id'], landlord_id=profile.id).first()
+        subscription = subscription_model.objects.select_for_update().filter(pk=access['subscription_id'], **{owner_field: profile.id}).first()
         if not subscription or subscription.status not in {'ACTIVE', 'GRACE_PERIOD'}:
             raise ValueError('PMS subscription is not active.')
         plan = get_subscription_plan(subscription)
@@ -188,7 +188,7 @@ def add_listing_to_pms(profile, listing_id):
             link = existing
         else:
             link = SubscriptionListing.objects.create(
-                subscription_id=subscription.id,
+                **{key: subscription.id},
                 listing_id=listing.id,
                 status='ACTIVE',
                 activated_at=now,
@@ -212,15 +212,16 @@ def remove_listing_from_pms(profile, listing_id):
         raise ValueError(access.get('reason', 'PMS access denied.'))
     if access.get('read_only'):
         raise ValueError('PMS is read-only during the grace period.')
-    if profile.role != 'landlord':
-        raise ValueError('PMS listing management is currently available only to landlord accounts.')
 
-    subscription = LandlordSubscription.objects.filter(pk=access['subscription_id'], landlord_id=profile.id).first()
+    subscription_model = LandlordSubscription if profile.role == 'landlord' else RealEstateSubscription
+    owner_field = 'landlord_id' if profile.role == 'landlord' else 'real_estate_id'
+    key = _pms_listing_key(profile)
+    subscription = subscription_model.objects.filter(pk=access['subscription_id'], **{owner_field: profile.id}).first()
     if not subscription:
         raise ValueError('PMS subscription is not active.')
 
     with transaction.atomic():
-        link = SubscriptionListing.objects.filter(subscription_id=subscription.id, listing_id=listing_id, status='ACTIVE').first()
+        link = SubscriptionListing.objects.filter(**{key: subscription.id, 'listing_id': listing_id, 'status': 'ACTIVE'}).first()
         if not link:
             raise ValueError('Listing is not currently managed by this PMS subscription.')
         if not Listing.objects.filter(pk=listing_id, user_id=profile.id).exists():
