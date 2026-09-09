@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 
-import { protectedGet } from '@/lib/djangoApi';
+import { protectedGet, protectedPost } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
 import { usePaymentStatusSocket, type PaymentSocketStatus } from '@/lib/usePaymentStatusSocket';
 
@@ -10,6 +10,12 @@ interface InvoiceStatusResponse {
   status: string;
   result_description?: string | null;
   listing_id?: string | null;
+}
+interface UpgradeConfirmResponse {
+  success?: boolean;
+  status?: string;
+  detail?: string;
+  target_plan_name?: string;
 }
 
 export default function PayPalSubscriptionReturnPage() {
@@ -27,6 +33,9 @@ export default function PayPalSubscriptionReturnPage() {
     if (event.status === 'PAID') {
       setState('success');
       setMessage(event.message || 'Your payment has been confirmed and your subscription is active.');
+    } else if (event.status === 'UPGRADED') {
+      setState('success');
+      setMessage(event.message || 'Your PayPal subscription plan has been upgraded successfully.');
     } else if (event.status === 'FAILED' || event.status === 'CANCELLED' || event.status === 'REFUNDED') {
       setState('failed');
       setMessage(event.message || 'We could not confirm your PayPal payment.');
@@ -43,6 +52,24 @@ export default function PayPalSubscriptionReturnPage() {
     let cancelled = false;
     const checkStatus = async () => {
       try {
+        const upgrade = await protectedPost<UpgradeConfirmResponse>('/api/subscriptions/upgrade/', {
+          provider: 'paypal',
+          action: 'confirm',
+          invoice_id: invoiceId,
+        });
+        if (cancelled) return;
+        if (upgrade?.success && upgrade.status === 'UPGRADED') {
+          setState('success');
+          setMessage(upgrade.target_plan_name
+            ? `Your PayPal subscription has been upgraded to ${upgrade.target_plan_name}. The new recurring price applies from the next billing cycle.`
+            : 'Your PayPal subscription plan has been upgraded successfully.');
+          return;
+        }
+      } catch {
+        // Normal PayPal subscription creation invoices are not upgrade invoices.
+      }
+
+      try {
         const invoice = await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
         if (cancelled) return;
         if (invoice.listing_id) setListingId(invoice.listing_id);
@@ -56,7 +83,6 @@ export default function PayPalSubscriptionReturnPage() {
         }
       } catch {
         // The WebSocket remains the primary real-time confirmation path.
-        // A later status check can recover if the first request races login refresh.
       }
     };
 
