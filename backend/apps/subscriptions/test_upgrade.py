@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -91,7 +91,7 @@ class SubscriptionUpgradeTests(TestCase):
         plan_objects,
         now,
     ):
-        fixed_now = timezone.now()
+        fixed_now = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
         period_start = fixed_now - timedelta(days=10)
         period_end = fixed_now + timedelta(days=20)
         now.return_value = fixed_now

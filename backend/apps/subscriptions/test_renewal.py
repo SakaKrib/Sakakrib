@@ -27,46 +27,21 @@ class SubscriptionRenewalTests(TestCase):
     @patch('apps.subscriptions.renewal_services.SubscriptionInvoice.objects')
     @patch('apps.subscriptions.renewal_services.LandlordSubscription.objects')
     @patch('apps.subscriptions.renewal_services.get_current_subscription')
-    def test_active_mpesa_renewal_uses_existing_subscription(
-        self,
-        get_current_subscription,
-        subscription_objects,
-        invoice_objects,
-        get_provider,
-    ):
+    def test_active_mpesa_renewal_uses_existing_subscription(self, get_current_subscription, subscription_objects, invoice_objects, get_provider):
         profile = self.make_profile()
         subscription_id = uuid4()
+        plan_id = uuid4()
         period_end = timezone.now() + timedelta(days=3)
-        subscription = SimpleNamespace(
-            id=subscription_id,
-            status='ACTIVE',
-            billing_amount_kes=Decimal('1500.00'),
-            billing_cycle='MONTHLY',
-            current_period_end=period_end,
-        )
-        locked = SimpleNamespace(
-            id=subscription_id,
-            status='ACTIVE',
-            billing_amount_kes=Decimal('1500.00'),
-            billing_cycle='MONTHLY',
-            current_period_end=period_end,
-        )
+        subscription = SimpleNamespace(id=subscription_id, plan_id=plan_id, status='ACTIVE', billing_amount_kes=Decimal('1500.00'), billing_cycle='MONTHLY', current_period_end=period_end)
+        locked = SimpleNamespace(id=subscription_id, plan_id=plan_id, status='ACTIVE', billing_amount_kes=Decimal('1500.00'), billing_cycle='MONTHLY', current_period_end=period_end)
         invoice = Mock(id=uuid4())
-        provider_result = SimpleNamespace(
-            success=True,
-            message='STK sent',
-            provider_reference='ws_CO_123',
-            raw={'CheckoutRequestID': 'ws_CO_123'},
-        )
-
+        provider_result = SimpleNamespace(success=True, message='STK sent', provider_reference='ws_CO_123', raw={'CheckoutRequestID': 'ws_CO_123'})
         get_current_subscription.return_value = subscription
         subscription_objects.select_for_update.return_value.get.return_value = locked
         invoice_objects.filter.return_value.order_by.return_value.first.return_value = None
         invoice_objects.create.return_value = invoice
         get_provider.return_value.create_payment.return_value = provider_result
-
         result = create_mpesa_subscription_renewal(profile, profile.phone)
-
         self.assertTrue(result['success'])
         self.assertTrue(result['renewal'])
         self.assertEqual(result['subscription_id'], str(subscription_id))
@@ -79,11 +54,7 @@ class SubscriptionRenewalTests(TestCase):
     @patch('apps.subscriptions.renewal_services.get_current_subscription')
     def test_renewal_rejects_missing_current_subscription(self, get_current_subscription):
         get_current_subscription.return_value = None
-
-        with self.assertRaisesMessage(
-            ValueError,
-            'No active or grace-period subscription is available for renewal',
-        ):
+        with self.assertRaisesMessage(ValueError, 'No active or grace-period subscription is available for renewal'):
             profile = self.make_profile()
             create_mpesa_subscription_renewal(profile, profile.phone)
 
@@ -93,30 +64,10 @@ class SubscriptionRenewalTests(TestCase):
         fixed_now = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
         existing_end = fixed_now + timedelta(days=10)
         now.return_value = fixed_now
-
-        subscription = Mock(
-            id=uuid4(),
-            status='ACTIVE',
-            current_period_end=existing_end,
-            billing_cycle='MONTHLY',
-            landlord_id=uuid4(),
-            real_estate_id=None,
-        )
-        invoice = Mock(
-            landlord_subscription_id=subscription.id,
-            real_estate_subscription_id=None,
-            listing_id=None,
-            amount_kes=Decimal('1500.00'),
-        )
+        subscription = Mock(id=uuid4(), status='ACTIVE', current_period_end=existing_end, billing_cycle='MONTHLY', landlord_id=uuid4(), real_estate_id=None)
+        invoice = Mock(landlord_subscription_id=subscription.id, real_estate_subscription_id=None, listing_id=None, amount_kes=Decimal('1500.00'))
         subscription_objects.select_for_update.return_value.get.return_value = subscription
-
-        result = _activate_invoice(
-            invoice,
-            provider='MPESA',
-            provider_reference='ws_CO_123',
-            transaction_id='QWERTY123',
-        )
-
+        result = _activate_invoice(invoice, provider='MPESA', provider_reference='ws_CO_123', transaction_id='QWERTY123')
         self.assertTrue(result['success'])
         self.assertEqual(invoice.billing_period_start, existing_end)
         self.assertEqual(subscription.current_period_start, existing_end)
@@ -128,30 +79,10 @@ class SubscriptionRenewalTests(TestCase):
         fixed_now = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
         expired_end = fixed_now - timedelta(days=2)
         now.return_value = fixed_now
-
-        subscription = Mock(
-            id=uuid4(),
-            status='GRACE_PERIOD',
-            current_period_end=expired_end,
-            billing_cycle='MONTHLY',
-            landlord_id=uuid4(),
-            real_estate_id=None,
-        )
-        invoice = Mock(
-            landlord_subscription_id=subscription.id,
-            real_estate_subscription_id=None,
-            listing_id=None,
-            amount_kes=Decimal('1500.00'),
-        )
+        subscription = Mock(id=uuid4(), status='GRACE_PERIOD', current_period_end=expired_end, billing_cycle='MONTHLY', landlord_id=uuid4(), real_estate_id=None)
+        invoice = Mock(landlord_subscription_id=subscription.id, real_estate_subscription_id=None, listing_id=None, amount_kes=Decimal('1500.00'))
         subscription_objects.select_for_update.return_value.get.return_value = subscription
-
-        result = _activate_invoice(
-            invoice,
-            provider='MPESA',
-            provider_reference='ws_CO_456',
-            transaction_id='QWERTY456',
-        )
-
+        result = _activate_invoice(invoice, provider='MPESA', provider_reference='ws_CO_456', transaction_id='QWERTY456')
         self.assertTrue(result['success'])
         self.assertEqual(invoice.billing_period_start, fixed_now)
         self.assertEqual(subscription.current_period_start, fixed_now)
