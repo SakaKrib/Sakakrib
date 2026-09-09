@@ -446,6 +446,18 @@ type RawListingEntitlement = {
 
   max_units_per_listing?: unknown;
 
+  entitlement_source?: unknown;
+
+  email_verified?: unknown;
+
+  kyc_completed?: unknown;
+
+  verification_status?: unknown;
+
+  landlord_application_status?: unknown;
+
+  real_estate_application_status?: unknown;
+
   pms_access?: unknown;
 
   upgrade_available?: unknown;
@@ -508,8 +520,22 @@ function normalizeSubscriptionStatus(
     case 'active':
       return 'active';
 
+    case 'pending_payment':
+    case 'pending payment':
+    case 'pending-payment':
+      return 'pending_payment';
+
+    case 'grace_period':
+    case 'grace period':
+    case 'grace-period':
+      return 'grace_period';
+
     case 'expired':
       return 'expired';
+
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
 
     case 'none':
 
@@ -585,6 +611,16 @@ function normalizeListingEntitlement(
       raw.can_create,
     ),
 
+    entitlementSource: (() => {
+      const value = typeof raw.entitlement_source === 'string'
+        ? raw.entitlement_source.trim().toUpperCase()
+        : '';
+      if (value === 'FREE' || value === 'SUBSCRIPTION' || value === 'INDIVIDUAL_PAID') {
+        return value;
+      }
+      return null;
+    })(),
+
     requiresSubscription: normalizeBoolean(
       raw.requires_subscription,
     ),
@@ -631,6 +667,10 @@ function normalizeListingEntitlement(
         raw.subscription_listings_remaining,
       ),
 
+    maxUnitsPerListing: nullableNumber(
+      raw.max_units_per_listing,
+    ),
+
     individualPaidListings: numberValue(
       raw.individual_paid_listings,
     ),
@@ -651,6 +691,26 @@ function normalizeListingEntitlement(
 
     upgradeTarget: nullableString(
       raw.upgrade_target,
+    ),
+
+    emailVerified: normalizeBoolean(
+      raw.email_verified,
+    ),
+
+    kycCompleted: normalizeBoolean(
+      raw.kyc_completed,
+    ),
+
+    verificationStatus: nullableString(
+      raw.verification_status,
+    ),
+
+    landlordApplicationStatus: nullableString(
+      raw.landlord_application_status,
+    ),
+
+    realEstateApplicationStatus: nullableString(
+      raw.real_estate_application_status,
     ),
   };
 }

@@ -25,7 +25,9 @@ MAX_LISTING_PHOTOS = 7
 MAX_LISTING_PHOTO_BYTES = 10 * 1024 * 1024
 MAX_LISTING_VIDEO_BYTES = 100 * 1024 * 1024
 ALLOWED_PHOTO_TYPES = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp'}
+ALLOWED_PHOTO_EXTENSIONS = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp'}
 ALLOWED_VIDEO_TYPES = {'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov'}
+ALLOWED_VIDEO_EXTENSIONS = {'.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime'}
 
 
 def _media_is_visible(request, media):
@@ -66,24 +68,40 @@ class ListingMediaView(APIView):
         if not file:
             return Response({'detail': 'Media file is required.'}, status=status.HTTP_400_BAD_REQUEST)
         media_type = str(request.data.get('media_type') or 'photo').lower()
-        if media_type == 'photo':
-            allowed_types, max_bytes = ALLOWED_PHOTO_TYPES, MAX_LISTING_PHOTO_BYTES
-            if ListingMedia.objects.filter(listing_id=listing.id, media_type='photo').count() >= MAX_LISTING_PHOTOS:
-                return Response({'detail': f'A listing may have at most {MAX_LISTING_PHOTOS} photos.'}, status=status.HTTP_400_BAD_REQUEST)
-        elif media_type == 'video':
-            allowed_types, max_bytes = ALLOWED_VIDEO_TYPES, MAX_LISTING_VIDEO_BYTES
-        else:
-            return Response({'detail': 'media_type must be photo or video.'}, status=status.HTTP_400_BAD_REQUEST)
-        content_type = str(getattr(file, 'content_type', '') or '').lower()
-        if content_type not in allowed_types:
-            return Response({'detail': 'Unsupported media type.'}, status=status.HTTP_400_BAD_REQUEST)
-        if int(getattr(file, 'size', 0) or 0) <= 0 or int(file.size) > max_bytes:
-            return Response({'detail': 'Media file is too large.'}, status=status.HTTP_400_BAD_REQUEST)
         unit_id = request.data.get('unit_id') or None
         if unit_id:
             unit = PropertyUnit.objects.filter(id=unit_id, listing_id=listing.id, user_id=request.user.pk).first()
             if not unit:
                 return Response({'detail': 'The selected property unit does not belong to this listing.'}, status=status.HTTP_400_BAD_REQUEST)
+        if media_type == 'photo':
+            allowed_types, max_bytes = ALLOWED_PHOTO_TYPES, MAX_LISTING_PHOTO_BYTES
+            photo_qs = ListingMedia.objects.filter(listing_id=listing.id, media_type='photo')
+            if unit_id:
+                photo_qs = photo_qs.filter(unit_id=unit_id)
+            else:
+                photo_qs = photo_qs.filter(unit_id__isnull=True)
+            if photo_qs.count() >= MAX_LISTING_PHOTOS:
+                scope = 'unit' if unit_id else 'listing'
+                return Response({'detail': f'A {scope} may have at most {MAX_LISTING_PHOTOS} photos.'}, status=status.HTTP_400_BAD_REQUEST)
+        elif media_type == 'video':
+            allowed_types, max_bytes = ALLOWED_VIDEO_TYPES, MAX_LISTING_VIDEO_BYTES
+            if unit_id:
+                return Response({'detail': 'Videos can only be attached to the listing, not to a unit.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({'detail': 'media_type must be photo or video.'}, status=status.HTTP_400_BAD_REQUEST)
+        content_type = str(getattr(file, 'content_type', '') or '').lower()
+        if content_type not in allowed_types:
+            # Browsers sometimes omit or misreport MIME; fall back to a safe extension map.
+            extension_hint = Path(getattr(file, 'name', '') or '').suffix.lower()
+            fallback_map = ALLOWED_PHOTO_EXTENSIONS if media_type == 'photo' else ALLOWED_VIDEO_EXTENSIONS
+            content_type = fallback_map.get(extension_hint, '')
+        if content_type not in allowed_types:
+            return Response({'detail': 'Unsupported media type. Use JPEG, PNG, or WebP for photos.' if media_type == 'photo' else 'Unsupported video type.'}, status=status.HTTP_400_BAD_REQUEST)
+        if int(getattr(file, 'size', 0) or 0) <= 0:
+            return Response({'detail': 'Media file is empty.'}, status=status.HTTP_400_BAD_REQUEST)
+        if int(file.size) > max_bytes:
+            limit_label = '10 MB' if media_type == 'photo' else '100 MB'
+            return Response({'detail': f'Media file is too large. Maximum allowed size is {limit_label}.'}, status=status.HTTP_400_BAD_REQUEST)
         extension = allowed_types[content_type]
         original_name = Path(getattr(file, 'name', '') or 'media').stem
         safe_name = ''.join(char if char.isalnum() or char in '-_' else '-' for char in original_name)

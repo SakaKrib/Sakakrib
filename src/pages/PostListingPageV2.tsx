@@ -126,7 +126,8 @@ export default function PostListingPageV2() {
     return () => { cancelled = true; };
   }, [listingRole]);
 
-  const isPropertyManagementListing = pmsMode || subscriptionStatus === 'active' || subscriptionStatus === 'trial';
+  // PMS mode is deliberate opt-in. An active subscription must not force every listing into PMS.
+  const isPropertyManagementListing = pmsMode;
   const paymentRequired = !isPropertyManagementListing && Boolean(listingEntitlement?.requiresIndividualPayment);
   const listingPaymentRequirement: ListingPaymentRequirement = paymentRequired ? 'required' : 'not_required';
   const FREE_LISTING_LIMIT = listingEntitlement?.free_limit ?? 3;
@@ -167,7 +168,7 @@ export default function PostListingPageV2() {
 
   const draftPayload = () => ({
     ...buildListingPayload(),
-    draft_ui: { customCity, customSize, units, termsAccepted, reviewConfirmed, step, pmsMode: isPropertyManagementListing },
+    draft_ui: { customCity, customSize, units, termsAccepted, reviewConfirmed, step, pmsMode },
   });
 
   const saveDraftNow = async (): Promise<string> => {
@@ -283,10 +284,16 @@ export default function PostListingPageV2() {
     if (!remaining) { setError('You can upload a maximum of 7 photos per unit.'); return; }
     try {
       const id = await ensureDraft();
-      const selected = Array.from(files).filter((file) => file.type.startsWith('image/') && file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
-      if (!selected.length) { setError('Please select valid image files no larger than 10 MB.'); return; }
-      for (let index = 0; index < selected.length; index += 1) {
-        const file = selected[index];
+      const imageFiles = Array.from(files).filter(isSupportedPhoto);
+      const oversizedFiles = imageFiles.filter((file) => file.size > MAX_PHOTO_SIZE);
+      const validFiles = imageFiles.filter((file) => file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
+      if (!validFiles.length) {
+        if (imageFiles.length === 0) setError('Please select JPEG, PNG, or WebP image files.');
+        else if (oversizedFiles.length === imageFiles.length) setError('Each photo must be 10 MB or smaller.');
+        else setError('Some selected photos are over the 10 MB limit.');
+        return;
+      }
+      for (const [index, file] of validFiles.entries()) {
         const formData = new FormData();
         formData.append('listing_id', id);
         formData.append('unit_id', unit.id);
@@ -303,6 +310,15 @@ export default function PostListingPageV2() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to upload unit photos.'); }
   };
 
+  const removeUnitPhoto = async (unit: PropertyUnit, photoIndex: number) => {
+    const photo = unit.photos[photoIndex];
+    updateUnit(unit.id, 'photos', unit.photos.filter((_, index) => index !== photoIndex));
+    if (photo?.id) {
+      try { await protectedPost(`/api/listings/media/${encodeURIComponent(photo.id)}/delete/`, {}); }
+      catch { /* reconcile on reload */ }
+    }
+  };
+
   const addSocialLink = () => setSocialLinks((current) => [...current, { platform: 'WhatsApp', url: '' }]);
   const updateSocialLink = (index: number, field: 'platform' | 'url', value: string) => setSocialLinks((current) => current.map((link, i) => i === index ? { ...link, [field]: value } : link));
   const removeSocialLink = (index: number) => setSocialLinks((current) => current.filter((_, i) => i !== index));
@@ -316,7 +332,7 @@ export default function PostListingPageV2() {
         case 2: return units.length > 0 && units.every((u) => Number(u.rent) > 0);
         case 3: return contactIsValid;
         case 4: return photos.length >= 3 && photos.length <= 7;
-        case 5: return title.trim() !== '' && description.trim() !== '';
+        case 5: return propertyName.trim() !== '' && description.trim() !== '';
         case 6: return reviewConfirmed;
         default: return step === paymentStepIndex ? paymentCompleted : false;
       }
@@ -491,26 +507,42 @@ export default function PostListingPageV2() {
   const handlePmsPaymentSuccess = async () => {
     setPmsSelectorOpen(false);
     setPmsPaymentCompleted(true);
+    setError(null);
     try {
-      const id = draftId || await ensureDraft();
-      try { const response = await protectedPost<{ caption?: string }>(`/api/listings/${encodeURIComponent(id)}/ai-caption/`, {}); if (response?.caption) setAiCaption(response.caption.trim()); } catch (aiError) { console.warn('AI caption generation failed:', aiError); }
-      setSuccess(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Subscription payment succeeded, but the listing could not be refreshed.'); }
+      // Refresh entitlement so subscription capacity is visible, then finalize the draft.
+      if (listingRole && profile?.id) {
+        const entitlement = await fetchListingEntitlement(listingRole, profile.id);
+        setListingEntitlement(entitlement);
+        setSubscriptionStatus(entitlement.subscriptionStatus);
+      }
+      await finalizeNormalListing();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Subscription payment succeeded, but the listing could not be submitted for review.');
+    }
   };
 
   const removePmsMode = () => {
-    if (subscriptionStatus === 'active' || subscriptionStatus === 'trial') return;
     setPmsMode(false); setPmsSelectorOpen(false); setStep(0); setPmsPaymentCompleted(false); setError(null);
   };
 
   if (!profile) return <div className="mx-auto max-w-md px-2 py-20 text-center"><p className="text-gray-500 dark:text-gray-400">Please sign in to post a listing.</p></div>;
   if (!listingRole) return <div className="mx-auto max-w-md px-2 py-20 text-center"><p className="text-gray-500 dark:text-gray-400">Only landlord and real estate accounts can post listings.</p></div>;
-  if (profile.verification_status !== 'verified') return <div className="mx-auto max-w-md px-2 py-20 text-center"><div className="card p-8"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-warning-100 dark:bg-warning-900/30"><FileText className="h-8 w-8 text-warning-600" /></div><h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Verification Required</h2><p className="mt-2 text-sm text-gray-500 dark:text-gray-400">You must complete KYC verification before posting listings.</p><button type="button" onClick={() => navigate('kyc-verify')} className="btn-primary mt-6">Verify Now</button></div></div>;
   if (entitlementLoading || draftLoading) return <div className="flex min-h-[400px] items-center justify-center"><div className="flex items-center gap-2 text-gray-500"><Loader2 className="h-5 w-5 animate-spin" />{draftLoading ? 'Loading saved listing draft...' : 'Checking account status...'}</div></div>;
+  if (listingEntitlement && !listingEntitlement.canStartListing) {
+    const needsEmail = listingEntitlement.emailVerified === false;
+    const needsKyc = listingEntitlement.verificationStatus !== 'verified' || !listingEntitlement.kycCompleted;
+    const applicationStatus = listingRole === 'landlord' ? listingEntitlement.landlordApplicationStatus : listingEntitlement.realEstateApplicationStatus;
+    const needsApplication = applicationStatus !== 'approved';
+    let message = 'Your account is not yet eligible to post listings.';
+    if (needsEmail) message = 'Please verify your email address before posting listings.';
+    else if (needsKyc) message = 'You must complete identity and KYC verification before posting listings.';
+    else if (needsApplication) message = `Your ${listingRole === 'landlord' ? 'landlord' : 'real estate'} application must be approved before posting listings.`;
+    return <div className="mx-auto max-w-md px-2 py-20 text-center"><div className="card p-8"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-warning-100 dark:bg-warning-900/30"><FileText className="h-8 w-8 text-warning-600" /></div><h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Account Setup Required</h2><p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{message}</p>{needsKyc && <button type="button" onClick={() => navigate('kyc-verify')} className="btn-primary mt-6">Verify Now</button>}</div></div>;
+  }
   if (success) return <div className="mx-auto max-w-2xl px-2 py-12"><div className="card p-8 text-center animate-scale-in"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30"><CheckCircle2 className="h-10 w-10 text-success-600 dark:text-success-400" /></div><h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Listing Submitted for Review</h2><p className="mt-2 text-gray-500 dark:text-gray-400">Your property has been successfully submitted and is now awaiting approval. Once approved, it will be published and made visible to renters and buyers.</p><div className="mt-4 rounded-lg bg-success-50 px-2 py-3"><p className="text-sm font-medium text-success-700">Your listing has been submitted successfully.</p></div><div className="mt-3 rounded-lg bg-brand-50 px-2 py-3"><p className="text-sm font-medium text-brand-700">Approval Status: Pending Review</p></div>{aiCaption && <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left"><p className="mb-2 text-xs font-semibold text-brand-600">AI-Generated Community Caption</p><p className="whitespace-pre-line text-sm text-gray-700">{aiCaption}</p></div>}<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center"><button onClick={() => navigate('listings')} className="btn-primary">View My Listings</button><button onClick={() => navigate('community')} className="btn-secondary">See Community</button></div></div></div>;
 
   return <>
-    {pmsMode && subscriptionStatus !== 'active' && subscriptionStatus !== 'trial' && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30"><div><p className="text-sm font-semibold text-brand-800 dark:text-brand-200">Property Management listing selected</p><p className="text-xs text-brand-700 dark:text-brand-300">Complete the property, units, media and review steps, then choose your subscription.</p></div><button type="button" onClick={removePmsMode} className="inline-flex items-center gap-1 rounded-lg border border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 dark:border-brand-600 dark:text-brand-200"><X className="h-4 w-4" />Use standard listing</button></div></div>}
+    {pmsMode && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30"><div><p className="text-sm font-semibold text-brand-800 dark:text-brand-200">Property Management listing selected</p><p className="text-xs text-brand-700 dark:text-brand-300">{subscriptionStatus === 'active' || subscriptionStatus === 'trial' ? 'This listing will use your active PMS subscription capacity.' : 'Complete the property, units, media and review steps, then choose your subscription.'}</p></div><button type="button" onClick={removePmsMode} className="inline-flex items-center gap-1 rounded-lg border border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 dark:border-brand-600 dark:text-brand-200"><X className="h-4 w-4" />Use standard listing</button></div></div>}
     <PropertyListingForm
       step={step} STEPS={STEPS} error={error} submitting={submitting} setStep={setStep} canProceed={canProceed} handleSubmit={handleSubmit}
       reviewConfirmed={reviewConfirmed} setReviewConfirmed={setReviewConfirmed} selectedPaymentMethod={selectedPaymentMethod} setSelectedPaymentMethod={setSelectedPaymentMethod}
@@ -519,7 +551,7 @@ export default function PostListingPageV2() {
       city={city} setCity={setCity} customCity={customCity} setCustomCity={setCustomCity} county={county} setCounty={setCounty} locationSearch={locationSearch} setLocationSearch={setLocationSearch} locationSuggestions={locationSuggestions} setLocationSuggestions={setLocationSuggestions} latitude={latitude} setLatitude={setLatitude} longitude={longitude} setLongitude={setLongitude} usingGPS={usingGPS} setUsingGPS={setUsingGPS} handleUseCurrentLocation={handleUseCurrentLocation} KENYAN_CITIES={KENYAN_CITIES} KENYAN_COUNTIES={KENYAN_COUNTIES}
       propertyName={propertyName} setPropertyName={setPropertyName} propertyType={propertyType} setPropertyType={setPropertyType} bookingEnabled={bookingEnabled} setBookingEnabled={setBookingEnabled} paymentEnabled={paymentEnabled} setPaymentEnabled={setPaymentEnabled}
       listingType={listingType} setListingType={setListingType} price={price} setPrice={setPrice} depositRequired={depositRequired} setDepositRequired={setDepositRequired} depositStructure={depositStructure} setDepositStructure={setDepositStructure} depositAmount={depositAmount} setDepositAmount={setDepositAmount}
-      units={units} setUnits={setUnits} addUnit={addUnit} updateUnit={updateUnit} handleUnitPhotoUpload={handleUnitPhotoUpload} phone={phone} setPhone={setPhone} email={email} setEmail={setEmail} socialLinks={socialLinks} setSocialLinks={setSocialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
+      units={units} setUnits={setUnits} addUnit={addUnit} updateUnit={updateUnit} handleUnitPhotoUpload={handleUnitPhotoUpload} removeUnitPhoto={removeUnitPhoto} phone={phone} setPhone={setPhone} email={email} setEmail={setEmail} socialLinks={socialLinks} setSocialLinks={setSocialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
       photos={photos} setPhotos={setPhotos} removePhoto={removePhoto} updatePhotoLabel={updatePhotoLabel} handlePhotoUpload={handlePhotoUpload} video={video} removeVideo={removeVideo} handleVideoUpload={handleVideoUpload} title={title} setTitle={setTitle} description={description} setDescription={setDescription} size={size} setSize={setSize} customSize={customSize} setCustomSize={setCustomSize} beds={beds} setBeds={setBeds} baths={baths} setBaths={setBaths} HOUSE_SIZES={HOUSE_SIZES}
     />
     <ListingPaymentModal open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} role={listingRole} amountKes={LISTING_FEE_KES} paymentLoading={paymentLoading} paymentCompleted={paymentCompleted} selectedPaymentMethod={selectedPaymentMethod} onSelectPaymentMethod={setSelectedPaymentMethod} onPayNow={handleListingPayment} subscriptionPlans={subscriptionPlans} subscriptionPlansLoading={subscriptionPlansLoading} subscriptionPlansError={subscriptionPlansError} onContinueToSubscription={handleContinueToSubscription} paypalAvailable={Boolean(import.meta.env.VITE_PAYPAL_CLIENT_ID)} paymentIntentId={paymentIntentId} onPreparePayPalPayment={preparePayPalPayment} onPayPalSuccess={() => { setPaymentCompleted(true); setSelectedPaymentMethod('PAYPAL'); setPaymentModalOpen(false); setError(null); }} error={error} />

@@ -15,6 +15,7 @@ class ListingDraftWorkflowTests(APITestCase):
             role=role,
             email=f'{role}-{role}@example.com',
             full_name=role.title(),
+            email_verified=True,
             verification_status='verified',
             kyc_completed=True,
             landlord_application_status='approved' if role == 'landlord' else 'pending',

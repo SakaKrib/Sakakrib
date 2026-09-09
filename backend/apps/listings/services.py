@@ -45,7 +45,8 @@ def get_listing_entitlement(profile, *, lock_subscription=False):
                 'individual_listing_price_kes': INDIVIDUAL_LISTING_PRICE_KES, 'reason': 'INVALID_ROLE'}
     identity_verified = str(getattr(profile, 'verification_status', '') or '').lower() == 'verified'
     kyc_completed = bool(getattr(profile, 'kyc_completed', False))
-    can_start = identity_verified and kyc_completed and _application_approved(profile)
+    email_verified = bool(getattr(profile, 'email_verified', False))
+    can_start = identity_verified and kyc_completed and email_verified and _application_approved(profile)
     free_used = max(int(profile.free_listings_used or 0), 0)
     free_remaining = max(FREE_LIMIT - free_used, 0)
     subscription = _current_subscription(profile, lock=lock_subscription)
@@ -63,9 +64,12 @@ def get_listing_entitlement(profile, *, lock_subscription=False):
     source = 'FREE' if can_start and free_remaining > 0 else ('SUBSCRIPTION' if can_start and active and (limit is None or remaining > 0) else None)
     can_create = source is not None
     needs_payment = can_start and not can_create
+    pms_access = bool(active and (limit is None or remaining > 0))
+    upgrade_target = 'subscription' if needs_payment and not active else ('individual_payment' if needs_payment else None)
     return {
         'authorized': True, 'role': role, 'verification_status': getattr(profile, 'verification_status', None),
-        'kyc_completed': kyc_completed, 'landlord_application_status': getattr(profile, 'landlord_application_status', None),
+        'email_verified': email_verified, 'kyc_completed': kyc_completed,
+        'landlord_application_status': getattr(profile, 'landlord_application_status', None),
         'real_estate_application_status': getattr(profile, 'real_estate_application_status', None),
         'can_start_listing': can_start, 'can_create': can_create, 'entitlement_source': source,
         'free_limit': FREE_LIMIT, 'free_listings_used': free_used, 'free_listings_remaining': free_remaining,
@@ -76,6 +80,7 @@ def get_listing_entitlement(profile, *, lock_subscription=False):
         'subscription_listings_used': used, 'subscription_listings_remaining': remaining,
         'requires_individual_payment': bool(needs_payment), 'requires_subscription': bool(needs_payment and not active),
         'individual_listing_price_kes': INDIVIDUAL_LISTING_PRICE_KES, 'upgrade_available': bool(needs_payment),
+        'pms_access': pms_access, 'upgrade_target': upgrade_target,
     }
 
 
@@ -88,9 +93,11 @@ def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitl
         deposit_required=data.get('deposit_required', False), deposit_structure=data.get('deposit_structure'), deposit_amount=data.get('deposit_amount', 0),
         size=data.get('size'), beds=data.get('beds', 0), baths=data.get('baths', 0), contact_phone=data.get('contact_phone'), contact_email=data.get('contact_email'),
         social_links=data.get('social_links', []), booking_enabled=data.get('booking_enabled', False), payment_enabled=data.get('payment_enabled', False),
-        is_property_management=data.get('is_property_management', False), is_paid=True, is_published=False, approval_status='pending_review', is_approved=False, status='pending')
+        is_property_management=data.get('is_property_management', False), is_paid=False, is_published=False, approval_status='pending_review', is_approved=False, status='pending')
     if listing_entitlement == 'INDIVIDUAL_PAID':
         source = 'INDIVIDUAL_PAID'
+        listing.is_paid = True
+        listing.save(update_fields=['is_paid'])
     elif entitlement.get('entitlement_source') == 'FREE':
         profile.free_listings_used = (profile.free_listings_used or 0) + 1
         profile.save(update_fields=['free_listings_used'])
@@ -113,7 +120,7 @@ def create_listing(profile, data):
     profile = Profile.objects.select_for_update().get(pk=profile.id)
     entitlement = get_listing_entitlement(profile, lock_subscription=True)
     if not entitlement.get('can_start_listing'):
-        raise ValidationError('Identity verification, KYC completion, and application approval are required before creating a listing.')
+        raise ValidationError('Identity verification, KYC completion, email verification, and application approval are required before creating a listing.')
 
     is_pms_listing = bool(data.get('is_property_management'))
     if is_pms_listing:
@@ -135,7 +142,7 @@ def create_listing_payment_intent(profile, listing_data, listing_id=None):
     profile = Profile.objects.select_for_update().get(pk=profile.id)
     entitlement = get_listing_entitlement(profile, lock_subscription=True)
     if not entitlement.get('can_start_listing'):
-        raise ValidationError('Identity verification, KYC completion, and application approval are required before payment.')
+        raise ValidationError('Identity verification, KYC completion, email verification, and application approval are required before payment.')
     if entitlement.get('can_create'):
         raise ValidationError('A free or active subscription listing entitlement is available.')
     from .serializers import ListingCreateSerializer

@@ -148,7 +148,11 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
         amount=Decimal(amount_kes),
         currency='KES',
         reference=str(invoice.id),
-        metadata={'phone_number': phone_number, 'description': 'SakaKrib subscription'},
+        metadata={
+            'phone_number': phone_number,
+            'description': 'SakaKrib subscription',
+            'callback_url': settings.MPESA_SUBSCRIPTION_CALLBACK_URL,
+        },
     )
     if not result.success:
         invoice.status = 'FAILED'

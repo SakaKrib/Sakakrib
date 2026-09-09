@@ -276,8 +276,14 @@ class PMSActionView(APIView):
         action = request.data.get('action')
         try:
             if action == 'add_listing':
+                from apps.subscriptions.services import get_pms_access
+                access = get_pms_access(profile)
+                if not access.get('allowed'):
+                    raise ValueError(access.get('reason', 'An active PMS subscription is required.'))
+                if access.get('read_only'):
+                    raise ValueError('PMS is read-only during the subscription grace period.')
                 sub, _ = _subscription(profile)
-                if not sub or sub.status not in ('ACTIVE', 'GRACE_PERIOD'):
+                if not sub or sub.status != 'ACTIVE':
                     raise ValueError('An active PMS subscription is required.')
                 listing_id = request.data.get('listing_id')
                 if not listing_id:

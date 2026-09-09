@@ -103,6 +103,8 @@ export default function PropertyListingForm({
   addUnit,
   updateUnit,
   setUnits,
+  handleUnitPhotoUpload,
+  removeUnitPhoto,
 
   bookingEnabled,
   setBookingEnabled,
@@ -227,146 +229,29 @@ export default function PropertyListingForm({
 
   /*
    * =========================================================
-   * UNIT PHOTO DELETE
-   * =========================================================
-   */
-
-  const removeUnitPhoto = (
-    unit: PropertyUnit,
-    photoIndex: number
-  ) => {
-    const updatedPhotos = unit.photos.filter(
-      (_photo, index) => index !== photoIndex
-    );
-
-    updateUnit(
-      unit.id,
-      'photos',
-      updatedPhotos
-    );
-  };
-
-  /*
-   * =========================================================
-   * UNIT PHOTO UPLOAD
-   * =========================================================
-   */
-
-  const handleUnitPhotoUpload = (
-    unit: PropertyUnit,
-    files: FileList | null
-  ) => {
-    if (!files || files.length === 0) {
-      return;
-    }
-
-    const remainingSlots = Math.max(
-      0,
-      7 - unit.photos.length
-    );
-
-    if (remainingSlots === 0) {
-      return;
-    }
-
-    const filesToAdd = Array.from(files)
-    .filter((file) =>
-      ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-      /\.(jpe?g|png|webp)$/i.test(file.name)
-    )
-    .slice(0, remainingSlots);
-
-    const newPhotos: MediaItem[] =
-      filesToAdd.map(
-        (file, photoIndex) => ({
-          file,
-          url: URL.createObjectURL(file),
-          label: `Unit Photo ${
-            unit.photos.length +
-            photoIndex +
-            1
-          }`,
-          type: 'photo',
-        })
-      );
-
-    updateUnit(
-      unit.id,
-      'photos',
-      [
-        ...unit.photos,
-        ...newPhotos,
-      ]
-    );
-  };
-
-  /*
-   * =========================================================
-   * MAIN PHOTO UPLOAD WRAPPER
+   * MEDIA UPLOAD WRAPPERS
    *
-   * Prevents the user from exceeding 7 images even if the
-   * parent handler does not perform the limit.
+   * Parent owns server upload / delete. Child only forwards
+   * the selected files without inventing a second upload path.
    * =========================================================
-   * 
    */
 
   const [videoUploading, setVideoUploading] = useState(false);
 
-  const handleMainPhotoUpload = (
-    files: FileList | null
-  ) => {
-    if (!files || files.length === 0) {
+  const handleMainPhotoUpload = (files: FileList | null) => {
+    handlePhotoUpload?.(files);
+  };
+
+  const handleUnitPhotosSelected = (unit: PropertyUnit, files: FileList | null) => {
+    handleUnitPhotoUpload?.(unit, files);
+  };
+
+  const handleUnitPhotoRemoved = (unit: PropertyUnit, photoIndex: number) => {
+    if (typeof removeUnitPhoto === 'function') {
+      removeUnitPhoto(unit, photoIndex);
       return;
     }
-
-    if (photos.length >= 7) {
-      return;
-    }
-
-    const remainingSlots = 7 - photos.length;
-
-    const selectedFiles = Array.from(files)
-      .filter((file) =>
-        ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-        /\.(jpe?g|png|webp)$/i.test(file.name)
-      )
-      .slice(0, remainingSlots);
-
-    if (selectedFiles.length === 0) {
-      return;
-    }
-
-    /*
-     * The existing parent handler owns the actual
-     * MediaItem state creation, so pass a new FileList-like
-     * collection only when possible.
-     *
-     * Most implementations of handlePhotoUpload accept
-     * FileList directly. To preserve compatibility, we
-     * use the original FileList when it already fits.
-     */
-
-    if (
-      selectedFiles.length === files.length
-    ) {
-      handlePhotoUpload(files);
-      return;
-    }
-
-    /*
-     * Create a DataTransfer object when we need to limit
-     * the selected files.
-     */
-    const dataTransfer =
-      new DataTransfer();
-
-    selectedFiles.forEach((file) => {
-      dataTransfer.items.add(file);
-    });
-
-    handlePhotoUpload(
-      dataTransfer.files
-    );
+    updateUnit(unit.id, 'photos', unit.photos.filter((_photo, index) => index !== photoIndex));
   };
 
   /*
@@ -462,78 +347,12 @@ export default function PropertyListingForm({
         : 6
         : -1;
 
-     /*
-   * =========================================================
-   * search location dropdown
-   * =========================================================
-   */
-
-
-    const searchPropertyLocation = async (query: string) => {
-    const trimmedQuery = query.trim();
-
-    if (trimmedQuery.length < 3) {
-        setLocationSuggestions([]);
-        return;
-    }
-
-    try {
-        const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=ke&q=${encodeURIComponent(
-            trimmedQuery
-        )}`,
-        {
-            headers: {
-            Accept: 'application/json',
-            },
-        }
-        );
-
-        if (!response.ok) {
-        throw new Error(
-            `Location search failed: ${response.status}`
-        );
-        }
-
-        const data = await response.json();
-
-        setLocationSuggestions(
-        data.map((item: any) => ({
-            display_name: item.display_name,
-            lat: item.lat,
-            lon: item.lon,
-        }))
-        );
-    } catch (error) {
-        console.error(
-        '❌ Property location search failed:',
-        error
-        );
-
-        setLocationSuggestions([]);
-    }
-    };
-
     /*
     * =========================================================
-    * location dropdown useeffect
+    * Location search is owned by PostListingPageV2 so we do not
+    * fire a second Nominatim request from this form.
     * =========================================================
     */
-
-    useEffect(() => {
-    const query = locationSearch.trim();
-
-    if (query.length < 3) {
-        setLocationSuggestions([]);
-        return;
-    }
-
-    const timeout = setTimeout(() => {
-        searchPropertyLocation(query);
-    }, 400);
-
-    return () => clearTimeout(timeout);
-    }, [locationSearch]);
 
 
   /*
@@ -1490,7 +1309,7 @@ export default function PropertyListingForm({
                                         <button
                                           type="button"
                                           onClick={() =>
-                                            removeUnitPhoto(
+                                            handleUnitPhotoRemoved(
                                               unit,
                                               photoIndex
                                             )
@@ -1561,7 +1380,7 @@ export default function PropertyListingForm({
                                         className="hidden"
                                         onChange={(e) => {
 
-                                          handleUnitPhotoUpload(
+                                          handleUnitPhotosSelected(
                                             unit,
                                             e.target.files
                                           );

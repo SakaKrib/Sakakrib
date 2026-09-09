@@ -90,6 +90,12 @@ class CommunityPostView(APIView):
                 id=listing_id, user_id=request.user.id, approval_status='approved', is_published=True
             ).exists():
                 return Response({'detail': 'You may only attach an approved published listing you own.'}, status=status.HTTP_400_BAD_REQUEST)
+            existing = CommunityPost.objects.filter(listing_id=listing_id, post_type='listing').order_by('created_at').first()
+            if existing:
+                return Response(
+                    {'detail': 'A community post already exists for this listing.', 'post': _serialize_community_post(request, existing)},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         content = str(request.data.get('content') or '')
         if not content.strip():

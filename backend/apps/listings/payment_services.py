@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -20,7 +21,7 @@ from apps.payments.models import ListingPayment
 from .models import Listing, ListingPaymentIntent
 from .services import _create_listing_from_data, get_listing_entitlement
 
-LISTING_PRICE_KES = Decimal("1000.00")
+LISTING_PRICE_KES = Decimal(str(settings.INDIVIDUAL_LISTING_PRICE_KES))
 MONEY_QUANTUM = Decimal("0.01")
 ALLOWED_LISTING_ROLES = {"landlord", "real_estate"}
 

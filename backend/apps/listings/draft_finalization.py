@@ -25,7 +25,7 @@ def finalize_listing_draft(profile, draft_id, *, payment_intent_id=None):
 
     entitlement = get_listing_entitlement(owner, lock_subscription=True)
     if not entitlement.get('can_start_listing'):
-        raise ValidationError('Identity verification, KYC completion, and application approval are required before submitting a listing.')
+        raise ValidationError('Identity verification, KYC completion, email verification, and application approval are required before submitting a listing.')
 
     unit_count = 0
     if draft.is_property_management:

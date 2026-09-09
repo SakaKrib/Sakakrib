@@ -61,6 +61,8 @@ def review_listing(admin_user, listing_id, decision, note=''):
             for field, value in post_defaults.items():
                 setattr(post, field, value)
             post.save(update_fields=['user_id', 'content', 'ai_caption', 'post_type'])
+            # Remove accidental historical duplicates for the same listing.
+            CommunityPost.objects.filter(listing_id=listing.id).exclude(pk=post.pk).delete()
         else:
             CommunityPost.objects.create(listing_id=listing.id, **post_defaults)
 
