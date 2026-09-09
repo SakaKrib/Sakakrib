@@ -4,14 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from .payment_services import _activate_invoice
 from .renewal_services import create_mpesa_subscription_renewal
 
 
-class SubscriptionRenewalTests(SimpleTestCase):
+class SubscriptionRenewalTests(TestCase):
     def make_profile(self, role='landlord'):
         profile = Mock()
         profile.id = uuid4()
@@ -65,7 +65,7 @@ class SubscriptionRenewalTests(SimpleTestCase):
         invoice_objects.create.return_value = invoice
         get_provider.return_value.create_payment.return_value = provider_result
 
-        result = create_mpesa_subscription_renewal(profile)
+        result = create_mpesa_subscription_renewal(profile, profile.phone)
 
         self.assertTrue(result['success'])
         self.assertTrue(result['renewal'])
@@ -84,7 +84,8 @@ class SubscriptionRenewalTests(SimpleTestCase):
             ValueError,
             'No active or grace-period subscription is available for renewal',
         ):
-            create_mpesa_subscription_renewal(self.make_profile())
+            profile = self.make_profile()
+            create_mpesa_subscription_renewal(profile, profile.phone)
 
     @patch('apps.subscriptions.payment_services.timezone.now')
     @patch('apps.subscriptions.payment_services.LandlordSubscription.objects')
