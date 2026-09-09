@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -89,7 +89,7 @@ class SubscriptionRenewalTests(SimpleTestCase):
     @patch('apps.subscriptions.payment_services.timezone.now')
     @patch('apps.subscriptions.payment_services.LandlordSubscription.objects')
     def test_active_payment_renewal_preserves_remaining_paid_period(self, subscription_objects, now):
-        fixed_now = timezone.now()
+        fixed_now = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
         existing_end = fixed_now + timedelta(days=10)
         now.return_value = fixed_now
 
@@ -124,7 +124,7 @@ class SubscriptionRenewalTests(SimpleTestCase):
     @patch('apps.subscriptions.payment_services.timezone.now')
     @patch('apps.subscriptions.payment_services.LandlordSubscription.objects')
     def test_grace_period_payment_renewal_starts_now(self, subscription_objects, now):
-        fixed_now = timezone.now()
+        fixed_now = datetime(2026, 1, 1, tzinfo=dt_timezone.utc)
         expired_end = fixed_now - timedelta(days=2)
         now.return_value = fixed_now
 
