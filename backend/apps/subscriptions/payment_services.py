@@ -280,9 +280,10 @@ def finalize_paypal_subscription(invoice_id, subscription_id):
 def _activate_invoice(invoice, provider, provider_reference, transaction_id=None):
     """Settle the subscription invoice. A listing attached to the invoice remains a draft.
 
-    The user must still press the final Post/Submit action. Draft finalization is
-    handled by apps.listings.draft_finalization so entitlement capacity is consumed
-    exactly once at submission time.
+    For a brand-new subscription the paid period starts now. For an existing
+    ACTIVE subscription being renewed, the new period starts at the current
+    period end so an early renewal never shortens the already-paid period.
+    A GRACE_PERIOD renewal starts immediately when payment is confirmed.
     """
     now = timezone.now()
     subscription = (
@@ -304,7 +305,10 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
         if not draft.is_property_management:
             raise ValueError('Only property-management drafts can use a listing subscription checkout')
 
-    start = now
+    if subscription.status == 'ACTIVE' and subscription.current_period_end and subscription.current_period_end > now:
+        start = subscription.current_period_end
+    else:
+        start = now
     end = _period_end(start, subscription.billing_cycle)
     invoice.status = 'PAID'
     invoice.payment_provider = provider
