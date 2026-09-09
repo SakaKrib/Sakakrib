@@ -44,8 +44,9 @@ def get_pms_access(profile):
 
     PMS access is deliberately separate from listing entitlement. A paid
     subscription is required; ACTIVE permits full access and GRACE_PERIOD
-    permits read-only continuity. Role, identity verification and the
-    role-specific application approval are checked server-side.
+    permits read-only continuity. Role, identity verification, email
+    verification and the role-specific application approval are checked
+    server-side.
     """
     if not profile or not profile.is_authenticated:
         return {'allowed': False, 'reason': 'AUTHENTICATION_REQUIRED', 'read_only': False}
@@ -55,6 +56,9 @@ def get_pms_access(profile):
 
     if str(getattr(profile, 'verification_status', '')).lower() != 'verified' or not getattr(profile, 'kyc_completed', False):
         return {'allowed': False, 'reason': 'IDENTITY_VERIFICATION_REQUIRED', 'read_only': False}
+
+    if not getattr(profile, 'email_verified', False):
+        return {'allowed': False, 'reason': 'EMAIL_VERIFICATION_REQUIRED', 'read_only': False}
 
     application_field = 'landlord_application_status' if profile.role == 'landlord' else 'real_estate_application_status'
     if getattr(profile, application_field, None) != 'approved':
