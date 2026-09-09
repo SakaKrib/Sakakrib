@@ -270,10 +270,11 @@ export default function PropertyListingForm({
     }
 
     const filesToAdd = Array.from(files)
-      .filter((file) =>
-        file.type.startsWith('image/')
-      )
-      .slice(0, remainingSlots);
+    .filter((file) =>
+      ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
+      /\.(jpe?g|png|webp)$/i.test(file.name)
+    )
+    .slice(0, remainingSlots);
 
     const newPhotos: MediaItem[] =
       filesToAdd.map(
@@ -326,7 +327,8 @@ export default function PropertyListingForm({
 
     const selectedFiles = Array.from(files)
       .filter((file) =>
-        file.type.startsWith('image/')
+        ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
+        /\.(jpe?g|png|webp)$/i.test(file.name)
       )
       .slice(0, remainingSlots);
 
