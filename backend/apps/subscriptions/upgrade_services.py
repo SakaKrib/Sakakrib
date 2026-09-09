@@ -162,6 +162,133 @@ def create_mpesa_subscription_upgrade(profile, target_plan_id, billing_cycle, ph
     }
 
 
+def create_paypal_subscription_upgrade(profile, target_plan_id, billing_cycle):
+    """Request a PayPal plan revision on the existing subscription.
+
+    PayPal applies the revised price from the next billing cycle and requires
+    payer re-consent. Django keeps the existing subscription row and PMS links;
+    the local plan is changed only after PayPal confirms the revision.
+    """
+    if profile.role not in ('landlord', 'real_estate'):
+        raise ValueError('Only landlord and real estate accounts can upgrade subscriptions')
+    if profile.verification_status != 'verified':
+        raise ValueError('Identity verification is required before subscription upgrade')
+    if not getattr(profile, 'email_verified', False):
+        raise ValueError('Email verification is required before subscription upgrade')
+    if profile.role == 'landlord' and profile.landlord_application_status != 'approved':
+        raise ValueError('Landlord application approval is required before subscription upgrade')
+    if profile.role == 'real_estate' and profile.real_estate_application_status != 'approved':
+        raise ValueError('Real estate application approval is required before subscription upgrade')
+
+    billing_cycle = str(billing_cycle or '').upper()
+    if billing_cycle not in ('MONTHLY', 'ANNUAL'):
+        raise ValueError('billing_cycle must be MONTHLY or ANNUAL')
+
+    current = get_current_subscription(profile)
+    if not current or current.status != 'ACTIVE':
+        raise ValueError('A PayPal upgrade requires an active subscription')
+    if current.billing_cycle != billing_cycle:
+        raise ValueError('Subscription upgrades must keep the current billing cycle')
+    paypal_subscription_id = str(getattr(current, 'paypal_subscription_id', '') or '').strip()
+    if not paypal_subscription_id:
+        raise ValueError('The current subscription is not linked to PayPal')
+
+    current_plan = SubscriptionPlan.objects.filter(pk=current.plan_id, audience=profile.role.upper()).first()
+    target_plan = SubscriptionPlan.objects.filter(pk=target_plan_id, audience=profile.role.upper()).first()
+    if not current_plan or not target_plan:
+        raise ValueError('Subscription plan not found for this account type')
+    if _PLAN_RANK.get(str(target_plan.name).upper(), 0) <= _PLAN_RANK.get(str(current_plan.name).upper(), 0):
+        raise ValueError('The selected plan must be higher than your current plan')
+
+    paypal_plan_id = target_plan.paypal_monthly_plan_id if billing_cycle == 'MONTHLY' else target_plan.paypal_annual_plan_id
+    if not paypal_plan_id:
+        raise ValueError('PayPal is not configured for this plan yet')
+
+    owner_field = 'landlord_subscription_id' if profile.role == 'landlord' else 'real_estate_subscription_id'
+    subscription_model = LandlordSubscription if profile.role == 'landlord' else RealEstateSubscription
+    now = timezone.now()
+
+    with transaction.atomic():
+        locked = subscription_model.objects.select_for_update().get(pk=current.id)
+        if locked.status != 'ACTIVE' or str(getattr(locked, 'paypal_subscription_id', '') or '').strip() != paypal_subscription_id:
+            raise ValueError('Subscription is no longer available for PayPal upgrade')
+
+        active_links = SubscriptionListing.objects.filter(
+            Q(subscription_id=locked.id) | Q(real_estate_subscription_id=locked.id),
+            status='ACTIVE',
+        ).count()
+        if target_plan.max_listings is not None and active_links > target_plan.max_listings:
+            raise ValueError('The selected plan cannot support all existing PMS listings')
+
+        pending = SubscriptionInvoice.objects.filter(
+            **{owner_field: locked.id}, status='PENDING', payment_provider='PAYPAL', upgrade_plan_id__isnull=False
+        ).order_by('-created_at').first()
+        if pending:
+            raise ValueError('A PayPal subscription upgrade is already pending')
+
+        invoice = SubscriptionInvoice.objects.create(
+            amount_kes=target_plan.annual_price_kes if billing_cycle == 'ANNUAL' else target_plan.monthly_price_kes,
+            amount_usd=target_plan.paypal_annual_price_usd if billing_cycle == 'ANNUAL' else target_plan.paypal_monthly_price_usd,
+            status='PENDING',
+            payment_provider='PAYPAL',
+            payment_method='PAYPAL',
+            landlord_subscription_id=locked.id if profile.role == 'landlord' else None,
+            real_estate_subscription_id=locked.id if profile.role == 'real_estate' else None,
+            currency='USD',
+            billing_period_start=locked.current_period_start,
+            billing_period_end=locked.current_period_end,
+            pricing_snapshot_source='subscription_upgrade',
+            upgrade_plan_id=target_plan.id,
+            upgrade_billing_cycle=billing_cycle,
+            paypal_subscription_id=paypal_subscription_id,
+            provider_reference=paypal_subscription_id,
+            created_at=now,
+        )
+
+    from .paypal_subscription_services import _paypal_json, _paypal_token
+
+    try:
+        remote = _paypal_json(
+            f'/v1/billing/subscriptions/{paypal_subscription_id}/revise',
+            method='POST',
+            body={'plan_id': str(paypal_plan_id)},
+            token=_paypal_token(),
+        )
+    except Exception:
+        invoice.status = 'FAILED'
+        invoice.result_description = 'Unable to request the PayPal subscription plan revision.'
+        invoice.save(update_fields=['status', 'result_description'])
+        raise
+
+    approval_url = next(
+        (str(link.get('href')) for link in remote.get('links', []) if link.get('rel') == 'approve' and link.get('href')),
+        None,
+    )
+    if not approval_url:
+        invoice.status = 'FAILED'
+        invoice.result_description = 'PayPal did not return a re-consent approval link.'
+        invoice.save(update_fields=['status', 'result_description'])
+        raise RuntimeError('PayPal did not return a subscription upgrade approval link')
+
+    return {
+        'success': True,
+        'upgrade': True,
+        'provider': 'paypal',
+        'subscription_id': str(locked.id),
+        'invoice_id': str(invoice.id),
+        'current_plan_id': str(current_plan.id),
+        'current_plan_name': current_plan.name,
+        'target_plan_id': str(target_plan.id),
+        'target_plan_name': target_plan.name,
+        'billing_cycle': billing_cycle,
+        'paypal_subscription_id': paypal_subscription_id,
+        'paypal_plan_id': paypal_plan_id,
+        'approval_url': approval_url,
+        'status': 'PENDING_PAYMENT',
+        'payment_action': 'PAYPAL_SUBSCRIPTION_RECONSENT',
+    }
+
+
 def finalize_mpesa_subscription_upgrade(invoice_id, result_code, result_description='', mpesa_receipt=None, checkout_request_id=None, merchant_request_id=None, phone_number=None, paid_amount=None):
     with transaction.atomic():
         invoice = SubscriptionInvoice.objects.select_for_update().filter(pk=invoice_id).first()
