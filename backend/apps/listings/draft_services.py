@@ -113,15 +113,12 @@ def save_listing_draft(profile, data, draft_id=None):
         if not draft:
             raise ValidationError('Draft not found.')
     else:
-        # Auto-save requests can overlap before React receives the first
-        # listing ID. Reuse a draft updated moments ago rather than creating
-        # a second listing for the same in-flight draft session. The owner row
-        # is locked above, so concurrent saves are serialized.
-        recent_cutoff = timezone.now() - timedelta(seconds=5)
+        # A draft save without an id must resume the owner's existing draft.
+        # The profile row is locked above, so concurrent saves for this owner
+        # cannot create multiple drafts while performing this lookup.
         draft = Listing.objects.select_for_update().filter(
             user_id=owner.id,
             is_draft=True,
-            updated_at__gte=recent_cutoff,
         ).order_by('-updated_at', '-created_at').first()
 
     defaults = {
