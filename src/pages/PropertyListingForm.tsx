@@ -306,7 +306,10 @@ export default function PropertyListingForm({
    * Prevents the user from exceeding 7 images even if the
    * parent handler does not perform the limit.
    * =========================================================
+   * 
    */
+
+  const [videoUploading, setVideoUploading] = useState(false);
 
   const handleMainPhotoUpload = (
     files: FileList | null
@@ -2378,10 +2381,18 @@ export default function PropertyListingForm({
 
                         <div className="relative">
 
-                          <video
+                         <video
                             src={video.url}
-                            className="h-40 w-full rounded-lg object-cover"
+                            className="h-40 w-full rounded-lg object-contain bg-black"
                             controls
+                            playsInline
+                            preload="metadata"
+                            onError={(event) => {
+                              console.error(
+                                'Walkthrough video playback failed:',
+                                event.currentTarget.error
+                              );
+                            }}
                           />
 
                           <button
@@ -2395,34 +2406,55 @@ export default function PropertyListingForm({
 
                         </div>
 
-                      ) : (
+                      ) : videoUploading ? (
 
-                        <label className="flex h-32 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 transition-colors hover:border-brand-400 dark:border-brand-700 dark:hover:border-brand-500">
+                      <div className="flex h-32 flex-col items-center justify-center rounded-lg border-2 border-brand-300 bg-brand-50 dark:border-brand-700 dark:bg-brand-900/30">
 
-                          <Video className="h-6 w-6 text-gray-400" />
+                        <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
 
-                          <span className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            Upload Video
-                          </span>
+                        <span className="mt-2 text-sm font-medium text-brand-700 dark:text-brand-300">
+                          Uploading walkthrough video...
+                        </span>
 
-                          <input
-                            type="file"
-                            accept="video/mp4,video/webm,video/quicktime"
-                            className="hidden"
-                            onChange={(e) => {
-                                const file = e.target.files?.[0];
+                        <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Please wait. Do not close or leave this page.
+                        </span>
 
-                                if (file) {
-                                handleVideoUpload(file);
-                                }
+                      </div>
 
-                                e.target.value = '';
-                            }}
-                            />
-                          
+                    ) : (
 
-                        </label>
-                      )}
+                      <label className="flex h-32 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 transition-colors hover:border-brand-400 dark:border-brand-700 dark:hover:border-brand-500">
+
+                        <Video className="h-6 w-6 text-gray-400" />
+
+                        <span className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          Upload Video
+                        </span>
+
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm,video/quicktime"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+
+                            if (file) {
+                              setVideoUploading(true);
+
+                              try {
+                                await handleVideoUpload(file);
+                              } finally {
+                                setVideoUploading(false);
+                              }
+                            }
+
+                            e.target.value = '';
+                          }}
+                        />
+
+                      </label>
+                    )}
 
                     </div>
 

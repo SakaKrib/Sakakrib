@@ -85,6 +85,7 @@ export default function PostListingPageV2() {
   const [customSize, setCustomSize] = useState('');
   const [beds, setBeds] = useState('1');
   const [baths, setBaths] = useState('1');
+  
 
   useEffect(() => {
     if (selectedPostListingDraftId !== draftId) setDraftId(selectedPostListingDraftId);
@@ -376,7 +377,7 @@ export default function PostListingPageV2() {
     if (remaining <= 0) { setError(`You can upload a maximum of ${MAX_PHOTOS} photos.`); return; }
     try {
       const id = await ensureDraft();
-      const validFiles = Array.from(files).slice(0, remaining).filter((file) => file.type.startsWith('image/') && file.size <= MAX_PHOTO_SIZE);
+      const validFiles = Array.from(files).filter((file) =>file.type.startsWith('image/') &&file.size <= MAX_PHOTO_SIZE).slice(0, remaining);
       if (!validFiles.length) { setError('Please select valid image files no larger than 10 MB.'); return; }
       for (const [index, file] of validFiles.entries()) {
         const formData = new FormData(); formData.append('listing_id', id); formData.append('file', file); formData.append('media_type', 'photo'); formData.append('label', `Photo ${photos.length + index + 1}`); formData.append('position', String(photos.length + index));
