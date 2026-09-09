@@ -64,7 +64,9 @@ def get_listing_entitlement(profile, *, lock_subscription=False):
     source = 'FREE' if can_start and free_remaining > 0 else ('SUBSCRIPTION' if can_start and active and (limit is None or remaining > 0) else None)
     can_create = source is not None
     needs_payment = can_start and not can_create
-    pms_access = bool(active and (limit is None or remaining > 0))
+    # PMS access is independent from remaining listing capacity. Capacity only
+    # controls whether another PMS listing may be added.
+    pms_access = bool(active)
     upgrade_target = 'subscription' if needs_payment and not active else ('individual_payment' if needs_payment else None)
     return {
         'authorized': True, 'role': role, 'verification_status': getattr(profile, 'verification_status', None),
