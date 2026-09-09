@@ -47,8 +47,21 @@ const pmsAccess = async (): Promise<PMSAccessDecision> =>
 const subscriptionAccess = async (): Promise<PMSEntitlementSnapshot> =>
   protectedGet<PMSEntitlementSnapshot>('/api/subscriptions/me/access/');
 
-const subscription = async (): Promise<PMSSubscriptionSnapshot> =>
-  protectedGet<any>('/api/subscriptions/me/');
+const subscription = async (): Promise<PMSSubscriptionSnapshot> => {
+  const data = await protectedGet<any>('/api/subscriptions/me/');
+
+  // Django returns a null-valued subscription snapshot when the user has no
+  // subscription. Treat that as "no subscription" instead of passing the
+  // placeholder row through to the PMS normalizer, which expects a real id.
+  if (
+    !data?.subscription_id &&
+    !data?.id
+  ) {
+    return null;
+  }
+
+  return data;
+};
 
 export const djangoPmsGateway = {
   auth: {
