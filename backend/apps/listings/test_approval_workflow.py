@@ -1,12 +1,12 @@
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 
 from .review_services import review_listing
 
 
-class ListingApprovalWorkflowTests(SimpleTestCase):
+class ListingApprovalWorkflowTests(TestCase):
     @patch('apps.listings.review_services.dispatch_user_notification')
     @patch('apps.listings.review_services.CommunityPost.objects')
     @patch('apps.listings.review_services.Listing.objects')
