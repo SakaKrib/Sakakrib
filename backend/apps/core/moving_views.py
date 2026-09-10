@@ -289,3 +289,65 @@ class MoverScheduleEventView(APIView):
             {field: getattr(obj, field) for field in self.fields}
             for obj in queryset.order_by("-starts_at")
         ])
+
+
+class MovingTrackingPointView(APIView):
+    """Matches production tracking SELECT: active/completed booking participant or admin."""
+    permission_classes = [IsAuthenticated]
+
+    fields = (
+        "id", "booking_id", "mover_id", "latitude", "longitude", "accuracy_meters",
+        "speed_kph", "heading_degrees", "recorded_at",
+    )
+
+    def get(self, request, object_id=None):
+        user = request.user
+        mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
+        participant_bookings = Booking.objects.filter(
+            Q(renter_id=user.pk) | Q(mover_id__in=mover_ids),
+            status__in=["in_progress", "completed"],
+        ).values("id")
+        queryset = MovingTrackingPoint.objects.filter(booking_id__in=participant_bookings)
+        if is_admin(user):
+            queryset = MovingTrackingPoint.objects.filter(
+                booking_id__in=Booking.objects.filter(
+                    status__in=["in_progress", "completed"]
+                ).values("id")
+            )
+        if object_id is not None:
+            obj = queryset.filter(pk=object_id).first()
+            if obj is None:
+                return Response({"detail": "Not found."}, status=404)
+            return Response({field: getattr(obj, field) for field in self.fields})
+        return Response([
+            {field: getattr(obj, field) for field in self.fields}
+            for obj in queryset.order_by("-recorded_at")
+        ])
+
+
+class MovingCancellationEventView(APIView):
+    """Matches production cancellation SELECT: actor or booking participant."""
+    permission_classes = [IsAuthenticated]
+
+    fields = (
+        "id", "booking_id", "cancelled_by", "reason_code", "reason_text", "created_at",
+    )
+
+    def get(self, request, object_id=None):
+        user = request.user
+        mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
+        participant_booking_ids = Booking.objects.filter(
+            Q(renter_id=user.pk) | Q(mover_id__in=mover_ids)
+        ).values("id")
+        queryset = MovingCancellationEvent.objects.filter(
+            Q(cancelled_by=user.pk) | Q(booking_id__in=participant_booking_ids)
+        )
+        if object_id is not None:
+            obj = queryset.filter(pk=object_id).first()
+            if obj is None:
+                return Response({"detail": "Not found."}, status=404)
+            return Response({field: getattr(obj, field) for field in self.fields})
+        return Response([
+            {field: getattr(obj, field) for field in self.fields}
+            for obj in queryset.order_by("-created_at")
+        ])
