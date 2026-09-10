@@ -1,6 +1,7 @@
 import uuid
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
+from django.utils import timezone
 
 class LandlordPaymentMethod(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); landlord_id=models.UUIDField(); provider=models.TextField(); mpesa_method=models.TextField(null=True,blank=True); display_name=models.TextField(); paybill_number=models.TextField(null=True,blank=True); paybill_account=models.TextField(null=True,blank=True); till_number=models.TextField(null=True,blank=True); paypal_email=models.TextField(null=True,blank=True); is_default=models.BooleanField(default=False); is_active=models.BooleanField(default=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
@@ -31,7 +32,7 @@ class PlatformSettings(models.Model):
     class Meta: db_table='platform_settings'
 
 class CommunityPost(models.Model):
-    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); user_id=models.UUIDField(); listing_id=models.UUIDField(null=True,blank=True); content=models.TextField(default=''); ai_caption=models.TextField(null=True,blank=True); post_type=models.TextField(default='listing'); created_at=models.DateTimeField(null=True,blank=True)
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); user_id=models.UUIDField(); listing_id=models.UUIDField(null=True,blank=True); content=models.TextField(default=''); ai_caption=models.TextField(null=True,blank=True); post_type=models.TextField(default='listing'); created_at=models.DateTimeField(default=timezone.now,null=True,blank=True)
     class Meta: db_table='community_posts'
 
 class CommunityPostMedia(models.Model):
