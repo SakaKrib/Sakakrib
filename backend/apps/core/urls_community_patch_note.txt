@@ -1,1 +1,0 @@
-Community endpoints are wired in the existing core URL configuration.
