@@ -128,7 +128,6 @@ class ListingSerializer(serializers.ModelSerializer):
         if not obj.is_property_management or not obj.payment_enabled:
             return []
 
-        request = self.context.get('request')
         owner = Profile.objects.filter(pk=obj.user_id).first()
         if not owner:
             return []
@@ -137,15 +136,14 @@ class ListingSerializer(serializers.ModelSerializer):
         if role not in {'landlord', 'real_estate'}:
             return []
 
-        # Payment methods are currently stored in the landlord-owned table.
-        # Do not expose them unless the property owner has an eligible PMS subscription.
+        # Payment methods are stored in the existing landlord-owned table and are
+        # also used for real-estate PMS accounts. Only expose active methods when
+        # the property owner has an eligible PMS subscription. This is display-only;
+        # this serializer never creates invoices or initiates a payment.
         try:
             if get_current_subscription(owner) is None:
                 return []
         except Exception:
-            return []
-
-        if role != 'landlord':
             return []
 
         rows = LandlordPaymentMethod.objects.filter(
