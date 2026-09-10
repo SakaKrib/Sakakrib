@@ -34,6 +34,20 @@ class CommunityPost(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); user_id=models.UUIDField(); listing_id=models.UUIDField(null=True,blank=True); content=models.TextField(default=''); ai_caption=models.TextField(null=True,blank=True); post_type=models.TextField(default='listing'); created_at=models.DateTimeField(null=True,blank=True)
     class Meta: db_table='community_posts'
 
+class CommunityPostMedia(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); post_id=models.UUIDField(); user_id=models.UUIDField(); storage_path=models.TextField(); url=models.TextField(); label=models.TextField(default=''); media_type=models.TextField(default='photo'); position=models.IntegerField(default=0); created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        db_table='community_post_media'
+        constraints=[models.UniqueConstraint(fields=['post_id','position'],name='community_post_media_post_position_uniq')]
+        indexes=[models.Index(fields=['post_id','position'])]
+
+class CommunityPostReaction(models.Model):
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); post_id=models.UUIDField(); user_id=models.UUIDField(); reaction_type=models.TextField(default='like'); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        db_table='community_post_reactions'
+        constraints=[models.UniqueConstraint(fields=['post_id','user_id'],name='community_post_reactions_post_user_uniq')]
+        indexes=[models.Index(fields=['post_id']),models.Index(fields=['user_id'])]
+
 class Review(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); reviewer_id=models.UUIDField(); reviewee_id=models.UUIDField(null=True,blank=True); listing_id=models.UUIDField(null=True,blank=True); mover_id=models.UUIDField(null=True,blank=True); rating=models.IntegerField(default=5); comment=models.TextField(default=''); review_type=models.TextField(); created_at=models.DateTimeField(null=True,blank=True); booking_id=models.UUIDField(null=True,blank=True)
     class Meta: db_table='reviews'
