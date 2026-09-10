@@ -99,7 +99,11 @@ class RenterDashboardView(APIView):
             }
             listing = Listing.objects.filter(id=unit.listing_id).first()
             if listing:
-                media = ListingMedia.objects.filter(listing_id=listing.id, media_type="photo").order_by("position", "created_at").first()
+                media = ListingMedia.objects.filter(
+                    listing_id=listing.id,
+                    unit_id__isnull=True,
+                    media_type="photo",
+                ).order_by("position", "created_at").first()
                 cover_url = None
                 if media:
                     if media.url.startswith("django-media://"):
