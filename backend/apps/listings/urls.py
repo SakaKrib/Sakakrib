@@ -5,6 +5,7 @@ from .admin_post_views import AdminListingPostOnBehalfView
 from .ai_caption_views import ListingAiCaptionView
 from .draft_views import ListingDraftDetailView, ListingDraftListView
 from .media_delete_views import ListingMediaDeleteView
+from .media_update_views import ListingMediaUpdateView
 from .public_views import FeaturedListingsView
 from .views import (
     AdminListingReviewView,
@@ -23,6 +24,7 @@ urlpatterns = [
     path('drafts/<uuid:draft_id>/', ListingDraftDetailView.as_view(), name='listing-draft-detail'),
     path('media/', ListingMediaView.as_view(), name='listing-media'),
     path('media/<uuid:media_id>/delete/', ListingMediaDeleteView.as_view(), name='listing-media-delete'),
+    path('media/<uuid:media_id>/update/', ListingMediaUpdateView.as_view(), name='listing-media-update'),
     path('media/<uuid:media_id>/', ListingMediaDetailView.as_view(), name='listing-media-detail'),
     path('featured/', FeaturedListingsView.as_view(), name='listing-featured'),
     path('', ListingListView.as_view(), name='listing-list'),
