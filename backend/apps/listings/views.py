@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.authorization import is_admin
-from apps.core.domain_property import CommunityPost, ListingMedia, PropertyUnit
+from apps.core.domain_property import ListingMedia, PropertyUnit
 
 from .models import Listing, ListingPaymentIntent
 from .review_services import review_listing
@@ -91,7 +91,6 @@ class ListingMediaView(APIView):
             return Response({'detail': 'media_type must be photo or video.'}, status=status.HTTP_400_BAD_REQUEST)
         content_type = str(getattr(file, 'content_type', '') or '').lower()
         if content_type not in allowed_types:
-            # Browsers sometimes omit or misreport MIME; fall back to a safe extension map.
             extension_hint = Path(getattr(file, 'name', '') or '').suffix.lower()
             fallback_map = ALLOWED_PHOTO_EXTENSIONS if media_type == 'photo' else ALLOWED_VIDEO_EXTENSIONS
             content_type = fallback_map.get(extension_hint, '')
@@ -167,11 +166,10 @@ class ListingPaymentIntentView(APIView):
     def get(self, request, intent_id):
         intent = ListingPaymentIntent.objects.filter(pk=intent_id, user_id=request.user.pk).first()
         if not intent: return Response({'error': 'Listing payment intent not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response({'id': str(intent.id), 'status': intent.status, 'listing_id': str(intent.listing_id) if intent.listing_id else None, 'amount_kes': float(intent.amount_kes), 'provider': intent.provider, 'provider_reference': intent.provider_reference, 'provider_amount': float(intent.provider_amount) if intent.provider_amount is not None else None, 'provider_currency': intent.provider_currency, 'created_at': intent.created_at, 'paid_at': intent.paid_at, 'expires_at': intent.expires_at})
+        return Response({'id': str(intent.id), 'status': intent.status, 'listing_id': str(intent.listing_id) if intent.listing_id else None, 'amount_kes': float(intent.amount_kes), 'provider': intent.provider, 'provider_reference': intent.provider_reference, 'provider_amount': float(intent.provider_amount), 'provider_currency': intent.provider_currency, 'created_at': intent.created_at, 'paid_at': intent.paid_at, 'expires_at': intent.expires_at})
 
 
 class ListingListView(APIView):
-    """Production-equivalent listing read boundary plus simple search/filtering."""
     permission_classes = [IsAuthenticated]
     def get(self, request):
         user = request.user
@@ -249,17 +247,9 @@ class ListingDetailView(APIView):
             if application_status != 'approved': return Response({'error': 'Application approval is required to update listings.'}, status=status.HTTP_403_FORBIDDEN)
             allowed_to_update = True
         if not allowed_to_update: return Response({'error': 'You are not authorized to update this listing.'}, status=status.HTTP_403_FORBIDDEN)
-        was_approved = listing.approval_status == 'approved' or listing.is_approved
-        serializer = ListingUpdateSerializer(listing, data=request.data, partial=True); serializer.is_valid(raise_exception=True); serializer.save(updated_at=timezone.now())
-        if was_approved and not is_admin(request.user):
-            listing.approval_status = 'pending_review'
-            listing.is_approved = False
-            listing.is_published = False
-            listing.status = 'pending'
-            listing.admin_reviewed_at = None
-            listing.admin_review_note = ''
-            listing.save(update_fields=['approval_status', 'is_approved', 'is_published', 'status', 'admin_reviewed_at', 'admin_review_note', 'updated_at'])
-            CommunityPost.objects.filter(listing_id=listing.id).update(is_published=False)
+        serializer = ListingUpdateSerializer(listing, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_at=timezone.now())
         return Response(ListingSerializer(listing, context={'request': request}).data)
     def put(self, request, listing_id): return self.patch(request, listing_id)
 
