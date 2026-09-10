@@ -185,7 +185,33 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
 
   if (resource === 'movers') {
     const moverId = getEq(query, 'id');
-    if (method === 'GET') return djangoGet<T>(moverId ? `/api/core/movers/${encodeURIComponent(moverId)}/` : '/api/core/movers/');
+    if (method === 'GET') {
+      if (moverId) return djangoGet<T>(`/api/core/movers/${encodeURIComponent(moverId)}/`);
+
+      const params = new URLSearchParams();
+      const city = getEq(query, 'operating_city');
+      const vehicleType = getEq(query, 'vehicle_type');
+      const availability = getEq(query, 'is_available');
+      const order = query.get('order');
+      const orFilter = query.get('or');
+
+      if (city) params.set('operating_city', city);
+      if (vehicleType) params.set('vehicle_type', vehicleType);
+      if (availability) params.set('is_available', availability);
+
+      // Legacy callers encode name/city search as an `or=(...)` expression.
+      // Convert it to the canonical Django `search` parameter.
+      if (orFilter) {
+        const match = orFilter.match(/driver_full_name\.ilike\.\*(.*?)\*,operating_city\.ilike\.\*(.*?)\*/);
+        if (match) {
+          params.set('search', match[1] || match[2] || '');
+        }
+      }
+
+      if (order === 'created_at.desc') params.set('ordering', '-created_at');
+
+      return djangoGet<T>(`/api/core/movers/${params.toString() ? `?${params}` : ''}`);
+    }
     if (moverId && method === 'PATCH') return djangoPatch<T>(`/api/accounts/admin/movers/${encodeURIComponent(moverId)}/`, json(init));
   }
 
