@@ -212,64 +212,54 @@ export default function AdminCreateListingFlow({ users, formatKES, HOUSE_SIZES, 
   if (stage === 'user') return (
     <div className="mx-auto max-w-4xl px-2 py-8 sm:px-6">
       <button type="button" onClick={() => setStage('role')} className="mb-4 text-xs font-semibold text-brand-600 dark:text-brand-400"><ArrowLeft className="mr-1 inline h-3.5 w-3.5" />Back</button>
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Choose {role === 'landlord' ? 'a Landlord' : 'a Real Estate Account'}</h1>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">All existing {role === 'landlord' ? 'landlord' : 'real-estate'} accounts are available. Subscription status is checked after you select one.</p>
-      <div className="relative mt-4"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search by name, email or phone..." className="input-field w-full pl-9" /></div>
-      <div className="card mt-4 divide-y divide-gray-100 overflow-hidden dark:divide-brand-800">
-        {eligibleUsers.length === 0 && <p className="px-5 py-10 text-center text-sm text-gray-500 dark:text-gray-400">No matching accounts found.</p>}
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Choose {role === 'landlord' ? 'a Landlord' : 'a Real Estate'} Account</h1>
+      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Select the existing account that should own the listing.</p>
+      <div className="relative mt-5"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search name, email or phone..." className="input-field pl-10" /></div>
+      <div className="mt-5 space-y-3">
         {eligibleUsers.map((user) => (
-          <button key={user.id} type="button" onClick={() => chooseUser(user)} className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-brand-900/30">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-100 font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">{user.profile_photo_url ? <img src={user.profile_photo_url} alt={displayName(user)} className="h-full w-full object-cover" /> : initials(user)}</div>
-            <div className="min-w-0 flex-1"><p className="font-semibold text-gray-900 dark:text-white">{displayName(user)}</p><p className="truncate text-xs text-gray-500 dark:text-gray-400">{user.email}{user.phone ? ` · ${user.phone}` : ''}</p></div>
-            <span className="mr-2 rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-600 dark:bg-brand-800 dark:text-gray-300">Subscription checked next</span><ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+          <button key={user.id} type="button" onClick={() => chooseUser(user)} className="card flex w-full items-center gap-4 p-4 text-left transition-shadow hover:shadow-md">
+            {user.profile_photo_url ? <img src={user.profile_photo_url} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-800 dark:text-brand-200">{initials(user)}</div>}
+            <div className="min-w-0 flex-1"><div className="font-semibold text-gray-900 dark:text-white">{displayName(user)}</div><div className="truncate text-sm text-gray-500 dark:text-gray-400">{user.email}</div><div className="text-xs text-gray-400">{user.phone || 'No phone'}</div></div>
+            <div className="text-right"><div className="text-xs font-semibold uppercase text-brand-600 dark:text-brand-400">{isActiveSubscription(user) ? 'PMS' : 'Normal'}</div><div className="mt-1 text-xs text-gray-400">{isActiveSubscription(user) ? 'Active subscription' : 'No active subscription'}</div></div>
+            <ChevronRight className="h-5 w-5 text-gray-400" />
           </button>
         ))}
+        {eligibleUsers.length === 0 && <div className="card p-8 text-center text-sm text-gray-500 dark:text-gray-400">No matching accounts found.</div>}
       </div>
     </div>
   );
 
-  if (!selectedUser || !category) return null;
-
   return (
-    <div>
-      <div className="mx-auto w-full max-w-5xl px-2 pt-8 sm:px-6 lg:px-8">
-        <button type="button" onClick={() => setStage('user')} className="mb-3 text-xs font-semibold text-brand-600 dark:text-brand-400"><ArrowLeft className="mr-1 inline h-3.5 w-3.5" />Choose a different account</button>
-        <div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30">
-          <div><p className="text-sm font-semibold text-brand-800 dark:text-brand-300">Creating a {category === 'pms' ? 'PMS' : 'normal'} listing for {displayName(selectedUser)}</p><p className="text-xs text-brand-700 dark:text-brand-300">{selectedUser.email} · {role === 'landlord' ? 'Landlord' : 'Real Estate'} account · {category === 'pms' ? 'Active PMS subscription' : 'No active PMS subscription'}</p></div>
-          {category === 'pms' ? <CheckCircle2 className="h-5 w-5 shrink-0 text-brand-600" /> : null}
-        </div>
-        {error && <div className="mt-3 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-300">{error}</div>}
-        {success && <div className="mt-3 flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700 dark:border-brand-700 dark:bg-brand-900/30 dark:text-brand-300"><CheckCircle2 className="h-4 w-4" />Listing created successfully.</div>}
+    <div className="mx-auto max-w-6xl px-2 py-6 sm:px-6">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div><button type="button" onClick={() => setStage('user')} className="mb-2 text-xs font-semibold text-brand-600 dark:text-brand-400"><ArrowLeft className="mr-1 inline h-3.5 w-3.5" />Choose another account</button><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Listing</h1><p className="text-sm text-gray-500 dark:text-gray-400">For {displayName(selectedUser!)} · {role === 'landlord' ? 'Landlord' : 'Real Estate'} · {category === 'pms' ? 'Property Management' : 'Normal Listing'}</p></div>
+        <div className="rounded-full bg-brand-100 px-3 py-1.5 text-xs font-semibold text-brand-700 dark:bg-brand-800/50 dark:text-brand-300">{category === 'pms' ? 'PMS listing' : 'Normal listing'}</div>
       </div>
-
-      {category === 'normal' ? (
-        <EditingListingForm
-          city={city} setCity={setCity} customCity={customCity} setCustomCity={setCustomCity} county={county} setCounty={setCounty}
-          locationSearch={locationSearch} setLocationSearch={setLocationSearch} locationSuggestions={locationSuggestions} setLocationSuggestions={setLocationSuggestions}
-          setLatitude={setLatitude} setLongitude={setLongitude} handleUseCurrentLocation={handleUseCurrentLocation} usingGPS={usingGPS}
-          listingType={listingType} setListingType={setListingType} price={price} setPrice={setPrice} formatKES={formatKES}
-          depositRequired={depositRequired} setDepositRequired={setDepositRequired} depositStructure={depositStructure} setDepositStructure={setDepositStructure} depositAmount={depositAmount} setDepositAmount={setDepositAmount}
-          title={title} setTitle={setTitle} size={size} setSize={setSize} customSize={customSize} setCustomSize={setCustomSize} HOUSE_SIZES={HOUSE_SIZES} beds={beds} setBeds={setBeds} baths={baths} setBaths={setBaths} description={description} setDescription={setDescription}
-          phone={phone} setPhone={setPhone} email={email} setEmail={setEmail} socialLinks={socialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
-          photos={photos} handlePhotoUpload={handlePhotoUpload} removePhoto={removePhoto} updatePhotoLabel={updatePhotoLabel} video={video} handleVideoUpload={handleVideoUpload} removeVideo={removeVideo}
-          onSave={handleSave} saving={creating} error={null} success={success}
-        />
-      ) : (
+      {category === 'pms' ? (
         <EditingListingPMSForm
           propertyName={propertyName} setPropertyName={setPropertyName} propertyType={propertyType} setPropertyType={setPropertyType}
           city={city} setCity={setCity} customCity={customCity} setCustomCity={setCustomCity} county={county} setCounty={setCounty}
           locationSearch={locationSearch} setLocationSearch={setLocationSearch} locationSuggestions={locationSuggestions} setLocationSuggestions={setLocationSuggestions} setLatitude={setLatitude} setLongitude={setLongitude} handleUseCurrentLocation={handleUseCurrentLocation} usingGPS={usingGPS}
-          units={units} setUnits={setUnits} addUnit={addUnit} updateUnit={updateUnit} handleUnitPhotoUpload={handleUnitPhotoUpload} removeUnitPhoto={removeUnitPhoto}
-          formatKES={formatKES} title={title} setTitle={setTitle} size={size} setSize={setSize} customSize={customSize} setCustomSize={setCustomSize} HOUSE_SIZES={HOUSE_SIZES} beds={beds} setBeds={setBeds} baths={baths} setBaths={setBaths} description={description} setDescription={setDescription}
+          units={units} setUnits={setUnits} addUnit={addUnit} updateUnit={updateUnit} handleUnitPhotoUpload={handleUnitPhotoUpload} removeUnitPhoto={removeUnitPhoto} formatKES={formatKES}
+          title={title} setTitle={setTitle} size={size} setSize={setSize} customSize={customSize} setCustomSize={setCustomSize} HOUSE_SIZES={HOUSE_SIZES} beds={beds} setBeds={setBeds} baths={baths} setBaths={setBaths} description={description} setDescription={setDescription}
           phone={phone} setPhone={setPhone} email={email} setEmail={setEmail} socialLinks={socialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
           bookingEnabled={bookingEnabled} setBookingEnabled={setBookingEnabled} paymentEnabled={paymentEnabled} setPaymentEnabled={setPaymentEnabled}
           photos={photos} handlePhotoUpload={handlePhotoUpload} removePhoto={removePhoto} updatePhotoLabel={updatePhotoLabel} video={video} handleVideoUpload={handleVideoUpload} removeVideo={removeVideo}
-          onSave={handleSave} saving={creating} error={null} success={success}
+          onSave={handleSave} saving={creating} error={error} success={success} canSave={!creating}
+        />
+      ) : (
+        <EditingListingForm
+          city={city} setCity={setCity} customCity={customCity} setCustomCity={setCustomCity} county={county} setCounty={setCounty}
+          locationSearch={locationSearch} setLocationSearch={setLocationSearch} locationSuggestions={locationSuggestions} setLocationSuggestions={setLocationSuggestions} setLatitude={setLatitude} setLongitude={setLongitude} handleUseCurrentLocation={handleUseCurrentLocation} usingGPS={usingGPS}
+          listingType={listingType} setListingType={setListingType} price={price} setPrice={setPrice} formatKES={formatKES} depositRequired={depositRequired} setDepositRequired={setDepositRequired} depositStructure={depositStructure} setDepositStructure={setDepositStructure} depositAmount={depositAmount} setDepositAmount={setDepositAmount}
+          title={title} setTitle={setTitle} size={size} setSize={setSize} customSize={customSize} setCustomSize={setCustomSize} HOUSE_SIZES={HOUSE_SIZES} beds={beds} setBeds={setBeds} baths={baths} setBaths={setBaths} description={description} setDescription={setDescription}
+          phone={phone} setPhone={setPhone} email={email} setEmail={setEmail} socialLinks={socialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
+          photos={photos} handlePhotoUpload={handlePhotoUpload} removePhoto={removePhoto} updatePhotoLabel={updatePhotoLabel} video={video} handleVideoUpload={handleVideoUpload} removeVideo={removeVideo}
+          onSave={handleSave} saving={creating} error={error} success={success} canSave={!creating}
         />
       )}
-
-      {videoUploading && <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg bg-brand-900 px-4 py-3 text-sm text-white shadow-lg"><Loader2 className="h-4 w-4 animate-spin" />Preparing walkthrough video…</div>}
-      <input aria-hidden="true" className="hidden" value="" readOnly onChange={() => undefined} />
+      {creating && <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Creating listing...</div>}
+      <div className="sr-only"><UserCheck aria-hidden="true" />{guessVideoMime('')}</div>
     </div>
   );
 }
