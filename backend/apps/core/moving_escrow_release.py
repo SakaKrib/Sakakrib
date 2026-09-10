@@ -1,11 +1,11 @@
 from django.core.exceptions import ValidationError
-from django.utils import timezone
+from django.db import transaction
 
 from .domain_bookings import Booking, MovingDispute
 from .moving_payment_services import release_moving_escrow as _release_moving_escrow
 
 
-@__import__("django.db", fromlist=["transaction"]).transaction.atomic
+@transaction.atomic
 def release_moving_escrow(*, admin_user_id, booking_id):
     """Release through the existing escrow service only after both parties confirm."""
     booking = Booking.objects.select_for_update().filter(pk=booking_id).first()
