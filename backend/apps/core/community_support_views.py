@@ -24,6 +24,9 @@ def _serialize_community_post(request, post):
     row['author'] = {
         'id': str(profile.id),
         'full_name': profile.full_name or '',
+        'first_name': profile.first_name or '',
+        'last_name': profile.last_name or '',
+        'profile_photo_url': profile.profile_photo_url or '',
         'role': profile.role,
         'verification_status': profile.verification_status,
     } if profile else None
