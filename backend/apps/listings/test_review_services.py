@@ -36,7 +36,8 @@ class ListingApprovalCommunityPostTests(TestCase):
         reviewed_at = datetime(2026, 9, 10, 8, 0, 0)
         now.return_value = reviewed_at
 
-        result = review_listing(Mock(), listing.id, 'approved')
+        with self.captureOnCommitCallbacks(execute=True):
+            result = review_listing(Mock(), listing.id, 'approved')
 
         self.assertIs(result, listing)
         self.assertEqual(post.content, listing.ai_caption)
@@ -68,7 +69,8 @@ class ListingApprovalCommunityPostTests(TestCase):
         reviewed_at = datetime(2026, 9, 10, 8, 0, 0)
         now.return_value = reviewed_at
 
-        review_listing(Mock(), listing.id, 'approved')
+        with self.captureOnCommitCallbacks(execute=True):
+            review_listing(Mock(), listing.id, 'approved')
 
         self.assertEqual(orphan.listing_id, listing.id)
         self.assertEqual(orphan.content, listing.ai_caption)
@@ -99,7 +101,8 @@ class ListingApprovalCommunityPostTests(TestCase):
         reviewed_at = datetime(2026, 9, 10, 8, 0, 0)
         now.return_value = reviewed_at
 
-        review_listing(Mock(), listing.id, 'approved')
+        with self.captureOnCommitCallbacks(execute=True):
+            review_listing(Mock(), listing.id, 'approved')
 
         post_manager.create.assert_called_once_with(
             listing_id=listing.id,
