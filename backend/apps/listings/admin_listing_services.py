@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.accounts.authorization import require_admin
 from apps.accounts.models import Profile
+from apps.core.domain_property import PropertyUnit
 from apps.core.notification_services import dispatch_user_notification
 from apps.listings.services import get_listing_entitlement
 from apps.subscriptions.models import SubscriptionListing
@@ -15,14 +16,13 @@ CONTENT_ROLES = {'landlord', 'real_estate'}
 
 
 @transaction.atomic
-def create_listing_on_behalf(admin_user, owner_id, data):
+def create_listing_on_behalf(admin_user, owner_id, data, units=None):
     """Create a listing for an approved landlord/real-estate owner.
 
     Admin posting does not consume the owner's free entitlement and does not
     fabricate a payment. Property-management listings require the owner to
     already have an ACTIVE subscription with remaining capacity, and then
     consume exactly one SubscriptionListing so capacity stays consistent.
-    The listing still enters pending-review so approval remains explicit.
     """
     require_admin(admin_user)
 
@@ -85,6 +85,27 @@ def create_listing_on_behalf(admin_user, owner_id, data):
         created_at=timezone.now(),
         updated_at=timezone.now(),
     )
+
+    if is_pms:
+        for position, unit_data in enumerate(units or []):
+            unit_number = str(unit_data.get('unit_number') or '').strip()
+            unit_type = str(unit_data.get('unit_type') or '').strip()
+            if not unit_number or not unit_type:
+                raise ValidationError('Each PMS unit requires a unit number/name and unit type.')
+            PropertyUnit.objects.create(
+                listing_id=listing.id,
+                user_id=owner.id,
+                unit_number=unit_number,
+                unit_type=unit_type,
+                rent=unit_data.get('rent') or 0,
+                deposit_amount=unit_data.get('deposit_amount') or 0,
+                size=unit_data.get('size') or None,
+                beds=unit_data.get('beds') or 0,
+                baths=unit_data.get('baths') or 1,
+                availability=unit_data.get('availability') or 'available',
+                description=unit_data.get('description') or '',
+                position=position,
+            )
 
     if is_pms and entitlement and entitlement.get('subscription_id'):
         key = 'subscription_id' if role == 'landlord' else 'real_estate_subscription_id'
