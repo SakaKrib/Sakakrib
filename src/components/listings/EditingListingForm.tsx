@@ -179,6 +179,7 @@ export default function EditingListingForm({
             <button type="button" onClick={() => void onSave()} disabled={saving || !canSave || !contactLooksValid} className="btn-primary">{saving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : <><CheckCircle2 className="h-4 w-4" />Save Listing</>}</button>
           </div>
         </div></div></div>
+      </div>
     </div>
   );
 }
