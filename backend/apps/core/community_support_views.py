@@ -18,6 +18,28 @@ def _serialize(instance):
     return {field.name: getattr(instance, field.name) for field in instance._meta.fields}
 
 
+def _ensure_approved_listings_have_posts():
+    """Backfill CommunityPost rows for listings approved before community publishing was wired in."""
+    listings = Listing.objects.filter(
+        approval_status='approved',
+        is_published=True,
+    ).exclude(ai_caption__isnull=True).exclude(ai_caption='').order_by('-created_at')[:100]
+    for listing in listings:
+        caption = str(listing.ai_caption or '').strip()
+        if not caption:
+            continue
+        CommunityPost.objects.get_or_create(
+            listing_id=listing.id,
+            post_type='listing',
+            defaults={
+                'user_id': listing.user_id,
+                'content': caption,
+                'ai_caption': caption,
+                'created_at': listing.created_at or timezone.now(),
+            },
+        )
+
+
 def _serialize_community_post(request, post):
     row = _serialize(post)
     profile = Profile.objects.filter(pk=post.user_id).first()
@@ -61,6 +83,7 @@ class CommunityPostView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, object_id=None):
+        _ensure_approved_listings_have_posts()
         qs = CommunityPost.objects.all().order_by('-created_at')
         if object_id:
             post = qs.filter(id=object_id).first()
