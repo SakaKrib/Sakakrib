@@ -178,10 +178,29 @@ export interface SubscriptionPlan extends Record<string, any> {
   annual_price_kes?: number;
 }
 
+export interface CommunityPostMedia extends Record<string, any> {
+  id: string;
+  post_id: string;
+  user_id?: string;
+  url: string;
+  label?: string | null;
+  media_type?: string;
+  position?: number;
+  created_at?: string;
+}
+
 export interface CommunityPost extends Record<string, any> {
   id: string;
   user_id?: string;
+  listing_id?: string | null;
   content?: string;
-  created_at?: string;
-  updated_at?: string;
+  ai_caption?: string | null;
+  post_type?: string;
+  created_at?: string | null;
+  author?: Profile | null;
+  listing?: Listing | null;
+  media?: ListingMedia[];
+  community_media?: CommunityPostMedia[];
+  reaction_count?: number;
+  user_reaction?: string | null;
 }
