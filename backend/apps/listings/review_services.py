@@ -41,28 +41,32 @@ def review_listing(admin_user, listing_id, decision, note=''):
     ])
 
     if decision == 'approved' and not was_approved:
+        # The AI caption is generated and saved as part of listing creation.
+        # Approval only publishes that existing caption; it must not generate a
+        # second caption or replace the saved AI content with a fallback.
         caption = (listing.ai_caption or '').strip()
         if not caption:
-            caption = (
-                f"🏠 {listing.title or 'Property listing'}\n\n"
-                f"📍 {listing.city or 'Location not specified'}, {listing.county or ''}\n"
-                f"💰 KES {listing.price_kes or 0}{'/month' if listing.listing_type == 'rent' else ''}\n\n"
-                f"{listing.description or ''}\n\n🔑 Verified listing on Saka Krib."
-            )
+            raise ValueError('Listing must have an AI caption before approval.')
 
         post = CommunityPost.objects.filter(listing_id=listing.id).order_by('created_at').first()
         post_defaults = {
             'user_id': listing.user_id,
             'content': caption,
-            'ai_caption': listing.ai_caption.strip() if listing.ai_caption else None,
+            'ai_caption': caption,
             'post_type': 'listing',
         }
         if post:
             for field, value in post_defaults.items():
                 setattr(post, field, value)
-            post.save(update_fields=['user_id', 'content', 'ai_caption', 'post_type'])
+            if post.created_at is None:
+                post.created_at = timezone.now()
+            post.save(update_fields=['user_id', 'content', 'ai_caption', 'post_type', 'created_at'])
         else:
-            CommunityPost.objects.create(listing_id=listing.id, **post_defaults)
+            CommunityPost.objects.create(
+                listing_id=listing.id,
+                created_at=timezone.now(),
+                **post_defaults,
+            )
 
         transaction.on_commit(lambda: dispatch_user_notification(
             user_id=listing.user_id,
