@@ -20,11 +20,12 @@ def _payload(method):
 def _allowed(request, write=False):
     if is_admin(request.user):
         return True, None
-    if not can_manage_listings(request.user) or str(getattr(request.user, 'role', '')).lower() != 'landlord':
-        return False, Response({'detail': 'Landlord access is required.'}, status=403)
+    role = str(getattr(request.user, 'role', '')).lower()
+    if not can_manage_listings(request.user) or role not in {'landlord', 'real_estate'}:
+        return False, Response({'detail': 'Landlord or real-estate PMS access is required.'}, status=403)
     access = pms_access(request.user)
     if not access.get('allowed'):
-        return False, Response({'detail': 'Landlord PMS access is required.', 'pms_access': access}, status=403)
+        return False, Response({'detail': 'PMS access is required.', 'pms_access': access}, status=403)
     if write and access.get('read_only'):
         return False, Response({'detail': 'PMS is read-only during the subscription grace period.', 'pms_access': access}, status=403)
     return True, None
