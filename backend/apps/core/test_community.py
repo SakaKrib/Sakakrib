@@ -84,7 +84,7 @@ class CommunityMediaTests(TestCase):
         force_authenticate(request, user=self.user)
         response = CommunityPostV2View.as_view()(request)
         self.assertEqual(response.status_code, 200)
-        item = next(row for row in response.data['items'] if row['id'] == str(self.post.id))
+        item = next(row for row in response.data['items'] if str(row['id']) == str(self.post.id))
         self.assertEqual(len(item['community_media']), 1)
         self.assertEqual(item['reaction_count'], 0)
         self.assertIsNone(item['user_reaction'])
