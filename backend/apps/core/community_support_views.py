@@ -59,6 +59,9 @@ def _serialize_community_post(request, post):
         listing = Listing.objects.filter(pk=post.listing_id).first()
         if listing:
             row['listing'] = _serialize(listing)
+            # Listing.user is a ForeignKey to Profile. Convert it back to the
+            # UUID expected by the JSON API instead of returning the Profile object.
+            row['listing']['user'] = str(listing.user_id)
             media_rows = ListingMedia.objects.filter(
                 listing_id=listing.id,
                 media_type='photo',
