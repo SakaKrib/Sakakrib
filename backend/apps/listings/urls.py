@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .admin_control_views import AdminListingControlView
+from .admin_media_views import AdminListingMediaUploadView
 from .admin_post_views import AdminListingPostOnBehalfView
 from .ai_caption_views import ListingAiCaptionView
 from .draft_views import ListingDraftDetailView, ListingDraftListView
@@ -32,6 +33,7 @@ urlpatterns = [
     path('payment-intents/', ListingPaymentIntentView.as_view(), name='listing-payment-intent-create'),
     path('payment-intents/<uuid:intent_id>/', ListingPaymentIntentView.as_view(), name='listing-payment-intent-detail'),
     path('admin/post-on-behalf/', AdminListingPostOnBehalfView.as_view(), name='admin-listing-post-on-behalf'),
+    path('admin/media/', AdminListingMediaUploadView.as_view(), name='admin-listing-media-upload'),
     path('admin/<uuid:listing_id>/', AdminListingControlView.as_view(), name='admin-listing-control'),
     path('<uuid:listing_id>/ai-caption/', ListingAiCaptionView.as_view(), name='listing-ai-caption'),
     path('<uuid:listing_id>/', ListingDetailView.as_view(), name='listing-detail'),
