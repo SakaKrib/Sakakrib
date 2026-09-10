@@ -222,7 +222,7 @@ export default function RoleDashboardRouter() {
 
   if (loading) return <div className="flex min-h-[300px] items-center justify-center text-sm text-gray-500">Loading your account...</div>;
   if (!profile) return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
-  if (profile.is_superuser === true || profile.is_admin === true) return <><DashboardPage /><AdminOperationsPanel /><AdminListingPostPanel /></>;
+  if (profile.is_superuser === true || profile.is_admin === true) return <><DashboardPage /><AdminOperationsPanel /><div className='px-2'><AdminListingPostPanel /></div></>;
   if (!profile.role) return null;
   if (profile.role === 'renter') return <RenterDashboard />;
 

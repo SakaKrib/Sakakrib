@@ -6,7 +6,7 @@ export default function AdminListingPostPanel() {
 
   return (
     <section className="card mt-6 p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 px-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <PlusCircle className="h-5 w-5 text-brand-600" />
