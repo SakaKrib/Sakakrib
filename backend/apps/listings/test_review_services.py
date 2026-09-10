@@ -2,12 +2,12 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 
 from .review_services import review_listing
 
 
-class ListingApprovalCommunityPostTests(SimpleTestCase):
+class ListingApprovalCommunityPostTests(TestCase):
     def make_listing(self):
         listing = Mock()
         listing.id = uuid4()
