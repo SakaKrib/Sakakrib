@@ -16,7 +16,9 @@ from .rent_views import LandlordRentInvoiceCreateView, LandlordRentPaymentConfir
 from .rent_reminder_views import RentPaymentReminderView
 from .rent_invoice_download_views import RentInvoiceDownloadView
 from .landlord_pms_control_views import LandlordPMSRenterRequestsView, LandlordPMSRenterManageView, LandlordPMSUnitView
-from .community_support_views import CommunityPostView, ReviewView, SupportTicketView, TermsAcceptanceView
+from .community_support_views import ReviewView, SupportTicketView, TermsAcceptanceView
+from .community_post_views import CommunityPostV2View, CommunityPostReactionView
+from .community_media_views import CommunityPostMediaView, CommunityPostMediaFileView
 from .platform_settings_views import PlatformSettingsView
 from .renter_views import RenterDashboardView, RenterInvoiceView, RenterPaymentSubmissionView, RenterPaymentDestinationView, RenterRentSummaryView, RenterPaymentHistoryView, RenterMoverScheduleAvailabilityView, RenterInvitationClaimView, RenterInvitationCreateView, RenterInvitationPreviewView, RenterInvitationResendView, RenterInvitationCancelView
 from .pms_access_views import PMSEntitlementView, PMSActionView, PMSDashboardView
@@ -70,7 +72,10 @@ urlpatterns = [
     path("rent/units/", LandlordRentUnitView.as_view(), name="landlord-rent-units"), path("rent/units/<uuid:unit_id>/history/", LandlordRentPaymentHistoryView.as_view(), name="landlord-rent-history"), path("rent/units/<uuid:unit_id>/paid-through/", LandlordMarkRentPaidThroughView.as_view(), name="landlord-rent-paid-through"),
     path("rent-reminders/<uuid:renter_assoc_id>/send/", RentPaymentReminderView.as_view(), name="rent-payment-reminder-send"),
     path("platform-settings/", PlatformSettingsView.as_view(), name="platform-settings"),
-    path("community-posts/", CommunityPostView.as_view(), name="community-post-list"), path("community-posts/<uuid:object_id>/", CommunityPostView.as_view(), name="community-post-detail"),
+    path("community-posts/", CommunityPostV2View.as_view(), name="community-post-list"), path("community-posts/<uuid:object_id>/", CommunityPostV2View.as_view(), name="community-post-detail"),
+    path("community-posts/<uuid:post_id>/reactions/", CommunityPostReactionView.as_view(), name="community-post-reaction"),
+    path("community-posts/<uuid:post_id>/media/", CommunityPostMediaView.as_view(), name="community-post-media-upload"), path("community-posts/<uuid:post_id>/media/<uuid:media_id>/", CommunityPostMediaView.as_view(), name="community-post-media-delete"),
+    path("community-posts/media/<uuid:media_id>/", CommunityPostMediaFileView.as_view(), name="community-post-media-file"),
     path("reviews/", ReviewView.as_view(), name="review-list"), path("reviews/<uuid:object_id>/", ReviewView.as_view(), name="review-detail"),
     path("support-tickets/", SupportTicketView.as_view(), name="support-ticket-list"), path("support-tickets/<uuid:object_id>/", SupportTicketView.as_view(), name="support-ticket-detail"),
     path("terms-acceptance/", TermsAcceptanceView.as_view(), name="terms-acceptance-list"), path("terms-acceptance/<uuid:object_id>/", TermsAcceptanceView.as_view(), name="terms-acceptance-detail"),
