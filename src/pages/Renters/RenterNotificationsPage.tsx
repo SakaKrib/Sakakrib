@@ -41,18 +41,19 @@ export default function RenterNotificationsPage() {
     return;
   }
 
-  if (bookingId) {
-    try {
-      const booking: Booking = await renterApi.getBooking(bookingId);
+      if (bookingId) {
+      try {
+        const booking: Booking = await renterApi.getBooking(bookingId);
 
-      if (booking.mover_id) {
-        navigate('chat', booking.mover_id);
-        return;
+        if (booking.mover_id) {
+          navigate('chat', booking.mover_id);
+          return;
+        }
+      } catch {
+        /* fall through to notification list */
       }
-    } catch {
-      /* fall through to notification list */
     }
-  }
+  };
 
   if (loading) return <div className="flex min-h-[420px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div>;
   const unread = notifications.filter((item) => !item.read_at).length;
@@ -70,4 +71,4 @@ export default function RenterNotificationsPage() {
       </div>
     </div>
   );
-}}
+}
