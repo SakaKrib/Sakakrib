@@ -11,7 +11,8 @@ from .domain_bookings import Booking, MoverPayout
 from .domain_journeys import MovingJourney
 from .domain_platform import Mover, UserNotification
 from .moving_lifecycle_services import confirm_moving_delivery
-from .moving_payment_services import _ensure_payout, release_moving_escrow
+from .moving_payment_services import _ensure_payout
+from .moving_escrow_release import release_moving_escrow
 
 
 class MovingDeliveryAuthorityTests(TestCase):
@@ -84,61 +85,58 @@ class MovingDeliveryAuthorityTests(TestCase):
         _ensure_payout(booking, self.mover)
         return booking, journey
 
-    def test_mover_cannot_confirm_delivery(self):
+    def test_assigned_mover_can_confirm_delivery_without_completing_alone(self):
         booking, journey = self._booking()
 
-        with self.assertRaisesMessage(
-            ValidationError,
-            "Only the renter can confirm delivery and complete the journey",
-        ):
-            confirm_moving_delivery(
-                user_id=self.mover_user.id,
-                booking_id=booking.id,
-            )
+        result = confirm_moving_delivery(
+            user_id=self.mover_user.id,
+            booking_id=booking.id,
+        )
 
         booking.refresh_from_db()
         journey.refresh_from_db()
+        self.assertTrue(result["mover_confirmed"])
+        self.assertFalse(result["renter_confirmed"])
+        self.assertFalse(result["both_confirmed"])
         self.assertEqual(booking.status, "in_progress")
-        self.assertEqual(journey.status, MovingJourney.STATUS_ACTIVE)
+        self.assertEqual(journey.status, MovingJourney.STATUS_DELIVERY_PENDING)
+        self.assertIsNotNone(booking.mover_confirmed_delivery_at)
         self.assertIsNone(booking.renter_confirmed_delivery_at)
-        self.assertIsNone(journey.completed_at)
 
-    def test_renter_confirmation_completes_journey_and_is_idempotent(self):
+    def test_renter_confirmation_completes_journey_only_when_mover_also_confirmed(self):
         booking, journey = self._booking()
 
         first = confirm_moving_delivery(
             user_id=self.renter.id,
             booking_id=booking.id,
         )
-        second = confirm_moving_delivery(
-            user_id=self.renter.id,
-            booking_id=booking.id,
-        )
-
         booking.refresh_from_db()
         journey.refresh_from_db()
-        self.assertEqual(first["status"], "completed")
-        self.assertFalse(first["already_confirmed"])
-        self.assertEqual(second["status"], "completed")
-        self.assertTrue(second["already_confirmed"])
+        self.assertTrue(first["renter_confirmed"])
+        self.assertFalse(first["mover_confirmed"])
+        self.assertFalse(first["both_confirmed"])
+        self.assertEqual(booking.status, "in_progress")
+        self.assertEqual(journey.status, MovingJourney.STATUS_DELIVERY_PENDING)
+
+        second = confirm_moving_delivery(
+            user_id=self.mover_user.id,
+            booking_id=booking.id,
+        )
+        booking.refresh_from_db()
+        journey.refresh_from_db()
+        self.assertTrue(second["both_confirmed"])
         self.assertEqual(booking.status, "completed")
         self.assertEqual(journey.status, MovingJourney.STATUS_COMPLETED)
-        self.assertEqual(journey.completed_by, self.renter.id)
-        self.assertIsNotNone(journey.completed_at)
+        self.assertIsNotNone(booking.renter_confirmed_delivery_at)
+        self.assertIsNotNone(booking.mover_confirmed_delivery_at)
         self.assertEqual(
             UserNotification.objects.filter(
-                event_key=f"moving-delivery-confirmed:renter:{booking.id}"
-            ).count(),
-            1,
-        )
-        self.assertEqual(
-            UserNotification.objects.filter(
-                event_key=f"moving-delivery-confirmed:mover:{booking.id}"
+                event_key=f"moving-delivery-both-confirmed:{booking.id}"
             ).count(),
             1,
         )
 
-    def test_escrow_release_requires_renter_confirmation_not_mover_confirmation(self):
+    def test_escrow_release_requires_both_delivery_confirmations(self):
         booking, _ = self._booking()
 
         with self.assertRaisesMessage(
@@ -152,6 +150,18 @@ class MovingDeliveryAuthorityTests(TestCase):
 
         booking.renter_confirmed_delivery_at = timezone.now()
         booking.save(update_fields=["renter_confirmed_delivery_at"])
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "Mover must confirm delivery before escrow release",
+        ):
+            release_moving_escrow(
+                admin_user_id=self.admin.id,
+                booking_id=booking.id,
+            )
+
+        booking.mover_confirmed_delivery_at = timezone.now()
+        booking.save(update_fields=["mover_confirmed_delivery_at"])
 
         result = release_moving_escrow(
             admin_user_id=self.admin.id,
