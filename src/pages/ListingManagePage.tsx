@@ -35,9 +35,8 @@ export default function ListingManagePage() {
   const [depositRequired, setDepositRequired] = useState(false); const [depositStructure, setDepositStructure] = useState<'fixed' | 'installments'>('fixed'); const [depositAmount, setDepositAmount] = useState('');
   const [title, setTitle] = useState(''); const [size, setSize] = useState(''); const [customSize, setCustomSize] = useState(''); const [beds, setBeds] = useState('1'); const [baths, setBaths] = useState('1'); const [description, setDescription] = useState('');
   const [phone, setPhone] = useState(''); const [email, setEmail] = useState(''); const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
-  const [bookingEnabled, setBookingEnabled] = useState(false); const [paymentEnabled, setPaymentEnabled] = useState(false);
   const [photos, setPhotos] = useState<MediaItem[]>([]); const [video, setVideo] = useState<MediaItem | null>(null);
-  const [originalPropertyName, setOriginalPropertyName] = useState(''); const [originalPropertyType, setOriginalPropertyType] = useState(''); const [isPropertyManagement, setIsPropertyManagement] = useState(false);
+  const [originalPropertyName, setOriginalPropertyName] = useState(''); const [originalPropertyType, setOriginalPropertyType] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +58,7 @@ export default function ListingManagePage() {
         if (loadedSize && isKnownSize(loadedSize)) { setSize(loadedSize); setCustomSize(''); } else if (loadedSize) { setSize('Custom Size'); setCustomSize(loadedSize); } else { setSize(''); setCustomSize(''); }
         setBeds(listing.beds == null ? '0' : String(listing.beds)); setBaths(listing.baths == null ? '1' : String(listing.baths)); setDescription(String(listing.description ?? ''));
         setPhone(String(listing.contact_phone ?? '')); setEmail(String(listing.contact_email ?? '')); setSocialLinks(Array.isArray(listing.social_links) ? listing.social_links : []);
-        setBookingEnabled(Boolean(listing.booking_enabled)); setPaymentEnabled(Boolean(listing.payment_enabled)); setOriginalPropertyName(String(listing.property_name ?? '')); setOriginalPropertyType(String(listing.property_type ?? '')); setIsPropertyManagement(Boolean(listing.is_property_management));
+        setOriginalPropertyName(String(listing.property_name ?? '')); setOriginalPropertyType(String(listing.property_type ?? ''));
         const media = Array.isArray(listing.media) ? listing.media : [];
         setPhotos(media.filter(item => item.media_type === 'photo').map((item, index) => ({ id: item.id, url: item.url, label: item.label || `Photo ${index + 1}`, type: 'photo', media_type: 'photo', position: item.position ?? index })));
         const loadedVideo = media.find(item => item.media_type === 'video');
@@ -137,7 +136,7 @@ export default function ListingManagePage() {
         property_name: originalPropertyName || null, property_type: originalPropertyType || null, price_kes: price.trim() === '' ? null : Number(price), listing_type: listingType,
         deposit_required: depositRequired, deposit_structure: depositRequired ? depositStructure : null, deposit_amount: depositRequired && depositAmount.trim() !== '' ? Number(depositAmount) : null,
         size: finalSize || null, beds: beds.trim() === '' ? null : Number(beds), baths: baths.trim() === '' ? null : Number(baths), contact_phone: phone.trim() || null, contact_email: email.trim() || null,
-        social_links: socialLinks.filter(link => link.platform.trim() && link.url.trim()), booking_enabled: bookingEnabled, payment_enabled: paymentEnabled, is_property_management: isPropertyManagement,
+        social_links: socialLinks.filter(link => link.platform.trim() && link.url.trim()),
       });
       for (let index = 0; index < photos.length; index += 1) {
         const photo = photos[index]; if (photo.id) await protectedPatch(`/api/listings/media/${encodeURIComponent(photo.id)}/update/`, { label: photo.label.trim() || `Photo ${index + 1}`, position: index });
@@ -157,8 +156,7 @@ export default function ListingManagePage() {
     listingType={listingType} setListingType={value => { setListingType(value); setSuccess(false); }} price={price} setPrice={value => { setPrice(value); setSuccess(false); }} formatKES={formatKES}
     depositRequired={depositRequired} setDepositRequired={value => { setDepositRequired(value); setSuccess(false); }} depositStructure={depositStructure} setDepositStructure={setDepositStructure} depositAmount={depositAmount} setDepositAmount={setDepositAmount}
     title={title} setTitle={setTitle} size={size} setSize={setSize} customSize={customSize} setCustomSize={setCustomSize} HOUSE_SIZES={HOUSE_SIZES as unknown as string[]} beds={beds} setBeds={setBeds} baths={baths} setBaths={setBaths} description={description} setDescription={setDescription}
-    phone={phone} setPhone={setPhone} email={email} setEmail={setEmail} socialLinks={socialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
-    bookingEnabled={bookingEnabled} setBookingEnabled={setBookingEnabled} paymentEnabled={paymentEnabled} setPaymentEnabled={setPaymentEnabled}
+    phone={phone} setPhone={setPhone} email={email} setEmail={email} socialLinks={socialLinks} addSocialLink={addSocialLink} updateSocialLink={updateSocialLink} removeSocialLink={removeSocialLink} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
     photos={photos} handlePhotoUpload={handlePhotoUpload} removePhoto={removePhoto} updatePhotoLabel={updatePhotoLabel} video={video} handleVideoUpload={handleVideoUpload} removeVideo={removeVideo}
     onSave={handleSave} saving={saving} error={error} success={success} canSave={Boolean(selectedListingManageId && !saving)}
   />;
