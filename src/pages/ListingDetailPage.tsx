@@ -95,6 +95,9 @@ export default function ListingDetailPage() {
     setSelectedUnit(unit);
   };
 
+  const listingTimestamp = listing.created_at;
+  const listingTimeLabel = listingTimestamp ? timeAgo(listingTimestamp) : 'Recently listed';
+
   return (
     <div className="mx-auto max-w-5xl px-2 py-8 sm:px-6">
       <button onClick={() => navigate('listings')} className="mb-4 flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-brand-600 dark:text-gray-400">
@@ -125,7 +128,7 @@ export default function ListingDetailPage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">{listing.listing_type === 'rent' ? 'For Rent' : 'For Sale'}</span>
               {landlord?.verification_status === 'verified' && <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400"><ShieldCheck className="h-3 w-3" /> Verified Landlord</span>}
-              <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">{timeAgo(listing.created_at ?? '')}</span>
+              <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">{listingTimeLabel}</span>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6 dark:border-brand-800">
               <div className="text-center"><BedDouble className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.beds === 0 ? 'Studio' : listing.beds}</p><p className="text-xs text-gray-400">Bedrooms</p></div>
