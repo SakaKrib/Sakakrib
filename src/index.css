@@ -42,6 +42,25 @@
   }
 }
 
+/* Community composer: keep the textarea surface transparent and use the same
+   border treatment as the existing form inputs, with a modest corner radius. */
+@layer components {
+  div:has(> textarea[aria-label="Community post"]) {
+    border-radius: 0.75rem;
+    border-color: rgb(209 213 219);
+    background-color: transparent;
+  }
+
+  html.dark div:has(> textarea[aria-label="Community post"]) {
+    border-color: rgb(55 65 81);
+    background-color: transparent;
+  }
+
+  textarea[aria-label="Community post"] {
+    background-color: transparent;
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
