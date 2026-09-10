@@ -5,6 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from apps.core.property_rental_views import RenterPropertyUnitRequestView
+from apps.core.property_rental_owner_views import PropertyRentalOwnerRequestView
 
 
 def health(_request):
@@ -20,6 +21,8 @@ urlpatterns = [
     path('api/payments/', include('apps.payments.urls')),
     path('api/core/', include('apps.core.urls')),
     path('api/core/property-rental/request/', RenterPropertyUnitRequestView.as_view(), name='property-rental-request'),
+    path('api/core/property-rental/requests/', PropertyRentalOwnerRequestView.as_view(), name='property-rental-owner-requests'),
+    path('api/core/property-rental/requests/<uuid:association_id>/', PropertyRentalOwnerRequestView.as_view(), name='property-rental-owner-request'),
 ]
 
 
