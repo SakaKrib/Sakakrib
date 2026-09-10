@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import {
   MapPin, BedDouble, Bath, Maximize, Phone, Mail, Link2,
   ChevronLeft, ChevronRight, ShieldCheck, Star, Home, Loader2, ArrowLeft,
-  DollarSign, Calendar
+  DollarSign, Calendar, Navigation, CreditCard
 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { protectedGet } from '@/lib/djangoApi';
 import { formatKES, timeAgo, cn } from '@/lib/utils';
+import ListingMap from '@/components/ListingMap';
 import type { Listing, ListingMedia, Review, Profile } from '@/types/domain';
 
 type ListingDetailResponse = Listing & {
@@ -28,6 +29,7 @@ export default function ListingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
   const [showContact, setShowContact] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     if (!selectedListingId) return;
@@ -77,17 +79,20 @@ export default function ListingDetailPage() {
   }
 
   const handleShowContact = () => {
-  if (!profile) {
-    navigate('home');
-    return;
-  }
-
-  setShowContact(true);
-};
+    if (!profile) {
+      navigate('home');
+      return;
+    }
+    setShowContact(true);
+  };
 
   const photos = media.filter((m) => m.media_type === 'photo');
   const video = media.find((m) => m.media_type === 'video');
   const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
+  const isPropertyManagement = Boolean(listing.is_property_management);
+  const bookingAvailable = isPropertyManagement && Boolean(listing.booking_enabled);
+  const paymentAvailable = isPropertyManagement && Boolean(listing.payment_enabled);
+  const hasCoordinates = Number.isFinite(Number(listing.latitude)) && Number.isFinite(Number(listing.longitude));
 
   return (
     <div className="mx-auto max-w-5xl px-2 py-8 sm:px-6">
@@ -145,7 +150,7 @@ export default function ListingDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Info */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6 lg:col-span-2">
           <div className="card p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -158,9 +163,7 @@ export default function ListingDetailPage() {
                 <p className="text-2xl font-bold text-brand-600 dark:text-brand-400">
                   {formatKES(Number(listing.price_kes ?? 0))}
                 </p>
-                {listing.listing_type === 'rent' && (
-                  <p className="text-sm text-gray-400">per month</p>
-                )}
+                {listing.listing_type === 'rent' && <p className="text-sm text-gray-400">per month</p>}
               </div>
             </div>
 
@@ -196,6 +199,73 @@ export default function ListingDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Listing Actions: property-management only */}
+          {isPropertyManagement && (bookingAvailable || paymentAvailable) && (
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Property Actions</h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Actions enabled by this property manager.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {bookingAvailable && (
+                  <button
+                    type="button"
+                    disabled
+                    className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-3 text-sm font-semibold text-white opacity-60 cursor-not-allowed"
+                    title="Property booking flow is not yet exposed by the Django backend."
+                  >
+                    <Calendar className="h-4 w-4" /> Book
+                  </button>
+                )}
+                {paymentAvailable && (
+                  <button
+                    type="button"
+                    disabled
+                    className="flex items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 py-3 text-sm font-semibold text-brand-700 opacity-60 cursor-not-allowed dark:border-brand-700 dark:bg-brand-900 dark:text-brand-300"
+                    title="Property payment flow is not yet exposed by the Django backend."
+                  >
+                    <CreditCard className="h-4 w-4" /> Pay
+                  </button>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                These controls are shown only when the listing is property-managed and the landlord enabled them. The current Django API does not expose a separate property-booking/payment action, so no new or duplicate endpoint is being invented here.
+              </p>
+            </div>
+          )}
+
+          {/* Location */}
+          {hasCoordinates && (
+            <div className="card p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
+                    <MapPin className="h-5 w-5 text-brand-600" /> Location
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    View the property and follow it from your current location.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMap((value) => !value)}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  <Navigation className="h-4 w-4" /> {showMap ? 'Hide Map' : 'Show on Map'}
+                </button>
+              </div>
+              {showMap && (
+                <div className="mt-4">
+                  <ListingMap
+                    latitude={Number(listing.latitude)}
+                    longitude={Number(listing.longitude)}
+                    title={listing.title}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Description */}
           <div className="card p-6">
@@ -289,11 +359,7 @@ export default function ListingDetailPage() {
             )}
 
             {!showContact ? (
-              <button
-                type="button"
-                onClick={handleShowContact}
-                className="btn-primary mt-4 w-full"
-              >
+              <button type="button" onClick={handleShowContact} className="btn-primary mt-4 w-full">
                 {profile ? 'Show Contact Details' : 'Sign in to Contact'}
               </button>
             ) : (
@@ -314,8 +380,8 @@ export default function ListingDetailPage() {
                       const socialLink = typeof link === 'string' ? { platform: 'Link', url: link } : link;
                       return (
                         <a
-                            key={i}
-                              href={socialLink.url ?? '#'}
+                          key={i}
+                          href={socialLink.url ?? '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"
