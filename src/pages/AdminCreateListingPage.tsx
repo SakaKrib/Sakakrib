@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import AdminCreateListingFlow, {
   type AdminCreateListingInput,
@@ -13,17 +13,8 @@ const SOCIAL_PLATFORMS = ['WhatsApp', 'Facebook', 'Instagram', 'X', 'Website', '
 interface OwnerResponse extends AdminEligibleUser {
   subscription?: { status: string | null } | null;
 }
-
-interface CreatedUnit {
-  id: string;
-}
-
-interface CreateResponse {
-  listing_id: string;
-  listing?: { units?: CreatedUnit[] };
-}
-
-const locationHeaders = { Accept: 'application/json' };
+interface CreatedUnit { id: string; }
+interface CreateResponse { listing_id: string; listing?: { units?: CreatedUnit[] }; }
 
 export default function AdminCreateListingPage() {
   const [users, setUsers] = useState<OwnerResponse[]>([]);
@@ -54,50 +45,28 @@ export default function AdminCreateListingPage() {
     setCreating(true);
     setError(null);
     setSuccess(false);
-
     try {
       if (input.photos.length < 3) throw new Error('Please add at least 3 property photos.');
       if (input.category === 'pms' && input.units.length < 1) throw new Error('Please add at least one property unit.');
-      if (input.category === 'pms' && input.units.some((unit) => unit.photos.length < 3)) {
-        throw new Error('Each PMS unit must have at least 3 photos.');
-      }
+      if (input.category === 'pms' && input.units.some((unit) => unit.photos.length < 3)) throw new Error('Each PMS unit must have at least 3 photos.');
 
       const f = input.fields;
       const payload = {
         owner_id: input.userId,
-        title: f.title || '',
-        description: f.description || '',
-        city: f.city || '',
-        county: f.county || '',
-        location_search: f.locationSearch || null,
-        latitude: f.latitude ?? null,
-        longitude: f.longitude ?? null,
-        property_name: f.propertyName || null,
-        property_type: f.propertyType || null,
-        price_kes: f.price || null,
-        listing_type: f.listingType || 'rent',
-        deposit_required: Boolean(f.depositRequired),
-        deposit_structure: f.depositStructure || 'fixed',
-        deposit_amount: f.depositAmount || 0,
-        size: f.size || null,
-        beds: Number(f.beds || 0),
-        baths: Number(f.baths || 0),
-        contact_phone: f.phone || null,
-        contact_email: f.email || null,
+        title: f.title || '', description: f.description || '', city: f.city || '', county: f.county || '',
+        location_search: f.locationSearch || null, latitude: f.latitude ?? null, longitude: f.longitude ?? null,
+        property_name: f.propertyName || null, property_type: f.propertyType || null,
+        price_kes: f.price || null, listing_type: f.listingType || 'rent',
+        deposit_required: Boolean(f.depositRequired), deposit_structure: f.depositStructure || 'fixed', deposit_amount: f.depositAmount || 0,
+        size: f.size || null, beds: Number(f.beds || 0), baths: Number(f.baths || 0),
+        contact_phone: f.phone || null, contact_email: f.email || null,
         social_links: Array.isArray(f.socialLinks) ? f.socialLinks : [],
         booking_enabled: input.category === 'pms' ? Boolean(f.bookingEnabled) : false,
         payment_enabled: input.category === 'pms' ? Boolean(f.paymentEnabled) : false,
         is_property_management: input.category === 'pms',
         units: input.category === 'pms' ? input.units.map((unit) => ({
-          unit_number: unit.unitNumber,
-          unit_type: unit.unitType,
-          rent: unit.rent || 0,
-          deposit_amount: unit.depositAmount || 0,
-          size: unit.size || null,
-          beds: Number(unit.beds || 0),
-          baths: Number(unit.baths || 1),
-          availability: unit.availability,
-          description: unit.description || '',
+          unit_number: unit.unitNumber, unit_type: unit.unitType, rent: unit.rent || 0, deposit_amount: unit.depositAmount || 0,
+          size: unit.size || null, beds: Number(unit.beds || 0), baths: Number(unit.baths || 1), availability: unit.availability, description: unit.description || '',
         })) : [],
       };
 
@@ -107,12 +76,8 @@ export default function AdminCreateListingPage() {
 
       const upload = async (file: File, mediaType: 'photo' | 'video', label: string, position: number, unitId?: string) => {
         const form = new FormData();
-        form.append('listing_id', listingId);
-        form.append('owner_id', input.userId);
-        form.append('file', file);
-        form.append('media_type', mediaType);
-        form.append('label', label);
-        form.append('position', String(position));
+        form.append('listing_id', listingId); form.append('owner_id', input.userId); form.append('file', file);
+        form.append('media_type', mediaType); form.append('label', label); form.append('position', String(position));
         if (unitId) form.append('unit_id', unitId);
         await protectedUpload('/api/listings/admin/media/', form);
       };
@@ -134,32 +99,13 @@ export default function AdminCreateListingPage() {
           }
         }
       }
-
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create the listing.');
-    } finally {
-      setCreating(false);
-    }
+    } finally { setCreating(false); }
   };
 
-  const stableUsers = useMemo(() => users.map((user) => ({ ...user })), [users]);
+  if (loadingUsers) return <div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-500">Loading approved landlord and real-estate accounts…</div>;
 
-  if (loadingUsers) {
-    return <div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-500">Loading approved landlord and real-estate accounts…</div>;
-  }
-
-  return (
-    <AdminCreateListingFlow
-      users={stableUsers}
-      formatKES={formatKES}
-      HOUSE_SIZES={HOUSE_SIZES}
-      SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
-      onCreateListing={handleCreateListing}
-      creating={creating}
-      error={error}
-      success={success}
-      onCancel={() => window.history.back()}
-    />
-  );
+  return <AdminCreateListingFlow users={users} formatKES={formatKES} HOUSE_SIZES={HOUSE_SIZES} SOCIAL_PLATFORMS={SOCIAL_PLATFORMS} onCreateListing={handleCreateListing} creating={creating} error={error} success={success} onCancel={() => window.history.back()} />;
 }
