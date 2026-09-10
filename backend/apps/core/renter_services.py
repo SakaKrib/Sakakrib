@@ -39,6 +39,85 @@ def _preview(row):
 
 
 @transaction.atomic
+def create_renter_unit_request(*, renter_user_id, unit_id):
+    """Create a renter-originated request for a vacant PMS unit.
+
+    This deliberately reuses RenterUnitAssociation as the pending rental
+    relationship. It is not a mover Booking and it does not create a rent
+    invoice or payment transaction.
+    """
+    renter = Profile.objects.filter(pk=renter_user_id).first()
+    if renter is None:
+        raise ValidationError("Renter account not found.")
+    if str(getattr(renter, "role", "")).lower() != "renter":
+        raise ValidationError("Only renter accounts can request a property unit.")
+    if not getattr(renter, "email_verified", False):
+        raise ValidationError("Email verification is required before requesting a unit.")
+
+    unit = PropertyUnit.objects.select_for_update().filter(pk=unit_id).first()
+    if unit is None:
+        raise ValidationError("Property unit not found.")
+    listing = Listing.objects.filter(
+        pk=unit.listing_id,
+        is_property_management=True,
+        is_approved=True,
+        is_published=True,
+        booking_enabled=True,
+    ).first()
+    if listing is None:
+        raise ValidationError("This property is not currently accepting unit booking requests.")
+
+    occupied = str(unit.availability or "").strip().lower() in {"occupied", "unavailable", "rented", "leased"}
+    if occupied or RenterUnitAssociation.objects.filter(unit_id=unit.id, status="ACTIVE").exists():
+        raise ValidationError("This unit is no longer available.")
+
+    if RenterUnitAssociation.objects.filter(
+        unit_id=unit.id, renter_user_id=renter_user_id, status="PENDING"
+    ).exists():
+        raise ValidationError("You already have a pending request for this unit.")
+    if RenterUnitAssociation.objects.filter(unit_id=unit.id, status="ACTIVE").exists():
+        raise ValidationError("This unit is no longer available.")
+
+    owner = Profile.objects.filter(pk=listing.user_id).first()
+    if owner is None or str(getattr(owner, "role", "")).lower() not in {"landlord", "real_estate"}:
+        raise ValidationError("This property's owner cannot receive rental requests.")
+    if get_pms_access(owner).get("allowed") is not True:
+        raise ValidationError("This property's PMS access is not currently active.")
+
+    now = timezone.now()
+    row = RenterUnitAssociation.objects.create(
+        unit_id=unit.id,
+        landlord_id=owner.id,
+        renter_user_id=renter.id,
+        renter_name=(renter.full_name or renter.email or "Renter").strip(),
+        renter_phone=getattr(renter, "phone", None),
+        renter_email=renter.email,
+        rent_amount=unit.rent,
+        status="PENDING",
+        invited_at=now,
+        invite_expires_at=now + timedelta(days=7),
+    )
+    dispatch_user_notification(
+        user_id=owner.id,
+        notification_type="RENTER_UNIT_REQUESTED",
+        title="New rental request",
+        message=f"{row.renter_name} requested Unit {unit.unit_number} at {listing.title}.",
+        data={"association_id": str(row.id), "unit_id": str(unit.id), "listing_id": str(listing.id)},
+        event_key=f"renter-unit-requested:{row.id}",
+    )
+    return {
+        "id": str(row.id),
+        "unit_id": str(unit.id),
+        "listing_id": str(listing.id),
+        "status": row.status,
+        "renter_name": row.renter_name,
+        "rent_amount": str(row.rent_amount),
+        "created_at": row.created_at.isoformat(),
+        "expires_at": row.invite_expires_at.isoformat(),
+    }
+
+
+@transaction.atomic
 def create_renter_invitation(*, landlord_id, unit_id, renter_name, renter_phone, renter_email, app_base_url=None):
     _require_landlord_write(landlord_id)
     name, email = (renter_name or "").strip(), (renter_email or "").strip().lower()
