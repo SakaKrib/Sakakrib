@@ -30,7 +30,7 @@ class ListingApprovalCommunityPostTests(SimpleTestCase):
         self, require_admin, listing_manager, post_manager, now, dispatch_notification
     ):
         listing = self.make_listing()
-        post = Mock(created_at=None)
+        post = Mock(created_at=None, listing_id=listing.id)
         post_manager.filter.return_value.order_by.return_value.first.return_value = post
         listing_manager.select_for_update.return_value.get.return_value = listing
         reviewed_at = datetime(2026, 9, 10, 8, 0, 0)
@@ -44,7 +44,7 @@ class ListingApprovalCommunityPostTests(SimpleTestCase):
         self.assertEqual(post.post_type, 'listing')
         self.assertEqual(post.created_at, reviewed_at)
         post.save.assert_called_once_with(
-            update_fields=['user_id', 'content', 'ai_caption', 'post_type', 'created_at']
+            update_fields=['listing_id', 'user_id', 'content', 'ai_caption', 'post_type', 'created_at']
         )
         post_manager.create.assert_not_called()
         dispatch_notification.assert_called_once()
@@ -54,16 +54,49 @@ class ListingApprovalCommunityPostTests(SimpleTestCase):
     @patch('apps.listings.review_services.CommunityPost.objects')
     @patch('apps.listings.review_services.Listing.objects')
     @patch('apps.listings.review_services.require_admin')
-    def test_approval_creates_linked_community_post_with_existing_ai_caption(
+    def test_approval_repairs_orphan_community_post(
         self, require_admin, listing_manager, post_manager, now, dispatch_notification
     ):
         listing = self.make_listing()
-        post_manager.filter.return_value.order_by.return_value.first.return_value = None
+        post_manager.filter.return_value.order_by.return_value.first.side_effect = [None, Mock(
+            created_at=None,
+            listing_id=None,
+        )]
+        orphan = post_manager.filter.return_value.order_by.return_value.first.side_effect[1]
         listing_manager.select_for_update.return_value.get.return_value = listing
         reviewed_at = datetime(2026, 9, 10, 8, 0, 0)
         now.return_value = reviewed_at
 
         review_listing(Mock(), listing.id, 'approved')
+
+        self.assertEqual(orphan.listing_id, listing.id)
+        self.assertEqual(orphan.content, listing.ai_caption)
+        self.assertEqual(orphan.ai_caption, listing.ai_caption)
+        self.assertEqual(orphan.post_type, 'listing')
+        self.assertEqual(orphan.created_at, reviewed_at)
+        orphan.save.assert_called_once_with(
+            update_fields=['listing_id', 'user_id', 'content', 'ai_caption', 'post_type', 'created_at']
+        )
+        post_manager.create.assert_not_called()
+        dispatch_notification.assert_called_once()
+
+    @patch('apps.listings.review_services.dispatch_user_notification')
+    @patch('apps.listings.review_services.timezone.now')
+    @patch('apps.listings.review_services.CommunityPost.objects')
+    @patch('apps.listings.review_services.require_admin')
+    def test_approval_creates_linked_community_post_with_existing_ai_caption(
+        self, require_admin, post_manager, now, dispatch_notification
+    ):
+        listing = self.make_listing()
+        first = post_manager.filter.return_value.order_by.return_value.first
+        first.side_effect = [None, None]
+        listing_manager = Mock()
+        listing_manager.select_for_update.return_value.get.return_value = listing
+        reviewed_at = datetime(2026, 9, 10, 8, 0, 0)
+        now.return_value = reviewed_at
+
+        with patch('apps.listings.review_services.Listing.objects', listing_manager):
+            review_listing(Mock(), listing.id, 'approved')
 
         post_manager.create.assert_called_once_with(
             listing_id=listing.id,
