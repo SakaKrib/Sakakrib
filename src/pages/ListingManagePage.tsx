@@ -67,18 +67,10 @@ interface ListingResponse {
   }>;
 }
 
-const SOCIAL_PLATFORMS = [
-  'WhatsApp',
-  'Instagram',
-  'Facebook',
-  'Website',
-  'TikTok',
-  'X',
-  'Other',
-];
-
-const isApproved = (listing: ListingResponse) =>
-  listing.approval_status === 'approved' || listing.is_approved === true;
+const SOCIAL_PLATFORMS = ['WhatsApp', 'Instagram', 'Facebook', 'Website', 'TikTok', 'X', 'Other'];
+const isKnownCity = (value: string) => KENYAN_CITIES.some(cityName => cityName === value);
+const isKnownSize = (value: string) => HOUSE_SIZES.some(sizeName => sizeName === value);
+const isApproved = (listing: ListingResponse) => listing.approval_status === 'approved' || listing.is_approved === true;
 
 export default function ListingManagePage() {
   const { selectedListingManageId, navigate } = useNav();
@@ -113,12 +105,12 @@ export default function ListingManagePage() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
-
   const [bookingEnabled, setBookingEnabled] = useState(false);
   const [paymentEnabled, setPaymentEnabled] = useState(false);
 
   const [photos, setPhotos] = useState<MediaItem[]>([]);
   const [video, setVideo] = useState<MediaItem | null>(null);
+  const [originalPropertyName, setOriginalPropertyName] = useState('');
   const [originalPropertyType, setOriginalPropertyType] = useState('');
   const [isPropertyManagement, setIsPropertyManagement] = useState(false);
 
@@ -135,18 +127,15 @@ export default function ListingManagePage() {
       try {
         setLoading(true);
         setError(null);
-        const listing = await protectedGet<ListingResponse>(
-          `/api/listings/${encodeURIComponent(selectedListingManageId)}/`,
-        );
+        const listing = await protectedGet<ListingResponse>(`/api/listings/${encodeURIComponent(selectedListingManageId)}/`);
 
         if (!listing || !isApproved(listing)) {
           throw new Error('This editor is only available for approved listings.');
         }
-
         if (cancelled) return;
 
         const loadedCity = String(listing.city ?? '');
-        if (loadedCity && KENYAN_CITIES.includes(loadedCity)) {
+        if (loadedCity && isKnownCity(loadedCity)) {
           setCity(loadedCity);
           setCustomCity('');
         } else {
@@ -166,7 +155,7 @@ export default function ListingManagePage() {
 
         setTitle(String(listing.title ?? ''));
         const loadedSize = String(listing.size ?? '');
-        if (HOUSE_SIZES.includes(loadedSize)) {
+        if (loadedSize && isKnownSize(loadedSize)) {
           setSize(loadedSize);
           setCustomSize('');
         } else if (loadedSize) {
@@ -185,35 +174,28 @@ export default function ListingManagePage() {
         setSocialLinks(Array.isArray(listing.social_links) ? listing.social_links : []);
         setBookingEnabled(Boolean(listing.booking_enabled));
         setPaymentEnabled(Boolean(listing.payment_enabled));
+        setOriginalPropertyName(String(listing.property_name ?? ''));
         setOriginalPropertyType(String(listing.property_type ?? ''));
         setIsPropertyManagement(Boolean(listing.is_property_management));
 
         const media = Array.isArray(listing.media) ? listing.media : [];
-        setPhotos(
-          media
-            .filter(item => item.media_type === 'photo')
-            .map((item, index) => ({
-              id: item.id,
-              url: item.url,
-              label: item.label || `Photo ${index + 1}`,
-              type: 'photo' as const,
-              media_type: 'photo' as const,
-              position: item.position ?? index,
-            })),
-        );
+        setPhotos(media.filter(item => item.media_type === 'photo').map((item, index) => ({
+          id: item.id,
+          url: item.url,
+          label: item.label || `Photo ${index + 1}`,
+          type: 'photo' as const,
+          media_type: 'photo' as const,
+          position: item.position ?? index,
+        })));
         const loadedVideo = media.find(item => item.media_type === 'video');
-        setVideo(
-          loadedVideo
-            ? {
-                id: loadedVideo.id,
-                url: loadedVideo.url,
-                label: loadedVideo.label || 'Walkthrough Video',
-                type: 'video',
-                media_type: 'video',
-                position: loadedVideo.position ?? 0,
-              }
-            : null,
-        );
+        setVideo(loadedVideo ? {
+          id: loadedVideo.id,
+          url: loadedVideo.url,
+          label: loadedVideo.label || 'Walkthrough Video',
+          type: 'video',
+          media_type: 'video',
+          position: loadedVideo.position ?? 0,
+        } : null);
       } catch (loadError) {
         if (!cancelled) {
           console.error('Failed to load listing:', loadError);
@@ -236,17 +218,10 @@ export default function ListingManagePage() {
     }
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=ke&q=${encodeURIComponent(query)}`,
-          { headers: { Accept: 'application/json' } },
-        );
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=ke&q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
         if (!response.ok) return;
         const data = await response.json();
-        setLocationSuggestions(
-          Array.isArray(data)
-            ? data.map((item: any) => ({ display_name: item.display_name, lat: item.lat, lon: item.lon }))
-            : [],
-        );
+        setLocationSuggestions(Array.isArray(data) ? data.map((item: any) => ({ display_name: item.display_name, lat: item.lat, lon: item.lon })) : []);
       } catch {
         setLocationSuggestions([]);
       }
@@ -261,51 +236,36 @@ export default function ListingManagePage() {
     }
     setUsingGPS(true);
     setError(null);
-    navigator.geolocation.getCurrentPosition(
-      async position => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        setLatitude(lat);
-        setLongitude(lon);
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${lat}&lon=${lon}`,
-            { headers: { Accept: 'application/json' } },
-          );
-          const data = await response.json();
-          const address = data.address ?? {};
-          const detectedCity = address.city || address.town || address.village || '';
-          const detectedCounty = address.county || '';
-          setCity(KENYAN_CITIES.includes(detectedCity) ? detectedCity : 'custom');
-          setCustomCity(KENYAN_CITIES.includes(detectedCity) ? '' : detectedCity);
-          setCounty(detectedCounty);
-          setLocationSearch(data.display_name || `${lat}, ${lon}`);
-          setLocationSuggestions([]);
-        } catch {
-          setError('GPS coordinates were captured, but the address could not be determined automatically.');
-        } finally {
-          setUsingGPS(false);
-        }
-      },
-      () => {
+    navigator.geolocation.getCurrentPosition(async position => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      setLatitude(lat);
+      setLongitude(lon);
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${lat}&lon=${lon}`, { headers: { Accept: 'application/json' } });
+        const data = await response.json();
+        const address = data.address ?? {};
+        const detectedCity = address.city || address.town || address.village || '';
+        const detectedCounty = address.county || '';
+        setCity(isKnownCity(detectedCity) ? detectedCity : 'custom');
+        setCustomCity(isKnownCity(detectedCity) ? '' : detectedCity);
+        setCounty(detectedCounty);
+        setLocationSearch(data.display_name || `${lat}, ${lon}`);
+        setLocationSuggestions([]);
+      } catch {
+        setError('GPS coordinates were captured, but the address could not be determined automatically.');
+      } finally {
         setUsingGPS(false);
-        setError('Unable to get your current location. Please allow location access and try again.');
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
+      }
+    }, () => {
+      setUsingGPS(false);
+      setError('Unable to get your current location. Please allow location access and try again.');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   };
 
-  const addSocialLink = () => {
-    setSocialLinks(current => [...current, { platform: 'WhatsApp', url: '' }]);
-  };
-
-  const updateSocialLink = (index: number, field: 'platform' | 'url', value: string) => {
-    setSocialLinks(current => current.map((link, i) => i === index ? { ...link, [field]: value } : link));
-  };
-
-  const removeSocialLink = (index: number) => {
-    setSocialLinks(current => current.filter((_, i) => i !== index));
-  };
+  const addSocialLink = () => setSocialLinks(current => [...current, { platform: 'WhatsApp', url: '' }]);
+  const updateSocialLink = (index: number, field: 'platform' | 'url', value: string) => setSocialLinks(current => current.map((link, i) => i === index ? { ...link, [field]: value } : link));
+  const removeSocialLink = (index: number) => setSocialLinks(current => current.filter((_, i) => i !== index));
 
   const handlePhotoUpload = async (files: FileList | null) => {
     if (!files?.length || !selectedListingManageId) return;
@@ -314,13 +274,9 @@ export default function ListingManagePage() {
       setError('You can upload a maximum of 7 photos.');
       return;
     }
-
-    const selected = Array.from(files).slice(0, remaining);
     try {
-      for (const file of selected) {
-        if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) {
-          throw new Error(`${file.name} must be a supported image no larger than 10 MB.`);
-        }
+      for (const file of Array.from(files).slice(0, remaining)) {
+        if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) throw new Error(`${file.name} must be a supported image no larger than 10 MB.`);
         const formData = new FormData();
         formData.append('listing_id', selectedListingManageId);
         formData.append('media_type', 'photo');
@@ -328,14 +284,7 @@ export default function ListingManagePage() {
         formData.append('label', `Photo ${photos.length + 1}`);
         formData.append('position', String(photos.length));
         const uploaded = await protectedUpload<any>('/api/listings/media/', formData);
-        setPhotos(current => [...current, {
-          id: uploaded.id,
-          url: uploaded.url,
-          label: uploaded.label || `Photo ${current.length + 1}`,
-          type: 'photo',
-          media_type: 'photo',
-          position: current.length,
-        }]);
+        setPhotos(current => [...current, { id: uploaded.id, url: uploaded.url, label: uploaded.label || `Photo ${current.length + 1}`, type: 'photo', media_type: 'photo', position: current.length }]);
       }
       setError(null);
       setSuccess(false);
@@ -346,9 +295,7 @@ export default function ListingManagePage() {
 
   const handleVideoUpload = async (file: File) => {
     if (!selectedListingManageId) return;
-    if (!file.type.startsWith('video/') || file.size > 100 * 1024 * 1024) {
-      throw new Error('Video must be a supported video no larger than 100 MB.');
-    }
+    if (!file.type.startsWith('video/') || file.size > 100 * 1024 * 1024) throw new Error('Video must be a supported video no larger than 100 MB.');
     try {
       if (video?.id) await protectedDelete(`/api/listings/media/${encodeURIComponent(video.id)}/`);
       const formData = new FormData();
@@ -413,7 +360,7 @@ export default function ListingManagePage() {
         location_search: locationSearch.trim() || null,
         latitude,
         longitude,
-        property_name: null,
+        property_name: originalPropertyName || null,
         property_type: originalPropertyType || null,
         price_kes: price.trim() === '' ? null : Number(price),
         listing_type: listingType,
@@ -431,20 +378,14 @@ export default function ListingManagePage() {
         is_property_management: isPropertyManagement,
       });
 
-      // Persist labels/positions through the existing compatibility PATCH route.
       for (let index = 0; index < photos.length; index += 1) {
         const photo = photos[index];
         if (photo.id) {
-          await protectedPatch(`/rest/v1/listing_media?id=eq.${encodeURIComponent(photo.id)}`, {
-            label: photo.label.trim() || `Photo ${index + 1}`,
-            position: index,
-          });
+          await protectedPatch(`/rest/v1/listing_media?id=eq.${encodeURIComponent(photo.id)}`, { label: photo.label.trim() || `Photo ${index + 1}`, position: index });
         }
       }
       if (video?.id) {
-        await protectedPatch(`/rest/v1/listing_media?id=eq.${encodeURIComponent(video.id)}`, {
-          label: video.label.trim() || 'Walkthrough Video',
-        });
+        await protectedPatch(`/rest/v1/listing_media?id=eq.${encodeURIComponent(video.id)}`, { label: video.label.trim() || 'Walkthrough Video' });
       }
 
       setSuccess(true);
@@ -458,83 +399,75 @@ export default function ListingManagePage() {
     }
   };
 
-  if (loading) {
-    return <div className="card mx-auto flex min-h-[60vh] max-w-7xl items-center justify-center"><div className="flex items-center gap-3 text-gray-600 dark:text-gray-300"><Loader2 className="h-5 w-5 animate-spin" />Loading listing...</div></div>;
-  }
+  if (loading) return <div className="card mx-auto flex min-h-[60vh] max-w-7xl items-center justify-center"><div className="flex items-center gap-3 text-gray-600 dark:text-gray-300"><Loader2 className="h-5 w-5 animate-spin" />Loading listing...</div></div>;
 
-  if (!selectedListingManageId) {
+  if (!selectedListingManageId || (error && !title)) {
     return <div className="card mx-auto max-w-7xl p-6"><button type="button" onClick={() => navigate('my-listings')} className="mb-4 flex items-center gap-1 text-sm text-brand-600"><ArrowLeft className="h-4 w-4" />My Listings</button><div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-800"><div className="flex items-start gap-3"><AlertCircle className="h-5 w-5" />{error || 'No listing was selected.'}</div></div></div>;
   }
 
-  if (error && !title && !loading) {
-    return <div className="card mx-auto max-w-7xl p-6"><button type="button" onClick={() => navigate('my-listings')} className="mb-4 flex items-center gap-1 text-sm text-brand-600"><ArrowLeft className="h-4 w-4" />My Listings</button><div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-800"><div className="flex items-start gap-3"><AlertCircle className="h-5 w-5" />{error}</div></div></div>;
-  }
-
-  return (
-    <EditingListingForm
-      city={city}
-      setCity={value => { setCity(value); setSuccess(false); }}
-      customCity={customCity}
-      setCustomCity={setCustomCity}
-      county={county}
-      setCounty={value => { setCounty(value); setSuccess(false); }}
-      locationSearch={locationSearch}
-      setLocationSearch={value => { setLocationSearch(value); setLatitude(null); setLongitude(null); setSuccess(false); }}
-      locationSuggestions={locationSuggestions}
-      setLocationSuggestions={setLocationSuggestions}
-      setLatitude={setLatitude}
-      setLongitude={setLongitude}
-      handleUseCurrentLocation={handleUseCurrentLocation}
-      usingGPS={usingGPS}
-      listingType={listingType}
-      setListingType={value => { setListingType(value); setSuccess(false); }}
-      price={price}
-      setPrice={value => { setPrice(value); setSuccess(false); }}
-      formatKES={formatKES}
-      depositRequired={depositRequired}
-      setDepositRequired={value => { setDepositRequired(value); setSuccess(false); }}
-      depositStructure={depositStructure}
-      setDepositStructure={setDepositStructure}
-      depositAmount={depositAmount}
-      setDepositAmount={setDepositAmount}
-      title={title}
-      setTitle={setTitle}
-      size={size}
-      setSize={setSize}
-      customSize={customSize}
-      setCustomSize={setCustomSize}
-      HOUSE_SIZES={HOUSE_SIZES}
-      beds={beds}
-      setBeds={setBeds}
-      baths={baths}
-      setBaths={setBaths}
-      description={description}
-      setDescription={setDescription}
-      phone={phone}
-      setPhone={setPhone}
-      email={email}
-      setEmail={setEmail}
-      socialLinks={socialLinks}
-      addSocialLink={addSocialLink}
-      updateSocialLink={updateSocialLink}
-      removeSocialLink={removeSocialLink}
-      SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
-      bookingEnabled={bookingEnabled}
-      setBookingEnabled={setBookingEnabled}
-      paymentEnabled={paymentEnabled}
-      setPaymentEnabled={setPaymentEnabled}
-      photos={photos}
-      handlePhotoUpload={handlePhotoUpload}
-      removePhoto={removePhoto}
-      updatePhotoLabel={updatePhotoLabel}
-      video={video}
-      handleVideoUpload={handleVideoUpload}
-      removeVideo={removeVideo}
-      onSave={handleSave}
-      saving={saving}
-      error={error}
-      success={success}
-      canSave={Boolean(selectedListingManageId && !saving)}
-    />
-  );
+  return <EditingListingForm
+    city={city}
+    setCity={value => { setCity(value); setSuccess(false); }}
+    customCity={customCity}
+    setCustomCity={setCustomCity}
+    county={county}
+    setCounty={value => { setCounty(value); setSuccess(false); }}
+    locationSearch={locationSearch}
+    setLocationSearch={value => { setLocationSearch(value); setLatitude(null); setLongitude(null); setSuccess(false); }}
+    locationSuggestions={locationSuggestions}
+    setLocationSuggestions={setLocationSuggestions}
+    setLatitude={setLatitude}
+    setLongitude={setLongitude}
+    handleUseCurrentLocation={handleUseCurrentLocation}
+    usingGPS={usingGPS}
+    listingType={listingType}
+    setListingType={value => { setListingType(value); setSuccess(false); }}
+    price={price}
+    setPrice={value => { setPrice(value); setSuccess(false); }}
+    formatKES={formatKES}
+    depositRequired={depositRequired}
+    setDepositRequired={value => { setDepositRequired(value); setSuccess(false); }}
+    depositStructure={depositStructure}
+    setDepositStructure={setDepositStructure}
+    depositAmount={depositAmount}
+    setDepositAmount={setDepositAmount}
+    title={title}
+    setTitle={setTitle}
+    size={size}
+    setSize={setSize}
+    customSize={customSize}
+    setCustomSize={setCustomSize}
+    HOUSE_SIZES={HOUSE_SIZES as unknown as string[]}
+    beds={beds}
+    setBeds={setBeds}
+    baths={baths}
+    setBaths={setBaths}
+    description={description}
+    setDescription={setDescription}
+    phone={phone}
+    setPhone={setPhone}
+    email={email}
+    setEmail={setEmail}
+    socialLinks={socialLinks}
+    addSocialLink={addSocialLink}
+    updateSocialLink={updateSocialLink}
+    removeSocialLink={removeSocialLink}
+    SOCIAL_PLATFORMS={SOCIAL_PLATFORMS}
+    bookingEnabled={bookingEnabled}
+    setBookingEnabled={setBookingEnabled}
+    paymentEnabled={paymentEnabled}
+    setPaymentEnabled={setPaymentEnabled}
+    photos={photos}
+    handlePhotoUpload={handlePhotoUpload}
+    removePhoto={removePhoto}
+    updatePhotoLabel={updatePhotoLabel}
+    video={video}
+    handleVideoUpload={handleVideoUpload}
+    removeVideo={removeVideo}
+    onSave={handleSave}
+    saving={saving}
+    error={error}
+    success={success}
+    canSave={Boolean(selectedListingManageId && !saving)}
+  />;
 }
