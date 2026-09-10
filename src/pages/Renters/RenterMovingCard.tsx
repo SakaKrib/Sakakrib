@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   CalendarDays,
+  CheckCircle2,
   FileText,
   Loader2,
   MapPin,
@@ -24,6 +25,8 @@ export interface RenterMoveBooking {
   total_amount?: number | null;
   status?: string | null;
   payment_status?: string | null;
+  renter_confirmed_delivery_at?: string | null;
+  mover_confirmed_delivery_at?: string | null;
 }
 
 interface RenterMoveCardProps {
@@ -97,6 +100,10 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [mpesaPhone, setMpesaPhone] = useState('');
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [deliveryConfirmed, setDeliveryConfirmed] = useState(Boolean(booking?.renter_confirmed_delivery_at));
 
   const refreshInvoice = async () => {
     if (!booking?.id) { setInvoice(null); return; }
@@ -131,7 +138,10 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
   useEffect(() => {
     setPaymentMessage(null);
     setPaymentError(null);
-  }, [booking?.id, booking?.status, booking?.payment_status]);
+    setDeliveryMessage(null);
+    setDeliveryError(null);
+    setDeliveryConfirmed(Boolean(booking?.renter_confirmed_delivery_at));
+  }, [booking?.id, booking?.status, booking?.payment_status, booking?.renter_confirmed_delivery_at]);
 
   useEffect(() => {
     setMpesaPhone(profile?.phone?.trim() ?? '');
@@ -188,10 +198,38 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
     }
   };
 
+  const handleConfirmDelivery = async () => {
+    if (!booking?.id || deliveryLoading || deliveryConfirmed) return;
+    setDeliveryLoading(true);
+    setDeliveryMessage(null);
+    setDeliveryError(null);
+    try {
+      const result = await renterApi.confirmMovingDelivery(booking.id);
+      setDeliveryConfirmed(true);
+      setDeliveryMessage(
+        result.both_confirmed
+          ? 'Delivery confirmed by both you and the mover. Escrow is now eligible for administrator release.'
+          : 'Delivery confirmed. You confirmed that your belongings arrived safely. Escrow remains held until the mover also confirms delivery.'
+      );
+    } catch (error) {
+      setDeliveryError(error instanceof Error ? error.message : 'Unable to confirm delivery.');
+    } finally {
+      setDeliveryLoading(false);
+    }
+  };
+
   const accounting = invoice as MovingInvoiceAccounting | null;
   const platformFee = accounting?.platform_fee_kes;
   const moverNet = accounting?.mover_net_kes;
   const canPay = booking?.status?.trim().toLowerCase() === 'confirmed' && booking?.payment_status?.trim().toLowerCase() !== 'paid' && invoice?.status?.trim().toUpperCase() === 'ISSUED';
+  const canConfirmDelivery = Boolean(
+    booking?.id &&
+    booking.payment_status?.trim().toLowerCase() === 'paid' &&
+    booking.status?.trim().toLowerCase() === 'in_progress' &&
+    booking.mover_confirmed_delivery_at &&
+    !deliveryConfirmed
+  );
+  const moverHasConfirmed = Boolean(booking?.mover_confirmed_delivery_at);
 
   return (
     <section className="card overflow-hidden">
@@ -257,6 +295,27 @@ export default function RenterMoveCard({ booking, onTrack, onFindMover }: Renter
             {paymentMessage && <div className="mt-3 rounded-lg border border-success-200 bg-success-50 px-3 py-2 text-xs font-medium text-success-700 dark:border-success-800 dark:bg-success-900/20 dark:text-success-400">{paymentMessage}</div>}
             {paymentError && <div role="alert" aria-live="polite" className="mt-3 flex items-start gap-2 rounded-lg border border-error-200 bg-error-50 px-3 py-3 text-sm font-semibold text-error-700 shadow-sm dark:border-error-800 dark:bg-error-900/20 dark:text-error-400"><span className="mt-0.5" aria-hidden="true">!</span><span>{paymentError}</span></div>}
           </div>
+
+          {moverHasConfirmed && !deliveryConfirmed && (
+            <div className="mt-4 rounded-xl border border-success-200 bg-success-50/60 p-4 dark:border-success-800 dark:bg-success-900/20">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success-600 dark:text-success-400" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-success-800 dark:text-success-300">Mover has confirmed delivery</p>
+                  <p className="mt-1 text-xs leading-5 text-success-700 dark:text-success-400">Please inspect your belongings. Confirm only when they have arrived safely and you are satisfied with their condition. Your confirmation is required before escrow can be released.</p>
+                  <button type="button" onClick={() => void handleConfirmDelivery()} disabled={!canConfirmDelivery || deliveryLoading} className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2 text-sm sm:w-auto">{deliveryLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Confirm safe delivery</button>
+                  {deliveryError && <p role="alert" className="mt-3 text-sm font-semibold text-error-600 dark:text-error-400">{deliveryError}</p>}
+                  {deliveryMessage && <p className="mt-3 text-sm font-medium text-success-700 dark:text-success-400">{deliveryMessage}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+          {deliveryConfirmed && (
+            <div className="mt-4 rounded-xl border border-success-200 bg-success-50 px-4 py-3 dark:border-success-800 dark:bg-success-900/20">
+              <p className="text-sm font-semibold text-success-800 dark:text-success-300">You confirmed safe delivery</p>
+              <p className="mt-1 text-xs text-success-700 dark:text-success-400">Your delivery confirmation has been recorded by Django. Escrow remains subject to both-party confirmation and the existing settlement workflow.</p>
+            </div>
+          )}
 
           {onTrack && <button type="button" onClick={() => onTrack(booking.id)} className="btn-primary mt-5 inline-flex w-full items-center justify-center gap-2 text-sm sm:w-auto">Track Mover<ArrowRight className="h-4 w-4" /></button>}
         </div>
