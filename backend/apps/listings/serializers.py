@@ -1,7 +1,8 @@
 from rest_framework import serializers
 
 from apps.accounts.models import Profile
-from apps.core.domain_property import ListingMedia, PropertyUnit, RenterUnitAssociation
+from apps.core.domain_property import LandlordPaymentMethod, ListingMedia, PropertyUnit, RenterUnitAssociation
+from apps.subscriptions.services import get_current_subscription
 
 from .models import Listing
 
@@ -37,10 +38,23 @@ class PropertyUnitPublicSerializer(serializers.Serializer):
     media = serializers.ListField(child=serializers.DictField())
 
 
+class ListingPaymentMethodPublicSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    provider = serializers.CharField()
+    display_name = serializers.CharField()
+    payment_method = serializers.CharField(allow_null=True)
+    paybill_number = serializers.CharField(allow_null=True)
+    paybill_account = serializers.CharField(allow_null=True)
+    till_number = serializers.CharField(allow_null=True)
+    paypal_email = serializers.EmailField(allow_null=True)
+    is_default = serializers.BooleanField()
+
+
 class ListingSerializer(serializers.ModelSerializer):
     media = serializers.SerializerMethodField()
     landlord = serializers.SerializerMethodField()
     units = serializers.SerializerMethodField()
+    payment_methods = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -52,12 +66,12 @@ class ListingSerializer(serializers.ModelSerializer):
             'booking_enabled', 'payment_enabled', 'is_property_management', 'is_paid',
             'is_draft', 'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at',
             'admin_review_note', 'ai_caption', 'ai_caption_generated_at', 'created_at',
-            'updated_at', 'media', 'landlord', 'units',
+            'updated_at', 'media', 'landlord', 'units', 'payment_methods',
         ]
         read_only_fields = [
             'id', 'user_id', 'is_paid', 'is_draft', 'is_published', 'approval_status', 'is_approved',
             'status', 'admin_reviewed_at', 'admin_review_note', 'ai_caption',
-            'ai_caption_generated_at', 'created_at', 'updated_at', 'media', 'landlord', 'units',
+            'ai_caption_generated_at', 'created_at', 'updated_at', 'media', 'landlord', 'units', 'payment_methods',
         ]
 
     def get_media(self, obj):
@@ -109,6 +123,49 @@ class ListingSerializer(serializers.ModelSerializer):
                 'media': media_by_unit.get(str(unit.id), []),
             })
         return PropertyUnitPublicSerializer(payload, many=True).data
+
+    def get_payment_methods(self, obj):
+        if not obj.is_property_management or not obj.payment_enabled:
+            return []
+
+        request = self.context.get('request')
+        owner = Profile.objects.filter(pk=obj.user_id).first()
+        if not owner:
+            return []
+
+        role = str(getattr(owner, 'role', '') or '').lower()
+        if role not in {'landlord', 'real_estate'}:
+            return []
+
+        # Payment methods are currently stored in the landlord-owned table.
+        # Do not expose them unless the property owner has an eligible PMS subscription.
+        try:
+            if get_current_subscription(owner) is None:
+                return []
+        except Exception:
+            return []
+
+        if role != 'landlord':
+            return []
+
+        rows = LandlordPaymentMethod.objects.filter(
+            landlord_id=obj.user_id,
+            is_active=True,
+        ).order_by('-is_default', 'created_at')
+        payload = []
+        for row in rows:
+            payload.append({
+                'id': row.id,
+                'provider': row.provider,
+                'display_name': row.display_name,
+                'payment_method': row.mpesa_method,
+                'paybill_number': row.paybill_number,
+                'paybill_account': row.paybill_account,
+                'till_number': row.till_number,
+                'paypal_email': row.paypal_email,
+                'is_default': row.is_default,
+            })
+        return ListingPaymentMethodPublicSerializer(payload, many=True).data
 
     def get_landlord(self, obj):
         profile = Profile.objects.filter(pk=obj.user_id).first()
