@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.accounts.models import Profile
 from apps.core.domain_property import LandlordPaymentMethod, ListingMedia, PropertyUnit, RenterUnitAssociation
-from apps.subscriptions.services import get_current_subscription
+from apps.subscriptions.services import get_pms_access
 
 from .models import Listing
 
@@ -136,14 +136,14 @@ class ListingSerializer(serializers.ModelSerializer):
         if role not in {'landlord', 'real_estate'}:
             return []
 
-        # Payment methods are stored in the existing landlord-owned table and are
-        # also used for real-estate PMS accounts. Only expose active methods when
-        # the property owner has an eligible PMS subscription. This is display-only;
-        # this serializer never creates invoices or initiates a payment.
+        # Use the same complete PMS access gate as the management system.
+        # Listing Details only displays configured payment details; it never
+        # creates invoices, payment transactions, or STK pushes.
         try:
-            if get_current_subscription(owner) is None:
-                return []
+            access = get_pms_access(owner)
         except Exception:
+            return []
+        if not access.get('allowed'):
             return []
 
         rows = LandlordPaymentMethod.objects.filter(
@@ -185,8 +185,7 @@ class ListingUpdateSerializer(serializers.ModelSerializer):
             'title', 'description', 'city', 'county', 'location_search', 'latitude', 'longitude',
             'property_name', 'property_type', 'price_kes', 'listing_type', 'deposit_required',
             'deposit_structure', 'deposit_amount', 'size', 'beds', 'baths', 'contact_phone',
-            'contact_email', 'social_links', 'booking_enabled', 'payment_enabled',
-            'is_property_management',
+            'contact_email', 'social_links', 'booking_enabled', 'payment_enabled', 'is_property_management',
         ]
 
     def validate_listing_type(self, value):
