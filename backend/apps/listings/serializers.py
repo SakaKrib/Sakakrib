@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.accounts.models import Profile
-from apps.core.domain_property import ListingMedia
+from apps.core.domain_property import ListingMedia, PropertyUnit, RenterUnitAssociation
 
 from .models import Listing
 
@@ -18,17 +18,29 @@ class ListingMediaSerializer(serializers.ModelSerializer):
         value = obj.url or ''
         if not value.startswith('django-media://'):
             return value
-        # Keep Django-managed media same-origin so the browser goes through
-        # the existing Vite /api proxy in development and the normal API
-        # origin in production. Building an absolute URL from the proxied
-        # request can expose the Docker service hostname (for example
-        # "backend:8000"), which is not resolvable by the user's browser.
         return f'/api/listings/media/{obj.id}/'
+
+
+class PropertyUnitPublicSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    listing_id = serializers.UUIDField()
+    unit_number = serializers.CharField()
+    unit_type = serializers.CharField()
+    rent = serializers.DecimalField(max_digits=14, decimal_places=2)
+    deposit_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    size = serializers.CharField(allow_null=True)
+    beds = serializers.IntegerField()
+    baths = serializers.IntegerField()
+    description = serializers.CharField(allow_null=True)
+    position = serializers.IntegerField()
+    status = serializers.CharField()
+    media = serializers.ListField(child=serializers.DictField())
 
 
 class ListingSerializer(serializers.ModelSerializer):
     media = serializers.SerializerMethodField()
     landlord = serializers.SerializerMethodField()
+    units = serializers.SerializerMethodField()
 
     class Meta:
         model = Listing
@@ -40,17 +52,63 @@ class ListingSerializer(serializers.ModelSerializer):
             'booking_enabled', 'payment_enabled', 'is_property_management', 'is_paid',
             'is_draft', 'is_published', 'approval_status', 'is_approved', 'status', 'admin_reviewed_at',
             'admin_review_note', 'ai_caption', 'ai_caption_generated_at', 'created_at',
-            'updated_at', 'media', 'landlord',
+            'updated_at', 'media', 'landlord', 'units',
         ]
         read_only_fields = [
             'id', 'user_id', 'is_paid', 'is_draft', 'is_published', 'approval_status', 'is_approved',
             'status', 'admin_reviewed_at', 'admin_review_note', 'ai_caption',
-            'ai_caption_generated_at', 'created_at', 'updated_at', 'media', 'landlord',
+            'ai_caption_generated_at', 'created_at', 'updated_at', 'media', 'landlord', 'units',
         ]
 
     def get_media(self, obj):
         rows = ListingMedia.objects.filter(listing_id=obj.id).order_by('position', 'created_at')
         return ListingMediaSerializer(rows, many=True, context=self.context).data
+
+    def get_units(self, obj):
+        if not obj.is_property_management:
+            return []
+
+        units = PropertyUnit.objects.filter(listing_id=obj.id).order_by('position', 'created_at')
+        unit_ids = list(units.values_list('id', flat=True))
+        active_associations = set(
+            RenterUnitAssociation.objects.filter(
+                unit_id__in=unit_ids,
+                status='ACTIVE',
+            ).values_list('unit_id', flat=True)
+        )
+
+        media_rows = ListingMedia.objects.filter(
+            listing_id=obj.id,
+            unit_id__in=unit_ids,
+            media_type='photo',
+        ).order_by('position', 'created_at')
+        media_by_unit = {}
+        for row in media_rows:
+            media_by_unit.setdefault(str(row.unit_id), []).append(
+                ListingMediaSerializer(row, context=self.context).data
+            )
+
+        payload = []
+        for unit in units:
+            occupied = unit.id in active_associations or str(unit.availability or '').strip().lower() in {
+                'occupied', 'unavailable', 'rented', 'leased'
+            }
+            payload.append({
+                'id': unit.id,
+                'listing_id': unit.listing_id,
+                'unit_number': unit.unit_number,
+                'unit_type': unit.unit_type,
+                'rent': unit.rent,
+                'deposit_amount': unit.deposit_amount,
+                'size': unit.size,
+                'beds': unit.beds,
+                'baths': unit.baths,
+                'description': unit.description,
+                'position': unit.position,
+                'status': 'occupied' if occupied else 'available',
+                'media': media_by_unit.get(str(unit.id), []),
+            })
+        return PropertyUnitPublicSerializer(payload, many=True).data
 
     def get_landlord(self, obj):
         profile = Profile.objects.filter(pk=obj.user_id).first()
