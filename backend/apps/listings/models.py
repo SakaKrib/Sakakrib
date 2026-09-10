@@ -48,8 +48,8 @@ class Listing(models.Model):
     admin_review_note = models.TextField(default='', null=True, blank=True)
     ai_caption = models.TextField(null=True, blank=True)
     ai_caption_generated_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(null=True, blank=True)
-    updated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, null=True, blank=True)
+    updated_at = models.DateTimeField(default=timezone.now, null=True, blank=True)
 
     class Meta:
         db_table = 'listings'
