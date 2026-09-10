@@ -128,6 +128,39 @@ class MoverView(ScopedListDetailView):
     scope = staticmethod(movers_for_user)
     fields = MOVER_FIELDS
 
+    def get(self, request, object_id=None):
+        queryset = self.get_queryset()
+        if object_id is not None:
+            obj = queryset.filter(pk=object_id).first()
+            if obj is None:
+                return Response({"detail": "Not found."}, status=404)
+            return Response(self.serialize(obj))
+
+        search = request.query_params.get("search", "").strip()
+        city = request.query_params.get("operating_city", "").strip()
+        vehicle_type = request.query_params.get("vehicle_type", "").strip()
+        is_available = request.query_params.get("is_available")
+
+        if city:
+            queryset = queryset.filter(operating_city__iexact=city)
+        if vehicle_type:
+            queryset = queryset.filter(vehicle_type__iexact=vehicle_type)
+        if is_available:
+            if is_available.lower() in {"true", "1"}:
+                queryset = queryset.filter(is_available=True)
+            elif is_available.lower() in {"false", "0"}:
+                queryset = queryset.filter(is_available=False)
+        if search:
+            queryset = queryset.filter(
+                Q(driver_full_name__icontains=search)
+                | Q(operating_city__icontains=search)
+            )
+
+        return Response([
+            self.serialize(obj)
+            for obj in queryset.order_by("-created_at", "-id")
+        ])
+
 
 class MovingInvoiceView(ScopedListDetailView):
     model = MovingInvoice
@@ -255,66 +288,4 @@ class MoverScheduleEventView(APIView):
         return Response([
             {field: getattr(obj, field) for field in self.fields}
             for obj in queryset.order_by("-starts_at")
-        ])
-
-
-class MovingTrackingPointView(APIView):
-    """Matches production tracking SELECT: active/completed booking participant or admin."""
-    permission_classes = [IsAuthenticated]
-
-    fields = (
-        "id", "booking_id", "mover_id", "latitude", "longitude", "accuracy_meters",
-        "speed_kph", "heading_degrees", "recorded_at",
-    )
-
-    def get(self, request, object_id=None):
-        user = request.user
-        mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
-        participant_bookings = Booking.objects.filter(
-            Q(renter_id=user.pk) | Q(mover_id__in=mover_ids),
-            status__in=["in_progress", "completed"],
-        ).values("id")
-        queryset = MovingTrackingPoint.objects.filter(booking_id__in=participant_bookings)
-        if is_admin(user):
-            queryset = MovingTrackingPoint.objects.filter(
-                booking_id__in=Booking.objects.filter(
-                    status__in=["in_progress", "completed"]
-                ).values("id")
-            )
-        if object_id is not None:
-            obj = queryset.filter(pk=object_id).first()
-            if obj is None:
-                return Response({"detail": "Not found."}, status=404)
-            return Response({field: getattr(obj, field) for field in self.fields})
-        return Response([
-            {field: getattr(obj, field) for field in self.fields}
-            for obj in queryset.order_by("-recorded_at")
-        ])
-
-
-class MovingCancellationEventView(APIView):
-    """Matches production cancellation SELECT: actor or booking participant."""
-    permission_classes = [IsAuthenticated]
-
-    fields = (
-        "id", "booking_id", "cancelled_by", "reason_code", "reason_text", "created_at",
-    )
-
-    def get(self, request, object_id=None):
-        user = request.user
-        mover_ids = Mover.objects.filter(user_id=user.pk).values("id")
-        participant_booking_ids = Booking.objects.filter(
-            Q(renter_id=user.pk) | Q(mover_id__in=mover_ids)
-        ).values("id")
-        queryset = MovingCancellationEvent.objects.filter(
-            Q(cancelled_by=user.pk) | Q(booking_id__in=participant_booking_ids)
-        )
-        if object_id is not None:
-            obj = queryset.filter(pk=object_id).first()
-            if obj is None:
-                return Response({"detail": "Not found."}, status=404)
-            return Response({field: getattr(obj, field) for field in self.fields})
-        return Response([
-            {field: getattr(obj, field) for field in self.fields}
-            for obj in queryset.order_by("-created_at")
         ])
