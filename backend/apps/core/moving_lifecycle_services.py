@@ -37,18 +37,11 @@ def _delivery_state(booking):
 
 @transaction.atomic
 def confirm_moving_delivery(*, user_id, booking_id):
-    """Record one party's delivery confirmation and complete only after both agree.
-
-    The renter confirms that the belongings arrived safely/in acceptable condition.
-    The assigned mover confirms that the delivery was performed. Neither side can
-    release escrow by itself; the existing admin-authorized escrow release remains
-    the settlement boundary and independently requires both confirmations.
-    """
+    """Record one party's delivery confirmation and complete only after both agree."""
     booking = _booking_for_participant(booking_id, user_id)
 
     if booking.payment_status != "paid":
         raise ValidationError("Booking must be paid before delivery confirmation")
-
     if booking.status not in {"in_progress", "completed"}:
         raise ValidationError("Journey must be active before delivery confirmation")
 
@@ -65,6 +58,7 @@ def confirm_moving_delivery(*, user_id, booking_id):
     state = _delivery_state(booking)
     is_renter = booking.renter_id == user_id
     is_mover = mover.user_id == user_id
+    already_confirmed = state["renter_confirmed"] if is_renter else state["mover_confirmed"]
 
     if booking.status == "completed" or journey.status == MovingJourney.STATUS_COMPLETED:
         if not state["both_confirmed"]:
@@ -73,23 +67,23 @@ def confirm_moving_delivery(*, user_id, booking_id):
             "booking_id": str(booking.id),
             **state,
             "status": "completed",
-            "already_confirmed": True,
+            "already_confirmed": already_confirmed,
             "next_step": "ADMIN_ESCROW_RELEASE",
         }
 
     if journey.status not in {MovingJourney.STATUS_ACTIVE, MovingJourney.STATUS_DELIVERY_PENDING}:
         raise ValidationError("Journey is not active")
 
+    if not is_renter and not is_mover:
+        raise ValidationError("Only the renter or assigned mover can confirm delivery")
+
     now = timezone.now()
-    changed_side = "renter" if is_renter else "mover"
     if is_renter:
         if not booking.renter_confirmed_delivery_at:
             booking.renter_confirmed_delivery_at = now
-    elif is_mover:
+    else:
         if not booking.mover_confirmed_delivery_at:
             booking.mover_confirmed_delivery_at = now
-    else:
-        raise ValidationError("Only the renter or assigned mover can confirm delivery")
 
     state = _delivery_state(booking)
     both_confirmed = state["both_confirmed"]
@@ -132,7 +126,7 @@ def confirm_moving_delivery(*, user_id, booking_id):
         "both_confirmed": both_confirmed,
     }
 
-    if changed_side == "renter":
+    if is_renter:
         UserNotification.objects.get_or_create(
             event_key=f"moving-delivery-confirmed:renter:{booking.id}",
             defaults={
@@ -201,7 +195,7 @@ def confirm_moving_delivery(*, user_id, booking_id):
         "booking_id": str(booking.id),
         **state,
         "status": booking.status,
-        "already_confirmed": False,
+        "already_confirmed": already_confirmed,
         "next_step": "ADMIN_ESCROW_RELEASE" if both_confirmed else "WAIT_FOR_OTHER_CONFIRMATION",
     }
 
@@ -303,7 +297,7 @@ def resolve_moving_dispute(*, admin_user_id, dispute_id, resolution_code, resolu
         data={"booking_id": str(booking.id), "dispute_id": str(dispute.id), "resolution_code": resolution_code},
     )
     return {
-        "dispute_id": str(booking.id),
+        "dispute_id": str(dispute.id),
         "booking_id": str(booking.id),
         "status": "RESOLVED", "resolution_code": resolution_code,
     }
