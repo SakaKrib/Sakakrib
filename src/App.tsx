@@ -27,6 +27,7 @@ import KycVerifyPage from '@/pages/KycVerifyPage';
 import RoleDashboardRouter from '@/Dashboards/RoleDashboardRouter';
 import DashboardPage from '@/Dashboards/DashboardPage';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
+import AdminCreateListingPage from '@/pages/AdminCreateListingPage';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
@@ -102,6 +103,7 @@ function AppContent() {
       case 'register-landlord': return <RegisterLandlordPage />;
       case 'kyc-verify': return <KycVerifyPage />;
       case 'admin-user-details': return (profile?.is_superuser === true || profile?.is_admin === true) ? (selectedAdminUserId ? <AdminUserDetailsRoute userId={selectedAdminUserId} onBack={() => window.history.back()} /> : <DashboardPage />) : <DashboardPage />;
+      case 'admin-create-listing': return (profile?.is_superuser === true || profile?.is_admin === true) ? <AdminCreateListingPage /> : <DashboardPage />;
       case 'dashboard': return <RoleDashboardRouter />;
       case 'pms-dashboard': return <RoleDashboardRouter />;
       case 'profile': return <ProfilePage />;
