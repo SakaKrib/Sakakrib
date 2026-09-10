@@ -96,6 +96,7 @@ function AppContent() {
       case 'renter-activities': return <RenterActivitiesPage />;
       case 'renter-chat-performance': return <RenterChatPerformancePage />;
       case 'renter-messages': return <RenterMessagesPage />;
+      case 'renter-notifications': return <RenterNotificationsPage />;
       case 'chat': return <ChatPage />;
       case 'community': return <CommunityPage />;
       case 'post-listing': return <PostListingPage />;
