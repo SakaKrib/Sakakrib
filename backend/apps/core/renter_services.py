@@ -68,15 +68,28 @@ def create_renter_unit_request(*, renter_user_id, unit_id):
         raise ValidationError("This property is not currently accepting unit booking requests.")
 
     occupied = str(unit.availability or "").strip().lower() in {"occupied", "unavailable", "rented", "leased"}
-    if occupied or RenterUnitAssociation.objects.filter(unit_id=unit.id, status="ACTIVE").exists():
+    if occupied:
         raise ValidationError("This unit is no longer available.")
 
-    if RenterUnitAssociation.objects.filter(
-        unit_id=unit.id, renter_user_id=renter_user_id, status="PENDING"
-    ).exists():
-        raise ValidationError("You already have a pending request for this unit.")
-    if RenterUnitAssociation.objects.filter(unit_id=unit.id, status="ACTIVE").exists():
-        raise ValidationError("This unit is no longer available.")
+    # Lock the unit's existing associations while the unit itself is locked.
+    # This prevents two renters from creating competing pending requests at
+    # the same time and also respects an existing landlord-created invitation.
+    associations = list(
+        RenterUnitAssociation.objects.select_for_update().filter(unit_id=unit.id)
+    )
+    now = timezone.now()
+    for association in associations:
+        if association.status == "ACTIVE":
+            raise ValidationError("This unit is no longer available.")
+        if association.status == "PENDING":
+            if association.invite_expires_at and association.invite_expires_at <= now:
+                association.status = "EXPIRED"
+                association.updated_at = now
+                association.save(update_fields=["status", "updated_at"])
+                continue
+            if str(association.renter_user_id or "") == str(renter_user_id):
+                raise ValidationError("You already have a pending request for this unit.")
+            raise ValidationError("This unit already has a pending rental request.")
 
     owner = Profile.objects.filter(pk=listing.user_id).first()
     if owner is None or str(getattr(owner, "role", "")).lower() not in {"landlord", "real_estate"}:
@@ -84,7 +97,6 @@ def create_renter_unit_request(*, renter_user_id, unit_id):
     if get_pms_access(owner).get("allowed") is not True:
         raise ValidationError("This property's PMS access is not currently active.")
 
-    now = timezone.now()
     row = RenterUnitAssociation.objects.create(
         unit_id=unit.id,
         landlord_id=owner.id,
