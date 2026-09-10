@@ -1,4 +1,6 @@
+from django.utils import timezone
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -59,7 +61,6 @@ class CommunityPostV2View(BaseCommunityPostView):
             post_id = response.data.get('post', {}).get('id')
             post = CommunityPost.objects.filter(pk=post_id).first()
             if post and post.created_at is None:
-                from django.utils import timezone
                 post.created_at = timezone.now()
                 post.save(update_fields=['created_at'])
             if post:
@@ -68,7 +69,7 @@ class CommunityPostV2View(BaseCommunityPostView):
 
 
 class CommunityPostReactionView(APIView):
-    permission_classes = [__import__('rest_framework.permissions', fromlist=['IsAuthenticated']).IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, post_id):
         post = CommunityPost.objects.filter(pk=post_id).first()
