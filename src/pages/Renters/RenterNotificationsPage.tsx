@@ -51,7 +51,7 @@ export default function RenterNotificationsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6 flex items-start justify-between gap-4">
-        <div><button type="button" onClick={() => navigate('dashboard')} className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">← Back to dashboard</button><h1 className="mt-2 flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white"><Bell className="h-6 w-6 text-brand-500" />Notifications</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Booking, moving and account updates from Django.</p></div>
+        <div><button type="button" onClick={() => navigate('dashboard')} className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">← Back to dashboard</button><h1 className="mt-2 flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white"><Bell className="h-6 w-6 text-brand-500" />Notifications</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Booking, moving and account updates.</p></div>
         <button type="button" onClick={() => void load()} className="btn-secondary inline-flex items-center gap-2 text-sm"><RefreshCw className="h-4 w-4" />Refresh</button>
       </div>
       {error && <div className="mb-5 rounded-xl bg-error-50 p-4 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>}
