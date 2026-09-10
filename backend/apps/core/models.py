@@ -19,7 +19,7 @@ from .domain_platform import (
 from .domain_property import (
     LandlordPaymentMethod, PropertyUnit, RenterUnitAssociation, ListingMedia,
     ExchangeRateCache, PMSSubscriptionNotification, PlatformSettings,
-    CommunityPost, Review,
+    CommunityPost, CommunityPostMedia, CommunityPostReaction, Review,
 )
 from .domain_rent import (
     RentInvoicePeriod, RentInvoice, RentPaymentIntent,
@@ -36,7 +36,8 @@ __all__ = [
     'SupportTicket', 'TermsAcceptance', 'LandlordPaymentMethod',
     'PropertyUnit', 'RenterUnitAssociation', 'ListingMedia',
     'ExchangeRateCache', 'PMSSubscriptionNotification', 'PlatformSettings',
-    'CommunityPost', 'Review', 'RentInvoicePeriod', 'RentInvoice',
-    'RentPaymentIntent', 'RentPaymentSubmission', 'RentPayment',
-    'RentReminderSetting', 'RentReminder',
+    'CommunityPost', 'CommunityPostMedia', 'CommunityPostReaction', 'Review',
+    'RentInvoicePeriod', 'RentInvoice', 'RentPaymentIntent',
+    'RentPaymentSubmission', 'RentPayment', 'RentReminderSetting',
+    'RentReminder',
 ]
