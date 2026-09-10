@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Bath, BedDouble, Calendar, ChevronLeft, ChevronRight, Maximize, Home } from 'lucide-react';
+import { Bath, BedDouble, Calendar, ChevronLeft, ChevronRight, Maximize, Home, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { formatKES, cn } from '@/lib/utils';
+import { protectedPost } from '@/lib/djangoApi';
 import type { ListingMedia } from '@/types/domain';
 
 export type PublicPropertyUnit = {
@@ -28,9 +29,27 @@ type Props = {
 
 function UnitCard({ unit, bookingEnabled, onSelectUnit, onBookUnit }: { unit: PublicPropertyUnit; bookingEnabled: boolean; onSelectUnit?: (unit: PublicPropertyUnit) => void; onBookUnit?: (unit: PublicPropertyUnit) => void }) {
   const [image, setImage] = useState(0);
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const occupied = unit.status === 'occupied';
   const photos = unit.media ?? [];
   const activePhoto = photos[image];
+
+  const requestUnit = async () => {
+    if (occupied || !bookingEnabled || requesting || requested) return;
+    setError(null);
+    onBookUnit?.(unit);
+    setRequesting(true);
+    try {
+      await protectedPost('/api/core/property-rental/request/', { unit_id: unit.id });
+      setRequested(true);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to submit the rental request. Please try again.');
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   return (
     <article className={cn('overflow-hidden rounded-xl border bg-white dark:bg-brand-900', occupied ? 'border-gray-200 opacity-60 dark:border-brand-800' : 'border-gray-200 transition-shadow hover:shadow-md dark:border-brand-700')}>
@@ -43,7 +62,6 @@ function UnitCard({ unit, bookingEnabled, onSelectUnit, onBookUnit }: { unit: Pu
         </>}
         <span className={cn('absolute left-2 top-2 rounded-full px-2.5 py-1 text-xs font-semibold', occupied ? 'bg-gray-700 text-white' : 'bg-success-600 text-white')}>{occupied ? 'Occupied' : 'Available'}</span>
       </div>
-
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div><h3 className="font-semibold text-gray-900 dark:text-white">Unit {unit.unit_number}</h3><p className="text-sm text-gray-500 dark:text-gray-400">{unit.unit_type}</p></div>
@@ -55,9 +73,13 @@ function UnitCard({ unit, bookingEnabled, onSelectUnit, onBookUnit }: { unit: Pu
           <span className="flex items-center gap-1"><Maximize className="h-3.5 w-3.5" /> {unit.size || '—'}</span>
         </div>
         {unit.description && <p className="mt-3 line-clamp-3 text-sm text-gray-600 dark:text-gray-400">{unit.description}</p>}
-
         {!occupied && onSelectUnit && <button type="button" onClick={() => onSelectUnit(unit)} className="mt-4 w-full rounded-lg border border-brand-200 px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-800">View unit details</button>}
-        {!occupied && bookingEnabled && onBookUnit && <button type="button" onClick={() => onBookUnit(unit)} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"><Calendar className="h-4 w-4" /> Book this unit</button>}
+        {!occupied && bookingEnabled && onBookUnit && <>
+          <button type="button" onClick={requestUnit} disabled={requesting || requested} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60">
+            {requesting ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending request…</> : requested ? <><CheckCircle2 className="h-4 w-4" /> Request sent</> : <><Calendar className="h-4 w-4" /> Request this unit</>}
+          </button>
+          {error && <p className="mt-2 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"><AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}</p>}
+        </>}
       </div>
     </article>
   );
@@ -69,7 +91,7 @@ export default function PropertyUnitsSection({ units, bookingEnabled, onSelectUn
   if (units.length === 0) return null;
   return (
     <section className="card p-6">
-      <div><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Property Units</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Explore the individual units in this property. Occupied units remain visible for reference; available units can be investigated and booked.</p></div>
+      <div><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Property Units</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Explore the individual units in this property. Occupied units remain visible for reference; available units can be investigated and requested.</p></div>
       {available.length > 0 && <div className="mt-5"><h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Available Units</h3><div className="grid gap-4 md:grid-cols-2">{available.map((unit) => <UnitCard key={unit.id} unit={unit} bookingEnabled={bookingEnabled} onSelectUnit={onSelectUnit} onBookUnit={onBookUnit} />)}</div></div>}
       {occupied.length > 0 && <div className="mt-6"><h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Occupied Units</h3><div className="grid gap-4 md:grid-cols-2">{occupied.map((unit) => <UnitCard key={unit.id} unit={unit} bookingEnabled={false} />)}</div></div>}
     </section>
