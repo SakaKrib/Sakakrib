@@ -91,10 +91,6 @@ interface EditingListingFormProps {
   updateSocialLink: (index: number, field: keyof SocialLink, value: string) => void;
   removeSocialLink: (index: number) => void;
   SOCIAL_PLATFORMS: string[];
-  bookingEnabled: boolean;
-  setBookingEnabled: (value: boolean) => void;
-  paymentEnabled: boolean;
-  setPaymentEnabled: (value: boolean) => void;
   photos: MediaItem[];
   handlePhotoUpload: (files: FileList | null) => void | Promise<void>;
   removePhoto: (index: number) => void;
@@ -117,7 +113,6 @@ export default function EditingListingForm({
   depositRequired, setDepositRequired, depositStructure, setDepositStructure, depositAmount, setDepositAmount,
   title, setTitle, size, setSize, customSize, setCustomSize, HOUSE_SIZES, beds, setBeds, baths, setBaths, description, setDescription,
   phone, setPhone, email, setEmail, socialLinks, addSocialLink, updateSocialLink, removeSocialLink, SOCIAL_PLATFORMS,
-  bookingEnabled, setBookingEnabled, paymentEnabled, setPaymentEnabled,
   photos, handlePhotoUpload, removePhoto, updatePhotoLabel, video, handleVideoUpload, removeVideo,
   onSave, saving, error, success, canSave = true,
 }: EditingListingFormProps) {
@@ -156,7 +151,6 @@ export default function EditingListingForm({
             <div className="grid gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label><div className="relative"><Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="0712345678" className="input-field pl-10" /></div></div><div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label><div className="relative"><Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" className="input-field pl-10" /></div></div></div>
             {!contactLooksValid && <p className="text-xs text-error-500">Please provide at least a phone number or email address.</p>}
             <div><div className="flex items-center justify-between"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Social / Direct Links</label><button type="button" onClick={addSocialLink} className="btn-ghost text-xs"><Plus className="h-4 w-4" />Add Link</button></div><div className="mt-2 space-y-2">{socialLinks.map((link,index) => <div key={`social-${index}`} className="flex flex-col gap-2 sm:flex-row"><select value={link.platform} onChange={e => updateSocialLink(index,'platform',e.target.value)} className="input-field w-full sm:w-36">{SOCIAL_PLATFORMS.map(platform => <option key={platform} value={platform}>{platform}</option>)}</select><input type="url" value={link.url} onChange={e => updateSocialLink(index,'url',e.target.value)} placeholder="https://..." className="input-field flex-1" /><button type="button" onClick={() => removeSocialLink(index)} className="self-end rounded-lg p-2 text-gray-400 hover:bg-error-50 hover:text-error-600 dark:hover:bg-error-900/20 sm:self-auto"><X className="h-4 w-4" /></button></div>)}</div></div>
-            <div className="rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-700 dark:bg-brand-900/20"><h4 className="font-semibold text-gray-900 dark:text-white">Tenant Actions</h4><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Allow interested tenants to take action directly from your published listing.</p><div className="mt-4 grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setBookingEnabled(!bookingEnabled)} className={cn('rounded-lg border-2 p-4 text-left transition-colors', bookingEnabled ? 'border-brand-500 bg-white dark:bg-brand-800' : 'border-gray-200 dark:border-brand-700')}><div className="font-semibold text-gray-900 dark:text-white">Allow Booking</div><div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Tenants can request/book a unit.</div></button><button type="button" onClick={() => setPaymentEnabled(!paymentEnabled)} className={cn('rounded-lg border-2 p-4 text-left transition-colors', paymentEnabled ? 'border-brand-500 bg-white dark:bg-brand-800' : 'border-gray-200 dark:border-brand-700')}><div className="font-semibold text-gray-900 dark:text-white">Allow Online Payment</div><div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Tenants can pay through the listing.</div></button></div></div>
           </section>
 
           <section className="space-y-5 border-t border-gray-200 pt-8 dark:border-brand-700"><h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><Image className="h-5 w-5 text-brand-600" />Media Uploads</h3>
