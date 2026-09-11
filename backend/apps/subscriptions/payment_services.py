@@ -332,7 +332,10 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
     invoice.paid_at = now
     invoice.billing_period_start = start
     invoice.billing_period_end = end
-    invoice.save(update_fields=['status', 'payment_provider', 'payment_method', 'provider_reference', 'provider_transaction_id', 'paid_at', 'billing_period_start', 'billing_period_end'])
+    update_fields = ['status', 'payment_provider', 'payment_method', 'provider_reference', 'provider_transaction_id', 'paid_at', 'billing_period_start', 'billing_period_end']
+    if provider == 'MPESA':
+        update_fields.append('mpesa_receipt')
+    invoice.save(update_fields=update_fields)
 
     subscription.status = 'ACTIVE'
     subscription.current_period_start = start
