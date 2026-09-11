@@ -108,6 +108,57 @@ class PMSListingMembershipView(APIView):
         return Response(result)
 
 
+def _invoice_payload(invoice):
+    subscription = None
+    if invoice.landlord_subscription_id:
+        subscription = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).first()
+    elif invoice.real_estate_subscription_id:
+        subscription = RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).first()
+    plan = SubscriptionPlan.objects.filter(pk=subscription.plan_id).first() if subscription else None
+    return {
+        'id': str(invoice.id),
+        'status': invoice.status,
+        'plan_id': str(invoice.upgrade_plan_id or (subscription.plan_id if subscription else '')) or None,
+        'plan_name': plan.name if plan else None,
+        'billing_cycle': invoice.upgrade_billing_cycle or (subscription.billing_cycle if subscription else None),
+        'amount_kes': invoice.amount_kes,
+        'amount_usd': invoice.amount_usd,
+        'currency': invoice.currency,
+        'exchange_rate': invoice.exchange_rate,
+        'payment_provider': invoice.payment_provider,
+        'payment_method': invoice.payment_method,
+        'phone_number': invoice.phone_number,
+        'provider_reference': invoice.provider_reference,
+        'provider_transaction_id': invoice.provider_transaction_id,
+        'checkout_request_id': invoice.checkout_request_id,
+        'merchant_request_id': invoice.merchant_request_id,
+        'mpesa_receipt': invoice.mpesa_receipt,
+        'billing_period_start': invoice.billing_period_start,
+        'billing_period_end': invoice.billing_period_end,
+        'paid_at': invoice.paid_at,
+        'created_at': invoice.created_at,
+        'result_code': invoice.result_code,
+        'result_description': invoice.result_description,
+        'paypal_subscription_id': invoice.paypal_subscription_id,
+        'upgrade_plan_id': str(invoice.upgrade_plan_id) if invoice.upgrade_plan_id else None,
+        'upgrade_billing_cycle': invoice.upgrade_billing_cycle,
+        'listing_id': str(invoice.listing_id) if invoice.listing_id else None,
+        'subscription_id': str(invoice.landlord_subscription_id or invoice.real_estate_subscription_id) if (invoice.landlord_subscription_id or invoice.real_estate_subscription_id) else None,
+    }
+
+
+class MySubscriptionInvoicesView(APIView):
+    def get(self, request):
+        invoices = SubscriptionInvoice.objects.filter(
+            landlord_subscription_id__in=LandlordSubscription.objects.filter(landlord_id=request.user.id).values('id')
+        ).union(
+            SubscriptionInvoice.objects.filter(
+                real_estate_subscription_id__in=RealEstateSubscription.objects.filter(real_estate_id=request.user.id).values('id')
+            )
+        ).order_by('-created_at')[:50]
+        return Response([_invoice_payload(invoice) for invoice in invoices])
+
+
 class MySubscriptionInvoiceView(APIView):
     def get(self, request, invoice_id):
         invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
@@ -119,20 +170,7 @@ class MySubscriptionInvoiceView(APIView):
         )
         if not owned:
             return Response({'detail': 'You are not authorized to view this invoice.'}, status=404)
-        return Response({
-            'id': str(invoice.id),
-            'status': invoice.status,
-            'amount_kes': invoice.amount_kes,
-            'payment_provider': invoice.payment_provider,
-            'provider_reference': invoice.provider_reference,
-            'checkout_request_id': invoice.checkout_request_id,
-            'merchant_request_id': invoice.merchant_request_id,
-            'mpesa_receipt': invoice.mpesa_receipt,
-            'paid_at': invoice.paid_at,
-            'listing_id': str(invoice.listing_id) if invoice.listing_id else None,
-            'result_code': invoice.result_code,
-            'result_description': invoice.result_description,
-        })
+        return Response(_invoice_payload(invoice))
 
 
 class SubscriptionCheckoutView(APIView):
