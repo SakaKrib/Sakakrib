@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
@@ -12,11 +13,8 @@ from .paypal_subscription_services import (
     _next_billing_time,
     _paypal_json,
     _paypal_token,
-    _period_end,
     _subscription_for_paypal_id,
 )
-from .upgrade_services import create_paypal_subscription_upgrade
-
 
 
 def confirm_paypal_subscription_upgrade(profile, invoice_id):
@@ -86,7 +84,6 @@ def confirm_paypal_subscription_upgrade(profile, invoice_id):
             'paypal_subscription_id': paypal_subscription_id,
             'next_billing_at': subscription.next_billing_at,
         }
-
 
 
 def process_paypal_subscription_webhook(payload):
@@ -166,10 +163,18 @@ def process_paypal_subscription_webhook(payload):
 
         now = timezone.now()
         sale_reference = str(resource.get('id') or subscription_id)
+        billing_cycle = invoice.upgrade_billing_cycle or subscription.billing_cycle
         start = subscription.current_period_end or now
         if start < now:
             start = now
-        end = _period_end(subscription, now, resource)
+
+        # Prefer PayPal's next billing timestamp when it is present. If PayPal
+        # does not provide it, calculate the period from the target billing cycle
+        # rather than the subscription's old cycle (important for monthly→annual
+        # and annual→monthly upgrades).
+        end = _next_billing_time(resource)
+        if not end or end <= start:
+            end = start + (timedelta(days=365) if billing_cycle == 'ANNUAL' else timedelta(days=30))
 
         invoice.amount_usd = paid_usd
         invoice.currency = 'USD'
@@ -187,7 +192,6 @@ def process_paypal_subscription_webhook(payload):
             'billing_period_start', 'billing_period_end',
         ])
 
-        billing_cycle = invoice.upgrade_billing_cycle or subscription.billing_cycle
         subscription.plan_id = target_plan.id
         subscription.billing_cycle = billing_cycle
         subscription.billing_amount_kes = target_plan.annual_price_kes if billing_cycle == 'ANNUAL' else target_plan.monthly_price_kes
