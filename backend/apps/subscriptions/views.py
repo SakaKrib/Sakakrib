@@ -4,7 +4,8 @@ from rest_framework.views import APIView
 
 from apps.payments.services import get_provider
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionPlan
-from .paypal_subscription_services import record_paypal_subscription_approval, process_paypal_subscription_webhook, verify_paypal_webhook
+from .paypal_subscription_services import record_paypal_subscription_approval, verify_paypal_webhook
+from .paypal_upgrade_services import process_paypal_subscription_webhook
 from .payment_services import create_subscription_checkout, finalize_mpesa_subscription
 from .upgrade_services import finalize_mpesa_subscription_upgrade
 from .services import (
