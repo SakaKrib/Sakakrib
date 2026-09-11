@@ -118,3 +118,22 @@ def subscription_cancelled(data: dict[str, Any]) -> str:
     body = _status_panel("Subscription Cancelled", "Your Saka Krib subscription has been cancelled.", "#f4f4f5", "#e4e4e7", heading_color="#3f3f46", message_color="#5f6368", icon="✓", icon_background="#e4e4e7", icon_color="#3f3f46", icon_size=26)
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 18px;color:#444444;font-size:15px;line-height:1.7;">Your Saka Krib subscription has been cancelled. Your payment history and previous invoices remain preserved in Saka Krib.</p>{_payment_details(data, "Cancelled")}<div style="margin:25px 0;padding:20px;border:1px solid #e5e7eb;border-radius:12px;"><h3 style="margin:0 0 12px;font-size:16px;color:#222222;">Need Saka Krib again?</h3><p style="margin:0;color:#555555;font-size:14px;line-height:1.7;">When you are ready to use property-management services again, you can start a new subscription checkout from your account.</p></div>{_button(data.get("dashboard_url") or SITE_URL, "Open Saka Krib", "14px 30px")}'''
     return _layout("Subscription Cancelled", body + _body(content))
+
+
+SUBSCRIPTION_EMAIL_TEMPLATES = {
+    "subscription_payment_confirmed": subscription_payment_confirmed,
+    "subscription_upgraded": subscription_upgraded,
+    "subscription_payment_failed": subscription_payment_failed,
+    "subscription_grace_period": subscription_grace_period,
+    "subscription_expired": subscription_expired,
+    "subscription_cancelled": subscription_cancelled,
+}
+
+SUBSCRIPTION_EMAIL_SUBJECTS = {
+    "subscription_payment_confirmed": "Subscription payment confirmed - Saka Krib",
+    "subscription_upgraded": "Subscription upgraded - Saka Krib",
+    "subscription_payment_failed": "Subscription payment failed - Saka Krib",
+    "subscription_grace_period": "Subscription grace period - Saka Krib",
+    "subscription_expired": "Subscription expired - Saka Krib",
+    "subscription_cancelled": "Subscription cancelled - Saka Krib",
+}
