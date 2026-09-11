@@ -66,15 +66,16 @@ class SubscriptionPaymentLifecycleTests(TestCase):
         invoice = self.make_invoice(subscription, provider_reference="checkout-123")
 
         with patch("apps.subscriptions.payment_services.publish_payment_status") as publish:
-            result = finalize_mpesa_subscription(
-                invoice.id,
-                result_code=0,
-                result_description="Success",
-                mpesa_receipt="QAB123456",
-                checkout_request_id="checkout-123",
-                merchant_request_id="merchant-123",
-                paid_amount="1500.00",
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                result = finalize_mpesa_subscription(
+                    invoice.id,
+                    result_code=0,
+                    result_description="Success",
+                    mpesa_receipt="QAB123456",
+                    checkout_request_id="checkout-123",
+                    merchant_request_id="merchant-123",
+                    paid_amount="1500.00",
+                )
 
         self.assertTrue(result["success"])
         invoice.refresh_from_db()
@@ -93,12 +94,13 @@ class SubscriptionPaymentLifecycleTests(TestCase):
         invoice = self.make_invoice(subscription, provider_reference="checkout-456")
 
         with patch("apps.subscriptions.payment_services.publish_payment_status") as publish:
-            result = finalize_mpesa_subscription(
-                invoice.id,
-                result_code=1032,
-                result_description="Request cancelled by user",
-                checkout_request_id="checkout-456",
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                result = finalize_mpesa_subscription(
+                    invoice.id,
+                    result_code=1032,
+                    result_description="Request cancelled by user",
+                    checkout_request_id="checkout-456",
+                )
 
         self.assertFalse(result["success"])
         invoice.refresh_from_db()
@@ -114,22 +116,24 @@ class SubscriptionPaymentLifecycleTests(TestCase):
         invoice = self.make_invoice(subscription, provider_reference="checkout-789")
 
         with patch("apps.subscriptions.payment_services.publish_payment_status"):
-            first = finalize_mpesa_subscription(
-                invoice.id,
-                result_code=0,
-                mpesa_receipt="QAB789456",
-                checkout_request_id="checkout-789",
-                paid_amount=Decimal("1500.00"),
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                first = finalize_mpesa_subscription(
+                    invoice.id,
+                    result_code=0,
+                    mpesa_receipt="QAB789456",
+                    checkout_request_id="checkout-789",
+                    paid_amount=Decimal("1500.00"),
+                )
 
         with patch("apps.subscriptions.payment_services.publish_payment_status") as publish:
-            second = finalize_mpesa_subscription(
-                invoice.id,
-                result_code=0,
-                mpesa_receipt="QAB789456",
-                checkout_request_id="checkout-789",
-                paid_amount=Decimal("1500.00"),
-            )
+            with self.captureOnCommitCallbacks(execute=True):
+                second = finalize_mpesa_subscription(
+                    invoice.id,
+                    result_code=0,
+                    mpesa_receipt="QAB789456",
+                    checkout_request_id="checkout-789",
+                    paid_amount=Decimal("1500.00"),
+                )
 
         self.assertTrue(first["success"])
         self.assertTrue(second["success"])
@@ -232,7 +236,8 @@ class SubscriptionExpiryLifecycleTests(TestCase):
         subscription = self.make_subscription("ACTIVE")
 
         with patch("apps.subscriptions.expiry._queue_lifecycle_notification") as notify:
-            result = process_subscription_expiry()
+            with self.captureOnCommitCallbacks(execute=True):
+                result = process_subscription_expiry()
 
         subscription.refresh_from_db()
         self.assertEqual(subscription.status, "GRACE_PERIOD")
@@ -250,7 +255,8 @@ class SubscriptionExpiryLifecycleTests(TestCase):
         )
 
         with patch("apps.subscriptions.expiry._queue_lifecycle_notification") as notify:
-            result = process_subscription_expiry()
+            with self.captureOnCommitCallbacks(execute=True):
+                result = process_subscription_expiry()
 
         subscription.refresh_from_db()
         self.assertEqual(subscription.status, "EXPIRED")
