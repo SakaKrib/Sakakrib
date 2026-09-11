@@ -41,10 +41,27 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
             normalized_status = str(status or "PAYMENT").upper()
             detail_data = details or {}
             is_upgrade = bool(detail_data.get("upgrade"))
+            is_renewal = bool(detail_data.get("renewal"))
+
+            # Renewal invoices are identified from the existing invoice ledger.
+            # This keeps the provider callback path authoritative without requiring
+            # every settlement caller to duplicate renewal metadata.
+            if normalized_status == "PAID" and not is_upgrade and not is_renewal:
+                from apps.subscriptions.models import SubscriptionInvoice
+
+                invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).only("pricing_snapshot_source").first()
+                is_renewal = bool(invoice and invoice.pricing_snapshot_source == "subscription_billing_amount")
+                if is_renewal:
+                    detail_data = {**detail_data, "renewal": True}
+
             if is_upgrade:
                 title = "Subscription upgraded"
                 notification_type = "SUBSCRIPTION_UPGRADED"
                 email_template = "subscription_upgraded"
+            elif is_renewal and normalized_status == "PAID":
+                title = "Subscription renewal confirmed"
+                notification_type = "SUBSCRIPTION_RENEWAL_CONFIRMED"
+                email_template = "subscription_payment_confirmed"
             elif normalized_status == "PAID":
                 title = "Subscription payment confirmed"
                 notification_type = "SUBSCRIPTION_PAYMENT_CONFIRMED"
@@ -59,6 +76,9 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
                 email_template = "subscription_payment_confirmed"
 
             event_key = f"subscription-payment:{subscription_id}:{invoice_id}:{normalized_status}"
+            if is_renewal and normalized_status == "PAID":
+                event_key = f"subscription-renewal:{subscription_id}:{invoice_id}:PAID"
+
             notification_data = {
                 "invoice_id": str(invoice_id),
                 "subscription_id": str(subscription_id),
