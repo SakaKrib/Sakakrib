@@ -30,7 +30,7 @@ import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import AdminCreateListingPage from '@/pages/AdminCreateListingPage';
 import ProfilePage from '@/pages/ProfilePage';
 import ListingManagePage from './pages/ListingManagePage';
-import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPage';
+import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPageWithHistory';
 import RegisterMoverPage from './pages/RegisterMoverPage';
 import MoverCalendarPage from './pages/Movers/MoverCalendarPage';
 import MoverBookingRequestsPage from './pages/Movers/MoverBookingRequestsPage';
