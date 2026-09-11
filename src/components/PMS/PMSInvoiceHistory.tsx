@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, FileText, RefreshCw, XCircle } from 'lucide-react';
 
-import { protectedGet } from '@/lib/djangoLegacyApi';
+import { protectedGet } from '@/lib/djangoApi';
 
 interface SubscriptionInvoice {
   id: string;
