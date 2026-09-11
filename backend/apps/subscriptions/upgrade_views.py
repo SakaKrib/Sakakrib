@@ -2,8 +2,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .paypal_upgrade_services import confirm_paypal_subscription_upgrade
 from .upgrade_services import (
-    confirm_paypal_subscription_upgrade,
     create_mpesa_subscription_upgrade,
     create_paypal_subscription_upgrade,
 )
