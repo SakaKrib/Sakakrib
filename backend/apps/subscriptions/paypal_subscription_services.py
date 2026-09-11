@@ -170,8 +170,11 @@ def record_paypal_subscription_approval(invoice_id, paypal_subscription_id):
             token=_paypal_token(),
         )
         remote_plan_id = (details.get('plan_id') or '').strip()
-        if remote_plan_id and remote_plan_id != subscription.paypal_plan_id:
+        if remote_plan_id != subscription.paypal_plan_id:
             raise ValueError('PayPal subscription plan does not match the selected SakaKrib plan')
+        remote_custom_id = str(details.get('custom_id') or '').strip()
+        if remote_custom_id != str(invoice.id):
+            raise ValueError('PayPal subscription is not bound to the selected SakaKrib invoice')
         subscription.paypal_subscription_id = paypal_subscription_id
         subscription.paypal_status = str(details.get('status') or 'APPROVAL_PENDING')
         subscription.next_billing_at = _next_billing_time(details)
