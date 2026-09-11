@@ -42,15 +42,19 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
             if normalized_status == "PAID":
                 title = "Subscription payment confirmed"
                 notification_type = "SUBSCRIPTION_PAYMENT_CONFIRMED"
+                email_template = "subscription_payment_confirmed"
             elif normalized_status == "UPGRADED":
                 title = "Subscription upgraded"
                 notification_type = "SUBSCRIPTION_UPGRADED"
+                email_template = "subscription_upgraded"
             elif normalized_status == "FAILED":
                 title = "Subscription payment failed"
                 notification_type = "SUBSCRIPTION_PAYMENT_FAILED"
+                email_template = "subscription_payment_failed"
             else:
                 title = "Subscription payment update"
                 notification_type = "SUBSCRIPTION_PAYMENT_UPDATE"
+                email_template = "subscription_payment_confirmed"
 
             event_key = f"subscription-payment:{subscription_id}:{invoice_id}:{normalized_status}"
             notification_data = {
@@ -60,6 +64,7 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
                 "provider": provider,
                 "event_type": event_type,
                 "status": normalized_status,
+                "message": message,
                 "details": details or {},
             }
             dispatch_user_notification(
@@ -70,7 +75,7 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
                 data=notification_data,
                 event_key=event_key,
                 send_email=True,
-                email_template="generic",
+                email_template=email_template,
             )
         except Exception:
             # A notification/email failure must never turn a provider-confirmed
