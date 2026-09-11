@@ -179,7 +179,7 @@ def process_paypal_subscription_webhook(payload):
         invoice.amount_usd = paid_usd
         invoice.currency = 'USD'
         invoice.provider_transaction_id = sale_reference
-        invoice.provider_reference = subscription_id
+        invoice.provider_reference = sale_reference
         invoice.webhook_event_id = event_id
         invoice.result_description = str(payload.get('summary') or 'PayPal subscription upgrade payment completed')[:2000]
         invoice.status = 'PAID'
