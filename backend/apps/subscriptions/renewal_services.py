@@ -61,6 +61,7 @@ def create_mpesa_subscription_renewal(profile, phone_number=None):
             landlord_subscription_id=locked.id if profile.role == 'landlord' else None,
             real_estate_subscription_id=locked.id if profile.role == 'real_estate' else None,
             currency='KES',
+            created_at=now,
             billing_period_start=locked.current_period_end if locked.status == 'ACTIVE' else now,
             pricing_snapshot_source='subscription_billing_amount',
         )
