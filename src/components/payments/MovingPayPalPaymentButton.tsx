@@ -129,7 +129,7 @@ function MovingCardFields({ createOrder, captureOrder, disabled, onError }: Card
   }
 
   return (
-    <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+    <div className="mt-4 border-t border-gray-100 pt-4 dark:border-brand-800">
       <p className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">Continue with debit or credit card</p>
       <div className="space-y-3">
         <PayPalCardNumberField label="Card number" placeholder="Card number" containerStyles={{ height: '3rem' }} />
@@ -140,20 +140,20 @@ function MovingCardFields({ createOrder, captureOrder, disabled, onError }: Card
       </div>
 
       <div className="mt-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Billing address</p>
-        <input value={billingAddress.addressLine1} onChange={event => updateAddress('addressLine1', event.target.value)} placeholder="Address line 1" autoComplete="billing address-line1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-        <input value={billingAddress.addressLine2} onChange={event => updateAddress('addressLine2', event.target.value)} placeholder="Address line 2 (optional)" autoComplete="billing address-line2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-brand-400">Billing address</p>
+        <input value={billingAddress.addressLine1} onChange={event => updateAddress('addressLine1', event.target.value)} placeholder="Address line 1" autoComplete="billing address-line1" className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-transparent dark:text-gray-100 dark:placeholder:text-gray-500" />
+        <input value={billingAddress.addressLine2} onChange={event => updateAddress('addressLine2', event.target.value)} placeholder="Address line 2 (optional)" autoComplete="billing address-line2" className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-transparent dark:text-gray-100 dark:placeholder:text-gray-500" />
         <div className="grid grid-cols-2 gap-3">
-          <input value={billingAddress.adminArea2} onChange={event => updateAddress('adminArea2', event.target.value)} placeholder="City" autoComplete="billing address-level2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          <input value={billingAddress.adminArea1} onChange={event => updateAddress('adminArea1', event.target.value)} placeholder="State / region" autoComplete="billing address-level1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+          <input value={billingAddress.adminArea2} onChange={event => updateAddress('adminArea2', event.target.value)} placeholder="City" autoComplete="billing address-level2" className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-transparent dark:text-gray-100 dark:placeholder:text-gray-500" />
+          <input value={billingAddress.adminArea1} onChange={event => updateAddress('adminArea1', event.target.value)} placeholder="State / region" autoComplete="billing address-level1" className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-transparent dark:text-gray-100 dark:placeholder:text-gray-500" />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <input value={billingAddress.postalCode} onChange={event => updateAddress('postalCode', event.target.value)} placeholder="Postal code" autoComplete="billing postal-code" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          <input value={billingAddress.countryCode} onChange={event => updateAddress('countryCode', event.target.value)} placeholder="Country code" maxLength={2} autoComplete="billing country" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+          <input value={billingAddress.postalCode} onChange={event => updateAddress('postalCode', event.target.value)} placeholder="Postal code" autoComplete="billing postal-code" className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm text-gray-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-transparent dark:text-gray-100 dark:placeholder:text-gray-500" />
+          <input value={billingAddress.countryCode} onChange={event => updateAddress('countryCode', event.target.value)} placeholder="Country code" maxLength={2} autoComplete="billing country" className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2.5 text-sm uppercase text-gray-900 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-brand-700 dark:bg-transparent dark:text-gray-100 dark:placeholder:text-gray-500" />
         </div>
       </div>
 
-      <button type="button" onClick={() => void handleSubmit()} disabled={disabled || submitting} className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
+      <button type="button" onClick={() => void handleSubmit()} disabled={disabled || submitting} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50">
         {submitting ? 'Processing card payment…' : 'Continue with debit or credit card'}
       </button>
     </div>
@@ -166,7 +166,7 @@ export default function MovingPayPalPaymentButton({ bookingId, disabled = false,
   const lastOrderIdRef = useRef<string | null>(null);
 
   if (!clientId) {
-    return <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300">PayPal is not currently configured for this environment.</div>;
+    return <div className="rounded-xl border border-gray-200 bg-surface-light p-3 text-sm text-gray-600 shadow-sm dark:border-brand-800 dark:bg-surface-dark dark:text-gray-300">PayPal is not currently configured for this environment.</div>;
   }
 
   const fail = (message: string) => {
@@ -207,7 +207,7 @@ export default function MovingPayPalPaymentButton({ bookingId, disabled = false,
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-brand-800 dark:bg-brand-950/30">
+    <div className="rounded-xl border border-gray-200 bg-surface-light p-3 text-gray-900 shadow-sm dark:border-brand-800 dark:bg-surface-dark dark:text-gray-100">
       <PayPalProvider clientId={clientId} environment={environment} components={['paypal-payments', 'card-fields']} pageType="checkout">
         <PayPalOneTimePaymentButton
           createOrder={createOrder}
@@ -222,7 +222,7 @@ export default function MovingPayPalPaymentButton({ bookingId, disabled = false,
           <MovingCardFields createOrder={createOrder} captureOrder={captureOrder} disabled={disabled || working} onError={fail} />
         </PayPalCardFieldsProvider>
       </PayPalProvider>
-      {error && <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400" role="alert">{error}</div>}
+      {error && <div className="mt-3 rounded-lg border border-error-200 bg-error-50 px-3 py-2 text-sm font-semibold text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-300" role="alert">{error}</div>}
       {working && <p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">Waiting for secure PayPal confirmation…</p>}
     </div>
   );
