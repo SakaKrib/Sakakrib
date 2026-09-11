@@ -219,13 +219,14 @@ def _kes_usd_rate():
     api_key=getattr(settings,"EXCHANGE_RATE_API_KEY","") or getattr(settings,"EXCHANGERATE_API_KEY","")
     base_url=getattr(settings,"EXCHANGE_RATE_API_BASE_URL","https://v6.exchangerate-api.com/v6")
     if not api_key: raise RuntimeError("Exchange-rate service is not configured")
-    request=urllib.request.Request(f"{base_url}/{api_key}/pair/KES/USD",headers={"Accept":"application/json"})
+    request=urllib.request.Request(f"{base_url}/{api_key}/latest/USD",headers={"Accept":"application/json"})
     try:
         with urllib.request.urlopen(request,timeout=15) as response: data=json.loads(response.read().decode())
     except Exception as exc: raise RuntimeError("Unable to obtain current KES/USD exchange rate") from exc
-    rate=Decimal(str(data.get("conversion_rate",0)))
-    if data.get("result")!="success" or rate<=0: raise RuntimeError("Unable to obtain current KES/USD exchange rate")
-    return rate
+    if data.get("result")!="success": raise RuntimeError("Unable to obtain current KES/USD exchange rate")
+    usd_to_kes=Decimal(str(data.get("conversion_rates",{}).get("KES",0)))
+    if usd_to_kes<=0: raise RuntimeError("Unable to obtain current KES/USD exchange rate")
+    return Decimal("1") / usd_to_kes
 
 
 @transaction.atomic
@@ -286,7 +287,8 @@ def finalize_moving_paypal_webhook(*, headers, raw_body):
             token=_paypal_token(); order=_paypal_json(f"/v2/checkout/orders/{order_id}",token=token); amount=Decimal(str(order.get("purchase_units",[{}])[0].get("payments",{}).get("captures",[{}])[0].get("amount",{}).get("value") or order.get("purchase_units",[{}])[0].get("amount",{}).get("value") or 0))
         if amount<=0 or payment.provider_amount is None or _money(payment.provider_amount)!=_money(amount): raise ValidationError("PayPal amount does not match stored payment")
         capture_id=resource.get("id") or (((resource.get("purchase_units") or [{}])[0].get("payments") or {}).get("captures") or [{}])[0].get("id") or order_id
-        result=_settle_payment(payment,_booking(payment.booking_id),_require_invoice(_booking(payment.booking_id)),provider_transaction_id=capture_id,provider_currency="USD",provider_amount=amount,paypal_order_id=order_id)
+        booking=_booking(payment.booking_id); invoice=_require_invoice(booking)
+        result=_settle_payment(payment,booking,invoice,provider_transaction_id=capture_id,provider_currency="USD",provider_amount=amount,paypal_order_id=order_id)
         hook.status="PROCESSED"; hook.processed_at=timezone.now(); hook.save(update_fields=["status","processed_at"]); return {"success":True,**result,"event_id":event_id}
     if event_type in failed:
         payment.status="FAILED"; payment.save(update_fields=["status","updated_at"])
