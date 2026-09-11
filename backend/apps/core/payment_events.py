@@ -39,14 +39,16 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
             from .notification_services import dispatch_user_notification
 
             normalized_status = str(status or "PAYMENT").upper()
-            if normalized_status == "PAID":
-                title = "Subscription payment confirmed"
-                notification_type = "SUBSCRIPTION_PAYMENT_CONFIRMED"
-                email_template = "subscription_payment_confirmed"
-            elif normalized_status == "UPGRADED":
+            detail_data = details or {}
+            is_upgrade = bool(detail_data.get("upgrade"))
+            if is_upgrade:
                 title = "Subscription upgraded"
                 notification_type = "SUBSCRIPTION_UPGRADED"
                 email_template = "subscription_upgraded"
+            elif normalized_status == "PAID":
+                title = "Subscription payment confirmed"
+                notification_type = "SUBSCRIPTION_PAYMENT_CONFIRMED"
+                email_template = "subscription_payment_confirmed"
             elif normalized_status == "FAILED":
                 title = "Subscription payment failed"
                 notification_type = "SUBSCRIPTION_PAYMENT_FAILED"
@@ -65,7 +67,8 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
                 "event_type": event_type,
                 "status": normalized_status,
                 "message": message,
-                "details": details or {},
+                **detail_data,
+                "details": detail_data,
             }
             dispatch_user_notification(
                 user_id=user_id,
