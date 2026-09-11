@@ -46,6 +46,8 @@ function getInboxWebSocketUrl() {
 
 export default function ChatBookingCard({ message, booking, isMover, responding, onRespond, onCancel }: Props) {
   const { profile } = useAuth();
+  const eventBookingId = typeof message?.event_data?.booking_id === 'string' ? message.event_data.booking_id : null;
+  const authoritativeBookingId = eventBookingId || booking?.id || null;
   const [liveBooking, setLiveBooking] = useState<Booking | null>(booking ?? null);
   const [locationConfirming, setLocationConfirming] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
@@ -56,21 +58,26 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
   const [journeyStarting, setJourneyStarting] = useState(false);
   const [journeyMessage, setJourneyMessage] = useState<string | null>(null);
 
-  useEffect(() => setLiveBooking(booking ?? null), [booking]);
+  useEffect(() => {
+    if (eventBookingId && eventBookingId !== booking?.id) return;
+    setLiveBooking(booking ?? null);
+  }, [booking, eventBookingId]);
 
   useEffect(() => {
-    if (!booking?.id) return;
+    if (!authoritativeBookingId) return;
     let cancelled = false;
     const refresh = async () => {
-      try { const result = await protectedGet<Booking>(`/api/core/bookings/${booking.id}/`); if (!cancelled && result) setLiveBooking(result); }
-      catch { /* keep last authoritative state */ }
+      try {
+        const result = await protectedGet<Booking>(`/api/core/bookings/${authoritativeBookingId}/`);
+        if (!cancelled && result) setLiveBooking(result);
+      } catch { /* keep last authoritative state */ }
     };
     const timer = window.setInterval(() => void refresh(), 4000); void refresh();
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [booking?.id]);
+  }, [authoritativeBookingId]);
 
   useEffect(() => {
-    if (!booking?.id) return;
+    if (!authoritativeBookingId) return;
     let cancelled = false;
     let reconnectTimer: number | null = null;
     let socket: WebSocket | null = null;
@@ -87,14 +94,14 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
             booking?: Partial<Booking> & { id?: string };
             notification?: { notification_type?: string; data?: Record<string, unknown> };
           };
-          const eventBookingId = String(payload.booking?.id ?? payload.notification?.data?.booking_id ?? '');
-          if (eventBookingId !== String(booking.id)) return;
+          const payloadBookingId = String(payload.booking?.id ?? payload.notification?.data?.booking_id ?? '');
+          if (payloadBookingId !== String(authoritativeBookingId)) return;
           if (payload.type === 'booking' && payload.booking) {
-            setLiveBooking(previous => previous ? { ...previous, ...payload.booking, id: previous.id } : booking);
+            setLiveBooking(previous => previous ? { ...previous, ...payload.booking, id: previous.id } : eventBookingId ? null : booking);
             return;
           }
           if (payload.type === 'notification') {
-            void protectedGet<Booking>(`/api/core/bookings/${booking.id}/`).then(result => { if (!cancelled && result) setLiveBooking(result); }).catch(() => undefined);
+            void protectedGet<Booking>(`/api/core/bookings/${authoritativeBookingId}/`).then(result => { if (!cancelled && result) setLiveBooking(result); }).catch(() => undefined);
           }
         } catch { /* ignore malformed websocket events */ }
       };
@@ -113,13 +120,13 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
       socket?.close();
       socket = null;
     };
-  }, [booking?.id]);
+  }, [authoritativeBookingId, eventBookingId, booking]);
 
   useEffect(() => {
     setMpesaPhone(profile?.phone?.trim() ?? '');
-  }, [booking?.id, profile?.phone]);
+  }, [authoritativeBookingId, profile?.phone]);
 
-  const currentBooking = liveBooking ?? booking;
+  const currentBooking = liveBooking ?? (eventBookingId ? null : booking);
   const event = message?.event_data ?? {};
   const decision = normalize(event.decision);
   const status = normalize(currentBooking?.status ?? (event.status as string) ?? (decision === 'confirm' ? 'confirmed' : decision === 'cancel' ? 'cancelled' : 'pending'));
@@ -202,7 +209,7 @@ export default function ChatBookingCard({ message, booking, isMover, responding,
       {currentBooking?.request_expires_at && status === 'pending' && <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-brand-800 dark:bg-brand-950/30 dark:text-gray-300"><Clock3 className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-300" />Response window ends {displayDateTime(currentBooking.request_expires_at)}.</div>}
       {canMoverRespond && <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-950/30"><p className="text-xs font-semibold text-gray-800 dark:text-gray-200">Choose an action for this request</p><div className="mt-3 grid gap-2 sm:grid-cols-3"><button type="button" disabled={responding} onClick={() => onRespond('confirm')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"><Check className="h-4 w-4" />Confirm</button><button type="button" disabled={responding} onClick={() => onRespond('not_sure')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><Clock3 className="h-4 w-4" />Not sure</button><button type="button" disabled={responding} onClick={() => onRespond('cancel')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-error-200 bg-white px-3 py-2.5 text-sm font-semibold text-error-700 hover:bg-error-50 disabled:opacity-50 dark:border-brand-800 dark:bg-brand-950 dark:text-error-300"><XCircle className="h-4 w-4" />Decline</button></div></div>}
       {isRenterPending && <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-950/30"><p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Waiting for mover response</p><p className="mt-1 text-xs text-gray-600 dark:text-gray-300">You can continue waiting or cancel and search for another mover.</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={responding} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-brand-950"><Clock3 className="h-4 w-4" />Continue waiting</button><button type="button" disabled={responding} onClick={onCancel} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200 dark:hover:bg-brand-900/40 dark:focus:ring-brand-600 dark:focus:ring-offset-brand-950"><X className="h-4 w-4" />Cancel &amp; search</button></div></div>}
-      {needsLocationConfirmation && !showEdit && <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-brand-800 dark:bg-brand-950/30"><p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Please confirm your pickup location</p><p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{pickup}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={locationConfirming} onClick={() => void confirmLocation()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{locationConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Yes, confirm</button><button type="button" disabled={locationConfirming} onClick={() => setShowEdit(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><MapPin className="h-4 w-4" />Edit booking</button></div></div>}
+      {needsLocationConfirmation && !showEdit && <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-brand-800 dark:bg-brand-950/30"><p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Please confirm your pickup location</p><p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{pickup}</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={locationConfirming} onClick={() => void confirmLocation()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{locationConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Yes, confirm</button><button type="button" disabled={locationConfirming} onClick={() => setShowEdit(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-200"><MapPin className="h-4 w-4" />Edit booking</button></div></div>}
       {isConfirmed && !isMover && !showEdit && !needsLocationConfirmation && <button type="button" onClick={() => setShowEdit(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-gray-50 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300"><CalendarDays className="h-4 w-4" />Edit booking</button>}
       {showEdit && currentBooking && <MovingBookingEditForm booking={currentBooking} onSaved={(updated) => setLiveBooking((previous) => previous ? { ...previous, ...updated, id: previous.id } : null)} onClose={() => setShowEdit(false)} />}
       {(!needsLocationConfirmation && !showEdit && !isMover && isConfirmed && !isPaid) && <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-800 dark:bg-brand-950/30"><div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-brand-600 dark:text-brand-300" /><p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Payment required</p></div><p className="mt-1 text-xs text-gray-600 dark:text-gray-300">Complete payment to confirm your moving service.</p><div className="mt-3"><label htmlFor="chat-moving-mpesa-phone" className="block text-xs font-semibold text-gray-800 dark:text-gray-200">M-Pesa phone number</label><input id="chat-moving-mpesa-phone" type="tel" inputMode="tel" autoComplete="tel" value={mpesaPhone} onChange={(event) => { setMpesaPhone(event.target.value); setPaymentMessage(null); }} placeholder="e.g. 0712 345 678" aria-describedby="chat-moving-mpesa-phone-help" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-100 dark:focus:border-brand-400 dark:focus:ring-brand-800" /><p id="chat-moving-mpesa-phone-help" className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Your profile number is prefilled when available. You can replace it with any valid Kenyan M-Pesa number.</p></div><div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={paymentStarting} onClick={() => void startPayment('mpesa')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{paymentStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Pay with M-Pesa</button><button type="button" disabled={paymentStarting} onClick={() => void startPayment('paypal')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-brand-700 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-300">Pay with PayPal</button></div>{paymentMessage && <div role="alert" aria-live="polite" className={cn('mt-2 rounded-lg px-3 py-2 text-xs font-semibold', paymentError ? 'border border-error-200 bg-error-50 text-error-700 dark:border-error-800 dark:bg-error-900/20 dark:text-error-400' : 'border border-gray-200 bg-gray-50 text-gray-700 dark:border-brand-800 dark:bg-brand-950/30 dark:text-gray-300')}>{paymentMessage}</div>}</div>}
