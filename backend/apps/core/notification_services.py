@@ -7,6 +7,7 @@ from apps.accounts.models import Profile
 from .domain_platform import NotificationEmail, UserNotification
 from .email_services import queue_email
 from .email_templates import EMAIL_TEMPLATES
+from .subscription_email_templates import SUBSCRIPTION_EMAIL_TEMPLATES
 
 
 @transaction.atomic
@@ -59,7 +60,8 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
     email = None
     if send_email and str(profile.email or "").strip():
         template_type = str(email_template or "generic").strip()
-        if template_type in EMAIL_TEMPLATES:
+        template_registry = {**EMAIL_TEMPLATES, **SUBSCRIPTION_EMAIL_TEMPLATES}
+        if template_type in template_registry:
             payload = dict(data or {})
             payload.setdefault("email", profile.email)
             payload.setdefault("full_name", getattr(profile, "full_name", ""))
