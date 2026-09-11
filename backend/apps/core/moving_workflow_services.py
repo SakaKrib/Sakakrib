@@ -37,6 +37,21 @@ def request_mover_booking_with_schedule(*, renter_id, mover_id, pickup_address, 
                                          dropoff_latitude=None, dropoff_longitude=None, listing_id=None,
                                          moving_date=None, moving_time=None, moving_end_time=None,
                                          preferred_payment_method=None):
+    mover = Mover.objects.select_for_update().filter(pk=mover_id).first()
+    if mover is None:
+        raise ValidationError("Mover not found")
+
+    active_booking = Booking.objects.select_for_update().filter(
+        renter_id=renter_id,
+        mover_id=mover_id,
+        status__in=["pending", "confirmed", "in_progress"],
+    ).order_by("-created_at", "-id").first()
+    if active_booking is not None:
+        raise ValidationError(
+            "You already have an incomplete moving booking with this mover. "
+            "Please complete or cancel your current move before booking this mover again."
+        )
+
     result = request_mover_booking(
         renter_id=renter_id,
         mover_id=mover_id,
