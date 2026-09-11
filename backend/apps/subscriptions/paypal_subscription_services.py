@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.core.domain_platform import PaymentWebhookEvent
 from apps.core.payment_events import publish_payment_status
 
-from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice
+from .models import LandlordSubscription, RealEstateSubscription, SubscriptionInvoice, SubscriptionListing
 
 
 PAYPAL_SUBSCRIPTION_EVENTS = {
@@ -33,51 +33,46 @@ def _paypal_token():
     if not client_id or not client_secret:
         raise RuntimeError('PayPal credentials are not configured')
     raw = f'{client_id}:{client_secret}'.encode()
-    auth = base64.b64encode(raw).decode()
-    body = urllib.parse.urlencode({'grant_type': 'client_credentials'}).encode()
-    request = urllib.request.Request(
-        f'{settings.PAYPAL_BASE_URL}/v1/oauth2/token',
-        data=body,
-        method='POST',
-        headers={'Authorization': f'Basic {auth}', 'Content-Type': 'application/x-www-form-urlencoded'},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            data = json.loads(response.read().decode())
-    except Exception as exc:
-        raise RuntimeError('Unable to authenticate with PayPal') from exc
-    token = data.get('access_token')
-    if not token:
-        raise RuntimeError('PayPal access token missing')
-    return token
+    credentials = base64.b64encode(raw).decode()
+    response = _paypal_json('/v1/oauth2/token', method='POST', body={'grant_type': 'client_credentials'}, token=None, headers={'Authorization': f'Basic {credentials}', 'Content-Type': 'application/x-www-form-urlencoded'})
+    return response['access_token']
 
 
-def _paypal_json(path, *, method='GET', body=None, token=None):
-    headers = {'Accept': 'application/json'}
+def _paypal_base_url():
+    return getattr(settings, 'PAYPAL_BASE_URL', 'https://api-m.paypal.com').rstrip('/')
+
+
+def _paypal_json(path, *, method='GET', body=None, token=None, headers=None):
+    request_headers = {'Accept': 'application/json'}
     if token:
-        headers['Authorization'] = f'Bearer {token}'
+        request_headers['Authorization'] = f'Bearer {token}'
+    if headers:
+        request_headers.update(headers)
+    data = None
     if body is not None:
-        headers['Content-Type'] = 'application/json'
-    request = urllib.request.Request(
-        f'{settings.PAYPAL_BASE_URL}{path}',
-        data=json.dumps(body).encode() if body is not None else None,
-        method=method,
-        headers=headers,
-    )
+        if request_headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+            from urllib.parse import urlencode
+            data = urlencode(body).encode()
+        else:
+            request_headers['Content-Type'] = 'application/json'
+            data = json.dumps(body).encode()
+    request = urllib.request.Request(f'{_paypal_base_url()}{path}', data=data, headers=request_headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode())
+        with urllib.request.urlopen(request, timeout=20) as response:
+            raw = response.read().decode('utf-8')
     except Exception as exc:
-        raise RuntimeError('PayPal request failed') from exc
+        raise RuntimeError(f'PayPal request failed: {exc}') from exc
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('PayPal returned invalid JSON') from exc
 
 
 def create_paypal_subscription(*, plan_id, custom_id, return_url, cancel_url):
-    if not plan_id:
-        raise ValueError('PayPal plan ID is required')
-    if not return_url or not cancel_url:
-        raise RuntimeError('PayPal subscription return/cancel URLs are not configured')
     payload = {
-        'plan_id': str(plan_id),
+        'plan_id': plan_id,
         'custom_id': str(custom_id)[:127],
         'application_context': {
             'brand_name': 'SakaKrib',
@@ -190,6 +185,7 @@ def record_paypal_subscription_approval(invoice_id, paypal_subscription_id):
 
 @transaction.atomic
 def process_paypal_subscription_webhook(payload):
+    """Process PayPal subscription lifecycle and payment webhooks."""
     event_id = str(payload.get('id') or '').strip()
     event_type = str(payload.get('event_type') or '').strip()
     if not event_id or not event_type:
@@ -259,6 +255,30 @@ def process_paypal_subscription_webhook(payload):
         subscription.auto_renew = False
         subscription.updated_at = now
         subscription.save(update_fields=['paypal_status', 'status', 'auto_renew', 'updated_at'])
+        deactivated = SubscriptionListing.objects.filter(
+            **({'subscription_id': subscription.id} if audience == 'landlord' else {'real_estate_subscription_id': subscription.id}),
+            status='ACTIVE',
+        ).update(status='INACTIVE', deactivated_at=now)
+        notification_data = {
+            'subscription_id': str(subscription.id),
+            'subscription_status': subscription.status,
+            'paypal_status': subscription.paypal_status,
+            'billing_cycle': subscription.billing_cycle,
+            'billing_amount_kes': str(subscription.billing_amount_kes) if subscription.billing_amount_kes is not None else None,
+            'billing_amount_usd': str(subscription.billing_amount_usd) if subscription.billing_amount_usd is not None else None,
+            'deactivated_pms_listings': deactivated,
+        }
+        from apps.core.notification_services import dispatch_user_notification
+        transaction.on_commit(lambda: dispatch_user_notification(
+            user_id=owner_id,
+            notification_type='SUBSCRIPTION_EXPIRED',
+            title='Subscription expired',
+            message='Your Saka Krib PayPal subscription has expired. PMS access has been restricted until a new subscription is confirmed.',
+            data=notification_data,
+            event_key=f'subscription-lifecycle:{subscription.id}:PAYPAL_EXPIRED:{event_id}',
+            send_email=True,
+            email_template='subscription_expired',
+        ))
 
     elif event_type == 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
         invoice = SubscriptionInvoice.objects.select_for_update().filter(
