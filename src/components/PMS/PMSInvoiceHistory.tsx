@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, FileText, RefreshCw, XCircle } from 'lucide-react';
 
-import { protectedGet } from '@/lib/djangoApi';
+import { djangoRequest } from '@/lib/djangoApi';
 
 interface SubscriptionInvoice {
   id: string;
@@ -85,7 +85,7 @@ export default function PMSInvoiceHistory() {
   const loadInvoices = useCallback(async () => {
     try {
       setError(null);
-      const result = await protectedGet<SubscriptionInvoice[]>('/api/subscriptions/invoices/');
+      const result = await djangoRequest<SubscriptionInvoice[]>('/api/subscriptions/invoices/');
       setInvoices(Array.isArray(result) ? result : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load subscription payment history.');
