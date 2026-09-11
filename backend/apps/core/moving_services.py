@@ -307,6 +307,19 @@ def request_mover_booking(*, renter_id, mover_id, pickup_address, dropoff_addres
     ).first()
     if mover is None:
         raise ValidationError("Mover is not currently available")
+
+    active_booking = Booking.objects.select_for_update().filter(
+        renter_id=renter_id,
+        mover_id=mover_id,
+        status__in=["pending", "confirmed", "in_progress"],
+    ).order_by("-created_at", "-id").first()
+
+    if active_booking is not None:
+        raise ValidationError(
+            "You already have an incomplete moving booking with this mover. "
+            "Please complete or cancel your current move before booking this mover again."
+        )
+
     mover_profile = _profile(mover.user_id)
     if mover_profile.verification_status != "verified" or getattr(mover_profile, "mover_application_status", None) != "approved":
         raise ValidationError("Mover is not verified and approved")
