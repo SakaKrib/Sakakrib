@@ -9,6 +9,7 @@ import {
   PayPalCardCvvField,
   usePayPal,
   usePayPalCardFieldsOneTimePaymentSession,
+  INSTANCE_LOADING_STATE,
   type OnApproveDataOneTimePayments,
   type OnApproveDataSubscriptions,
 } from '@paypal/react-paypal-js/sdk-v6';
@@ -32,8 +33,6 @@ interface ListingStartResponse {
   detail?: string;
   message?: string;
   provider_reference?: string;
-  provider_amount?: string;
-  provider_currency?: string;
 }
 interface ListingCaptureResponse {
   success?: boolean;
@@ -88,10 +87,12 @@ function CardFieldsCheckout({ createOrder, captureOrder, disabled, onError }: Ca
 
   const cardEligible = eligiblePaymentMethods?.isEligible('advanced_cards');
 
-  if (loadingStatus !== 'resolved') {
+  if (loadingStatus === INSTANCE_LOADING_STATE.PENDING) {
     return <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">Loading card payment options…</p>;
   }
-
+  if (loadingStatus === INSTANCE_LOADING_STATE.REJECTED) {
+    return <p className="mt-4 text-sm text-error-700 dark:text-error-400">Unable to load PayPal card payment options.</p>;
+  }
   if (!cardEligible) {
     return <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">Direct card payment is not currently available for this PayPal account or buyer.</p>;
   }
@@ -136,37 +137,35 @@ function CardFieldsCheckout({ createOrder, captureOrder, disabled, onError }: Ca
   }
 
   return (
-    <PayPalCardFieldsProvider>
-      <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-        <p className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">Pay directly with a card</p>
-        <div className="space-y-3">
-          <PayPalCardNumberField label="Card number" placeholder="Card number" containerStyles={{ height: '3rem' }} />
-          <div className="grid grid-cols-2 gap-3">
-            <PayPalCardExpiryField label="Expiry" placeholder="MM/YY" containerStyles={{ height: '3rem' }} />
-            <PayPalCardCvvField label="CVV" placeholder="CVV" containerStyles={{ height: '3rem' }} />
-          </div>
+    <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+      <p className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">Pay directly with a card</p>
+      <div className="space-y-3">
+        <PayPalCardNumberField label="Card number" placeholder="Card number" containerStyles={{ height: '3rem' }} />
+        <div className="grid grid-cols-2 gap-3">
+          <PayPalCardExpiryField label="Expiry" placeholder="MM/YY" containerStyles={{ height: '3rem' }} />
+          <PayPalCardCvvField label="CVV" placeholder="CVV" containerStyles={{ height: '3rem' }} />
         </div>
-
-        <div className="mt-4 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Billing address</p>
-          <input value={billingAddress.addressLine1} onChange={event => updateAddress('addressLine1', event.target.value)} placeholder="Address line 1" autoComplete="billing address-line1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          <input value={billingAddress.addressLine2} onChange={event => updateAddress('addressLine2', event.target.value)} placeholder="Address line 2 (optional)" autoComplete="billing address-line2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          <div className="grid grid-cols-2 gap-3">
-            <input value={billingAddress.adminArea2} onChange={event => updateAddress('adminArea2', event.target.value)} placeholder="City" autoComplete="billing address-level2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-            <input value={billingAddress.adminArea1} onChange={event => updateAddress('adminArea1', event.target.value)} placeholder="State / region" autoComplete="billing address-level1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input value={billingAddress.postalCode} onChange={event => updateAddress('postalCode', event.target.value)} placeholder="Postal code" autoComplete="billing postal-code" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-            <input value={billingAddress.countryCode} onChange={event => updateAddress('countryCode', event.target.value)} placeholder="Country code" maxLength={2} autoComplete="billing country" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          </div>
-        </div>
-
-        <button type="button" onClick={handleSubmit} disabled={disabled || submitting} className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
-          {submitting ? 'Processing card payment…' : 'Pay now with Card'}
-        </button>
-        {submitResponse?.state === 'failed' && <p className="mt-2 text-sm text-error-700 dark:text-error-400">{submitResponse.data?.message || 'Card payment failed. Please check your details and try again.'}</p>}
       </div>
-    </PayPalCardFieldsProvider>
+
+      <div className="mt-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Billing address</p>
+        <input value={billingAddress.addressLine1} onChange={event => updateAddress('addressLine1', event.target.value)} placeholder="Address line 1" autoComplete="billing address-line1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        <input value={billingAddress.addressLine2} onChange={event => updateAddress('addressLine2', event.target.value)} placeholder="Address line 2 (optional)" autoComplete="billing address-line2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        <div className="grid grid-cols-2 gap-3">
+          <input value={billingAddress.adminArea2} onChange={event => updateAddress('adminArea2', event.target.value)} placeholder="City" autoComplete="billing address-level2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+          <input value={billingAddress.adminArea1} onChange={event => updateAddress('adminArea1', event.target.value)} placeholder="State / region" autoComplete="billing address-level1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <input value={billingAddress.postalCode} onChange={event => updateAddress('postalCode', event.target.value)} placeholder="Postal code" autoComplete="billing postal-code" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+          <input value={billingAddress.countryCode} onChange={event => updateAddress('countryCode', event.target.value)} placeholder="Country code" maxLength={2} autoComplete="billing country" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+        </div>
+      </div>
+
+      <button type="button" onClick={handleSubmit} disabled={disabled || submitting} className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
+        {submitting ? 'Processing card payment…' : 'Pay now with Card'}
+      </button>
+      {submitResponse?.state === 'failed' && <p className="mt-2 text-sm text-error-700 dark:text-error-400">{submitResponse.data?.message || 'Card payment failed. Please check your details and try again.'}</p>}
+    </div>
   );
 }
 
@@ -261,18 +260,13 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
     }
   };
 
-  const oneTimeCreateOrder = async () => {
-    const result = await createOneTimeOrder();
-    return result;
-  };
-
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900">
       <PayPalProvider clientId={clientId} environment={environment} components={mode === 'SUBSCRIPTION' ? ['paypal-subscriptions'] : ['paypal-payments', 'card-fields']} pageType="checkout">
         {mode === 'ONE_TIME' ? (
           <>
             <PayPalOneTimePaymentButton
-              createOrder={oneTimeCreateOrder}
+              createOrder={createOneTimeOrder}
               onApprove={approveOneTime}
               onCancel={() => setWorking(false)}
               onError={(sdkError) => fail(sdkError.message || 'PayPal payment failed.')}
@@ -281,97 +275,23 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
               type="pay"
             />
             <PayPalCardFieldsProvider>
-              <CardFieldsCheckoutInner createOrder={oneTimeCreateOrder} captureOrder={captureOneTimeOrder} disabled={disabled || working} onError={fail} />
+              <CardFieldsCheckout createOrder={createOneTimeOrder} captureOrder={captureOneTimeOrder} disabled={disabled || working} onError={fail} />
             </PayPalCardFieldsProvider>
           </>
         ) : (
-          <PayPalSubscriptionButton createSubscription={createSubscription} onApprove={approveSubscription} onCancel={() => setWorking(false)} onError={(sdkError) => fail(sdkError.message || 'PayPal subscription checkout failed.')} presentationMode="auto" disabled={disabled || working} type="subscribe" />
+          <PayPalSubscriptionButton
+            createSubscription={createSubscription}
+            onApprove={approveSubscription}
+            onCancel={() => setWorking(false)}
+            onError={(sdkError) => fail(sdkError.message || 'PayPal subscription checkout failed.')}
+            presentationMode="auto"
+            disabled={disabled || working}
+            type="subscribe"
+          />
         )}
       </PayPalProvider>
       {error && <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400" role="alert">{error}</div>}
       {working && <p className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">Waiting for secure payment confirmation…</p>}
-    </div>
-  );
-}
-
-interface CardFieldsCheckoutInnerProps extends CardFieldsCheckoutProps {}
-
-function CardFieldsCheckoutInner({ createOrder, captureOrder, disabled, onError }: CardFieldsCheckoutInnerProps) {
-  const { eligiblePaymentMethods, loadingStatus } = usePayPal();
-  const { submit, submitResponse, error } = usePayPalCardFieldsOneTimePaymentSession();
-  const [billingAddress, setBillingAddress] = useState({
-    addressLine1: '',
-    addressLine2: '',
-    adminArea1: '',
-    adminArea2: '',
-    postalCode: '',
-    countryCode: 'KE',
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const cardEligible = eligiblePaymentMethods?.isEligible('advanced_cards');
-
-  if (loadingStatus !== 'resolved') return <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">Loading card payment options…</p>;
-  if (!cardEligible) return <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">Direct card payment is not currently available for this PayPal account or buyer.</p>;
-
-  const updateAddress = (field: keyof typeof billingAddress, value: string) => setBillingAddress(current => ({ ...current, [field]: value }));
-
-  const handleSubmit = async () => {
-    if (disabled || submitting) return;
-    setSubmitting(true);
-    try {
-      const orderId = await createOrder();
-      const result = await submit(orderId, {
-        billingAddress: {
-          addressLine1: billingAddress.addressLine1.trim(),
-          addressLine2: billingAddress.addressLine2.trim() || undefined,
-          adminArea1: billingAddress.adminArea1.trim() || undefined,
-          adminArea2: billingAddress.adminArea2.trim() || undefined,
-          postalCode: billingAddress.postalCode.trim(),
-          countryCode: billingAddress.countryCode.trim().toUpperCase(),
-        },
-      });
-      if (result.state === 'succeeded') {
-        await captureOrder(result.data.orderId);
-        return;
-      }
-      if (result.state === 'canceled') throw new Error('Card authentication was canceled. Please try again.');
-      throw new Error(result.data?.message || 'PayPal could not process the card payment. Please check your details and try again.');
-    } catch (submitError) {
-      onError(submitError instanceof Error ? submitError.message : 'Unable to process the card payment.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (error) return <p className="mt-4 text-sm text-error-700 dark:text-error-400">{error.message}</p>;
-
-  return (
-    <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-      <p className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">Pay directly with a card</p>
-      <div className="space-y-3">
-        <PayPalCardNumberField label="Card number" placeholder="Card number" containerStyles={{ height: '3rem' }} />
-        <div className="grid grid-cols-2 gap-3">
-          <PayPalCardExpiryField label="Expiry" placeholder="MM/YY" containerStyles={{ height: '3rem' }} />
-          <PayPalCardCvvField label="CVV" placeholder="CVV" containerStyles={{ height: '3rem' }} />
-        </div>
-      </div>
-      <div className="mt-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Billing address</p>
-        <input value={billingAddress.addressLine1} onChange={event => updateAddress('addressLine1', event.target.value)} placeholder="Address line 1" autoComplete="billing address-line1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-        <input value={billingAddress.addressLine2} onChange={event => updateAddress('addressLine2', event.target.value)} placeholder="Address line 2 (optional)" autoComplete="billing address-line2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-        <div className="grid grid-cols-2 gap-3">
-          <input value={billingAddress.adminArea2} onChange={event => updateAddress('adminArea2', event.target.value)} placeholder="City" autoComplete="billing address-level2" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          <input value={billingAddress.adminArea1} onChange={event => updateAddress('adminArea1', event.target.value)} placeholder="State / region" autoComplete="billing address-level1" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <input value={billingAddress.postalCode} onChange={event => updateAddress('postalCode', event.target.value)} placeholder="Postal code" autoComplete="billing postal-code" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-          <input value={billingAddress.countryCode} onChange={event => updateAddress('countryCode', event.target.value)} placeholder="Country code" maxLength={2} autoComplete="billing country" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
-        </div>
-      </div>
-      <button type="button" onClick={handleSubmit} disabled={disabled || submitting} className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100">
-        {submitting ? 'Processing card payment…' : 'Pay now with Card'}
-      </button>
-      {submitResponse?.state === 'failed' && <p className="mt-2 text-sm text-error-700 dark:text-error-400">{submitResponse.data?.message || 'Card payment failed. Please check your details and try again.'}</p>}
     </div>
   );
 }
