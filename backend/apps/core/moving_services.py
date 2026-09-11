@@ -148,16 +148,32 @@ def _schedule_datetime(value):
     return parsed
 
 
+def _normalize_working_day(value):
+    normalized = str(value).strip().lower()
+    aliases = {
+        "sun": "sunday", "mon": "monday", "tue": "tuesday", "tues": "tuesday",
+        "wed": "wednesday", "thu": "thursday", "thur": "thursday", "thurs": "thursday",
+        "fri": "friday", "sat": "saturday",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _mover_working_day(mover, moving_date):
+    if not mover.working_days:
+        return True
+    weekday = moving_date.strftime("%A").lower()
+    allowed = {_normalize_working_day(day) for day in mover.working_days}
+    if weekday not in allowed:
+        raise ValidationError(f"Mover does not work on {weekday}")
+    return True
+
+
 def _mover_schedule_window(mover, starts_at, ends_at):
     local_start = starts_at.astimezone(NAIROBI_TZ)
     local_end = ends_at.astimezone(NAIROBI_TZ)
     if local_start.date() != local_end.date():
         raise ValidationError("Moving schedule must start and end on the same Nairobi calendar day")
-    if mover.working_days:
-        weekday = local_start.strftime("%A").lower()
-        allowed = {str(day).strip().lower() for day in mover.working_days}
-        if weekday not in allowed:
-            raise ValidationError(f"Mover does not work on {weekday}")
+    _mover_working_day(mover, local_start.date())
     if mover.start_time is not None and local_start.time() < mover.start_time:
         raise ValidationError("Start time is outside mover working hours")
     if mover.end_time is not None and local_end.time() > mover.end_time:
@@ -321,6 +337,8 @@ def request_mover_booking(*, renter_id, mover_id, pickup_address, dropoff_addres
             raise ValidationError("Moving date must be a valid ISO date") from exc
     if requested_moving_date < timezone.localdate():
         raise ValidationError("Moving date cannot be in the past")
+
+    _mover_working_day(mover, requested_moving_date)
 
     preferred = str(preferred_payment_method or "").strip().lower()
     if preferred not in {"", "mpesa", "paypal"}:
