@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   PayPalProvider,
   PayPalOneTimePaymentButton,
@@ -66,7 +66,7 @@ function errorMessage(data: { detail?: string; message?: string } | null, fallba
 }
 
 interface CardFieldsCheckoutProps {
-  createOrder: () => Promise<string>;
+  createOrder: () => Promise<{ orderId: string }>;
   captureOrder: (orderId: string) => Promise<void>;
   disabled: boolean;
   onError: (message: string) => void;
@@ -84,8 +84,33 @@ function CardFieldsCheckout({ createOrder, captureOrder, disabled, onError }: Ca
     countryCode: 'KE',
   });
   const [submitting, setSubmitting] = useState(false);
+  const handledSubmitResponseRef = useRef<typeof submitResponse>(null);
 
   const cardEligible = eligiblePaymentMethods?.isEligible('advanced_cards');
+
+  useEffect(() => {
+    if (!submitResponse || submitResponse === handledSubmitResponseRef.current) return;
+    handledSubmitResponseRef.current = submitResponse;
+
+    if (submitResponse.state === 'succeeded') {
+      const orderId = submitResponse.data?.orderId;
+      if (!orderId) {
+        onError('PayPal card payment succeeded, but the order reference is missing.');
+        return;
+      }
+      void captureOrder(orderId).catch((captureError) => {
+        onError(captureError instanceof Error ? captureError.message : 'PayPal payment could not be completed.');
+      });
+      return;
+    }
+
+    if (submitResponse.state === 'canceled') {
+      onError('Card authentication was canceled. Please try again.');
+      return;
+    }
+
+    onError(submitResponse.data?.message || 'PayPal could not process the card payment. Please check your details and try again.');
+  }, [submitResponse, captureOrder, onError]);
 
   if (loadingStatus === INSTANCE_LOADING_STATE.PENDING) {
     return <p className="mt-4 text-center text-xs text-gray-500 dark:text-gray-400">Loading card payment options…</p>;
@@ -105,8 +130,8 @@ function CardFieldsCheckout({ createOrder, captureOrder, disabled, onError }: Ca
     if (disabled || submitting) return;
     setSubmitting(true);
     try {
-      const orderId = await createOrder();
-      const result = await submit(orderId, {
+      const { orderId } = await createOrder();
+      await submit(orderId, {
         billingAddress: {
           addressLine1: billingAddress.addressLine1.trim(),
           addressLine2: billingAddress.addressLine2.trim() || undefined,
@@ -116,15 +141,6 @@ function CardFieldsCheckout({ createOrder, captureOrder, disabled, onError }: Ca
           countryCode: billingAddress.countryCode.trim().toUpperCase(),
         },
       });
-
-      if (result.state === 'succeeded') {
-        await captureOrder(result.data.orderId);
-        return;
-      }
-      if (result.state === 'canceled') {
-        throw new Error('Card authentication was canceled. Please try again.');
-      }
-      throw new Error(result.data?.message || 'PayPal could not process the card payment. Please check your details and try again.');
     } catch (submitError) {
       onError(submitError instanceof Error ? submitError.message : 'Unable to process the card payment.');
     } finally {
