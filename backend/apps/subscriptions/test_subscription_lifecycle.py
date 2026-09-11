@@ -233,7 +233,13 @@ class SubscriptionExpiryLifecycleTests(TestCase):
         return LandlordSubscription.objects.create(**defaults)
 
     def test_expired_active_subscription_enters_five_day_grace_period(self):
-        subscription = self.make_subscription("ACTIVE")
+        now = timezone.now()
+        subscription = self.make_subscription(
+            "ACTIVE",
+            current_period_start=now - timedelta(days=20),
+            current_period_end=now - timedelta(minutes=1),
+            updated_at=now - timedelta(days=20),
+        )
 
         with patch("apps.subscriptions.expiry._queue_lifecycle_notification") as notify:
             with self.captureOnCommitCallbacks(execute=True):
