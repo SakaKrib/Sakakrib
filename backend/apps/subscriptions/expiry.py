@@ -3,7 +3,6 @@
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import F, Value
 from django.utils import timezone
 
 from .models import LandlordSubscription, RealEstateSubscription, SubscriptionListing
@@ -54,37 +53,59 @@ def _queue_lifecycle_notification(*, subscription, owner_id, status, grace_perio
 
 
 def _process_model(model, owner_field, subscription_listing_field, now):
+    """Lock each lifecycle candidate before changing its state.
+
+    Payment/renewal settlement can legitimately run at the same time as the
+    expiry task. Locking the candidate rows prevents a stale expiry decision
+    from overwriting a subscription that has just been renewed or otherwise
+    transitioned by another transaction.
+    """
     grace_candidates = list(
-        model.objects.filter(
+        model.objects.select_for_update().filter(
             status='ACTIVE',
             current_period_end__lte=now,
             grace_period_end__isnull=True,
-        ).values('id', owner_field, 'plan_id', 'billing_cycle', 'billing_amount_kes', 'billing_amount_usd', 'current_period_start', 'current_period_end')
+        )
     )
-    grace_count = model.objects.filter(status='ACTIVE', current_period_end__lte=now, grace_period_end__isnull=True).update(
-        status='GRACE_PERIOD', grace_period_end=F('current_period_end') + Value(timedelta(days=GRACE_PERIOD_DAYS)), updated_at=now)
+
+    grace_notifications = []
+    for subscription in grace_candidates:
+        grace_end = subscription.current_period_end + timedelta(days=GRACE_PERIOD_DAYS)
+        subscription.status = 'GRACE_PERIOD'
+        subscription.grace_period_end = grace_end
+        subscription.updated_at = now
+        subscription.save(update_fields=['status', 'grace_period_end', 'updated_at'])
+        grace_notifications.append((subscription, grace_end))
 
     expire_candidates = list(
-        model.objects.filter(
+        model.objects.select_for_update().filter(
             status='GRACE_PERIOD',
             grace_period_end__isnull=False,
             grace_period_end__lte=now,
-        ).values('id', owner_field, 'plan_id', 'billing_cycle', 'billing_amount_kes', 'billing_amount_usd', 'current_period_start', 'current_period_end', 'grace_period_end')
+        )
     )
-    expired_ids = [row['id'] for row in expire_candidates]
-    expired_count = model.objects.filter(id__in=expired_ids).update(status='EXPIRED', grace_period_end=None, updated_at=now) if expired_ids else 0
+
+    expired_count = 0
+    expired_notifications = []
+    expired_ids = []
+    for subscription in expire_candidates:
+        grace_end = subscription.grace_period_end
+        subscription.status = 'EXPIRED'
+        subscription.grace_period_end = None
+        subscription.updated_at = now
+        subscription.save(update_fields=['status', 'grace_period_end', 'updated_at'])
+        expired_count += 1
+        expired_ids.append(subscription.id)
+        expired_notifications.append((subscription, grace_end))
 
     deactivated = 0
     if expired_ids:
-        deactivated = SubscriptionListing.objects.filter(**{f'{subscription_listing_field}__in': expired_ids}, status='ACTIVE').update(status='INACTIVE', deactivated_at=now)
+        deactivated = SubscriptionListing.objects.filter(
+            **{f'{subscription_listing_field}__in': expired_ids},
+            status='ACTIVE',
+        ).update(status='INACTIVE', deactivated_at=now)
 
-    grace_notifications = []
-    for row in grace_candidates:
-        grace_end = row['current_period_end'] + timedelta(days=GRACE_PERIOD_DAYS)
-        grace_notifications.append((row, grace_end))
-    expired_notifications = [(row, row['grace_period_end']) for row in expire_candidates]
-
-    return grace_count, expired_count, deactivated, grace_notifications, expired_notifications
+    return len(grace_notifications), expired_count, deactivated, grace_notifications, expired_notifications
 
 
 @transaction.atomic
@@ -94,41 +115,21 @@ def process_subscription_expiry() -> dict:
     landlord = _process_model(LandlordSubscription, 'landlord_id', 'subscription_id', now)
     real_estate = _process_model(RealEstateSubscription, 'real_estate_id', 'real_estate_subscription_id', now)
 
-    for row, grace_end in landlord[3]:
-        subscription = LandlordSubscription(
-            id=row['id'], plan_id=row['plan_id'], billing_cycle=row['billing_cycle'],
-            billing_amount_kes=row['billing_amount_kes'], billing_amount_usd=row['billing_amount_usd'],
-            current_period_start=row['current_period_start'], current_period_end=row['current_period_end'],
-        )
-        transaction.on_commit(lambda subscription=subscription, owner_id=row['landlord_id'], grace_end=grace_end: _queue_lifecycle_notification(
-            subscription=subscription, owner_id=owner_id, status='GRACE_PERIOD', grace_period_end=grace_end,
+    for subscription, grace_end in landlord[3]:
+        transaction.on_commit(lambda subscription=subscription, grace_end=grace_end: _queue_lifecycle_notification(
+            subscription=subscription, owner_id=subscription.landlord_id, status='GRACE_PERIOD', grace_period_end=grace_end,
         ))
-    for row, grace_end in landlord[4]:
-        subscription = LandlordSubscription(
-            id=row['id'], plan_id=row['plan_id'], billing_cycle=row['billing_cycle'],
-            billing_amount_kes=row['billing_amount_kes'], billing_amount_usd=row['billing_amount_usd'],
-            current_period_start=row['current_period_start'], current_period_end=row['current_period_end'],
-        )
-        transaction.on_commit(lambda subscription=subscription, owner_id=row['landlord_id'], grace_end=grace_end: _queue_lifecycle_notification(
-            subscription=subscription, owner_id=owner_id, status='EXPIRED', grace_period_end=grace_end,
+    for subscription, grace_end in landlord[4]:
+        transaction.on_commit(lambda subscription=subscription, grace_end=grace_end: _queue_lifecycle_notification(
+            subscription=subscription, owner_id=subscription.landlord_id, status='EXPIRED', grace_period_end=grace_end,
         ))
-    for row, grace_end in real_estate[3]:
-        subscription = RealEstateSubscription(
-            id=row['id'], plan_id=row['plan_id'], billing_cycle=row['billing_cycle'],
-            billing_amount_kes=row['billing_amount_kes'], billing_amount_usd=row['billing_amount_usd'],
-            current_period_start=row['current_period_start'], current_period_end=row['current_period_end'],
-        )
-        transaction.on_commit(lambda subscription=subscription, owner_id=row['real_estate_id'], grace_end=grace_end: _queue_lifecycle_notification(
-            subscription=subscription, owner_id=owner_id, status='GRACE_PERIOD', grace_period_end=grace_end,
+    for subscription, grace_end in real_estate[3]:
+        transaction.on_commit(lambda subscription=subscription, grace_end=grace_end: _queue_lifecycle_notification(
+            subscription=subscription, owner_id=subscription.real_estate_id, status='GRACE_PERIOD', grace_period_end=grace_end,
         ))
-    for row, grace_end in real_estate[4]:
-        subscription = RealEstateSubscription(
-            id=row['id'], plan_id=row['plan_id'], billing_cycle=row['billing_cycle'],
-            billing_amount_kes=row['billing_amount_kes'], billing_amount_usd=row['billing_amount_usd'],
-            current_period_start=row['current_period_start'], current_period_end=row['current_period_end'],
-        )
-        transaction.on_commit(lambda subscription=subscription, owner_id=row['real_estate_id'], grace_end=grace_end: _queue_lifecycle_notification(
-            subscription=subscription, owner_id=owner_id, status='EXPIRED', grace_period_end=grace_end,
+    for subscription, grace_end in real_estate[4]:
+        transaction.on_commit(lambda subscription=subscription, grace_end=grace_end: _queue_lifecycle_notification(
+            subscription=subscription, owner_id=subscription.real_estate_id, status='EXPIRED', grace_period_end=grace_end,
         ))
 
     return {
