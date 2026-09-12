@@ -7,12 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def publish_payment_status(*, user_id, invoice_id, status, message, provider, event_type=None, listing_id=None, subscription_id=None, subscription_status=None, details=None):
-    """Publish an authoritative payment-state notification after the DB commit.
-
-    Subscription payment events also enter the existing persistent notification
-    and email queue. The payment WebSocket remains the real-time channel, while
-    the persistent notification/email is the durable user-facing record.
-    """
+    """Publish an authoritative payment-state notification after the DB commit."""
     if not user_id or not invoice_id:
         return
 
@@ -48,19 +43,51 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
     if subscription_id:
         try:
             from .notification_services import dispatch_user_notification
+            from apps.subscriptions.models import (
+                LandlordSubscription,
+                RealEstateSubscription,
+                SubscriptionInvoice,
+                SubscriptionPlan,
+            )
 
             normalized_status = str(status or "PAYMENT").upper()
-            detail_data = details or {}
+            detail_data = dict(details or {})
             is_upgrade = bool(detail_data.get("upgrade"))
             is_renewal = bool(detail_data.get("renewal"))
 
-            if normalized_status == "PAID" and not is_upgrade and not is_renewal:
-                from apps.subscriptions.models import SubscriptionInvoice
+            invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
+            subscription = None
+            if invoice:
+                if invoice.landlord_subscription_id:
+                    subscription = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).first()
+                elif invoice.real_estate_subscription_id:
+                    subscription = RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).first()
 
-                invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).only("pricing_snapshot_source").first()
+            plan = None
+            if invoice and invoice.upgrade_plan_id:
+                plan = SubscriptionPlan.objects.filter(pk=invoice.upgrade_plan_id).first()
+            elif subscription:
+                plan = SubscriptionPlan.objects.filter(pk=subscription.plan_id).first()
+
+            if invoice:
+                billing_cycle = invoice.upgrade_billing_cycle or (subscription.billing_cycle if subscription else None)
+                detail_data.update({
+                    "plan_name": plan.name if plan else detail_data.get("plan_name"),
+                    "billing_cycle": billing_cycle or detail_data.get("billing_cycle"),
+                    "amount_kes": invoice.amount_kes,
+                    "amount_usd": invoice.amount_usd,
+                    "provider": invoice.payment_provider or provider,
+                    "provider_reference": invoice.provider_reference,
+                    "provider_transaction_id": invoice.provider_transaction_id,
+                    "payment_method": invoice.payment_method,
+                    "billing_period_start": invoice.billing_period_start,
+                    "billing_period_end": invoice.billing_period_end,
+                })
+
+            if normalized_status == "PAID" and not is_upgrade and not is_renewal:
                 is_renewal = bool(invoice and invoice.pricing_snapshot_source == "subscription_billing_amount")
                 if is_renewal:
-                    detail_data = {**detail_data, "renewal": True}
+                    detail_data["renewal"] = True
 
             if is_upgrade:
                 title = "Subscription upgraded"
