@@ -37,6 +37,9 @@ const emptyForm: FormState = {
   is_default: false,
 };
 
+const inputClassName = 'mt-1.5 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition placeholder:text-gray-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 dark:border-brand-700 dark:bg-brand-950 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400/20 dark:disabled:bg-brand-950/70 dark:disabled:text-gray-500';
+const labelClassName = 'text-sm font-semibold text-gray-700 dark:text-gray-200';
+
 function label(method: PaymentMethod) {
   if (method.display_name) return method.display_name;
   if (method.provider === 'PAYPAL') return 'PayPal';
@@ -65,7 +68,7 @@ export default function LandlordPMSSettings() {
       const result = await protectedGet<PaymentMethod[]>('/api/core/payment-methods/');
       setMethods(Array.isArray(result) ? result : []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load payment settings from Django.');
+      setError(err instanceof Error ? err.message : 'Unable to load your payment settings.');
     } finally {
       setLoading(false);
     }
@@ -86,15 +89,15 @@ export default function LandlordPMSSettings() {
     try {
       if (editingId) {
         await protectedPatch(`/api/core/payment-methods/${editingId}/`, form);
-        setNotice('Payment account updated.');
+        setNotice('Payment account updated successfully.');
       } else {
         await protectedPost('/api/core/payment-methods/', form);
-        setNotice('Payment account added.');
+        setNotice('Payment account added successfully.');
       }
       reset();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to save the payment account.');
+      setError(err instanceof Error ? err.message : 'Unable to save your payment account.');
     } finally {
       setBusy(null);
     }
@@ -108,7 +111,7 @@ export default function LandlordPMSSettings() {
       await load();
       setNotice('Default payment account updated.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to change the default account.');
+      setError(err instanceof Error ? err.message : 'Unable to change the default payment account.');
     } finally {
       setBusy(null);
     }
@@ -143,63 +146,158 @@ export default function LandlordPMSSettings() {
   };
 
   if (loading) {
-    return <div className="flex min-h-[300px] items-center justify-center rounded-3xl border border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-950"><Loader2 className="h-7 w-7 animate-spin text-brand-600" /></div>;
+    return (
+      <div className="flex min-h-[300px] items-center justify-center rounded-3xl border border-gray-200 bg-white dark:border-brand-700 dark:bg-brand-950">
+        <Loader2 className="h-7 w-7 animate-spin text-brand-600" />
+      </div>
+    );
   }
 
   return (
     <section className="space-y-5">
-      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+      <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-brand-700 dark:bg-brand-950">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">PMS settings</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-400">PMS settings</p>
             <h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Payment accounts</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-400">These active destinations are managed by you including rent invoices and payment accounts.</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">Manage the payment accounts you use for rent collection and invoice payment instructions.</p>
           </div>
-          <Wallet className="h-6 w-6 text-brand-600" />
+          <Wallet className="h-6 w-6 text-brand-600 dark:text-brand-400" />
         </div>
       </div>
 
-      {(error || notice) && <div className={`rounded-xl px-4 py-3 text-sm ${error ? 'bg-error-50 text-error-700 dark:bg-error-900/20 dark:text-error-300' : 'bg-success-50 text-success-700 dark:bg-success-900/20 dark:text-success-300'}`}>{error || notice}</div>}
+      {(error || notice) && (
+        <div className={`rounded-xl border p-3 text-sm ${error ? 'border-error-200 bg-error-50 text-error-700 dark:border-error-800 dark:bg-error-950/50 dark:text-error-200' : 'border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950/50 dark:text-brand-200'}`}>
+          {error || notice}
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
-          <div className="flex items-center gap-2"><CreditCard className="h-5 w-5 text-brand-600" /><h3 className="font-bold text-gray-900 dark:text-white">Active payment destinations</h3></div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-950">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+            <h3 className="font-bold text-gray-900 dark:text-white">Active payment accounts</h3>
+          </div>
+
           <div className="mt-4 space-y-3">
             {methods.map((method) => (
-              <div key={method.id} className="rounded-xl border border-gray-200 p-4 dark:border-brand-800">
+              <div key={method.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-brand-700 dark:bg-brand-950/50">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-gray-900 dark:text-white">{label(method)}</p>{method.is_default && <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2 py-1 text-[10px] font-bold text-success-700 dark:bg-success-900/20 dark:text-success-300"><Check className="h-3 w-3" />Default</span>}</div>
-                    <p className="mt-1 break-words text-sm text-gray-500">{destination(method)}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-gray-900 dark:text-white">{label(method)}</p>
+                      {method.is_default && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2 py-1 text-[10px] font-bold text-brand-700 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                          <Check className="h-3 w-3" />
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 break-words text-sm text-gray-600 dark:text-gray-300">{destination(method)}</p>
                   </div>
+
                   <div className="flex shrink-0 gap-1">
-                    {!method.is_default && <button type="button" disabled={busy === `default-${method.id}`} onClick={() => void makeDefault(method.id)} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-50">Set default</button>}
-                    <button type="button" onClick={() => startEdit(method)} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900">Edit</button>
-                    <button type="button" disabled={busy === `delete-${method.id}`} onClick={() => void remove(method.id)} className="rounded-lg p-2 text-error-600 hover:bg-error-50 disabled:opacity-50" aria-label={`Remove ${label(method)}`}><Trash2 className="h-4 w-4" /></button>
+                    {!method.is_default && (
+                      <button type="button" disabled={busy === `default-${method.id}`} onClick={() => void makeDefault(method.id)} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-50 dark:text-brand-400 dark:hover:bg-brand-900">
+                        Set as default
+                      </button>
+                    )}
+                    <button type="button" onClick={() => startEdit(method)} className="rounded-lg px-2.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900">
+                      Edit
+                    </button>
+                    <button type="button" disabled={busy === `delete-${method.id}`} onClick={() => void remove(method.id)} className="rounded-lg p-2 text-error-600 hover:bg-error-50 disabled:opacity-50 dark:text-error-400 dark:hover:bg-error-950/40" aria-label={`Remove ${label(method)}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
             ))}
-            {!methods.length && <div className="rounded-xl bg-gray-50 p-5 text-sm text-gray-500 dark:bg-brand-900/40">No active payment destination yet. Add one so Django can snapshot payment instructions onto new rent invoices.</div>}
+
+            {!methods.length && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600 dark:border-brand-700 dark:bg-brand-950/50 dark:text-gray-300">
+                No payment account has been added yet. Add one to provide payment instructions for your rent invoices.
+              </div>
+            )}
           </div>
         </div>
 
-        <form onSubmit={submit} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
-          <div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-gray-900 dark:text-white">{editingId ? 'Edit payment account' : 'Add payment account'}</h3><p className="mt-1 text-xs text-gray-500">Django validates provider-specific fields before saving.</p></div>{editingId && <button type="button" onClick={reset} className="text-xs font-semibold text-gray-500">Cancel edit</button>}</div>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <label className="block"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Provider</span><select value={form.provider} disabled={Boolean(editingId)} onChange={(e) => setForm((current) => ({ ...current, provider: e.target.value as FormState['provider'] }))} className="input mt-1 w-full"><option value="MPESA">M-Pesa</option><option value="PAYPAL">PayPal</option></select></label>
-            <label className="block"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Display name</span><input value={form.display_name} onChange={(e) => setForm((current) => ({ ...current, display_name: e.target.value }))} placeholder="e.g. Main rent account" className="input mt-1 w-full" /></label>
+        <form onSubmit={submit} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-950">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-gray-900 dark:text-white">{editingId ? 'Edit payment account' : 'Add payment account'}</h3>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">Enter the details exactly as customers should use them when making payments.</p>
+            </div>
+            {editingId && (
+              <button type="button" onClick={reset} className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                Cancel
+              </button>
+            )}
           </div>
 
-          {form.provider === 'MPESA' && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="block"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">M-Pesa method</span><select value={form.mpesa_method} onChange={(e) => setForm((current) => ({ ...current, mpesa_method: e.target.value as FormState['mpesa_method'] }))} className="input mt-1 w-full"><option value="PAYBILL">PayBill</option><option value="TILL">Till</option></select></label>{form.mpesa_method === 'PAYBILL' ? <><label className="block"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">PayBill number</span><input value={form.paybill_number} onChange={(e) => setForm((current) => ({ ...current, paybill_number: e.target.value }))} className="input mt-1 w-full" required /></label><label className="block sm:col-span-2"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">PayBill account</span><input value={form.paybill_account} onChange={(e) => setForm((current) => ({ ...current, paybill_account: e.target.value }))} className="input mt-1 w-full" required /></label></> : <label className="block"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Till number</span><input value={form.till_number} onChange={(e) => setForm((current) => ({ ...current, till_number: e.target.value }))} className="input mt-1 w-full" required /></label>}</div>}
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className={labelClassName}>Payment provider</span>
+              <select value={form.provider} disabled={Boolean(editingId)} onChange={(e) => setForm((current) => ({ ...current, provider: e.target.value as FormState['provider'] }))} className={inputClassName}>
+                <option value="MPESA">M-Pesa</option>
+                <option value="PAYPAL">PayPal</option>
+              </select>
+            </label>
 
-          {form.provider === 'PAYPAL' && <label className="mt-4 block"><span className="text-xs font-semibold text-gray-600 dark:text-gray-300">PayPal email</span><input type="email" value={form.paypal_email} onChange={(e) => setForm((current) => ({ ...current, paypal_email: e.target.value }))} className="input mt-1 w-full" required /></label>}
+            <label className="block">
+              <span className={labelClassName}>Account name</span>
+              <input value={form.display_name} onChange={(e) => setForm((current) => ({ ...current, display_name: e.target.value }))} placeholder="e.g. Main rent account" className={inputClassName} />
+            </label>
+          </div>
 
-          {!editingId && <label className="mt-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input type="checkbox" checked={form.is_default} onChange={(e) => setForm((current) => ({ ...current, is_default: e.target.checked }))} />Make this the default invoice destination</label>}
-          {editingId && <label className="mt-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300"><input type="checkbox" checked={form.is_default} onChange={(e) => setForm((current) => ({ ...current, is_default: e.target.checked }))} />Make this the default invoice destination</label>}
+          {form.provider === 'MPESA' && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className={labelClassName}>M-Pesa payment method</span>
+                <select value={form.mpesa_method} onChange={(e) => setForm((current) => ({ ...current, mpesa_method: e.target.value as FormState['mpesa_method'] }))} className={inputClassName}>
+                  <option value="PAYBILL">PayBill</option>
+                  <option value="TILL">Till</option>
+                </select>
+              </label>
 
-          <button type="submit" disabled={busy === 'create' || Boolean(editingId && busy === `edit-${editingId}`)} className="btn-primary mt-5 inline-flex w-full items-center justify-center gap-2"><Plus className="h-4 w-4" />{editingId ? 'Save changes' : 'Add payment account'}</button>
+              {form.mpesa_method === 'PAYBILL' ? (
+                <>
+                  <label className="block">
+                    <span className={labelClassName}>PayBill number</span>
+                    <input value={form.paybill_number} onChange={(e) => setForm((current) => ({ ...current, paybill_number: e.target.value }))} placeholder="Enter PayBill number" inputMode="numeric" className={inputClassName} required />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className={labelClassName}>PayBill account number</span>
+                    <input value={form.paybill_account} onChange={(e) => setForm((current) => ({ ...current, paybill_account: e.target.value }))} placeholder="Enter the account customers should use" className={inputClassName} required />
+                  </label>
+                </>
+              ) : (
+                <label className="block">
+                  <span className={labelClassName}>Till number</span>
+                  <input value={form.till_number} onChange={(e) => setForm((current) => ({ ...current, till_number: e.target.value }))} placeholder="Enter Till number" inputMode="numeric" className={inputClassName} required />
+                </label>
+              )}
+            </div>
+          )}
+
+          {form.provider === 'PAYPAL' && (
+            <label className="mt-4 block">
+              <span className={labelClassName}>PayPal email address</span>
+              <input type="email" value={form.paypal_email} onChange={(e) => setForm((current) => ({ ...current, paypal_email: e.target.value }))} placeholder="name@example.com" className={inputClassName} required />
+            </label>
+          )}
+
+          <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 dark:text-gray-200">
+            <input type="checkbox" checked={form.is_default} onChange={(e) => setForm((current) => ({ ...current, is_default: e.target.checked }))} className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-brand-700 dark:bg-brand-950" />
+            <span>
+              <span className="font-semibold">Set as default payment account</span>
+              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">Use this account as the default payment destination for new rent invoices.</span>
+            </span>
+          </label>
+
+          <button type="submit" disabled={busy === 'create' || Boolean(editingId && busy === `edit-${editingId}`)} className="btn-primary mt-5 inline-flex w-full items-center justify-center gap-2">
+            <Plus className="h-4 w-4" />
+            {editingId ? 'Save changes' : 'Add payment account'}
+          </button>
         </form>
       </div>
     </section>
