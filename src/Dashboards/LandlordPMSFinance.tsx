@@ -29,7 +29,7 @@ export default function LandlordPMSFinance() {
   const load = async () => {
     setLoading(true); setError(null);
     try { setData(await protectedGet<RecordValue>('/api/core/pms/dashboard/')); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Unable to load landlord finance data.'); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Unable to load your finance data.'); }
     finally { setLoading(false); }
   };
 
@@ -57,7 +57,7 @@ export default function LandlordPMSFinance() {
     <section className="space-y-5">
       <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Finance</p><h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Rent collection overview</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">All figures below are derived from your property transactions.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Finance</p><h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Rent collection overview</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">All figures below are based on your property transactions.</p></div>
           <button type="button" onClick={() => void load()} className="btn-secondary inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />Refresh</button>
         </div>
       </div>
@@ -83,8 +83,8 @@ export default function LandlordPMSFinance() {
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
-          <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-brand-800"><div><h3 className="font-bold text-gray-900 dark:text-white">Invoice ledger</h3><p className="mt-1 text-sm text-gray-500">A financial view of invoices returned by Django.</p></div><ArrowDownToLine className="h-5 w-5 text-gray-400" /></div>
-          <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-brand-900/50"><tr><th className="px-5 py-3">Invoice</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Due</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-brand-800">{finance.invoices.slice(0, 12).map((invoice: RecordValue) => <tr key={invoice.id}><td className="px-5 py-3 font-semibold text-gray-900 dark:text-white">{invoice.invoice_number || '—'}</td><td className="px-5 py-3">{money(invoice.amount_kes)}</td><td className="px-5 py-3 text-gray-500">{date(invoice.due_date)}</td><td className="px-5 py-3"><span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold dark:bg-brand-900">{status(invoice.status) || 'UNKNOWN'}</span></td></tr>)}</tbody></table>{!finance.invoices.length && <p className="p-8 text-center text-sm text-gray-500">No invoices returned by Django.</p>}</div>
+          <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-brand-800"><div><h3 className="font-bold text-gray-900 dark:text-white">Invoice ledger</h3><p className="mt-1 text-sm text-gray-500">A financial view of your rent invoices.</p></div><ArrowDownToLine className="h-5 w-5 text-gray-400" /></div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-brand-900/50"><tr><th className="px-5 py-3">Invoice</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Due</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-brand-800">{finance.invoices.slice(0, 12).map((invoice: RecordValue) => <tr key={invoice.id}><td className="px-5 py-3 font-semibold text-gray-900 dark:text-white">{invoice.invoice_number || '—'}</td><td className="px-5 py-3">{money(invoice.amount_kes)}</td><td className="px-5 py-3 text-gray-500">{date(invoice.due_date)}</td><td className="px-5 py-3"><span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold dark:bg-brand-900">{status(invoice.status) || 'UNKNOWN'}</span></td></tr>)}</tbody></table>{!finance.invoices.length && <p className="p-8 text-center text-sm text-gray-500">No invoices are currently available.</p>}</div>
         </div>
       </>}
     </section>
