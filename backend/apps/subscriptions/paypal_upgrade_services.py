@@ -103,7 +103,9 @@ def process_paypal_subscription_webhook(payload):
         raise ValueError('PayPal webhook event id and type are required')
 
     subscription_id = _event_subscription_id(payload)
-    subscription, audience = _subscription_for_paypal_id(subscription_id)
+    with transaction.atomic():
+        subscription, audience = _subscription_for_paypal_id(subscription_id)
+
     if subscription is None:
         from .paypal_subscription_services import process_paypal_subscription_webhook as process_existing
         return process_existing(payload)

@@ -288,5 +288,7 @@ class PayPalSubscriptionWebhookView(APIView):
         except RuntimeError as exc:
             return Response({'success': False, 'detail': str(exc)}, status=503)
         except Exception as exc:
+            import traceback
+            traceback.print_exc()
             return Response({'success': False, 'detail': str(exc)}, status=500)
         return Response({'success': True, **result})
