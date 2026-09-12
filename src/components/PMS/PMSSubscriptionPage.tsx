@@ -136,7 +136,7 @@ export default function PMSSubscriptionPage() {
     const profile = Array.isArray(profiles) ? profiles[0] ?? null : profiles;
     if (!profile) throw new Error("Profile not found");
     const profileRole = String(profile.role ?? "").trim().toLowerCase();
-    if (profileRole !== "landlord" && profileRole !== "real_estate") throw new Error("PMS subscriptions are available only to landlord and real estate accounts.");
+    if (profileRole !== "landlord" && profileRole !== "real_estate") throw new Error("PMS subscriptions are available only to eligible property management accounts.");
     return { id: authData.user.id, role: normalizeRole(profileRole) };
   }, []);
 
@@ -220,7 +220,7 @@ export default function PMSSubscriptionPage() {
   if (!subscription) return (
     <section className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div><h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white"><Crown className="h-6 w-6 text-brand-600" />{role === "landlord" ? "PMS Subscription" : "Real Estate Subscription"}</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a subscription plan to activate your {role === "landlord" ? "PMS management" : "real estate listing entitlement"}.</p></div>
+        <div><h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white"><Crown className="h-6 w-6 text-brand-600" />PMS Subscription</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a subscription plan to activate your property management features.</p></div>
         <button type="button" onClick={() => void handleRefresh()} disabled={refreshing} className="btn-secondary">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Refresh</button>
       </div>
       <div className="card p-6">{planSelector}</div>
@@ -240,7 +240,7 @@ export default function PMSSubscriptionPage() {
       <div className="card mb-6 overflow-hidden">
         <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-4 py-3 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50"><p className="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-brand-300"><Crown className="h-4 w-4" />Current Subscription</p></div>
         <div className="p-6">
-          <div className="flex items-start gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200"><Crown className="h-7 w-7" /></div><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{subscription.plan_name}</h2><SubscriptionStatus status={subscription.status} /></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{role === "real_estate" ? `Your ${subscription.plan_name} real estate subscription.` : `Your ${subscription.plan_name} Saka Crib PMS subscription.`}</p><p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">Billed {subscription.billing_cycle === "MONTHLY" ? "monthly" : "annually"}</p></div></div>
+          <div className="flex items-start gap-4"><div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200"><Crown className="h-7 w-7" /></div><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-bold text-gray-900 dark:text-white">{subscription.plan_name}</h2><SubscriptionStatus status={subscription.status} /></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{role === "real_estate" ? `Your ${subscription.plan_name} real estate subscription.` : `Your ${subscription.plan_name} property management subscription.`}</p><p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">Billed {subscription.billing_cycle === "MONTHLY" ? "monthly" : "annually"}</p></div></div>
           <div className="mt-6 grid gap-4 border-t border-gray-200 pt-6 dark:border-gray-800 sm:grid-cols-2 lg:grid-cols-4">
             <InfoItem icon={<CalendarDays className="h-4 w-4" />} label="Period started" value={formatDate(subscription.current_period_start)} />
             <InfoItem icon={<CalendarDays className="h-4 w-4" />} label="Period ends" value={formatDate(subscription.current_period_end)} />
@@ -261,7 +261,7 @@ export default function PMSSubscriptionPage() {
       {subscription.status === "CANCELLED" && <StatusNotice icon={<ShieldAlert className="h-4 w-4" />} title="Subscription Cancelled" heading="Subscription cancelled" description="Select a plan below to review the subscription options available to your account." tone="gray" />}
 
       <div className="card overflow-hidden">
-        <div className="border-b border-gray-200 px-4 py-4 dark:border-gray-800"><h2 className="text-lg font-bold text-gray-900 dark:text-white">Available {role === "landlord" ? "PMS" : "Subscription"} Plans</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Compare plans, change your billing cycle, renew, or upgrade your subscription.</p></div>
+        <div className="border-b border-gray-200 px-4 py-4 dark:border-gray-800"><h2 className="text-lg font-bold text-gray-900 dark:text-white">Available PMS Plans</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Compare plans, change your billing cycle, renew, or upgrade your subscription.</p></div>
         <div className="p-6">
           {planSelector}
           {selectedPlan !== currentPlanName || selectedBillingCycle !== subscription.billing_cycle ? <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-950/20"><p className="text-sm font-semibold text-brand-700 dark:text-brand-300">New selection</p><p className="mt-1 text-sm text-brand-600 dark:text-brand-400">{selectedPlan ?? "No plan selected"} — {selectedBillingCycle === "MONTHLY" ? "Monthly" : "Annual"} billing</p></div> : <div className="mt-5 rounded-xl border border-success-200 bg-success-50 p-4 dark:border-success-800 dark:bg-success-950/20"><p className="flex items-center gap-2 text-sm font-semibold text-success-700 dark:text-success-400"><CheckCircle2 className="h-4 w-4" />Current plan selected</p></div>}
