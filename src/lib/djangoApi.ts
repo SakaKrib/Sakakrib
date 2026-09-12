@@ -11,15 +11,18 @@ export interface DjangoApiException extends Error {
 }
 
 /**
- * Django is the only API source of truth. Keep the configured value as an
- * origin, not an /api path, because every caller already supplies /api/...
- * This also makes the Docker/Vite same-origin proxy the safe default when no
- * browser-facing API origin is configured.
+ * Django is the only API source of truth. In the browser, always use the
+ * current page origin so /api/... requests reach the Django backend through
+ * the same-origin Docker/Vite/reverse-proxy path. A configured origin is only
+ * used for non-browser execution.
  */
 const getBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+
   const configured = import.meta.env.VITE_DJANGO_API_URL as string | undefined;
-  const fallback = typeof window !== 'undefined' ? window.location.origin : '';
-  return (configured || fallback)
+  return (configured || '')
     .replace(/\/+$/, '')
     .replace(/\/api$/i, '');
 };
