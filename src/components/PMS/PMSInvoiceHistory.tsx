@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, FileText, RefreshCw, XCircle } from 'lucide-react';
 
-import { djangoRequest } from '@/lib/djangoApi';
-
 interface SubscriptionInvoice {
   id: string;
   status: string;
@@ -85,8 +83,31 @@ export default function PMSInvoiceHistory() {
   const loadInvoices = useCallback(async () => {
     try {
       setError(null);
-      const result = await djangoRequest<SubscriptionInvoice[]>('/api/subscriptions/invoices/');
-      setInvoices(Array.isArray(result) ? result : []);
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const response = await fetch(`${baseUrl}/api/subscriptions/invoices/`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+
+      const text = await response.text();
+      let body: SubscriptionInvoice[] | { detail?: string; error?: string; message?: string } | null = null;
+      if (text) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = null;
+        }
+      }
+
+      if (!response.ok) {
+        const message = body && typeof body === 'object'
+          ? ('detail' in body ? body.detail : 'error' in body ? body.error : 'message' in body ? body.message : undefined)
+          : undefined;
+        throw new Error(message || `Django API request failed (${response.status}).`);
+      }
+
+      setInvoices(Array.isArray(body) ? body : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load subscription payment history.');
     } finally {
