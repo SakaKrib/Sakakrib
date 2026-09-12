@@ -101,8 +101,8 @@ class MpesaProvider(PaymentProvider):
         phone = metadata.get('phone_number')
         if not phone:
             return PaymentResult(False, message='M-Pesa phone number is required')
-        shortcode = settings.MPESA_SHORTCODE
-        passkey = settings.MPESA_PASSKEY
+        shortcode = os.getenv('MPESA_STK_SHORTCODE', '')
+        passkey = os.getenv('MPESA_STK_PASSKEY', '')
         if 'callback_url' in metadata:
             callback = metadata.get('callback_url')
         else:
