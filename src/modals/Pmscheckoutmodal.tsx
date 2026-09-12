@@ -134,17 +134,19 @@ export default function PMSCheckoutModal({ open, onClose, role, plan, listingId,
 
   const continueAfterSuccess = () => {
     onClose();
-    if (onSuccess) {
-      onSuccess();
-      return;
-    }
+    onSuccess?.();
+
     if (listingId) {
       window.location.hash = `post-listing/${encodeURIComponent(listingId)}`;
+      return;
     }
+
+    window.location.hash = 'pms-dashboard';
   };
 
   const handleClose = () => onClose();
   const isPaypalUpgrade = Boolean(currentSubscription?.paypal_subscription_id && currentSubscription?.subscription_id);
+  const successDestination = listingId ? 'listing' : 'pms';
 
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true"><div className="card relative w-full max-w-md overflow-hidden rounded-2xl shadow-xl"><div className="flex items-start justify-between border-b border-gray-200 p-5 dark:border-gray-800"><div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Complete payment</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{plan.planName} · {plan.billingCycle === 'MONTHLY' ? 'Monthly' : 'Annual'} · {formatKES(plan.amountKes)}</p></div><button type="button" onClick={handleClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close"><X className="h-5 w-5" /></button></div><div className="p-5">
     {step === 'select-method' && <div className="space-y-4"><div className="grid grid-cols-2 gap-3"><button type="button" aria-pressed={method === 'MPESA'} onClick={() => setMethod('MPESA')} className="rounded-2xl border p-4 text-left"><Smartphone className="mb-2 h-5 w-5" />M-Pesa<span className="mt-1 block text-xs text-gray-500">STK Push</span></button><button type="button" aria-pressed={method === 'PAYPAL'} onClick={() => setMethod('PAYPAL')} className="rounded-2xl border p-4 text-left"><Crown className="mb-2 h-5 w-5" />PayPal<span className="mt-1 block text-xs text-gray-500">Secure recurring payment</span></button></div>{method === 'MPESA' && <div className="space-y-2"><label htmlFor="pms-mpesa-phone" className="text-sm font-semibold text-gray-900 dark:text-gray-100">M-Pesa phone number</label><input id="pms-mpesa-phone" value={phoneNumber} onChange={event => setPhoneNumber(event.target.value)} inputMode="tel" autoComplete="tel" placeholder="07XXXXXXXX / 01XXXXXXXX / 2547XXXXXXXX" className="input-field px-4 py-3" /><p className="text-xs text-gray-500 dark:text-gray-400">Use a Kenyan mobile number. We accept 07XXXXXXXX, 01XXXXXXXX, +2547XXXXXXXX, or 2547XXXXXXXX formats.</p></div>}{error && <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}{method === 'MPESA' ? <button type="button" disabled={starting} onClick={startMpesa} className="btn-primary inline-flex w-full items-center justify-center gap-2 disabled:opacity-50">{starting ? <><Loader2 className="h-4 w-4 animate-spin" />Starting STK Push…</> : 'Send STK Push'}</button> : isPaypalUpgrade ? <button type="button" disabled={starting} onClick={startPaypalUpgrade} className="btn-primary inline-flex w-full items-center justify-center gap-2 disabled:opacity-50">{starting ? <><Loader2 className="h-4 w-4 animate-spin" />Opening PayPal…</> : 'Upgrade with PayPal'}</button> : <PayPalPaymentButton mode="SUBSCRIPTION" planId={plan.planId} billingCycle={plan.billingCycle} listingId={listingId} onSuccess={() => { setError(null); setStep('success'); }} onError={message => { setError(message); setStep('failed'); }} disabled={starting} />}</div>}
@@ -153,7 +155,7 @@ export default function PMSCheckoutModal({ open, onClose, role, plan, listingId,
 
     {step === 'paypal-waiting' && <div className="flex flex-col items-center py-6 text-center"><Loader2 className="h-10 w-10 animate-spin" /><p className="mt-4 font-semibold">Waiting for PayPal confirmation</p><p className="mt-2 text-sm text-gray-500">PayPal is opening the secure re-consent flow. Django will verify the revised plan when you return.</p></div>}
 
-    {step === 'success' && <div className="flex flex-col items-center py-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-success-100"><CheckCircle2 className="h-7 w-7" /></div><p className="mt-4 font-semibold">Payment successful</p><p className="mt-2 text-sm text-gray-500">Your {plan.planName} subscription has been confirmed. Continue to your saved listing to finish the final review and post it.</p><button type="button" onClick={continueAfterSuccess} className="btn-primary mt-6">Continue to Listing</button></div>}
+    {step === 'success' && <div className="flex flex-col items-center py-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-success-100"><CheckCircle2 className="h-7 w-7" /></div><p className="mt-4 font-semibold">Payment successful</p><p className="mt-2 text-sm text-gray-500">{successDestination === 'listing' ? 'Your subscription has been confirmed. Continue to your saved listing to finish the final review and post it.' : 'Your subscription has been confirmed. Continue to PMS Management to manage your properties, renters, and subscription.'}</p><button type="button" onClick={continueAfterSuccess} className="btn-primary mt-6">{successDestination === 'listing' ? 'Continue to Listing' : 'Go to PMS Management Dashboard'}</button></div>}
 
     {step === 'failed' && <div className="flex flex-col items-center py-6 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-error-100"><XCircle className="h-7 w-7" /></div><p className="mt-4 font-semibold">Payment unsuccessful</p>{error && <p className="mt-2 text-sm text-gray-500">{error}</p>}<div className="mt-6 flex gap-3"><button type="button" onClick={handleClose} className="btn-secondary">Close</button><button type="button" onClick={() => { setStep('select-method'); setError(null); setInvoiceId(null); }} className="btn-primary">Try again</button></div></div>}
   </div></div></div>;
