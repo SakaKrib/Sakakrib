@@ -10,6 +10,91 @@ from .email_templates import EMAIL_TEMPLATES
 from .subscription_email_templates import SUBSCRIPTION_EMAIL_TEMPLATES, SUBSCRIPTION_EMAIL_SUBJECTS
 
 
+def _enrich_subscription_email_payload(payload):
+    """Fill subscription email fields from the authoritative invoice record."""
+    data = dict(payload or {})
+    invoice_id = data.get("invoice_id") or data.get("id")
+    if not invoice_id:
+        return data
+
+    try:
+        from apps.subscriptions.models import (
+            LandlordSubscription,
+            RealEstateSubscription,
+            SubscriptionInvoice,
+            SubscriptionPlan,
+        )
+
+        invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
+        if not invoice:
+            return data
+
+        subscription = None
+        if invoice.landlord_subscription_id:
+            subscription = LandlordSubscription.objects.filter(
+                pk=invoice.landlord_subscription_id
+            ).first()
+        elif invoice.real_estate_subscription_id:
+            subscription = RealEstateSubscription.objects.filter(
+                pk=invoice.real_estate_subscription_id
+            ).first()
+
+        plan = None
+        if invoice.upgrade_plan_id:
+            plan = SubscriptionPlan.objects.filter(pk=invoice.upgrade_plan_id).first()
+        elif subscription:
+            plan = SubscriptionPlan.objects.filter(pk=subscription.plan_id).first()
+
+        billing_cycle = (
+            invoice.upgrade_billing_cycle
+            or (subscription.billing_cycle if subscription else None)
+        )
+
+        data.update(
+            {
+                "plan_name": plan.name if plan else data.get("plan_name"),
+                "billing_cycle": billing_cycle or data.get("billing_cycle"),
+                "amount_kes": invoice.amount_kes,
+                "amount_usd": invoice.amount_usd,
+                "provider": invoice.payment_provider or data.get("provider"),
+                "provider_reference": invoice.provider_reference,
+                "provider_transaction_id": invoice.provider_transaction_id,
+                "payment_method": invoice.payment_method,
+                "billing_period_start": invoice.billing_period_start,
+                "billing_period_end": invoice.billing_period_end,
+            }
+        )
+
+        if subscription:
+            data.setdefault("subscription_status", subscription.status)
+
+        if invoice.upgrade_plan_id:
+            data.setdefault(
+                "target_plan_name",
+                plan.name if plan else data.get("plan_name"),
+            )
+            if subscription:
+                current_plan = SubscriptionPlan.objects.filter(
+                    pk=subscription.plan_id
+                ).first()
+                data.setdefault(
+                    "current_plan_name",
+                    current_plan.name if current_plan else None,
+                )
+
+        start = invoice.billing_period_start
+        end = invoice.billing_period_end
+        if start or end:
+            data["billing_period"] = (
+                f"{start or 'N/A'} – {end or 'N/A'}"
+            )
+
+    except Exception:
+        return data
+
+    return data
+
+
 @transaction.atomic
 def dispatch_user_notification(*, user_id, notification_type, title, message, data=None,
                                event_key=None, send_email=True, email_template="generic"):
@@ -64,6 +149,7 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
         payload.setdefault("email", profile.email)
         payload.setdefault("full_name", getattr(profile, "full_name", ""))
         if template_type in SUBSCRIPTION_EMAIL_TEMPLATES:
+            payload = _enrich_subscription_email_payload(payload)
             html_body = SUBSCRIPTION_EMAIL_TEMPLATES[template_type](payload)
             email = NotificationEmail.objects.create(
                 recipient=profile.email,
