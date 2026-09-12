@@ -1,6 +1,8 @@
+import json
 import logging
 
 from django.core.exceptions import ValidationError
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
 from django.utils.html import escape
 
@@ -108,6 +110,11 @@ def _enrich_subscription_email_payload(payload):
     return data
 
 
+def _json_safe_payload(payload):
+    """Convert Django-native values such as Decimal and datetime to JSON-safe values."""
+    return json.loads(json.dumps(payload or {}, cls=DjangoJSONEncoder))
+
+
 @transaction.atomic
 def dispatch_user_notification(*, user_id, notification_type, title, message, data=None,
                                event_key=None, send_email=True, email_template="generic"):
@@ -140,7 +147,7 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
                 notification_type=str(notification_type),
                 title=str(title),
                 message=str(message),
-                data=data if isinstance(data, dict) else {},
+                data=_json_safe_payload(data if isinstance(data, dict) else {}),
                 event_key=event_key,
             )
     except IntegrityError:
