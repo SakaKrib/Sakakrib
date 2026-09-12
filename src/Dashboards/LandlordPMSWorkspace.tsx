@@ -24,7 +24,7 @@ const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboar
   { id: 'management', label: 'Properties & Renters', icon: Settings2 },
   { id: 'rent', label: 'Rent, Calendar & Stats', icon: CalendarDays },
   { id: 'finance', label: 'Finance & Payments', icon: TrendingUp },
-  { id: 'insights', label: 'Django Insights', icon: BarChart3 },
+  { id: 'insights', label: 'Insights', icon: BarChart3 },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'subscription', label: 'Subscription', icon: CreditCard },
@@ -72,24 +72,41 @@ export default function LandlordPMSWorkspace() {
   };
 
   return (
-    <section className="mt-6 space-y-5 mx-auto max-w-7xl px-2 py-4 text-center sm:px-6 lg:px-8">
+    <section className="mx-auto mt-6 max-w-7xl space-y-5 px-2 py-4 text-center sm:px-6 lg:px-8">
       <LandlordPMSEntitlementHeader />
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-brand-700 dark:bg-brand-950">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">PMS workspace</div>
-            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{snapshot?.subscription?.plan_name ? `${snapshot.subscription.plan_name} · ${snapshot.subscription.status ?? 'status unavailable'}` : 'Live PMS state from Django'}</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">PMS workspace</div>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+              {snapshot?.subscription?.plan_name
+                ? `${snapshot.subscription.plan_name} · ${snapshot.subscription.status ?? 'Status unavailable'}`
+                : 'Your property management workspace'}
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-xs font-semibold text-gray-500 dark:text-gray-400">
-            {snapshot?.capacity && <span>{snapshot.capacity.listings_used ?? 0} used{snapshot.capacity.max_listings != null ? ` / ${snapshot.capacity.max_listings}` : ''} listings</span>}
-            <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-800 dark:hover:bg-brand-900"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
+          <div className="flex items-center gap-3 text-xs font-semibold text-gray-600 dark:text-gray-300">
+            {snapshot?.capacity && (
+              <span>
+                {snapshot.capacity.listings_used ?? 0} used
+                {snapshot.capacity.max_listings != null ? ` / ${snapshot.capacity.max_listings}` : ''} listings
+              </span>
+            )}
+            <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-700 dark:hover:bg-brand-900">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
         </div>
         <div className="flex gap-2 overflow-x-auto px-2">
-          {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setTab(id)} className={`inline-flex shrink-0 items-center gap-2 mb-1 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === id ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}><Icon className="h-4 w-4" />{labelFor(id, label)}</button>)}
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button key={id} type="button" onClick={() => setTab(id)} className={`mb-1 inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === id ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}>
+              <Icon className="h-4 w-4" />
+              {labelFor(id, label)}
+            </button>
+          ))}
         </div>
       </div>
-      {error && <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-900/50 dark:bg-error-900/20 dark:text-error-300">PMS data could not be loaded: {error}</div>}
+      {error && <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-950/50 dark:text-error-200">Your PMS workspace could not be loaded: {error}</div>}
       {tab === 'overview' && <><LandlordPMSOverview /><LandlordPMSQuickActions onNavigate={(nextTab) => setTab(nextTab)} /></>}
       {tab === 'management' && <><LandlordPMSRentalRequests /><LandlordPMSPropertyWorkflow /></>}
       {tab === 'rent' && <><LandlordPMSCalendar /><LandlordPMSCalendarStats /><LandlordPMSRentControls /></>}
