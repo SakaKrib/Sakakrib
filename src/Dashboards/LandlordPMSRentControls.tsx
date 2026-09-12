@@ -86,7 +86,7 @@ function PaidThroughModal({ unit, onClose, onSaved }: { unit: Unit; onClose: () 
 
         <div className="mt-5">
           <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Reason / record note</label>
-          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Example: Renter paid four months ahead directly to the landlord." className="mt-2 w-full resize-none rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-900 dark:text-white" />
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Example: Renter paid four months ahead directly to the property owner." className="mt-2 w-full resize-none rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-900 dark:text-white" />
         </div>
 
         {unit.rent_paid_in_advance && <p className="mt-4 rounded-xl bg-success-50 px-3 py-2 text-xs text-success-700 dark:bg-success-900/20 dark:text-success-300">Current record: paid through {unit.rent_paid_through_month ? new Intl.DateTimeFormat('en-KE', { month: 'long', year: 'numeric' }).format(new Date(unit.rent_paid_through_month)) : 'a recorded period'}.</p>}
@@ -120,7 +120,7 @@ export default function LandlordPMSRentControls() {
       }));
       setHistory(records.flat());
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to load Django rent controls.');
+      setError(e instanceof Error ? e.message : 'Unable to load rent controls.');
     } finally { setLoading(false); }
   };
 
