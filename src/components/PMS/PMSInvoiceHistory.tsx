@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, FileText, RefreshCw, XCircle } from 'lucide-react';
+import { useSubscriptionInvoiceSocket } from '@/lib/useSubscriptionInvoiceSocket';
 
 interface SubscriptionInvoice {
   id: string;
@@ -79,6 +80,7 @@ export default function PMSInvoiceHistory() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { event } = useSubscriptionInvoiceSocket();
 
   const loadInvoices = useCallback(async () => {
     try {
@@ -119,6 +121,11 @@ export default function PMSInvoiceHistory() {
   useEffect(() => {
     void loadInvoices();
   }, [loadInvoices]);
+
+  useEffect(() => {
+    if (event?.type !== 'subscription_invoice') return;
+    void loadInvoices();
+  }, [event, loadInvoices]);
 
   const handleRefresh = async () => {
     if (refreshing) return;
