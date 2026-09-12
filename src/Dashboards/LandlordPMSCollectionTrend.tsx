@@ -92,7 +92,7 @@ export default function LandlordPMSCollectionTrend() {
         <div>
           <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-brand-600" /><p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Collection trend</p></div>
           <h3 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Six-month rent performance</h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Invoiced amounts follow Django PMS invoice dates; collected amounts follow confirmed Django payments.</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Invoiced amounts follow your rent invoice dates; collected amounts follow confirmed payments.</p>
         </div>
         <button type="button" onClick={() => void load()} className="btn-secondary inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />Refresh</button>
       </div>
