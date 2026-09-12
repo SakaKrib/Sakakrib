@@ -37,5 +37,5 @@ urlpatterns = [
     path('upgrade/', SubscriptionUpgradeView.as_view(), name='subscription-upgrade'),
     path('paypal/approve/', PayPalSubscriptionApproveView.as_view(), name='paypal-subscription-approve'),
     path('callbacks/mpesa/', MpesaSubscriptionCallbackView.as_view(), name='mpesa-subscription-callback'),
-    path('callbacks/paypal/', PayPalSubscriptionWebhookView.as_view(), name='paypal-subscription-webhook'),
+    path('paypal/webhook/', PayPalSubscriptionWebhookView.as_view(), name='paypal-subscription-webhook'),
 ]
