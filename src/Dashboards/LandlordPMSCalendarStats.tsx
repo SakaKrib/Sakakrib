@@ -100,9 +100,9 @@ export default function LandlordPMSCalendarStats() {
   return (
     <section className="space-y-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Django calendar intelligence</p>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Calendar overview</p>
         <h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Rent schedule at a glance</h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">These figures are calculated from the authoritative PMS invoice state returned by Django.</p>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">These figures are calculated from the authoritative PMS invoice state from your property data.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">

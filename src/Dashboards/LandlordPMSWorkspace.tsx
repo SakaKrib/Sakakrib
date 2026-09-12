@@ -77,7 +77,7 @@ export default function LandlordPMSWorkspace() {
       <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">Django-backed PMS workspace</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">PMS workspace</div>
             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{snapshot?.subscription?.plan_name ? `${snapshot.subscription.plan_name} · ${snapshot.subscription.status ?? 'status unavailable'}` : 'Live PMS state from Django'}</div>
           </div>
           <div className="flex items-center gap-3 text-xs font-semibold text-gray-500 dark:text-gray-400">

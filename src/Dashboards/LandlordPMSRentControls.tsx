@@ -146,7 +146,7 @@ export default function LandlordPMSRentControls() {
     <section className="mt-6 space-y-6">
       <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Django rent controls</p><h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Rent schedule & manual payment records</h2><p className="mt-1 max-w-3xl text-sm text-gray-500">Use a unit's rent record when a renter paid directly outside an SakaKrib invoice. Django records each covered month so future invoices and rent status remain consistent.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Rent controls</p><h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Rent schedule & manual payment records</h2><p className="mt-1 max-w-3xl text-sm text-gray-500">Use a unit's rent record when a renter paid directly outside an Saka Krib invoice.</p></div>
           <button type="button" onClick={() => void load()} className="btn-secondary inline-flex items-center gap-2"><Clock3 className="h-4 w-4" />Refresh</button>
         </div>
       </div>

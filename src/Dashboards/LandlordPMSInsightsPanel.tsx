@@ -63,9 +63,9 @@ export default function LandlordPMSInsightsPanel() {
       <div className="rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-950 via-brand-900 to-brand-800 p-6 text-white shadow-lg dark:border-brand-800">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Django insights</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Insights</p>
             <h2 className="mt-2 text-2xl font-bold">Portfolio intelligence</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-100/80">Derived exclusively from the landlord PMS data returned by Django. No frontend-owned financial or entitlement state is authoritative.</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-100/80">Derived exclusively from the landlord PMS data.</p>
           </div>
           <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
         </div>

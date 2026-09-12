@@ -143,9 +143,9 @@ export default function LandlordPMSCalendar() {
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Django PMS calendar</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">PMS calendar</p>
           <h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Property, lease & rent schedule</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Every event is derived from the landlord's Django PMS state.</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Every event is derived from your property data.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => moveMonth(-1)} className="rounded-lg border border-gray-200 p-2 hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>

@@ -78,7 +78,7 @@ export default function LandlordPMSActivity() {
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Activity</p>
           <h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Recent PMS activity</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">A read-only timeline assembled from Django notifications, invoices and recorded payments.</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Notifications, Invoices and recorded Payments.</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-brand-900" aria-label="Refresh activity">
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />

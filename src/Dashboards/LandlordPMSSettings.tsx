@@ -153,7 +153,7 @@ export default function LandlordPMSSettings() {
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">PMS settings</p>
             <h2 className="mt-1 text-xl font-bold text-gray-900 dark:text-white">Payment accounts</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-400">These active destinations are managed by Django and can be selected when creating landlord rent invoices.</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500 dark:text-gray-400">These active destinations are managed by you including rent invoices and payment accounts.</p>
           </div>
           <Wallet className="h-6 w-6 text-brand-600" />
         </div>
