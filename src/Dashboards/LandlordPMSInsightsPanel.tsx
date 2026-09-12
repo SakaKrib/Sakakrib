@@ -18,7 +18,7 @@ export default function LandlordPMSInsightsPanel() {
     try {
       setData(await protectedGet<Row>('/api/core/pms/dashboard/'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load Django PMS insights.');
+      setError(err instanceof Error ? err.message : 'Unable to load your PMS insights.');
     } finally {
       setLoading(false);
     }
@@ -65,7 +65,7 @@ export default function LandlordPMSInsightsPanel() {
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Insights</p>
             <h2 className="mt-2 text-2xl font-bold">Portfolio intelligence</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-100/80">Derived exclusively from the landlord PMS data.</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-100/80">A clear view of your property performance and payment activity.</p>
           </div>
           <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold hover:bg-white/15 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
@@ -91,7 +91,7 @@ export default function LandlordPMSInsightsPanel() {
             <Panel title="Portfolio utilization" icon={Building2}>
               <div className="flex items-end justify-between"><span className="text-sm text-gray-500">Occupied units</span><span className="text-2xl font-bold text-gray-900 dark:text-white">{stats.occupied}/{stats.units}</span></div>
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-gray-100 dark:bg-brand-900"><div className="h-full rounded-full bg-brand-600" style={{ width: `${stats.occupancy}%` }} /></div>
-              <p className="mt-3 text-xs text-gray-500">Django-reported unit assignments determine occupancy.</p>
+              <p className="mt-3 text-xs text-gray-500">Occupancy is based on your current unit assignments.</p>
             </Panel>
             <Panel title="Collection position" icon={Wallet}>
               <RowStat label="Invoiced" value={money(stats.invoiced)} />
@@ -107,14 +107,14 @@ export default function LandlordPMSInsightsPanel() {
                 <div key={payment.id} className="rounded-xl border border-gray-100 p-4 dark:border-brand-800">
                   <div className="flex items-center justify-between gap-3"><p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{payment.transaction_id || payment.provider_reference || payment.mpesa_receipt || 'Payment'}</p><CheckCircle2 className="h-4 w-4 shrink-0 text-success-600" /></div>
                   <p className="mt-2 text-lg font-bold text-gray-900 dark:text-white">{money(payment.amount_kes)}</p>
-                  <p className="mt-1 text-xs text-gray-500">{payment.paid_at || payment.created_at || 'Confirmed by Django'}</p>
+                  <p className="mt-1 text-xs text-gray-500">{payment.paid_at || payment.created_at || 'Confirmed payment'}</p>
                 </div>
               ))}
             </div>
-            {!stats.recentPayments.length && <div className="py-6 text-center text-sm text-gray-500">No confirmed payments returned by Django.</div>}
+            {!stats.recentPayments.length && <div className="py-6 text-center text-sm text-gray-500">No confirmed payments are available yet.</div>}
           </Panel>
 
-          <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4 text-sm text-brand-800 dark:border-brand-800 dark:bg-brand-900/20 dark:text-brand-200"><Clock3 className="mr-2 inline h-4 w-4" />Insights are presentation-only. Mutations, payment confirmation, subscription entitlement and renter/unit ownership remain enforced by Django.</div>
+          <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4 text-sm text-brand-800 dark:border-brand-800 dark:bg-brand-900/20 dark:text-brand-200"><Clock3 className="mr-2 inline h-4 w-4" />Insights provide a clear view of your current property, rent, and payment activity.</div>
         </>
       )}
     </section>
