@@ -23,7 +23,31 @@ def _paypal_return_url(base_url, invoice_id):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None):
+def _paypal_frontend_urls(frontend_origin, invoice_id):
+    """Build PayPal return/cancel URLs for the frontend that started checkout.
+
+    Only origins already allowed by Django CORS are accepted. If the request
+    does not provide an allowed Origin, the configured PayPal URLs remain the
+    safe fallback.
+    """
+    origin = str(frontend_origin or '').strip().rstrip('/')
+    allowed_origins = {
+        str(value).strip().rstrip('/')
+        for value in getattr(settings, 'CORS_ALLOWED_ORIGINS', [])
+        if str(value).strip()
+    }
+    if origin and origin in allowed_origins:
+        return (
+            _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id),
+            _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id),
+        )
+    return (
+        _paypal_return_url(settings.PAYPAL_SUBSCRIPTION_RETURN_URL, invoice_id),
+        _paypal_return_url(settings.PAYPAL_SUBSCRIPTION_CANCEL_URL, invoice_id),
+    )
+
+
+def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None, frontend_origin=None):
     billing_cycle = str(billing_cycle or 'MONTHLY').upper()
     provider = str(provider or '').lower()
     if billing_cycle not in ('MONTHLY', 'ANNUAL'):
@@ -115,11 +139,12 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     if provider == 'paypal':
         from .paypal_subscription_services import create_paypal_subscription
         try:
+            return_url, cancel_url = _paypal_frontend_urls(frontend_origin, invoice.id)
             remote = create_paypal_subscription(
                 plan_id=paypal_plan_id,
                 custom_id=str(invoice.id),
-                return_url=_paypal_return_url(settings.PAYPAL_SUBSCRIPTION_RETURN_URL, invoice.id),
-                cancel_url=_paypal_return_url(settings.PAYPAL_SUBSCRIPTION_CANCEL_URL, invoice.id),
+                return_url=return_url,
+                cancel_url=cancel_url,
             )
             paypal_subscription_id = str(remote['id'])
             approval_url = next(str(link['href']) for link in remote.get('links', []) if link.get('rel') == 'approve' and link.get('href'))
