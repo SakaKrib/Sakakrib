@@ -3,8 +3,7 @@ import { AlertTriangle, Home } from "lucide-react";
 // Derived client-side capacity view (see computePMSCapacity in
 // pmsService.ts) — listings_used comes from get_my_pms_unit_count
 // (a plain integer), max_listings from subscription_plans via the
-// subscription. Renamed from unit_count/max_units/remaining_units,
-// which don't match any live column names.
+// subscription.
 interface PMSCapacity {
   listings_used: number;
   max_listings: number | null;
@@ -20,16 +19,18 @@ export default function PMSUsageBar({
 }: PMSUsageBarProps) {
   if (!capacity) {
     return (
-      <div className="rounded-xl border bg-white p-5">
+      <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-center gap-3">
-          <Home className="h-5 w-5 text-gray-500" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-950">
+            <Home className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+          </div>
 
           <div>
-            <h3 className="font-semibold">
+            <h3 className="font-semibold text-gray-900 dark:text-white">
               PMS property usage
             </h3>
 
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               No usage information available.
             </p>
           </div>
@@ -44,16 +45,12 @@ export default function PMSUsageBar({
     listings_remaining,
   } = capacity;
 
-  const isUnlimited =
-    max_listings === null;
+  const isUnlimited = max_listings === null;
 
   const percentage = isUnlimited
     ? 0
     : max_listings > 0
-      ? Math.min(
-          100,
-          (listings_used / max_listings) * 100
-        )
+      ? Math.min(100, (listings_used / max_listings) * 100)
       : 0;
 
   const limitReached =
@@ -67,38 +64,39 @@ export default function PMSUsageBar({
     percentage >= 80;
 
   return (
-    <div className="rounded-xl border bg-white p-5">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
-            <Home className="h-5 w-5 text-gray-700" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-950">
+            <Home className="h-5 w-5 text-brand-600 dark:text-brand-400" />
           </div>
 
           <div>
-            <h3 className="font-semibold">
+            <h3 className="font-semibold text-gray-900 dark:text-white">
               PMS property usage
             </h3>
 
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Properties currently managed by PMS
             </p>
           </div>
         </div>
 
         <div className="text-right">
-          <p className="text-xl font-bold">
+          <p className="text-xl font-bold text-gray-900 dark:text-white">
             {listings_used}
+
             {!isUnlimited && (
               <>
                 {" "}
-                <span className="text-sm font-normal text-gray-400">
+                <span className="text-sm font-normal text-gray-400 dark:text-gray-500">
                   / {max_listings}
                 </span>
               </>
             )}
           </p>
 
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             {isUnlimited
               ? "Unlimited"
               : listings_used === 1
@@ -111,17 +109,25 @@ export default function PMSUsageBar({
       {!isUnlimited && (
         <div className="mt-5">
           <div className="mb-2 flex items-center justify-between text-xs">
-            <span className="text-gray-500">
+            <span className="text-gray-500 dark:text-gray-400">
               Usage
             </span>
 
-            <span className="font-medium text-gray-700">
+            <span
+              className={`font-medium ${
+                limitReached
+                  ? "text-red-600 dark:text-red-400"
+                  : nearLimit
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-brand-700 dark:text-brand-300"
+              }`}
+            >
               {Math.round(percentage)}%
             </span>
           </div>
 
           <div
-            className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100"
+            className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={max_listings ?? 0}
@@ -129,12 +135,12 @@ export default function PMSUsageBar({
             aria-label="PMS property usage"
           >
             <div
-              className={`h-full rounded-full transition-all ${
+              className={`h-full rounded-full transition-all duration-300 ${
                 limitReached
                   ? "bg-red-500"
                   : nearLimit
-                    ? "bg-orange-500"
-                    : "bg-green-500"
+                    ? "bg-amber-500"
+                    : "bg-brand-600"
               }`}
               style={{
                 width: `${percentage}%`,
@@ -142,14 +148,14 @@ export default function PMSUsageBar({
             />
           </div>
 
-          <div className="mt-3 flex items-center justify-between">
+          <div className="mt-3 flex items-center justify-between gap-3">
             <p
               className={`text-xs ${
                 limitReached
-                  ? "font-medium text-red-600"
+                  ? "font-medium text-red-600 dark:text-red-400"
                   : nearLimit
-                    ? "text-orange-600"
-                    : "text-gray-500"
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-gray-500 dark:text-gray-400"
               }`}
             >
               {limitReached
@@ -162,17 +168,16 @@ export default function PMSUsageBar({
             </p>
 
             {limitReached && (
-              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
             )}
           </div>
         </div>
       )}
 
       {isUnlimited && (
-        <div className="mt-5 rounded-lg bg-gray-50 px-2 py-3">
-          <p className="text-sm text-gray-600">
-            Your current plan supports unlimited
-            properties.
+        <div className="mt-5 rounded-lg border border-brand-100 bg-brand-50/70 px-3 py-3 dark:border-brand-900 dark:bg-brand-950/40">
+          <p className="text-sm text-brand-700 dark:text-brand-300">
+            Your current plan supports unlimited properties.
           </p>
         </div>
       )}
