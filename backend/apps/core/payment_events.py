@@ -33,6 +33,17 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
     if channel_layer is not None:
         group_name = payment_group_name(user_id, invoice_id)
         async_to_sync(channel_layer.group_send)(group_name, payload)
+        async_to_sync(channel_layer.group_send)(
+            subscription_invoice_group_name(user_id),
+            {
+                "type": "subscription.invoice",
+                "event_type": event_type or "invoice_updated",
+                "status": status,
+                "invoice_id": str(invoice_id),
+                "listing_id": str(listing_id) if listing_id else None,
+                "subscription_id": str(subscription_id) if subscription_id else None,
+            },
+        )
 
     if subscription_id:
         try:
@@ -43,9 +54,6 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
             is_upgrade = bool(detail_data.get("upgrade"))
             is_renewal = bool(detail_data.get("renewal"))
 
-            # Renewal invoices are identified from the existing invoice ledger.
-            # This keeps the provider callback path authoritative without requiring
-            # every settlement caller to duplicate renewal metadata.
             if normalized_status == "PAID" and not is_upgrade and not is_renewal:
                 from apps.subscriptions.models import SubscriptionInvoice
 
@@ -101,8 +109,6 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
                 email_template=email_template,
             )
         except Exception:
-            # A notification/email failure must never turn a provider-confirmed
-            # payment settlement into a failed payment response.
             logger.exception(
                 "Unable to queue subscription payment notification",
                 extra={
@@ -114,5 +120,31 @@ def publish_payment_status(*, user_id, invoice_id, status, message, provider, ev
             )
 
 
+def publish_subscription_invoice_event(*, user_id, invoice_id, event_type="invoice_created", status="PENDING", listing_id=None, subscription_id=None):
+    """Notify the authenticated user's invoice-history view after an invoice is committed."""
+    if not user_id or not invoice_id:
+        return
+
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+
+    async_to_sync(channel_layer.group_send)(
+        subscription_invoice_group_name(user_id),
+        {
+            "type": "subscription.invoice",
+            "event_type": event_type,
+            "status": status,
+            "invoice_id": str(invoice_id),
+            "listing_id": str(listing_id) if listing_id else None,
+            "subscription_id": str(subscription_id) if subscription_id else None,
+        },
+    )
+
+
 def payment_group_name(user_id, invoice_id):
     return f"payment_{str(user_id)}_{str(invoice_id)}"
+
+
+def subscription_invoice_group_name(user_id):
+    return f"subscription_invoices_{str(user_id)}"
