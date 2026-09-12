@@ -1,3 +1,5 @@
+import logging
+
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils.html import escape
@@ -9,9 +11,11 @@ from .email_services import queue_email
 from .email_templates import EMAIL_TEMPLATES
 from .subscription_email_templates import SUBSCRIPTION_EMAIL_TEMPLATES, SUBSCRIPTION_EMAIL_SUBJECTS
 
+logger = logging.getLogger(__name__)
+
 
 def _enrich_subscription_email_payload(payload):
-    """Fill subscription email fields from the authoritative invoice record."""
+    """Fill subscription email fields from the authoritative paid invoice record."""
     data = dict(payload or {})
     invoice_id = data.get("invoice_id") or data.get("id")
     if not invoice_id:
@@ -27,6 +31,11 @@ def _enrich_subscription_email_payload(payload):
 
         invoice = SubscriptionInvoice.objects.filter(pk=invoice_id).first()
         if not invoice:
+            return data
+
+        # Only a successfully paid invoice is authoritative for payment-confirmation
+        # email details. Failed/pending events keep their existing event payload.
+        if str(invoice.status or "").upper() != "PAID":
             return data
 
         subscription = None
@@ -50,6 +59,8 @@ def _enrich_subscription_email_payload(payload):
             or (subscription.billing_cycle if subscription else None)
         )
 
+        # The invoice is the source of truth for values that payment providers
+        # do not return as part of their success webhook.
         data.update(
             {
                 "plan_name": plan.name if plan else data.get("plan_name"),
@@ -85,11 +96,13 @@ def _enrich_subscription_email_payload(payload):
         start = invoice.billing_period_start
         end = invoice.billing_period_end
         if start or end:
-            data["billing_period"] = (
-                f"{start or 'N/A'} – {end or 'N/A'}"
-            )
+            data["billing_period"] = f"{start or 'N/A'} – {end or 'N/A'}"
 
     except Exception:
+        logger.exception(
+            "Unable to enrich subscription email from paid invoice",
+            extra={"invoice_id": str(invoice_id)},
+        )
         return data
 
     return data
