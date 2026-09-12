@@ -8,10 +8,10 @@ type QuickAction = {
 };
 
 const actions: QuickAction[] = [
-  { label: 'Manage properties & renters', description: 'Maintain the landlord → property → unit → renter relationship.', icon: Building2, tab: 'management' },
-  { label: 'Review rent calendar', description: 'See due dates, overdue invoices and payment-review activity.', icon: CalendarDays, tab: 'rent' },
-  { label: 'Create or review invoices', description: 'Open the rent workspace for invoice creation and verification.', icon: FileText, tab: 'rent' },
-  { label: 'Review payments', description: 'See collected, outstanding and awaiting-confirmation amounts.', icon: Wallet, tab: 'finance' },
+  { label: 'Manage properties & renters', description: 'Maintain your property, unit, and renter information in one place.', icon: Building2, tab: 'management' },
+  { label: 'Review rent calendar', description: 'See due dates, overdue invoices, and payment-review activity.', icon: CalendarDays, tab: 'rent' },
+  { label: 'Create or review invoices', description: 'Open the rent workspace to create and review invoices.', icon: FileText, tab: 'rent' },
+  { label: 'Review payments', description: 'See collected, outstanding, and awaiting-confirmation amounts.', icon: Wallet, tab: 'finance' },
 ];
 
 export default function LandlordPMSQuickActions({ onNavigate }: { onNavigate: (tab: QuickAction['tab']) => void }) {
@@ -21,7 +21,7 @@ export default function LandlordPMSQuickActions({ onNavigate }: { onNavigate: (t
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Quick actions</p>
           <h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Run your PMS from one workspace</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Each action opens the existing Django-backed PMS workflow; no frontend state becomes authoritative.</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Use these shortcuts to manage your properties, rent, invoices, and payments.</p>
         </div>
         <Users className="hidden h-5 w-5 text-brand-600 sm:block" />
       </div>
