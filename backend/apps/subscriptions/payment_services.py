@@ -109,6 +109,7 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
             billing_period_end=None,
             pricing_snapshot_source='subscription_plans',
             listing=draft,
+            created_at=now,
         )
 
     if provider == 'paypal':
@@ -353,5 +354,10 @@ def _activate_invoice(invoice, provider, provider_reference, transaction_id=None
         'success': True,
         'status': 'PAID',
         'subscription_id': str(subscription.id),
+        'invoice_id': str(invoice.id),
         'listing_id': str(invoice.listing_id) if invoice.listing_id else None,
+        'provider_reference': provider_reference,
+        'transaction_id': transaction_id,
+        'billing_period_start': start,
+        'billing_period_end': end,
     }
