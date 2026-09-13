@@ -1,28 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileText, Loader2, RefreshCw, WalletCards } from 'lucide-react';
-import { getRealEstatePMSFinance, type RealEstatePMSFinanceData } from '@/lib/RealEstateTs/RealEstatePMSFinanceService';
-import { createRealEstatePMSInvoice } from '@/lib/RealEstateTs/RealEstatePMSFinanceService';
+import { getRealEstatePMSFinance, type RealEstatePMSFinanceData, createRealEstatePMSInvoice } from '@/lib/RealEstateTs/RealEstatePMSFinanceService';
+import { getRealEstatePMSUnits, type RealEstatePMSUnit } from '@/lib/RealEstateTs/RealEstatePMSOperationsService';
 
 interface Props {
-  units: Array<{ unit_id: string; unit_number: string; listing_title: string; rent: number; renter_name: string | null }>;
   canCreateInvoices: boolean;
 }
 
 const kes = (value: number) => `KES ${Number(value || 0).toLocaleString('en-KE')}`;
 
-export default function RealEstatePMSFinance({ units, canCreateInvoices }: Props) {
+export default function RealEstatePMSFinance({ canCreateInvoices }: Props) {
   const [data, setData] = useState<RealEstatePMSFinanceData | null>(null);
+  const [units, setUnits] = useState<RealEstatePMSUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedUnit, setSelectedUnit] = useState(units[0]?.unit_id ?? '');
+  const [selectedUnit, setSelectedUnit] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await getRealEstatePMSFinance();
-      setData(result.data ?? null);
+      const [financeResult, unitsResult] = await Promise.all([getRealEstatePMSFinance(), getRealEstatePMSUnits()]);
+      setData(financeResult.data ?? null);
+      const nextUnits = unitsResult.data ?? [];
+      setUnits(nextUnits);
+      setSelectedUnit((current) => current || nextUnits[0]?.unit_id || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load finance records.');
     } finally {
@@ -31,7 +34,6 @@ export default function RealEstatePMSFinance({ units, canCreateInvoices }: Props
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!selectedUnit && units[0]?.unit_id) setSelectedUnit(units[0].unit_id); }, [selectedUnit, units]);
 
   const issueInvoice = async () => {
     const unit = units.find((item) => item.unit_id === selectedUnit);
