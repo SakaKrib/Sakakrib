@@ -1,4 +1,4 @@
-import { djangoGet, djangoPost, djangoPatch, djangoDelete } from '@/lib/djangoApi';
+import { djangoRequest, protectedGet, protectedPatch, protectedPost } from '@/lib/djangoApi';
 
 export interface RealEstatePMSUnit {
   unit_id: string;
@@ -28,33 +28,33 @@ export interface RealEstatePMSUnit {
 }
 
 export async function getRealEstatePMSUnits() {
-  return djangoGet<RealEstatePMSUnit[]>('/api/subscriptions/real-estate/units/');
+  return protectedGet<RealEstatePMSUnit[]>('/api/subscriptions/real-estate/units/');
 }
 
 export async function createRealEstatePMSUnit(payload: Record<string, unknown>) {
-  return djangoPost<RealEstatePMSUnit>('/api/subscriptions/real-estate/units/', payload);
+  return protectedPost<RealEstatePMSUnit>('/api/subscriptions/real-estate/units/', payload);
 }
 
 export async function updateRealEstatePMSUnit(unitId: string, payload: Record<string, unknown>) {
-  return djangoPatch<RealEstatePMSUnit>(`/api/subscriptions/real-estate/units/${unitId}/`, payload);
+  return protectedPatch<RealEstatePMSUnit>(`/api/subscriptions/real-estate/units/${unitId}/`, payload);
 }
 
 export async function deleteRealEstatePMSUnit(unitId: string) {
-  return djangoDelete(`/api/subscriptions/real-estate/units/${unitId}/`);
+  return djangoRequest(`/api/subscriptions/real-estate/units/${unitId}/`, { method: 'DELETE' });
 }
 
 export async function getRealEstatePMSMedia(listingId: string) {
-  return djangoGet<unknown[]>(`/api/subscriptions/real-estate/media/?listing_id=${encodeURIComponent(listingId)}`);
+  return protectedGet<unknown[]>(`/api/subscriptions/real-estate/media/?listing_id=${encodeURIComponent(listingId)}`);
 }
 
 export async function uploadRealEstatePMSMedia(formData: FormData) {
-  return djangoPost<unknown>('/api/subscriptions/real-estate/media/', formData);
+  return protectedPost<unknown>('/api/subscriptions/real-estate/media/', formData);
 }
 
 export async function updateRealEstatePMSMedia(mediaId: string, payload: Record<string, unknown>) {
-  return djangoPatch<unknown>(`/api/subscriptions/real-estate/media/${mediaId}/update/`, payload);
+  return protectedPatch<unknown>(`/api/subscriptions/real-estate/media/${mediaId}/update/`, payload);
 }
 
 export async function deleteRealEstatePMSMedia(mediaId: string) {
-  return djangoDelete(`/api/subscriptions/real-estate/media/${mediaId}/delete/`);
+  return djangoRequest(`/api/subscriptions/real-estate/media/${mediaId}/delete/`, { method: 'DELETE' });
 }
