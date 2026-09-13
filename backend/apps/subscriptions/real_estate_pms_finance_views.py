@@ -1,15 +1,17 @@
-from decimal import Decimal, InvalidOperation
+from calendar import monthrange
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.domain_property import PropertyUnit, RenterUnitAssociation
-from apps.core.domain_rent import RentInvoice, RentPaymentSubmission
+from apps.core.domain_property import PropertyUnit
+from apps.core.domain_rent import RentInvoice, RentInvoicePeriod, RentPaymentSubmission
 
-from .models import RealEstatePMSListingAssignment
+from .models import RealEstatePMSLease, RealEstatePMSListingAssignment
 from .services import get_real_estate_pms_context
 
 
@@ -18,12 +20,18 @@ def _context(user):
 
 
 def _unit_scope(user, context):
-    qs = PropertyUnit.objects.filter(listing__user_id=context['owner_id'])
+    qs = PropertyUnit.objects.filter(user_id=context['owner_id'])
     if context.get('pms_role') == 'AGENT':
         qs = qs.filter(listing_id__in=RealEstatePMSListingAssignment.objects.filter(
             real_estate_id=context['owner_id'], agent_id=user.id, is_active=True
         ).values('listing_id'))
     return qs
+
+
+def _next_invoice_number():
+    prefix = f'RE-{timezone.localdate().strftime("%Y%m%d")}'
+    count = RentInvoice.objects.filter(invoice_number__startswith=prefix).count() + 1
+    return f'{prefix}-{count:04d}'
 
 
 class RealEstatePMSFinanceView(APIView):
@@ -70,31 +78,54 @@ class RealEstatePMSFinanceView(APIView):
     @transaction.atomic
     def post(self, request):
         context = _context(request.user)
-        if not context or context.get('read_only'):
+        if not context or context.get('subscription').status == 'GRACE_PERIOD':
             return Response({'detail': 'An active real-estate PMS subscription is required for finance changes.'}, status=403)
         if context.get('pms_role') not in ('ADMIN', 'TEAM_MANAGER'):
             return Response({'detail': 'You are not authorized to create invoices.'}, status=403)
-        unit = PropertyUnit.objects.filter(pk=request.data.get('unit_id'), listing__user_id=context['owner_id']).first()
+
+        unit = PropertyUnit.objects.filter(pk=request.data.get('unit_id'), user_id=context['owner_id']).first()
         if not unit:
             return Response({'detail': 'Unit not found.'}, status=404)
-        association = RenterUnitAssociation.objects.filter(unit_id=unit.id, status__iexact='ACTIVE').order_by('-created_at').first()
-        if not association:
-            return Response({'detail': 'An active renter association is required to create an invoice.'}, status=409)
-        try:
-            amount = Decimal(str(request.data.get('amount_kes') or unit.rent))
-            due_date = date.fromisoformat(str(request.data.get('due_date')))
-            start = date.fromisoformat(str(request.data.get('billing_period_start')))
-            end = date.fromisoformat(str(request.data.get('billing_period_end')))
-        except (InvalidOperation, TypeError, ValueError):
-            return Response({'detail': 'Invoice amount and dates are invalid.'}, status=400)
-        if amount <= 0 or end < start:
-            return Response({'detail': 'Invoice amount and billing period are invalid.'}, status=400)
-        prefix = f'RE-{date.today().strftime("%Y%m%d")}'
-        count = RentInvoice.objects.filter(invoice_number__startswith=prefix).count() + 1
+        lease = RealEstatePMSLease.objects.filter(
+            unit_id=unit.id, real_estate_id=context['owner_id'], status=RealEstatePMSLease.STATUS_ACTIVE
+        ).first()
+        if not lease:
+            return Response({'detail': 'Create an active lease for this unit before generating rent invoices.'}, status=409)
+        if not lease.renter_user_id:
+            return Response({'detail': 'The renter must have a claimed SakaKrib account before an invoice can be generated.'}, status=409)
+
+        if request.data.get('year') and request.data.get('month'):
+            try:
+                year = int(request.data.get('year'))
+                month = int(request.data.get('month'))
+                period_start = date(year, month, 1)
+            except (TypeError, ValueError):
+                return Response({'detail': 'Invoice year or month is invalid.'}, status=400)
+        else:
+            period_start = timezone.localdate().replace(day=1)
+            year, month = period_start.year, period_start.month
+        period_end = date(year, month, monthrange(year, month)[1])
+
+        if period_end < lease.lease_start or (lease.lease_end and period_start > lease.lease_end):
+            return Response({'detail': 'The requested billing period is outside the lease term.'}, status=409)
+        if RentInvoicePeriod.objects.filter(
+            renter_assoc_id=lease.renter_assoc_id, unit_id=lease.unit_id,
+            period_year=year, period_month=month,
+        ).exists():
+            return Response({'detail': 'An invoice already exists for this lease period.'}, status=409)
+
+        due_day = min(lease.rent_due_day, monthrange(year, month)[1])
         invoice = RentInvoice.objects.create(
-            invoice_number=f'{prefix}-{count:04d}', landlord_id=context['owner_id'],
-            renter_user_id=association.renter_user_id, renter_assoc_id=association.id,
-            listing_id=unit.listing_id, unit_id=unit.id, billing_period_start=start,
-            billing_period_end=end, due_date=due_date, amount_kes=amount, currency='KES', status='DUE',
+            invoice_number=_next_invoice_number(), landlord_id=context['owner_id'],
+            renter_user_id=lease.renter_user_id, renter_assoc_id=lease.renter_assoc_id,
+            listing_id=lease.listing_id, unit_id=lease.unit_id,
+            billing_period_start=period_start, billing_period_end=period_end,
+            due_date=date(year, month, due_day), amount_kes=lease.monthly_rent_kes,
+            currency='KES', status='DUE',
         )
-        return Response({'id': str(invoice.id), 'invoice_number': invoice.invoice_number, 'status': invoice.status}, status=201)
+        RentInvoicePeriod.objects.create(
+            invoice_id=invoice.id, renter_assoc_id=lease.renter_assoc_id,
+            unit_id=lease.unit_id, period_year=year, period_month=month,
+            amount_kes=lease.monthly_rent_kes,
+        )
+        return Response({'id': str(invoice.id), 'invoice_number': invoice.invoice_number, 'lease_id': str(lease.id), 'status': invoice.status}, status=201)
