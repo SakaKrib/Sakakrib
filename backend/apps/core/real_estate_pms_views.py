@@ -7,8 +7,8 @@ from rest_framework.views import APIView
 from apps.listings.models import Listing
 from apps.listings.serializers import ListingSerializer
 from apps.listings.services import get_listing_entitlement
-from apps.subscriptions.models import RealEstateSubscription, SubscriptionListing, SubscriptionPlan
-from apps.subscriptions.services import get_current_subscription, get_pms_access, get_subscription_plan
+from apps.subscriptions.models import RealEstatePMSListingAssignment, RealEstatePMSMember, RealEstateSubscription, SubscriptionListing, SubscriptionPlan
+from apps.subscriptions.services import get_current_subscription, get_pms_access, get_real_estate_pms_context, get_subscription_plan
 
 
 class RealEstatePMSDashboardView(APIView):
@@ -17,32 +17,39 @@ class RealEstatePMSDashboardView(APIView):
     def get(self, request):
         profile = request.user
         access = get_pms_access(profile)
-        if not access.get('allowed') or access.get('role') != 'real_estate':
+        if not access.get('allowed') or access.get('pms_owner_id') is None:
             return Response(
                 {'detail': 'Real-estate PMS access is required.', 'pms_access': access},
                 status=403,
             )
 
-        subscription = get_current_subscription(profile)
+        context = get_real_estate_pms_context(profile)
+        if not context:
+            return Response({'detail': 'Real-estate PMS access is required.', 'pms_access': access}, status=403)
+        owner_id = context['owner_id']
+        subscription = context['subscription']
         plan = get_subscription_plan(subscription)
-        entitlement = get_listing_entitlement(profile)
-        queryset = Listing.objects.filter(user_id=profile.id).order_by('-created_at')
+        owner_profile = request.user if str(request.user.id) == str(owner_id) else __import__('apps.accounts.models', fromlist=['Profile']).Profile.objects.filter(pk=owner_id).first()
+        entitlement = get_listing_entitlement(owner_profile) if owner_profile else {}
+
+        queryset = Listing.objects.filter(user_id=owner_id)
+        if context['pms_role'] == 'AGENT':
+            assigned_ids = RealEstatePMSListingAssignment.objects.filter(real_estate_id=owner_id, agent_id=profile.id, is_active=True).values_list('listing_id', flat=True)
+            queryset = queryset.filter(id__in=assigned_ids)
+        elif context['pms_role'] == 'TEAM_MANAGER':
+            # Team managers can work across the subscribing portfolio.
+            queryset = queryset
+        queryset = queryset.order_by('-created_at')
         listings = ListingSerializer(queryset, many=True, context={'request': request}).data
 
-        managed_ids = set()
-        if subscription:
-            managed_ids = {
-                str(value)
-                for value in SubscriptionListing.objects.filter(
-                    real_estate_subscription_id=subscription.id,
-                    status='ACTIVE',
-                ).values_list('listing_id', flat=True)
-            }
+        managed_ids = {
+            str(value)
+            for value in SubscriptionListing.objects.filter(
+                real_estate_subscription_id=subscription.id,
+                status='ACTIVE',
+            ).values_list('listing_id', flat=True)
+        }
 
-        # `is_paid` means an individual listing payment was verified; it does
-        # not mean a subscription-managed PMS listing is unpaid. Expose the
-        # authoritative management state separately so the frontend cannot
-        # mistake subscription capacity for a missing KES 1,000 payment.
         listings = [
             {
                 **row,
@@ -66,7 +73,7 @@ class RealEstatePMSDashboardView(APIView):
                 'current_period_start': subscription.current_period_start,
                 'current_period_end': subscription.current_period_end,
                 'grace_period_end': subscription.grace_period_end,
-            } if subscription else None,
+            },
             'entitlement': entitlement,
             'capacity': {
                 'listings_used': managed_count,
@@ -76,6 +83,11 @@ class RealEstatePMSDashboardView(APIView):
                     if capacity_limit is not None else None
                 ),
                 'max_units_per_listing': plan.max_units_per_listing if plan else None,
+            },
+            'team_context': {
+                'pms_owner_id': str(owner_id),
+                'pms_role': context['pms_role'],
+                'read_only': bool(access.get('read_only')),
             },
             'listings': listings,
             'listingSummary': {
@@ -137,9 +149,6 @@ class RealEstatePMSActionView(APIView):
 
         action = request.data.get('action')
         with transaction.atomic():
-            # Re-read and lock the subscription inside the transaction. The
-            # earlier access decision is not sufficient for a financial/capacity
-            # mutation because the subscription could expire between reads.
             now = timezone.now()
             subscription = (
                 RealEstateSubscription.objects.select_for_update()
@@ -172,11 +181,7 @@ class RealEstatePMSActionView(APIView):
                     status='ACTIVE',
                 ).first()
                 if already:
-                    return Response({
-                        'success': True,
-                        'subscription_listing_id': str(already.id),
-                        'already_managed': True,
-                    })
+                    return Response({'success': True, 'subscription_listing_id': str(already.id), 'already_managed': True})
 
                 existing = SubscriptionListing.objects.filter(
                     real_estate_subscription_id=subscription.id,
