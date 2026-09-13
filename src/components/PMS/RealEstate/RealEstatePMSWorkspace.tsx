@@ -141,7 +141,7 @@ export default function RealEstatePMSWorkspace() {
       </div>
 
       <div className="mt-6">
-        <RealEstatePMSFinance units={[]} canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} />
+        <RealEstatePMSFinance canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} />
       </div>
 
       <div className="mt-8">
