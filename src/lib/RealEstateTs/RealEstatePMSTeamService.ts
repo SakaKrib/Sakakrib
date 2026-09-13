@@ -1,4 +1,4 @@
-import { protectedDelete, protectedGet, protectedPatch, protectedPost } from '@/lib/djangoApi';
+import { djangoRequest, protectedGet, protectedPatch, protectedPost } from '@/lib/djangoApi';
 
 export type RealEstatePMSMemberRole = 'TEAM_MANAGER' | 'AGENT';
 export type RealEstatePMSMemberStatus = 'ACTIVE' | 'SUSPENDED';
@@ -37,9 +37,9 @@ export async function updateRealEstatePMSMember(userId: string, role: RealEstate
 }
 
 export async function removeRealEstatePMSMember(userId: string) {
-  return protectedDelete<{ success: boolean; user_id: string; status: RealEstatePMSMemberStatus }>(
+  return djangoRequest<{ success: boolean; user_id: string; status: RealEstatePMSMemberStatus }>(
     '/api/subscriptions/real-estate/team/',
-    { user_id: userId },
+    { method: 'DELETE', body: JSON.stringify({ user_id: userId }) },
   );
 }
 
@@ -62,8 +62,8 @@ export async function assignRealEstatePMSListing(listingId: string, agentId: str
 }
 
 export async function unassignRealEstatePMSListing(listingId: string, agentId: string) {
-  return protectedDelete<{ success: boolean; listing_id: string; agent_id: string; status: string }>(
+  return djangoRequest<{ success: boolean; listing_id: string; agent_id: string; status: string }>(
     '/api/subscriptions/real-estate/listing-assignments/',
-    { listing_id: listingId, agent_id: agentId },
+    { method: 'DELETE', body: JSON.stringify({ listing_id: listingId, agent_id: agentId }) },
   );
 }
