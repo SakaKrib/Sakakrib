@@ -17,6 +17,7 @@ import {
 } from '@/lib/RealEstateTs/Realestateservice';
 import RealEstatePMS from './Realestatepms';
 import RealEstatePMSCalendar from './RealEstatePMSCalendar';
+import RealEstatePMSFinance from './RealEstatePMSFinance';
 import RealEstatePMSOperations from './RealEstatePMSOperations';
 
 function formatDate(value: string | null | undefined) {
@@ -89,7 +90,7 @@ export default function RealEstatePMSWorkspace() {
       <div className="mx-auto max-w-4xl px-4 py-12">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
           <p className="font-semibold">Unable to load real-estate PMS</p>
-          <p className="mt-1">{error ?? 'No dashboard data was returned by Django.'}</p>
+          <p className="mt-1">{error ?? 'No dashboard data was returned.'}</p>
           <button type="button" onClick={() => void load(true)} className="btn-primary mt-4 inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />Retry</button>
         </div>
       </div>
@@ -137,6 +138,10 @@ export default function RealEstatePMSWorkspace() {
           maxUnitsPerListing={data.subscription?.max_units_per_listing}
           isAdmin={ownerIsAdmin}
         />
+      </div>
+
+      <div className="mt-6">
+        <RealEstatePMSFinance units={[]} canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} />
       </div>
 
       <div className="mt-8">
