@@ -8,10 +8,10 @@ from .draft_views import ListingDraftDetailView, ListingDraftListView
 from .media_delete_views import ListingMediaDeleteView
 from .media_update_views import ListingMediaUpdateView
 from .public_views import FeaturedListingsView
+from .real_estate_pms_listing_views import RealEstatePMSListingDetailView
 from .views import (
     AdminListingReviewView,
     ListingCreateView,
-    ListingDetailView,
     ListingEntitlementView,
     ListingListView,
     ListingMediaDetailView,
@@ -36,6 +36,6 @@ urlpatterns = [
     path('admin/media/', AdminListingMediaUploadView.as_view(), name='admin-listing-media-upload'),
     path('admin/<uuid:listing_id>/', AdminListingControlView.as_view(), name='admin-listing-control'),
     path('<uuid:listing_id>/ai-caption/', ListingAiCaptionView.as_view(), name='listing-ai-caption'),
-    path('<uuid:listing_id>/', ListingDetailView.as_view(), name='listing-detail'),
+    path('<uuid:listing_id>/', RealEstatePMSListingDetailView.as_view(), name='listing-detail'),
     path('<uuid:listing_id>/review/', AdminListingReviewView.as_view(), name='admin-listing-review'),
 ]
