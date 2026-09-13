@@ -120,3 +120,49 @@ class SubscriptionInvoice(models.Model):
     class Meta:
         db_table = 'subscription_invoices'
         constraints = [models.UniqueConstraint(fields=['webhook_event_id'], condition=models.Q(webhook_event_id__isnull=False), name='subscription_invoices_webhook_event_uidx'), models.UniqueConstraint(fields=['checkout_request_id'], condition=models.Q(checkout_request_id__isnull=False), name='subscription_invoice_checkout_uidx'), models.UniqueConstraint(fields=['provider_reference'], condition=models.Q(provider_reference__isnull=False), name='subscription_invoice_provider_ref_uidx')]
+
+class RealEstatePMSMember(models.Model):
+    ROLE_TEAM_MANAGER = 'TEAM_MANAGER'
+    ROLE_AGENT = 'AGENT'
+    ROLE_CHOICES = ((ROLE_TEAM_MANAGER, 'Team Manager'), (ROLE_AGENT, 'Agent'))
+    STATUS_ACTIVE = 'ACTIVE'
+    STATUS_SUSPENDED = 'SUSPENDED'
+    STATUS_CHOICES = ((STATUS_ACTIVE, 'Active'), (STATUS_SUSPENDED, 'Suspended'))
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    real_estate_id = models.UUIDField()
+    user_id = models.UUIDField()
+    role = models.TextField(default=ROLE_AGENT, choices=ROLE_CHOICES)
+    status = models.TextField(default=STATUS_ACTIVE, choices=STATUS_CHOICES)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'real_estate_pms_members'
+        constraints = [
+            models.UniqueConstraint(fields=['real_estate_id', 'user_id'], name='realestate_pms_member_uidx'),
+        ]
+        indexes = [
+            models.Index(fields=['real_estate_id', 'status'], name='re_pms_member_scope_idx'),
+            models.Index(fields=['user_id', 'status'], name='re_pms_member_user_idx'),
+        ]
+
+class RealEstatePMSListingAssignment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    real_estate_id = models.UUIDField()
+    listing_id = models.UUIDField()
+    agent_id = models.UUIDField()
+    assigned_by_id = models.UUIDField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'real_estate_pms_listing_assignments'
+        constraints = [
+            models.UniqueConstraint(fields=['real_estate_id', 'listing_id', 'agent_id'], name='re_pms_listing_agent_uidx'),
+        ]
+        indexes = [
+            models.Index(fields=['real_estate_id', 'is_active'], name='re_pms_assign_scope_idx'),
+            models.Index(fields=['agent_id', 'is_active'], name='re_pms_assign_agent_idx'),
+        ]
