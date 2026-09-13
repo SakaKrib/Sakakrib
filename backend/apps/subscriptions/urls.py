@@ -2,6 +2,7 @@ from django.urls import path
 
 from .pms_access_views import MyPMSAccessView
 from .pms_units_views import MyPMSUnitsView
+from .real_estate_pms_views import RealEstatePMSListingAssignmentsView, RealEstatePMSTeamView
 from .renewal_views import SubscriptionRenewalView
 from .upgrade_views import SubscriptionUpgradeView
 from .views import (
@@ -30,6 +31,8 @@ urlpatterns = [
     path('me/pms-unit-count/', MyPMSUnitCountView.as_view(), name='my-pms-unit-count'),
     path('me/pms-units/', MyPMSUnitsView.as_view(), name='my-pms-units'),
     path('me/pms-listings/membership/', PMSListingMembershipView.as_view(), name='pms-listing-membership'),
+    path('real-estate/team/', RealEstatePMSTeamView.as_view(), name='real-estate-pms-team'),
+    path('real-estate/listing-assignments/', RealEstatePMSListingAssignmentsView.as_view(), name='real-estate-pms-listing-assignments'),
     path('invoices/', MySubscriptionInvoicesView.as_view(), name='subscription-invoices'),
     path('invoices/<uuid:invoice_id>/', MySubscriptionInvoiceView.as_view(), name='subscription-invoice-detail'),
     path('checkout/', SubscriptionCheckoutView.as_view(), name='subscription-checkout'),
