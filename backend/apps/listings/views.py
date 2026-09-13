@@ -43,6 +43,17 @@ def _media_storage_path(media):
     return value[len('django-media://'):].lstrip('/')
 
 
+def _real_estate_pms_member_for_listing(user, listing):
+    from apps.subscriptions.models import RealEstatePMSListingAssignment, RealEstatePMSMember, SubscriptionListing
+    membership = RealEstatePMSMember.objects.filter(user_id=user.pk, real_estate_id=listing.user_id, status=RealEstatePMSMember.STATUS_ACTIVE).first()
+    if not membership:
+        return None
+    if not SubscriptionListing.objects.filter(real_estate_subscription_id__in=__import__('apps.subscriptions.models', fromlist=['RealEstateSubscription']).RealEstateSubscription.objects.filter(real_estate_id=listing.user_id, status__in=['ACTIVE', 'GRACE_PERIOD']).values('id'), listing_id=listing.id, status='ACTIVE').exists():
+        return None
+    assignment = RealEstatePMSListingAssignment.objects.filter(real_estate_id=listing.user_id, listing_id=listing.id, agent_id=user.pk, is_active=True).exists()
+    return membership if (membership.role == 'TEAM_MANAGER' or assignment) else None
+
+
 class ListingMediaView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -224,34 +235,58 @@ class ListingListView(APIView):
 
 class ListingDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
     def _get_listing(self, request, listing_id):
         if not getattr(request.user, 'email_verified', False): return None, Response({'error': 'Email verification is required.'}, status=status.HTTP_403_FORBIDDEN)
         listing = Listing.objects.filter(pk=listing_id).first()
         if not listing: return None, Response({'error': 'Listing not found.'}, status=status.HTTP_404_NOT_FOUND)
-        if not (is_admin(request.user) or str(listing.user_id) == str(request.user.pk) or (listing.approval_status == 'approved' and listing.is_published)): return None, Response({'error': 'You are not authorized to view this listing.'}, status=status.HTTP_404_NOT_FOUND)
+        if not (is_admin(request.user) or str(listing.user_id) == str(request.user.pk) or (listing.approval_status == 'approved' and listing.is_published)):
+            return None, Response({'error': 'You are not authorized to view this listing.'}, status=status.HTTP_404_NOT_FOUND)
         return listing, None
+
     def get(self, request, listing_id):
         listing, error = self._get_listing(request, listing_id)
         if error: return error
         return Response(ListingSerializer(listing, context={'request': request}).data)
+
     def patch(self, request, listing_id):
         listing, error = self._get_listing(request, listing_id)
         if error: return error
-        if is_admin(request.user): allowed_to_update = True
+        if is_admin(request.user):
+            allowed_to_update = True
         else:
             role = str(getattr(request.user, 'role', '') or '').lower()
-            if role not in ('landlord', 'real_estate'): return Response({'error': 'Only landlord and real estate accounts may update listings.'}, status=status.HTTP_403_FORBIDDEN)
-            if str(listing.user_id) != str(request.user.pk): return Response({'error': 'You may only update your own listing.'}, status=status.HTTP_403_FORBIDDEN)
-            if not getattr(request.user, 'kyc_completed', False) or not getattr(request.user, 'email_verified', False): return Response({'error': 'Identity verification and email verification are required.'}, status=status.HTTP_403_FORBIDDEN)
-            application_status = getattr(request.user, 'landlord_application_status', None) if role == 'landlord' else getattr(request.user, 'real_estate_application_status', None)
-            if application_status != 'approved': return Response({'error': 'Application approval is required to update listings.'}, status=status.HTTP_403_FORBIDDEN)
-            allowed_to_update = True
+            if role in ('landlord', 'real_estate'):
+                if str(listing.user_id) != str(request.user.pk): return Response({'error': 'You may only update your own listing.'}, status=status.HTTP_403_FORBIDDEN)
+                if not getattr(request.user, 'kyc_completed', False) or not getattr(request.user, 'email_verified', False): return Response({'error': 'Identity verification and email verification are required.'}, status=status.HTTP_403_FORBIDDEN)
+                application_status = getattr(request.user, 'landlord_application_status', None) if role == 'landlord' else getattr(request.user, 'real_estate_application_status', None)
+                if application_status != 'approved': return Response({'error': 'Application approval is required to update listings.'}, status=status.HTTP_403_FORBIDDEN)
+                allowed_to_update = True
+            else:
+                member = _real_estate_pms_member_for_listing(request.user, listing)
+                if not member: return Response({'error': 'You are not authorized to update this listing.'}, status=status.HTTP_403_FORBIDDEN)
+                allowed_to_update = True
         if not allowed_to_update: return Response({'error': 'You are not authorized to update this listing.'}, status=status.HTTP_403_FORBIDDEN)
         serializer = ListingUpdateSerializer(listing, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save(updated_at=timezone.now())
         return Response(ListingSerializer(listing, context={'request': request}).data)
+
     def put(self, request, listing_id): return self.patch(request, listing_id)
+
+    def delete(self, request, listing_id):
+        listing, error = self._get_listing(request, listing_id)
+        if error: return error
+        if is_admin(request.user):
+            allowed = True
+        elif str(getattr(request.user, 'role', '') or '').lower() == 'real_estate' and str(listing.user_id) == str(request.user.pk):
+            allowed = True
+        else:
+            allowed = False
+        if not allowed:
+            return Response({'error': 'Only the Real Estate PMS administrator can delete this listing.'}, status=status.HTTP_403_FORBIDDEN)
+        listing.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminListingReviewView(APIView):
