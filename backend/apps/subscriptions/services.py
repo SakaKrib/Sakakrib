@@ -4,7 +4,14 @@ from django.utils import timezone
 
 from apps.listings.models import Listing
 from .constants import FREE_LISTING_LIMIT, INDIVIDUAL_LISTING_PRICE_KES
-from .models import LandlordSubscription, RealEstateSubscription, SubscriptionListing, SubscriptionPlan
+from .models import (
+    LandlordSubscription,
+    RealEstatePMSMember,
+    RealEstatePMSListingAssignment,
+    RealEstateSubscription,
+    SubscriptionListing,
+    SubscriptionPlan,
+)
 
 
 def get_current_subscription(profile):
@@ -18,6 +25,49 @@ def get_current_subscription(profile):
 
 def get_subscription_plan(subscription):
     return SubscriptionPlan.objects.filter(pk=subscription.plan_id).first() if subscription else None
+
+
+def get_real_estate_pms_membership(profile):
+    if not profile:
+        return None
+    return RealEstatePMSMember.objects.filter(user_id=profile.id, status=RealEstatePMSMember.STATUS_ACTIVE).first()
+
+
+def get_real_estate_pms_context(profile):
+    """Return the Real Estate PMS owner, subscription and member role for a user."""
+    if not profile or not profile.is_authenticated:
+        return None
+
+    if profile.role == 'real_estate':
+        subscription = get_current_subscription(profile)
+        if not subscription:
+            return None
+        return {
+            'owner_id': profile.id,
+            'subscription': subscription,
+            'pms_role': 'ADMIN',
+            'membership': None,
+        }
+
+    membership = get_real_estate_pms_membership(profile)
+    if not membership:
+        return None
+
+    subscription = RealEstateSubscription.objects.filter(
+        real_estate_id=membership.real_estate_id,
+    ).filter(
+        Q(status='ACTIVE', current_period_end__gt=timezone.now())
+        | Q(status='GRACE_PERIOD', grace_period_end__gt=timezone.now())
+    ).order_by('-created_at').first()
+    if not subscription:
+        return None
+
+    return {
+        'owner_id': membership.real_estate_id,
+        'subscription': subscription,
+        'pms_role': membership.role,
+        'membership': membership,
+    }
 
 
 def get_subscription_listing_usage(profile, subscription):
@@ -40,18 +90,14 @@ def get_subscription_access(profile):
 
 
 def get_pms_access(profile):
-    """Return the authoritative PMS entitlement for either PMS-enabled role.
-
-    PMS access is deliberately separate from listing entitlement. A paid
-    subscription is required; ACTIVE permits full access and GRACE_PERIOD
-    permits read-only continuity. Role, identity verification, email
-    verification and the role-specific application approval are checked
-    server-side.
-    """
+    """Return the authoritative PMS entitlement for either PMS-enabled role or an assigned agent."""
     if not profile or not profile.is_authenticated:
         return {'allowed': False, 'reason': 'AUTHENTICATION_REQUIRED', 'read_only': False}
 
-    if profile.role not in {'landlord', 'real_estate'}:
+    membership = get_real_estate_pms_membership(profile)
+    is_real_estate_owner = profile.role == 'real_estate'
+
+    if profile.role not in {'landlord', 'real_estate'} and not membership:
         return {'allowed': False, 'reason': 'PMS_ROLE_REQUIRED', 'read_only': False}
 
     if str(getattr(profile, 'verification_status', '')).lower() != 'verified' or not getattr(profile, 'kyc_completed', False):
@@ -59,6 +105,30 @@ def get_pms_access(profile):
 
     if not getattr(profile, 'email_verified', False):
         return {'allowed': False, 'reason': 'EMAIL_VERIFICATION_REQUIRED', 'read_only': False}
+
+    if membership and not is_real_estate_owner:
+        subscription = RealEstateSubscription.objects.filter(
+            real_estate_id=membership.real_estate_id,
+        ).filter(
+            Q(status='ACTIVE', current_period_end__gt=timezone.now())
+            | Q(status='GRACE_PERIOD', grace_period_end__gt=timezone.now())
+        ).order_by('-created_at').first()
+        if not subscription:
+            return {'allowed': False, 'reason': 'ACTIVE_SUBSCRIPTION_REQUIRED', 'read_only': False, 'role': 'real_estate_agent'}
+        read_only = subscription.status == 'GRACE_PERIOD'
+        return {
+            'allowed': True,
+            'reason': 'SUBSCRIPTION_ACTIVE' if not read_only else 'SUBSCRIPTION_GRACE_PERIOD',
+            'read_only': read_only,
+            'role': 'real_estate_agent',
+            'pms_role': membership.role,
+            'subscription_id': str(subscription.id),
+            'subscription_status': subscription.status,
+            'pms_owner_id': str(membership.real_estate_id),
+        }
+
+    if profile.role not in {'landlord', 'real_estate'}:
+        return {'allowed': False, 'reason': 'PMS_ROLE_REQUIRED', 'read_only': False}
 
     application_field = 'landlord_application_status' if profile.role == 'landlord' else 'real_estate_application_status'
     if getattr(profile, application_field, None) != 'approved':
@@ -78,9 +148,165 @@ def get_pms_access(profile):
         'reason': 'SUBSCRIPTION_ACTIVE' if not read_only else 'SUBSCRIPTION_GRACE_PERIOD',
         'read_only': read_only,
         'role': profile.role,
+        'pms_role': 'ADMIN' if profile.role == 'real_estate' else None,
         'subscription_id': str(subscription.id),
         'subscription_status': subscription.status,
+        'pms_owner_id': str(profile.id) if profile.role == 'real_estate' else None,
     }
+
+
+def get_real_estate_team(profile):
+    context = get_real_estate_pms_context(profile)
+    if not context:
+        raise ValueError('Real Estate PMS access denied.')
+
+    owner_id = context['owner_id']
+    members = RealEstatePMSMember.objects.filter(real_estate_id=owner_id).order_by('created_at')
+    return {
+        'pms_owner_id': str(owner_id),
+        'pms_role': context['pms_role'],
+        'members': [
+            {
+                'id': str(member.id),
+                'user_id': str(member.user_id),
+                'role': member.role,
+                'status': member.status,
+                'created_at': member.created_at,
+                'updated_at': member.updated_at,
+            }
+            for member in members
+        ],
+    }
+
+
+def _require_real_estate_admin(profile):
+    context = get_real_estate_pms_context(profile)
+    if not context or context['pms_role'] != 'ADMIN':
+        raise ValueError('Only the Real Estate PMS administrator can manage the agent team.')
+    if context['subscription'].status == 'GRACE_PERIOD':
+        raise ValueError('PMS is read-only during the grace period.')
+    return context
+
+
+def add_real_estate_team_member(profile, user_id, role='AGENT'):
+    context = _require_real_estate_admin(profile)
+    role = str(role or 'AGENT').upper()
+    valid_roles = {choice[0] for choice in RealEstatePMSMember.ROLE_CHOICES}
+    if role not in valid_roles:
+        raise ValueError('Invalid Real Estate PMS team role.')
+    if not user_id:
+        raise ValueError('user_id is required.')
+    if str(user_id) == str(profile.id):
+        raise ValueError('The PMS administrator is already the administrator of this PMS.')
+
+    from apps.accounts.models import Profile
+    target = Profile.objects.filter(pk=user_id, is_active=True).first()
+    if not target:
+        raise ValueError('Agent account not found.')
+
+    now = timezone.now()
+    member, created = RealEstatePMSMember.objects.update_or_create(
+        real_estate_id=context['owner_id'],
+        user_id=target.id,
+        defaults={'role': role, 'status': RealEstatePMSMember.STATUS_ACTIVE, 'updated_at': now, 'created_at': now},
+    )
+    return {
+        'id': str(member.id),
+        'user_id': str(member.user_id),
+        'role': member.role,
+        'status': member.status,
+        'created_at': member.created_at,
+        'updated_at': member.updated_at,
+        'created': created,
+    }
+
+
+def remove_real_estate_team_member(profile, user_id):
+    context = _require_real_estate_admin(profile)
+    member = RealEstatePMSMember.objects.filter(real_estate_id=context['owner_id'], user_id=user_id).first()
+    if not member:
+        raise ValueError('Agent is not a member of this PMS team.')
+    member.status = RealEstatePMSMember.STATUS_SUSPENDED
+    member.updated_at = timezone.now()
+    member.save(update_fields=['status', 'updated_at'])
+    RealEstatePMSListingAssignment.objects.filter(real_estate_id=context['owner_id'], agent_id=user_id, is_active=True).update(is_active=False, updated_at=timezone.now())
+    return {'success': True, 'user_id': str(user_id), 'status': member.status}
+
+
+def update_real_estate_team_member(profile, user_id, role):
+    context = _require_real_estate_admin(profile)
+    role = str(role or '').upper()
+    valid_roles = {choice[0] for choice in RealEstatePMSMember.ROLE_CHOICES}
+    if role not in valid_roles:
+        raise ValueError('Invalid Real Estate PMS team role.')
+    member = RealEstatePMSMember.objects.filter(real_estate_id=context['owner_id'], user_id=user_id).first()
+    if not member:
+        raise ValueError('Agent is not a member of this PMS team.')
+    member.role = role
+    member.status = RealEstatePMSMember.STATUS_ACTIVE
+    member.updated_at = timezone.now()
+    member.save(update_fields=['role', 'status', 'updated_at'])
+    return {'success': True, 'user_id': str(user_id), 'role': member.role, 'status': member.status}
+
+
+def assign_real_estate_listing(profile, listing_id, agent_id):
+    context = _require_real_estate_admin(profile)
+    owner_id = context['owner_id']
+    if not RealEstatePMSMember.objects.filter(real_estate_id=owner_id, user_id=agent_id, status=RealEstatePMSMember.STATUS_ACTIVE).exists():
+        raise ValueError('Agent is not an active member of this PMS team.')
+    subscription = context['subscription']
+    if not SubscriptionListing.objects.filter(real_estate_subscription_id=subscription.id, listing_id=listing_id, status='ACTIVE').exists():
+        raise ValueError('Listing is not currently managed by this PMS subscription.')
+    if not Listing.objects.filter(pk=listing_id, user_id=owner_id).exists():
+        raise ValueError('Listing not found in this PMS.')
+
+    now = timezone.now()
+    assignment, created = RealEstatePMSListingAssignment.objects.update_or_create(
+        real_estate_id=owner_id,
+        listing_id=listing_id,
+        agent_id=agent_id,
+        defaults={'assigned_by_id': profile.id, 'is_active': True, 'updated_at': now, 'created_at': now},
+    )
+    return {
+        'success': True,
+        'assignment_id': str(assignment.id),
+        'listing_id': str(listing_id),
+        'agent_id': str(agent_id),
+        'created': created,
+    }
+
+
+def unassign_real_estate_listing(profile, listing_id, agent_id):
+    context = _require_real_estate_admin(profile)
+    assignment = RealEstatePMSListingAssignment.objects.filter(real_estate_id=context['owner_id'], listing_id=listing_id, agent_id=agent_id, is_active=True).first()
+    if not assignment:
+        raise ValueError('Active listing assignment not found.')
+    assignment.is_active = False
+    assignment.updated_at = timezone.now()
+    assignment.save(update_fields=['is_active', 'updated_at'])
+    return {'success': True, 'listing_id': str(listing_id), 'agent_id': str(agent_id), 'status': 'UNASSIGNED'}
+
+
+def get_real_estate_listing_assignments(profile, listing_id=None):
+    context = get_real_estate_pms_context(profile)
+    if not context:
+        raise ValueError('Real Estate PMS access denied.')
+    filters = {'real_estate_id': context['owner_id'], 'is_active': True}
+    if listing_id:
+        filters['listing_id'] = listing_id
+    if context['pms_role'] not in {'ADMIN', 'TEAM_MANAGER'}:
+        filters['agent_id'] = profile.id
+    rows = RealEstatePMSListingAssignment.objects.filter(**filters).order_by('-created_at')
+    return [
+        {
+            'assignment_id': str(row.id),
+            'listing_id': str(row.listing_id),
+            'agent_id': str(row.agent_id),
+            'assigned_by_id': str(row.assigned_by_id),
+            'created_at': row.created_at,
+        }
+        for row in rows
+    ]
 
 
 def _pms_listing_key(profile):
@@ -128,9 +354,6 @@ def get_available_pms_listings(profile):
         return []
     key = _pms_listing_key(profile)
     linked_ids = SubscriptionListing.objects.filter(**{key: subscription.id}, status='ACTIVE').values('listing_id')
-    # Match the legacy contract: available PMS candidates are the owner's
-    # listings that are not already attached to this subscription and are not
-    # already flagged as property-management managed.
     listings = Listing.objects.filter(user_id=profile.id, is_property_management=False).exclude(id__in=linked_ids).order_by('-created_at')
     return [_listing_payload(listing) for listing in listings]
 
@@ -144,8 +367,6 @@ def get_pms_unit_count(profile):
     managed_count = SubscriptionListing.objects.filter(**{key: subscription.id}, status='ACTIVE').count()
     max_listings = plan.max_listings if plan else None
     return {
-        # The existing frontend names this value unit_count, but the
-        # production PMS contract counts managed listings/properties.
         'unit_count': managed_count,
         'max_units': max_listings,
         'remaining_units': None if max_listings is None else max(0, max_listings - managed_count),
