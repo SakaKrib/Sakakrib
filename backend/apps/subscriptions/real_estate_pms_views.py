@@ -23,8 +23,9 @@ class RealEstatePMSTeamView(APIView):
         try:
             result = add_real_estate_team_member(
                 request.user,
-                request.data.get('user_id'),
-                request.data.get('role', 'AGENT'),
+                user_id=request.data.get('user_id'),
+                role=request.data.get('role', 'AGENT'),
+                email=request.data.get('email'),
             )
         except ValueError as exc:
             return Response({'success': False, 'detail': str(exc)}, status=400)
