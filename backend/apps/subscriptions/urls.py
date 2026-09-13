@@ -3,6 +3,7 @@ from django.urls import path
 from .pms_access_views import MyPMSAccessView
 from .pms_units_views import MyPMSUnitsView
 from .real_estate_pms_finance_views import RealEstatePMSFinanceView
+from .real_estate_pms_lease_views import RealEstatePMSLeaseInvoiceView, RealEstatePMSLeaseView
 from .real_estate_pms_media_views import RealEstatePMSMediaDeleteView, RealEstatePMSMediaUpdateView, RealEstatePMSMediaView
 from .real_estate_pms_views import RealEstatePMSListingAssignmentsView, RealEstatePMSTeamView
 from .real_estate_pms_unit_views import RealEstatePMSUnitView
@@ -42,6 +43,9 @@ urlpatterns = [
     path('real-estate/media/<uuid:media_id>/update/', RealEstatePMSMediaUpdateView.as_view(), name='real-estate-pms-media-update'),
     path('real-estate/media/<uuid:media_id>/delete/', RealEstatePMSMediaDeleteView.as_view(), name='real-estate-pms-media-delete'),
     path('real-estate/finance/', RealEstatePMSFinanceView.as_view(), name='real-estate-pms-finance'),
+    path('real-estate/leases/', RealEstatePMSLeaseView.as_view(), name='real-estate-pms-lease-list-create'),
+    path('real-estate/leases/<uuid:lease_id>/', RealEstatePMSLeaseView.as_view(), name='real-estate-pms-lease-detail'),
+    path('real-estate/leases/<uuid:lease_id>/invoice/', RealEstatePMSLeaseInvoiceView.as_view(), name='real-estate-pms-lease-invoice'),
     path('invoices/', MySubscriptionInvoicesView.as_view(), name='subscription-invoices'),
     path('invoices/<uuid:invoice_id>/', MySubscriptionInvoiceView.as_view(), name='subscription-invoice-detail'),
     path('checkout/', SubscriptionCheckoutView.as_view(), name='subscription-checkout'),
