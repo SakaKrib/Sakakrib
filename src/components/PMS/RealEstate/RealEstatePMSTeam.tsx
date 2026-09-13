@@ -48,7 +48,7 @@ export default function RealEstatePMSTeam() {
     setSaving(true);
     setError(null);
     try {
-      const result = await addRealEstatePMSMemberByEmail(normalizedEmail, role);
+      const result = await addRealEstatePMSMember(normalizedEmail, role);
       setMembers((current) => {
         const next = current.filter((member) => member.user_id !== result.member.user_id);
         return [...next, result.member];
@@ -202,16 +202,4 @@ export default function RealEstatePMSTeam() {
       </div>
     </section>
   );
-}
-
-async function addRealEstatePMSMemberByEmail(email: string, role: RealEstatePMSMemberRole) {
-  const response = await fetch('/api/subscriptions/real-estate/team/', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, role }),
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body?.detail || 'Unable to add the agent.');
-  return body as { success: boolean; member: RealEstatePMSMember };
 }
