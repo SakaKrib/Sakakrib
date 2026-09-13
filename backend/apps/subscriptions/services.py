@@ -36,24 +36,19 @@ def get_real_estate_pms_membership(profile):
 def get_real_estate_pms_context(profile):
     if not profile or not profile.is_authenticated:
         return None
-
     if profile.role == 'real_estate':
         subscription = get_current_subscription(profile)
         if not subscription:
             return None
         return {'owner_id': profile.id, 'subscription': subscription, 'pms_role': 'ADMIN', 'membership': None}
-
     membership = get_real_estate_pms_membership(profile)
     if not membership:
         return None
-
     subscription = RealEstateSubscription.objects.filter(real_estate_id=membership.real_estate_id).filter(
-        Q(status='ACTIVE', current_period_end__gt=timezone.now())
-        | Q(status='GRACE_PERIOD', grace_period_end__gt=timezone.now())
+        Q(status='ACTIVE', current_period_end__gt=timezone.now()) | Q(status='GRACE_PERIOD', grace_period_end__gt=timezone.now())
     ).order_by('-created_at').first()
     if not subscription:
         return None
-
     return {'owner_id': membership.real_estate_id, 'subscription': subscription, 'pms_role': membership.role, 'membership': membership}
 
 
@@ -74,69 +69,55 @@ def get_subscription_access(profile):
 def get_pms_access(profile):
     if not profile or not profile.is_authenticated:
         return {'allowed': False, 'reason': 'AUTHENTICATION_REQUIRED', 'read_only': False}
-
     membership = get_real_estate_pms_membership(profile)
     is_real_estate_owner = profile.role == 'real_estate'
     if profile.role not in {'landlord', 'real_estate'} and not membership:
         return {'allowed': False, 'reason': 'PMS_ROLE_REQUIRED', 'read_only': False}
-
     if str(getattr(profile, 'verification_status', '')).lower() != 'verified' or not getattr(profile, 'kyc_completed', False):
         return {'allowed': False, 'reason': 'IDENTITY_VERIFICATION_REQUIRED', 'read_only': False}
     if not getattr(profile, 'email_verified', False):
         return {'allowed': False, 'reason': 'EMAIL_VERIFICATION_REQUIRED', 'read_only': False}
-
     if membership and not is_real_estate_owner:
         subscription = RealEstateSubscription.objects.filter(real_estate_id=membership.real_estate_id).filter(
-            Q(status='ACTIVE', current_period_end__gt=timezone.now())
-            | Q(status='GRACE_PERIOD', grace_period_end__gt=timezone.now())
+            Q(status='ACTIVE', current_period_end__gt=timezone.now()) | Q(status='GRACE_PERIOD', grace_period_end__gt=timezone.now())
         ).order_by('-created_at').first()
         if not subscription:
             return {'allowed': False, 'reason': 'ACTIVE_SUBSCRIPTION_REQUIRED', 'read_only': False, 'role': 'real_estate_agent'}
         read_only = subscription.status == 'GRACE_PERIOD'
-        return {
-            'allowed': True,
-            'reason': 'SUBSCRIPTION_ACTIVE' if not read_only else 'SUBSCRIPTION_GRACE_PERIOD',
-            'read_only': read_only,
-            'role': 'real_estate_agent',
-            'pms_role': membership.role,
-            'subscription_id': str(subscription.id),
-            'subscription_status': subscription.status,
-            'pms_owner_id': str(membership.real_estate_id),
-        }
-
+        return {'allowed': True, 'reason': 'SUBSCRIPTION_ACTIVE' if not read_only else 'SUBSCRIPTION_GRACE_PERIOD', 'read_only': read_only, 'role': 'real_estate_agent', 'pms_role': membership.role, 'subscription_id': str(subscription.id), 'subscription_status': subscription.status, 'pms_owner_id': str(membership.real_estate_id)}
     if profile.role not in {'landlord', 'real_estate'}:
         return {'allowed': False, 'reason': 'PMS_ROLE_REQUIRED', 'read_only': False}
-
     application_field = 'landlord_application_status' if profile.role == 'landlord' else 'real_estate_application_status'
     if getattr(profile, application_field, None) != 'approved':
         return {'allowed': False, 'reason': 'LANDLORD_APPLICATION_NOT_APPROVED' if profile.role == 'landlord' else 'REAL_ESTATE_APPLICATION_NOT_APPROVED', 'read_only': False}
-
     subscription = get_current_subscription(profile)
     if not subscription:
         return {'allowed': False, 'reason': 'ACTIVE_SUBSCRIPTION_REQUIRED', 'read_only': False, 'role': profile.role}
     read_only = subscription.status == 'GRACE_PERIOD'
-    return {
-        'allowed': True,
-        'reason': 'SUBSCRIPTION_ACTIVE' if not read_only else 'SUBSCRIPTION_GRACE_PERIOD',
-        'read_only': read_only,
-        'role': profile.role,
-        'pms_role': 'ADMIN' if profile.role == 'real_estate' else None,
-        'subscription_id': str(subscription.id),
-        'subscription_status': subscription.status,
-        'pms_owner_id': str(profile.id) if profile.role == 'real_estate' else None,
-    }
+    return {'allowed': True, 'reason': 'SUBSCRIPTION_ACTIVE' if not read_only else 'SUBSCRIPTION_GRACE_PERIOD', 'read_only': read_only, 'role': profile.role, 'pms_role': 'ADMIN' if profile.role == 'real_estate' else None, 'subscription_id': str(subscription.id), 'subscription_status': subscription.status, 'pms_owner_id': str(profile.id) if profile.role == 'real_estate' else None}
 
 
 def get_real_estate_team(profile):
     context = get_real_estate_pms_context(profile)
     if not context:
         raise ValueError('Real Estate PMS access denied.')
+    from apps.accounts.models import Profile
     members = RealEstatePMSMember.objects.filter(real_estate_id=context['owner_id']).order_by('created_at')
+    profiles = {str(row.id): row for row in Profile.objects.filter(id__in=members.values_list('user_id', flat=True))}
     return {
         'pms_owner_id': str(context['owner_id']),
         'pms_role': context['pms_role'],
         'members': [
-            {'id': str(member.id), 'user_id': str(member.user_id), 'role': member.role, 'status': member.status, 'created_at': member.created_at, 'updated_at': member.updated_at}
+            {
+                'id': str(member.id),
+                'user_id': str(member.user_id),
+                'email': profiles.get(str(member.user_id)).email if profiles.get(str(member.user_id)) else None,
+                'full_name': profiles.get(str(member.user_id)).full_name if profiles.get(str(member.user_id)) else None,
+                'role': member.role,
+                'status': member.status,
+                'created_at': member.created_at,
+                'updated_at': member.updated_at,
+            }
             for member in members
         ],
     }
@@ -161,14 +142,12 @@ def add_real_estate_team_member(profile, user_id=None, role='AGENT', email=None)
         raise ValueError('An agent user_id or email is required.')
     if user_id and str(user_id) == str(profile.id):
         raise ValueError('The PMS administrator is already the administrator of this PMS.')
-
     from apps.accounts.models import Profile
     target = Profile.objects.filter(pk=user_id, is_active=True).first() if user_id else Profile.objects.filter(email__iexact=str(email).strip(), is_active=True).first()
     if not target:
         raise ValueError('Agent account not found.')
     if target.id == profile.id:
         raise ValueError('The PMS administrator is already the administrator of this PMS.')
-
     now = timezone.now()
     existing = RealEstatePMSMember.objects.filter(real_estate_id=context['owner_id'], user_id=target.id).first()
     if existing:
@@ -179,16 +158,9 @@ def add_real_estate_team_member(profile, user_id=None, role='AGENT', email=None)
         member = existing
         created = False
     else:
-        member = RealEstatePMSMember.objects.create(
-            real_estate_id=context['owner_id'],
-            user_id=target.id,
-            role=role,
-            status=RealEstatePMSMember.STATUS_ACTIVE,
-            created_at=now,
-            updated_at=now,
-        )
+        member = RealEstatePMSMember.objects.create(real_estate_id=context['owner_id'], user_id=target.id, role=role, status=RealEstatePMSMember.STATUS_ACTIVE, created_at=now, updated_at=now)
         created = True
-    return {'id': str(member.id), 'user_id': str(member.user_id), 'role': member.role, 'status': member.status, 'created_at': member.created_at, 'updated_at': member.updated_at, 'created': created}
+    return {'id': str(member.id), 'user_id': str(member.user_id), 'email': target.email, 'full_name': target.full_name, 'role': member.role, 'status': member.status, 'created_at': member.created_at, 'updated_at': member.updated_at, 'created': created}
 
 
 def remove_real_estate_team_member(profile, user_id):
@@ -229,12 +201,7 @@ def assign_real_estate_listing(profile, listing_id, agent_id):
     if not Listing.objects.filter(pk=listing_id, user_id=owner_id).exists():
         raise ValueError('Listing not found in this PMS.')
     now = timezone.now()
-    assignment, created = RealEstatePMSListingAssignment.objects.update_or_create(
-        real_estate_id=owner_id,
-        listing_id=listing_id,
-        agent_id=agent_id,
-        defaults={'assigned_by_id': profile.id, 'is_active': True, 'updated_at': now, 'created_at': now},
-    )
+    assignment, created = RealEstatePMSListingAssignment.objects.update_or_create(real_estate_id=owner_id, listing_id=listing_id, agent_id=agent_id, defaults={'assigned_by_id': profile.id, 'is_active': True, 'updated_at': now, 'created_at': now})
     return {'success': True, 'assignment_id': str(assignment.id), 'listing_id': str(listing_id), 'agent_id': str(agent_id), 'created': created}
 
 
@@ -271,13 +238,7 @@ def _pms_listing_key(profile):
 
 
 def _listing_payload(listing, link=None):
-    return {
-        'id': str(listing.id), 'title': listing.title, 'city': listing.city, 'county': listing.county, 'price_kes': listing.price_kes,
-        'is_published': listing.is_published, 'status': listing.status, 'approval_status': listing.approval_status, 'is_approved': listing.is_approved,
-        'is_property_management': listing.is_property_management, 'subscription_listing_id': str(link.id) if link else None,
-        'subscription_id': str(link.subscription_id) if link and link.subscription_id else None, 'activated_at': link.activated_at if link else None,
-        'deactivated_at': link.deactivated_at if link else None,
-    }
+    return {'id': str(listing.id), 'title': listing.title, 'city': listing.city, 'county': listing.county, 'price_kes': listing.price_kes, 'is_published': listing.is_published, 'status': listing.status, 'approval_status': listing.approval_status, 'is_approved': listing.is_approved, 'is_property_management': listing.is_property_management, 'subscription_listing_id': str(link.id) if link else None, 'subscription_id': str(link.subscription_id) if link and link.subscription_id else None, 'activated_at': link.activated_at if link else None, 'deactivated_at': link.deactivated_at if link else None}
 
 
 def get_my_pms_listings(profile):
@@ -341,8 +302,7 @@ def add_listing_to_pms(profile, listing_id):
             raise ValueError(f'Your {plan.name} PMS plan supports a maximum of {plan.max_listings} managed listings. Please upgrade your PMS plan.')
         now = timezone.now()
         if existing:
-            existing.status = 'ACTIVE'; existing.activated_at = now; existing.deactivated_at = None
-            existing.save(update_fields=['status', 'activated_at', 'deactivated_at']); link = existing
+            existing.status = 'ACTIVE'; existing.activated_at = now; existing.deactivated_at = None; existing.save(update_fields=['status', 'activated_at', 'deactivated_at']); link = existing
         else:
             link = SubscriptionListing.objects.create(**{key: subscription.id}, listing_id=listing.id, status='ACTIVE', activated_at=now, created_at=now)
     return {'success': True, 'subscription_id': str(subscription.id), 'listing_id': str(listing.id), 'plan': plan.name, 'managed_listings': active_count + 1, 'max_listings': plan.max_listings, 'subscription_listing_id': str(link.id)}
