@@ -6,6 +6,8 @@ export type RealEstatePMSMemberStatus = 'ACTIVE' | 'SUSPENDED';
 export interface RealEstatePMSMember {
   id: string;
   user_id: string;
+  email?: string | null;
+  full_name?: string | null;
   role: RealEstatePMSMemberRole;
   status: RealEstatePMSMemberStatus;
   created_at: string;
@@ -22,9 +24,10 @@ export async function getRealEstatePMSTeam() {
   return protectedGet<RealEstatePMSTeamResponse>('/api/subscriptions/real-estate/team/');
 }
 
-export async function addRealEstatePMSMember(userId: string, role: RealEstatePMSMemberRole = 'AGENT') {
+export async function addRealEstatePMSMember(identifier: string, role: RealEstatePMSMemberRole = 'AGENT') {
+  const isEmail = identifier.includes('@');
   return protectedPost<{ success: boolean; member: RealEstatePMSMember }>('/api/subscriptions/real-estate/team/', {
-    user_id: userId,
+    ...(isEmail ? { email: identifier } : { user_id: identifier }),
     role,
   });
 }
