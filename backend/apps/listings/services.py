@@ -7,7 +7,6 @@ from rest_framework.exceptions import ValidationError
 from apps.accounts.models import Profile
 from apps.core.notification_services import dispatch_user_notification
 from apps.subscriptions.models import LandlordSubscription, RealEstateSubscription, SubscriptionListing
-from apps.payments.models import ListingPayment
 from .models import Listing, ListingPaymentIntent
 
 FREE_LIMIT = settings.LISTING_FREE_LIMIT
@@ -64,8 +63,6 @@ def get_listing_entitlement(profile, *, lock_subscription=False):
     source = 'FREE' if can_start and free_remaining > 0 else ('SUBSCRIPTION' if can_start and active and (limit is None or remaining > 0) else None)
     can_create = source is not None
     needs_payment = can_start and not can_create
-    # PMS access is independent from remaining listing capacity. Capacity only
-    # controls whether another PMS listing may be added.
     pms_access = bool(active)
     upgrade_target = 'subscription' if needs_payment and not active else ('individual_payment' if needs_payment else None)
     return {
@@ -117,14 +114,43 @@ def _create_listing_from_data(profile, data, *, entitlement=None, listing_entitl
     return result
 
 
+def _real_estate_pms_owner(profile):
+    if profile.role == 'real_estate':
+        return profile
+    from apps.subscriptions.models import RealEstatePMSMember
+    membership = RealEstatePMSMember.objects.filter(user_id=profile.id, status=RealEstatePMSMember.STATUS_ACTIVE).first()
+    if not membership:
+        return None
+    return Profile.objects.filter(pk=membership.real_estate_id, role='real_estate').first()
+
+
 @transaction.atomic
 def create_listing(profile, data):
     profile = Profile.objects.select_for_update().get(pk=profile.id)
+    is_pms_listing = bool(data.get('is_property_management'))
+
+    # Real Estate PMS team members create listings inside the subscribing
+    # account's portfolio; the listing owner remains the Real Estate account.
+    if is_pms_listing and profile.role != 'real_estate':
+        owner = _real_estate_pms_owner(profile)
+        if not owner:
+            raise ValidationError('Only members of a Real Estate PMS team may create property-management listings.')
+        owner = Profile.objects.select_for_update().get(pk=owner.id)
+        entitlement = get_listing_entitlement(owner, lock_subscription=True)
+        if entitlement.get('subscription_status') != 'ACTIVE':
+            raise ValidationError('An active PMS subscription is required for property management listings.')
+        remaining = entitlement.get('subscription_listings_remaining')
+        if remaining is not None and remaining <= 0:
+            raise ValidationError('Your PMS subscription listing capacity has been reached.')
+        pms_entitlement = {**entitlement, 'entitlement_source': 'SUBSCRIPTION'}
+        result = _create_listing_from_data(owner, data, entitlement=pms_entitlement)
+        result['created_by_user_id'] = profile.id
+        return result
+
     entitlement = get_listing_entitlement(profile, lock_subscription=True)
     if not entitlement.get('can_start_listing'):
         raise ValidationError('Identity verification, KYC completion, email verification, and application approval are required before creating a listing.')
 
-    is_pms_listing = bool(data.get('is_property_management'))
     if is_pms_listing:
         if profile.role not in ROLES or entitlement.get('subscription_status') != 'ACTIVE':
             raise ValidationError('An active PMS subscription is required for property management listings.')
