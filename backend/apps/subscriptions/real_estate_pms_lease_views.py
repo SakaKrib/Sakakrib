@@ -20,7 +20,7 @@ def _context(user):
 
 
 def _unit_scope(user, context):
-    units = PropertyUnit.objects.filter(listing__user_id=context['owner_id'])
+    units = PropertyUnit.objects.filter(user_id=context['owner_id'])
     if context.get('pms_role') == 'AGENT':
         units = units.filter(
             listing_id__in=RealEstatePMSListingAssignment.objects.filter(
@@ -31,7 +31,7 @@ def _unit_scope(user, context):
 
 
 def _can_manage_unit(user, context, unit):
-    if unit is None or str(getattr(unit, 'user_id', '')) != str(context['owner_id']):
+    if unit is None or str(unit.user_id) != str(context['owner_id']):
         return False
     if context.get('pms_role') in ('ADMIN', 'TEAM_MANAGER'):
         return True
@@ -145,7 +145,8 @@ class RealEstatePMSLeaseView(APIView):
         lease = RealEstatePMSLease.objects.create(
             real_estate_id=context['owner_id'], listing_id=unit.listing_id, unit_id=unit.id,
             renter_assoc_id=association.id, renter_user_id=association.renter_user_id,
-            created_by_id=request.user.id, lease_number=f'REL-{timezone.localdate().strftime("%Y%m%d")}-{str(unit.id)[:8].upper()}',
+            created_by_id=request.user.id,
+            lease_number=f'REL-{timezone.localdate().strftime("%Y%m%d")}-{str(unit.id)[:8].upper()}',
             lease_start=lease_start, lease_end=lease_end, monthly_rent_kes=monthly_rent,
             deposit_amount_kes=deposit, rent_due_day=due_day, status=RealEstatePMSLease.STATUS_ACTIVE,
             renewal_notice_days=notice_days, notes=request.data.get('notes') or None,
@@ -248,6 +249,8 @@ class RealEstatePMSLeaseInvoiceView(APIView):
         ).first()
         if not lease:
             return Response({'detail': 'Active lease not found.'}, status=404)
+        if not lease.renter_user_id:
+            return Response({'detail': 'The renter must have a claimed SakaKrib account before an invoice can be generated.'}, status=409)
 
         if request.data.get('year') and request.data.get('month'):
             try:
