@@ -159,8 +159,6 @@ function PMSAccessGate({ role, status }: { role: PMSRole; status: string }) {
   }
 
   if (access.allowed === true) {
-    // Django's access response identifies the actual PMS workspace. This keeps
-    // team members in Real Estate PMS even when their Profile role is different.
     return access.role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstatePMSWorkspace />;
   }
 
@@ -227,34 +225,31 @@ export default function RoleDashboardRouter() {
   if (!profile.role) return null;
 
   const rawRole = String(profile.role).trim().toLowerCase();
-  const role: ProfessionalRole = rawRole === 'agency' || profile.is_agency === true ? 'real_estate' : rawRole as ProfessionalRole;
-  const status = normalizeStatus(profile[applicationField[role]]);
-
-  // Django is the authority for PMS access. Check the protected PMS workspace
-  // before the normal role-dashboard application-status routing so a team
-  // member can enter the Real Estate PMS regardless of their Profile role.
-  if (view === 'pms-dashboard') {
-    return <PMSAccessGate role={role === 'real_estate' ? 'real_estate' : 'landlord'} status={status} />;
-  }
+  const role: UserRole = rawRole === 'agency' || profile.is_agency === true ? 'real_estate' : rawRole as UserRole;
 
   if (role === 'renter') return <RenterDashboard />;
 
-  // Role dashboard is the landing page. PMS is a separate protected workspace.
-  // Django remains the sole authority for application approval and subscription entitlement.
-  if (role === 'landlord' || role === 'real_estate') {
+  const professionalRole = role as ProfessionalRole;
+  const status = normalizeStatus(profile[applicationField[professionalRole]]);
+
+  if (view === 'pms-dashboard') {
+    return <PMSAccessGate role={professionalRole === 'real_estate' ? 'real_estate' : 'landlord'} status={status} />;
+  }
+
+  if (professionalRole === 'landlord' || professionalRole === 'real_estate') {
     if (status !== 'approved') {
-      return <AccessNotice role={role} status={status} />;
+      return <AccessNotice role={professionalRole} status={status} />;
     }
 
-    return role === 'landlord'
+    return professionalRole === 'landlord'
       ? <LandlordDashboard navigate={(destination, id) => navigate(destination as any, id)} />
       : <><RealEstateDashboard /><RealEstatePMSLauncher /></>;
   }
 
-  if (role === 'mover') {
+  if (professionalRole === 'mover') {
     const approved = status === 'approved';
     const verified = profile.email_verified === true && profile.kyc_completed === true;
-    if (!approved || !verified) return <AccessNotice role={role} status={status} />;
+    if (!approved || !verified) return <AccessNotice role={professionalRole} status={status} />;
     return <MoverDashboard />;
   }
 
