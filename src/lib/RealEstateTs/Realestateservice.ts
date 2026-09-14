@@ -137,7 +137,7 @@ function mapEntitlement(raw: NonNullable<DashboardResponse['entitlement']>): Rea
 }
 
 export async function getRealEstatePMSAccess(): Promise<RealEstatePMSAccess> {
-  const response = await protectedGet<{ pms_access?: RealEstatePMSAccess }>('/api/pms/entitlement/');
+  const response = await protectedGet<{ pms_access?: RealEstatePMSAccess }>('/api/core/pms/entitlement/');
   return response.pms_access ?? {
     allowed: false,
     reason: 'PMS_ACCESS_UNAVAILABLE',
@@ -156,14 +156,14 @@ export async function getRealEstateListingEntitlement(_userId: string): Promise<
 }
 
 export async function getMyRealEstateListings(userId?: string): Promise<RealEstateListingSummary[]> {
-  const data = await protectedGet<DashboardResponse>('/api/pms/real-estate/dashboard/');
+  const data = await protectedGet<DashboardResponse>('/api/core/pms/real-estate/dashboard/');
   return (data.listings ?? [])
     .filter((listing) => !userId || listing.user_id === userId)
     .map(mapListing);
 }
 
 export async function manageRealEstatePMSListing(action: 'add_listing' | 'remove_listing', listingId: string) {
-  return protectedPost<{ success: boolean; subscription_listing_id?: string; already_managed?: boolean }>('/api/pms/real-estate/action/', {
+  return protectedPost<{ success: boolean; subscription_listing_id?: string; already_managed?: boolean }>('/api/core/pms/real-estate/action/', {
     action,
     listing_id: listingId,
   });
@@ -186,7 +186,7 @@ export interface RealEstateDashboardData {
 }
 
 export async function loadRealEstateDashboardData(_userId: string): Promise<RealEstateDashboardData> {
-  const data = await protectedGet<DashboardResponse>('/api/pms/real-estate/dashboard/');
+  const data = await protectedGet<DashboardResponse>('/api/core/pms/real-estate/dashboard/');
 
   return {
     subscription: mapSubscription(data.subscription),
