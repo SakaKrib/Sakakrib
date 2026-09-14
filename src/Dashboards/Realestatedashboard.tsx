@@ -15,10 +15,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 
 import {
-  loadRealEstateDashboardData,
+  getCurrentRealEstateSubscription,
   type RealEstateDashboardData,
   type RealEstateListingSummary,
 } from '@/lib/RealEstateTs/Realestateservice';
+
+import { protectedGet } from '@/lib/djangoApi';
 
 import {
   fetchListingEntitlement,
@@ -144,15 +146,78 @@ export default function RealEstateDashboard() {
       setError(null);
 
       try {
-        const [dashboardResult, entitlementResult] =
+        const [listingsResponse, subscription, entitlementResult] =
           await Promise.all([
-            loadRealEstateDashboardData(profile.id),
+            protectedGet<{
+              results?: Array<{
+                id: string;
+                user_id: string;
+                title: string;
+                description?: string | null;
+                city: string;
+                county: string;
+                price_kes: number | string | null;
+                listing_type: string;
+                approval_status: string;
+                is_approved: boolean | null;
+                is_published: boolean | null;
+                is_paid: boolean | null;
+                created_at: string;
+                media?: Array<{ url?: string | null }>;
+              }>;
+            }>(
+              `/api/listings/?user_id=${encodeURIComponent(profile.id)}`
+            ),
+
+            getCurrentRealEstateSubscription(),
 
             fetchListingEntitlement(
               'real_estate',
               profile.id
             ),
           ]);
+
+        const listings: RealEstateListingSummary[] =
+          (listingsResponse.results ?? []).map((listing) => ({
+            id: listing.id,
+            user_id: listing.user_id,
+            title: listing.title,
+            description: listing.description ?? null,
+            listing_type: listing.listing_type,
+            city: listing.city,
+            county: listing.county,
+            price_kes:
+              listing.price_kes === null
+                ? null
+                : Number(listing.price_kes),
+            cover_photo_url:
+              listing.media?.[0]?.url ?? null,
+            is_approved: Boolean(listing.is_approved),
+            approval_status:
+              listing.approval_status?.trim().toLowerCase() || null,
+            is_published: Boolean(listing.is_published),
+            is_paid: Boolean(listing.is_paid),
+            pms_managed: false,
+            created_at: listing.created_at,
+          }));
+
+        const dashboardResult: RealEstateDashboardData = {
+          subscription,
+          entitlement: {
+            can_start_listing: entitlementResult.canStartListing,
+            can_create: entitlementResult.canCreate,
+            requires_subscription:
+              entitlementResult.requiresSubscription,
+            requires_individual_payment:
+              entitlementResult.requiresIndividualPayment,
+            free_listings_remaining:
+              entitlementResult.free_listings_remaining,
+            free_limit: entitlementResult.free_limit,
+            individual_listing_price_kes:
+              entitlementResult.individualListingPriceKes,
+          },
+          listings,
+        };
 
         if (!cancelled) {
           setData(dashboardResult);
@@ -796,7 +861,7 @@ export default function RealEstateDashboard() {
 
           {/* ======================================================
               PROPERTY MANAGEMENT
-          ====================================================== */}
+          ====================================================== */
 
           <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
 
