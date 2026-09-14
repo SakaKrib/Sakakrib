@@ -19,6 +19,7 @@ import RealEstatePMS from './Realestatepms';
 import RealEstatePMSAnalytics from './RealEstatePMSAnalytics';
 import RealEstatePMSCalendar from './RealEstatePMSCalendar';
 import RealEstatePMSFinance from './RealEstatePMSFinance';
+import RealEstatePMSFinancialReport from './RealEstatePMSFinancialReport';
 import RealEstatePMSOperations from './RealEstatePMSOperations';
 
 function formatDate(value: string | null | undefined) {
@@ -147,6 +148,10 @@ export default function RealEstatePMSWorkspace() {
 
       <div className="mt-6">
         <RealEstatePMSFinance canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} />
+      </div>
+
+      <div className="mt-8">
+        <RealEstatePMSFinancialReport />
       </div>
 
       <div className="mt-8">
