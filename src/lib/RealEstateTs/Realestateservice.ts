@@ -5,7 +5,7 @@ export interface RealEstatePMSAccess {
   allowed: boolean;
   reason: string;
   read_only: boolean;
-  role?: 'landlord' | 'real_estate';
+  role?: 'landlord' | 'real_estate' | 'real_estate_agent';
   subscription_id?: string;
   subscription_status?: 'ACTIVE' | 'GRACE_PERIOD';
 }
@@ -75,6 +75,16 @@ interface DashboardResponse {
     created_at: string;
     media?: Array<{ url?: string | null }>;
   }>;
+  team_context?: {
+    pms_owner_id: string;
+    pms_role: string;
+    read_only: boolean;
+  } | null;
+  can_manage_team?: boolean;
+  can_assign_listings?: boolean;
+  can_manage_payment_settings?: boolean;
+  read_only?: boolean;
+  pms_role?: string | null;
 }
 
 function mapListing(listing: NonNullable<DashboardResponse['listings']>[number]): RealEstateListingSummary {
@@ -163,6 +173,16 @@ export interface RealEstateDashboardData {
   subscription: RealEstateSubscription | null;
   entitlement: RealEstateListingEntitlement;
   listings: RealEstateListingSummary[];
+  team_context?: {
+    pms_owner_id: string;
+    pms_role: string;
+    read_only: boolean;
+  } | null;
+  can_manage_team?: boolean;
+  can_assign_listings?: boolean;
+  can_manage_payment_settings?: boolean;
+  read_only?: boolean;
+  pms_role?: string | null;
 }
 
 export async function loadRealEstateDashboardData(_userId: string): Promise<RealEstateDashboardData> {
@@ -172,5 +192,11 @@ export async function loadRealEstateDashboardData(_userId: string): Promise<Real
     subscription: mapSubscription(data.subscription),
     entitlement: mapEntitlement(data.entitlement ?? {}),
     listings: (data.listings ?? []).map(mapListing),
+    team_context: data.team_context ?? null,
+    can_manage_team: data.can_manage_team,
+    can_assign_listings: data.can_assign_listings,
+    can_manage_payment_settings: data.can_manage_payment_settings,
+    read_only: data.read_only,
+    pms_role: data.pms_role ?? null,
   };
 }
