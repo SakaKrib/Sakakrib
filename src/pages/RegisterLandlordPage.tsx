@@ -460,7 +460,7 @@ export default function RegisterLandlordPage() {
 
       try {
         applicationResult = await protectedPost(
-          '/rest/v1/rpc/submit_landlord_application',
+          '/api/accounts/landlord/application/submit/',
           {
             p_first_name:
               trimmedFirstName,
