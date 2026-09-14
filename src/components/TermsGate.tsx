@@ -17,7 +17,7 @@ import { protectedGet } from '@/lib/djangoApi';
 
 interface TermsGateProps {
   context: 'landlord' | 'real_estate' | 'mover' | 'listing';
-  onAccept: () => void;
+  onAccept?: () => void;
   children: ReactNode;
 }
 
@@ -471,7 +471,7 @@ export default function TermsGate({
                 setAccepted(checked);
 
                 if (checked) {
-                  onAccept();
+                  onAccept?.();
                 }
               }}
               className="mt-0.5 h-5 w-5 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-brand-600 dark:bg-brand-800"
