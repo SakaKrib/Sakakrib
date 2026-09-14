@@ -94,12 +94,16 @@ class RealEstatePMSCalendarView(APIView):
         invoices = RentInvoice.objects.filter(
             landlord_id=context['owner_id'], unit_id__in=unit_ids
         ).order_by('due_date', 'created_at')
+        invoice_map = {invoice.id: invoice for invoice in invoices}
+        paid_invoice_ids = set()
         for invoice in invoices:
             unit = unit_map.get(str(invoice.unit_id))
             if not unit:
                 continue
             amount = f'KES {invoice.amount_kes:,.2f}'
             status = str(invoice.status or '').upper()
+            if status in {'PAID', 'PARTIALLY_PAID'}:
+                paid_invoice_ids.add(invoice.id)
             if invoice.due_date:
                 label = 'Rent due' if status not in {'PAID', 'PARTIALLY_PAID'} else 'Rent payment'
                 events.append(_event(
@@ -124,20 +128,18 @@ class RealEstatePMSCalendarView(APIView):
         submissions = RentPaymentSubmission.objects.filter(
             landlord_id=context['owner_id'], unit_id__in=unit_ids, status__iexact='CONFIRMED'
         ).order_by('payment_date', 'submitted_at')
-        invoice_ids = set(RentInvoice.objects.filter(
-            landlord_id=context['owner_id'], unit_id__in=unit_ids
-        ).values_list('id', flat=True))
         for submission in submissions:
-            if submission.invoice_id in invoice_ids and submission.payment_date:
-                unit = unit_map.get(str(submission.unit_id))
-                if not unit:
-                    continue
-                events.append(_event(
-                    f'submission-{submission.id}', submission.payment_date, 'PAYMENT_RECEIVED',
-                    'Payment confirmed',
-                    f'{unit.unit_number or "Unit"} · {submission.transaction_reference or "Payment"}',
-                    unit=unit, status='CONFIRMED',
-                ))
+            if submission.invoice_id not in invoice_map or submission.invoice_id in paid_invoice_ids or not submission.payment_date:
+                continue
+            unit = unit_map.get(str(submission.unit_id))
+            if not unit:
+                continue
+            events.append(_event(
+                f'submission-{submission.id}', submission.payment_date, 'PAYMENT_RECEIVED',
+                'Payment confirmed',
+                f'{unit.unit_number or "Unit"} · {submission.transaction_reference or "Payment"}',
+                unit=unit, status='CONFIRMED',
+            ))
 
         in_range = [
             event for event in events
