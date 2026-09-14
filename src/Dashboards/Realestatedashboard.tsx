@@ -302,55 +302,50 @@ export default function RealEstateDashboard() {
     },
   ];
 
+  const recentActivity = listings.slice(0, 5);
+
   return (
     <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
-      {/* PAGE HEADER / PROFILE CARD — same visual treatment as Landlord Dashboard */}
-      <div className="card mb-6 overflow-hidden">
+      {/* PROFILE / WELCOME */}
+      <div className="card mb-4 overflow-hidden">
         <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                <Building2 className="h-7 w-7" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-2xl font-bold text-gray-900 dark:text-white">
-                    {profile?.full_name || 'Real Estate Dashboard'}
-                  </h1>
-                  <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                    Real Estate
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Manage your properties, listings, and business account.
-                </p>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
+              <Building2 className="h-7 w-7" />
             </div>
-
-            <button
-              type="button"
-              onClick={() => navigate('post-listing')}
-              disabled={!canStartListing && !canCreateListing}
-              className="btn-primary inline-flex shrink-0 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Plus className="h-4 w-4" />
-              Post New Listing
-            </button>
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-bold text-gray-900 dark:text-white">
+                {profile?.full_name || 'Real Estate Dashboard'}
+              </h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Manage your properties, listings, and business account.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* STATS — same four-card dashboard pattern as Landlord Dashboard */}
+      {/* POST LISTING — deliberately on its own row */}
+      <div className="card mb-6 p-4">
+        <button
+          type="button"
+          onClick={() => navigate('post-listing')}
+          disabled={!canStartListing && !canCreateListing}
+          className="btn-primary flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="h-4 w-4" />
+          Post New Listing
+        </button>
+      </div>
+
+      {/* STATS */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div
-              key={stat.label}
-              className="card p-5 transition-shadow hover:shadow-md"
-            >
+            <div key={stat.label} className="card p-5 transition-shadow hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     {stat.label}
                   </p>
@@ -358,7 +353,7 @@ export default function RealEstateDashboard() {
                     {stat.value}
                   </p>
                 </div>
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.iconClass}`}>
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.iconClass}`}>
                   <Icon className="h-5 w-5" />
                 </div>
               </div>
@@ -367,296 +362,292 @@ export default function RealEstateDashboard() {
         })}
       </div>
 
-      {/* MAIN DASHBOARD GRID — listings left, account/access sidebar right */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          {/* LISTINGS */}
-          <div className="card overflow-hidden">
-            <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-                    <Home className="h-5 w-5 text-brand-600" />
-                    Your Listings
-                  </h2>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {listings.length} {listings.length === 1 ? 'listing' : 'listings'} on your account.
-                  </p>
-                </div>
-                {listingEntitlement && (
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {freeListingsUsed} / {freeListingLimit} free used
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="p-5">
-              {listings.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-gray-200 p-12 text-center dark:border-brand-800">
-                  <Home className="mx-auto h-12 w-12 text-gray-300 dark:text-brand-700" />
-                  <h3 className="mt-4 font-semibold text-gray-800 dark:text-gray-200">
-                    No listings yet
-                  </h3>
-                  <p className="mx-auto mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
-                    Create your first listing to get started.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => navigate('post-listing')}
-                    disabled={!canStartListing && !canCreateListing}
-                    className="btn-primary mt-5 inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Post New Listing
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {listings.map((listing) => {
-                    const badge = listingStatusBadge(listing);
-                    return (
-                      <button
-                        key={listing.id}
-                        type="button"
-                        onClick={() => navigate('listing-detail', { listingId: listing.id } as never)}
-                        className="flex w-full items-center gap-4 rounded-2xl border border-gray-200 p-4 text-left transition hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900/30"
-                      >
-                        <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl bg-brand-100 dark:bg-brand-800">
-                          {listing.cover_photo_url ? (
-                            <img
-                              src={listing.cover_photo_url}
-                              alt={listing.title}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <Home className="h-8 w-8 text-brand-400" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="truncate font-semibold text-gray-900 dark:text-white">
-                              {listing.title || 'Untitled Listing'}
-                            </h3>
-                            <span className={`badge ${badge.className}`}>
-                              {badge.label}
-                            </span>
-                          </div>
-
-                          <p className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                            <MapPin className="h-3.5 w-3.5" />
-                            {listing.city}, {listing.county}
-                          </p>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                            <span className="font-semibold text-brand-600 dark:text-brand-400">
-                              {formatKES(listing.price_kes)}
-                            </span>
-                            <span>{listing.listing_type}</span>
-                            <span>{formatDate(listing.created_at)}</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ACTIVITY / ACCOUNT SUMMARY */}
-          <div className="card overflow-hidden">
-            <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-              <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-                <Activity className="h-5 w-5 text-brand-600" />
-                Account Overview
-              </h3>
+      {/* LISTINGS — one full-width card, never sharing the row with sidebar cards */}
+      <div className="card mb-6 overflow-hidden">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+                <Home className="h-5 w-5 text-brand-600" />
+                Your Listings
+              </h2>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Your current Real Estate account status.
+                {listings.length} {listings.length === 1 ? 'listing' : 'listings'} on your account.
               </p>
             </div>
-            <div className="grid gap-4 p-5 sm:grid-cols-2">
-              <div className="rounded-2xl border border-gray-200 p-4 dark:border-brand-800">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                    <User className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Account</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">Real Estate</p>
-                  </div>
-                </div>
+            {listingEntitlement && (
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {freeListingsUsed} / {freeListingLimit} free used
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="p-5">
+          {listings.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-12 text-center dark:border-brand-800">
+              <Home className="mx-auto h-12 w-12 text-gray-300 dark:text-brand-700" />
+              <h3 className="mt-4 font-semibold text-gray-800 dark:text-gray-200">No listings yet</h3>
+              <p className="mx-auto mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
+                Create your first listing to get started.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('post-listing')}
+                disabled={!canStartListing && !canCreateListing}
+                className="btn-primary mt-5 inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                Post New Listing
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {listings.map((listing) => {
+                const badge = listingStatusBadge(listing);
+                return (
+                  <button
+                    key={listing.id}
+                    type="button"
+                    onClick={() => navigate('listing-detail', { listingId: listing.id } as never)}
+                    className="flex w-full items-center gap-4 rounded-2xl border border-gray-200 p-4 text-left transition hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900/30"
+                  >
+                    <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl bg-brand-100 dark:bg-brand-800">
+                      {listing.cover_photo_url ? (
+                        <img
+                          src={listing.cover_photo_url}
+                          alt={listing.title}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <Home className="h-8 w-8 text-brand-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate font-semibold text-gray-900 dark:text-white">
+                          {listing.title || 'Untitled Listing'}
+                        </h3>
+                        <span className={`badge ${badge.className}`}>{badge.label}</span>
+                      </div>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {listing.city}, {listing.county}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                        <span className="font-semibold text-brand-600 dark:text-brand-400">
+                          {formatKES(listing.price_kes)}
+                        </span>
+                        <span>{listing.listing_type}</span>
+                        <span>{formatDate(listing.created_at)}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ACTIVITY + PMS — same separated two-card row as Landlord Dashboard */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        {/* ACTIVITY */}
+        <div className="card overflow-hidden">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+            <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+              <Activity className="h-5 w-5 text-brand-600" />
+              Recent Activity
+            </h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Recent activity from your Real Estate account.
+            </p>
+          </div>
+
+          <div className="p-5">
+            {recentActivity.length === 0 ? (
+              <div className="py-8 text-center">
+                <Activity className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" />
+                <p className="mt-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  No activity yet
+                </p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Listing activity will appear here as you create and update listings.
+                </p>
               </div>
-              <div className="rounded-2xl border border-gray-200 p-4 dark:border-brand-800">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Verification</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">
-                      {profile?.verification_status === 'verified' ? 'Verified' : 'Unverified'}
-                    </p>
-                  </div>
+            ) : (
+              <div className="divide-y divide-gray-200 dark:divide-brand-800">
+                {recentActivity.map((listing) => {
+                  const badge = listingStatusBadge(listing);
+                  return (
+                    <button
+                      key={`activity-${listing.id}`}
+                      type="button"
+                      onClick={() => navigate('listing-detail', { listingId: listing.id } as never)}
+                      className="flex w-full items-start gap-3 py-4 text-left first:pt-0 last:pb-0"
+                    >
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
+                        <Home className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                          {listing.title || 'Untitled Listing'}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {badge.label} · {formatDate(listing.created_at)}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* PMS / PROPERTY MANAGEMENT */}
+        <div className="card overflow-hidden">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+            <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+              <Building2 className="h-5 w-5 text-brand-600" />
+              Property Management (PMS)
+            </h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Property and unit management remains separate from this normal dashboard.
+            </p>
+          </div>
+          <div className="p-5">
+            <div className="rounded-2xl border border-gray-200 p-5 dark:border-brand-800">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    Real Estate PMS workspace
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                    PMS access and subscription are handled through the dedicated PMS flow. Your normal listings remain managed in this dashboard.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* SIDEBAR */}
-        <div className="space-y-6">
-          {/* LISTING ACCESS */}
-          <div className="card p-5">
-            <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-              <Building2 className="h-5 w-5 text-brand-600" />
-              Listing Access
-            </h2>
-
-            {listingEntitlement ? (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Free listings</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {freeListingsUsed} / {freeListingLimit}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Remaining</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {freeListingsRemaining}
-                  </span>
-                </div>
-                {requiresListingPayment && listingFeeKes !== null && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Additional listing</span>
-                    <span className="font-semibold text-gray-900 dark:text-white">
-                      {formatKES(listingFeeKes)}
-                    </span>
-                  </div>
-                )}
-                {listingEntitlement.subscriptionPlan && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Plan</span>
-                    <span className="font-semibold text-gray-900 dark:text-white">
-                      {listingEntitlement.subscriptionPlan}
-                    </span>
-                  </div>
-                )}
-                <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-800/30">
-                  <p className="text-xs leading-5 text-gray-600 dark:text-gray-400">
-                    {freeListingMessage}
-                  </p>
-                </div>
+      {/* ACCESS / SUBSCRIPTION / ACCOUNT — separate cards, never overlapping */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* LISTING ACCESS */}
+        <div className="card p-5">
+          <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+            <Building2 className="h-5 w-5 text-brand-600" />
+            Listing Access
+          </h2>
+          {listingEntitlement ? (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Free listings</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{freeListingsUsed} / {freeListingLimit}</span>
               </div>
-            ) : (
-              <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Checking listing access...
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Remaining</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{freeListingsRemaining}</span>
               </div>
-            )}
-          </div>
-
-          {/* SUBSCRIPTION */}
-          <div className="card p-5">
-            <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-              <CreditCard className="h-5 w-5 text-brand-600" />
-              Subscription
-            </h2>
-
-            {subscription ? (
-              <div className="mt-4 space-y-3">
+              {requiresListingPayment && listingFeeKes !== null && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Additional listing</span>
+                  <span className="font-semibold text-gray-900 dark:text-white">{formatKES(listingFeeKes)}</span>
+                </div>
+              )}
+              {listingEntitlement.subscriptionPlan && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Plan</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {subscription.plan_name}
-                  </span>
+                  <span className="font-semibold text-gray-900 dark:text-white">{listingEntitlement.subscriptionPlan}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Status</span>
-                  <span className="inline-flex items-center gap-1 font-medium text-success-600">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {subscription.subscription_status === 'GRACE_PERIOD' ? 'Grace period' : 'Active'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Listing limit</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {subscription.max_listings === null ? 'Unlimited' : subscription.max_listings}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Renews</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatDate(subscription.current_period_end)}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('subscription-plans')}
-                  className="btn-secondary mt-2 w-full"
-                >
-                  Manage subscription
-                </button>
+              )}
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-800/30">
+                <p className="text-xs leading-5 text-gray-600 dark:text-gray-400">{freeListingMessage}</p>
               </div>
-            ) : (
-              <div className="mt-4">
-                <div className="flex items-start gap-3 rounded-xl bg-gray-50 p-4 dark:bg-brand-800/30">
-                  <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      No active subscription
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-                      {freeListingMessage}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('subscription-plans')}
-                  className="btn-primary mt-3 w-full"
-                >
-                  View plans
-                </button>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking listing access...
+            </div>
+          )}
+        </div>
 
-          {/* PROPERTY MANAGEMENT */}
-          <div className="card p-5">
-            <h2 className="font-bold text-gray-900 dark:text-white">Property Management</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              Unit and renter management (PMS) remains separate from this dashboard. Your normal Real Estate listings are managed here.
-            </p>
-          </div>
+        {/* SUBSCRIPTION */}
+        <div className="card p-5">
+          <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+            <CreditCard className="h-5 w-5 text-brand-600" />
+            Subscription
+          </h2>
+          {subscription ? (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Plan</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{subscription.plan_name}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Status</span>
+                <span className="inline-flex items-center gap-1 font-medium text-success-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {subscription.subscription_status === 'GRACE_PERIOD' ? 'Grace period' : 'Active'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Listing limit</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{subscription.max_listings === null ? 'Unlimited' : subscription.max_listings}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Renews</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{formatDate(subscription.current_period_end)}</span>
+              </div>
+              <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary mt-2 w-full">
+                Manage subscription
+              </button>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <div className="flex items-start gap-3 rounded-xl bg-gray-50 p-4 dark:bg-brand-800/30">
+                <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No active subscription</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{freeListingMessage}</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => navigate('subscription-plans')} className="btn-primary mt-3 w-full">
+                View plans
+              </button>
+            </div>
+          )}
+        </div>
 
-          {/* BUSINESS ACCOUNT */}
-          <div className="card p-5">
-            <h2 className="font-bold text-gray-900 dark:text-white">Business Account</h2>
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-gray-500 dark:text-gray-400">Name</span>
-                <span className="truncate font-medium text-gray-900 dark:text-white">
-                  {profile?.full_name || 'Not set'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-gray-500 dark:text-gray-400">Verification</span>
-                <span className={`font-medium ${profile?.verification_status === 'verified' ? 'text-success-600' : 'text-warning-600'}`}>
-                  {profile?.verification_status === 'verified' ? 'Verified' : 'Unverified'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-gray-500 dark:text-gray-400">Location</span>
-                <span className="text-right font-medium text-gray-900 dark:text-white">
-                  {profile?.city ? `${profile.city}, ${profile.county ?? ''}` : 'Not set'}
-                </span>
-              </div>
+        {/* BUSINESS ACCOUNT */}
+        <div className="card p-5">
+          <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+            <User className="h-5 w-5 text-brand-600" />
+            Business Account
+          </h2>
+          <div className="mt-4 space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-gray-500 dark:text-gray-400">Name</span>
+              <span className="truncate font-medium text-gray-900 dark:text-white">{profile?.full_name || 'Not set'}</span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-gray-500 dark:text-gray-400">Verification</span>
+              <span className={`font-medium ${profile?.verification_status === 'verified' ? 'text-success-600' : 'text-warning-600'}`}>
+                {profile?.verification_status === 'verified' ? 'Verified' : 'Unverified'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-gray-500 dark:text-gray-400">Location</span>
+              <span className="text-right font-medium text-gray-900 dark:text-white">
+                {profile?.city ? `${profile.city}, ${profile.county ?? ''}` : 'Not set'}
+              </span>
             </div>
           </div>
         </div>
