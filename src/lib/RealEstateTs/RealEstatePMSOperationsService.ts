@@ -27,6 +27,25 @@ export interface RealEstatePMSUnit {
   lease_end: string | null;
 }
 
+export interface RealEstatePMSCalendarEvent {
+  id: string;
+  date: string;
+  type: 'LEASE_START' | 'LEASE_END' | 'LEASE_RENEWAL' | 'RENT_DUE' | 'OVERDUE' | 'PAYMENT_RECEIVED';
+  label: string;
+  detail: string;
+  unit_id: string | null;
+  listing_id: string | null;
+  invoice_id: string | null;
+  status: string | null;
+}
+
+export interface RealEstatePMSCalendarResponse {
+  start: string;
+  end: string;
+  events: RealEstatePMSCalendarEvent[];
+  pms_role: string | null;
+}
+
 export async function getRealEstatePMSUnits() {
   return protectedGet<RealEstatePMSUnit[]>('/api/subscriptions/real-estate/units/');
 }
@@ -57,4 +76,10 @@ export async function updateRealEstatePMSMedia(mediaId: string, payload: Record<
 
 export async function deleteRealEstatePMSMedia(mediaId: string) {
   return djangoRequest(`/api/subscriptions/real-estate/media/${mediaId}/delete/`, { method: 'DELETE' });
+}
+
+export async function getRealEstatePMSCalendar(start: string, end: string) {
+  return protectedGet<RealEstatePMSCalendarResponse>(
+    `/api/subscriptions/real-estate/calendar/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+  );
 }
