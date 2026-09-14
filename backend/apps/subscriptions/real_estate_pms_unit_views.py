@@ -83,7 +83,8 @@ class RealEstatePMSUnitView(APIView):
         if not context:
             return Response({'detail': 'Real-estate PMS access is required.'}, status=403)
         owner_id = context['owner_id']
-        qs = PropertyUnit.objects.filter(listing__user_id=owner_id)
+        listing_ids = Listing.objects.filter(user_id=owner_id).values('id')
+        qs = PropertyUnit.objects.filter(listing_id__in=listing_ids)
         if context.get('pms_role') == 'AGENT':
             qs = qs.filter(
                 listing_id__in=RealEstatePMSListingAssignment.objects.filter(
@@ -166,7 +167,8 @@ class RealEstatePMSUnitView(APIView):
         context = _context(request.user)
         if not context or context.get('read_only'):
             return Response({'detail': 'An active real-estate PMS subscription is required for unit changes.'}, status=403)
-        unit = PropertyUnit.objects.select_for_update().filter(pk=unit_id, listing__user_id=context['owner_id']).first()
+        listing_ids = Listing.objects.filter(user_id=context['owner_id']).values('id')
+        unit = PropertyUnit.objects.select_for_update().filter(pk=unit_id, listing_id__in=listing_ids).first()
         if not unit:
             return Response({'detail': 'Unit not found.'}, status=404)
         listing = Listing.objects.filter(pk=unit.listing_id).first()
@@ -215,7 +217,8 @@ class RealEstatePMSUnitView(APIView):
             return Response({'detail': 'An active real-estate PMS subscription is required for unit changes.'}, status=403)
         if context.get('pms_role') != 'ADMIN':
             return Response({'detail': 'Only the PMS administrator can delete units.'}, status=403)
-        unit = PropertyUnit.objects.select_for_update().filter(pk=unit_id, listing__user_id=context['owner_id']).first()
+        listing_ids = Listing.objects.filter(user_id=context['owner_id']).values('id')
+        unit = PropertyUnit.objects.select_for_update().filter(pk=unit_id, listing_id__in=listing_ids).first()
         if not unit:
             return Response({'detail': 'Unit not found.'}, status=404)
         if RenterUnitAssociation.objects.filter(unit_id=unit.id, status='ACTIVE').exists():
