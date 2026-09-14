@@ -26,19 +26,22 @@ class LandlordApplicationSubmitView(APIView):
     @transaction.atomic
     def post(self, request):
         profile = Profile.objects.select_for_update().get(pk=request.user.pk)
-
-        if profile.role != 'landlord':
-            return Response({'success': False, 'code': 'INVALID_ROLE', 'message': 'Your account is not registered as a landlord.'}, status=400)
+        role = str(profile.role or '').strip().lower()
+        if role not in {'landlord', 'real_estate'}:
+            return Response({'success': False, 'code': 'INVALID_ROLE', 'message': 'Your account is not registered as a landlord or real estate professional.'}, status=400)
         if not profile.email_verified:
             return Response({'success': False, 'code': 'EMAIL_NOT_VERIFIED', 'message': 'Please verify your email before applying.'}, status=403)
         if not profile.kyc_completed:
             return Response({'success': False, 'code': 'KYC_REQUIRED', 'message': 'Please complete identity verification before applying.'}, status=403)
 
-        current = str(profile.landlord_application_status or 'not_requested').lower()
+        application_type = role
+        status_field = 'landlord_application_status' if role == 'landlord' else 'real_estate_application_status'
+        current = str(getattr(profile, status_field, 'not_requested') or 'not_requested').lower()
+        display_role = 'landlord' if role == 'landlord' else 'real estate'
         if current == 'pending':
-            return Response({'success': False, 'code': 'ALREADY_PENDING', 'message': 'Your landlord application is already pending review.'}, status=409)
+            return Response({'success': False, 'code': 'ALREADY_PENDING', 'message': f'Your {display_role} application is already pending review.'}, status=409)
         if current == 'approved':
-            return Response({'success': False, 'code': 'ALREADY_APPROVED', 'message': 'Your landlord application has already been approved.'}, status=409)
+            return Response({'success': False, 'code': 'ALREADY_APPROVED', 'message': f'Your {display_role} application has already been approved.'}, status=409)
 
         first_name = str(request.data.get('p_first_name', request.data.get('first_name', profile.first_name or ''))).strip()
         middle_name = str(request.data.get('p_middle_name', request.data.get('middle_name', profile.middle_name or ''))).strip()
@@ -78,12 +81,17 @@ class LandlordApplicationSubmitView(APIView):
         profile.national_id = national_id
         profile.id_document_type = document_type
         profile.id_document_url = document_url
-        profile.landlord_application_status = 'pending'
+        setattr(profile, status_field, 'pending')
+        if role == 'real_estate':
+            profile.is_agency = True
         profile.updated_at = timezone.now()
-        profile.save(update_fields=[
+        update_fields = [
             'first_name', 'middle_name', 'last_name', 'phone', 'national_id',
-            'id_document_type', 'id_document_url', 'landlord_application_status', 'updated_at',
-        ])
+            'id_document_type', 'id_document_url', status_field, 'updated_at',
+        ]
+        if role == 'real_estate':
+            update_fields.append('is_agency')
+        profile.save(update_fields=update_fields)
 
         full_name = ' '.join(part for part in (first_name, middle_name, last_name) if part)
         application = {
@@ -98,32 +106,34 @@ class LandlordApplicationSubmitView(APIView):
             'national_id': national_id,
             'document_type': document_type,
             'document_url': document_url,
-            'application_type': 'landlord',
+            'application_type': application_type,
             'status': 'pending',
             'submitted_at': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
         }
 
         notification_status = {'applicant_queued': False, 'admin_queued': False}
+        applicant_template = 'landlord_application_submitted' if role == 'landlord' else 'real_estate_application_submitted'
+        admin_template = 'landlord_admin_notification' if role == 'landlord' else 'real_estate_admin_notification'
         try:
-            queue_email(recipient=profile.email, template_type='landlord_application_submitted', payload=application)
+            queue_email(recipient=profile.email, template_type=applicant_template, payload=application)
             notification_status['applicant_queued'] = True
         except Exception:
-            logger.exception('Failed to queue landlord applicant notification for %s', profile.email)
+            logger.exception('Failed to queue %s applicant notification for %s', display_role, profile.email)
 
         admin_email = str(getattr(settings, 'ADMIN_EMAIL', '') or '').strip().lower()
         if admin_email:
             try:
-                queue_email(recipient=admin_email, template_type='landlord_admin_notification', payload=application)
+                queue_email(recipient=admin_email, template_type=admin_template, payload=application)
                 notification_status['admin_queued'] = True
             except Exception:
-                logger.exception('Failed to queue landlord admin notification for %s', profile.email)
+                logger.exception('Failed to queue %s admin notification for %s', display_role, profile.email)
         else:
-            logger.error('ADMIN_EMAIL is not configured; landlord admin notification was not queued')
+            logger.error('ADMIN_EMAIL is not configured; %s admin notification was not queued', display_role)
 
         return Response({
             'success': True,
             'code': 'SUBMITTED',
-            'message': 'Your landlord application has been submitted for review.',
+            'message': f'Your {display_role} application has been submitted for review.',
             'profile': ProfileSerializer(profile).data,
             'notifications': notification_status,
         }, status=200)
