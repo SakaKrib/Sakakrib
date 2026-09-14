@@ -27,6 +27,7 @@ def _canonical_profile_state(application_type, status_value):
     if status_value == 'approved':
         return {
             'role': application_type,
+            'is_agency': application_type == 'real_estate',
             'kyc_completed': True,
             'kyc_status': KYC_STATUS_BY_APPLICATION_STATUS[status_value],
             'verification_status': 'verified',
@@ -34,6 +35,7 @@ def _canonical_profile_state(application_type, status_value):
 
     return {
         'role': 'renter',
+        'is_agency': False,
         'kyc_completed': False,
         'kyc_status': KYC_STATUS_BY_APPLICATION_STATUS[status_value],
         'verification_status': (
@@ -200,6 +202,7 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
 
     setattr(profile, field, status_value)
     profile.role = state['role']
+    profile.is_agency = state['is_agency']
     profile.admin_review_note = note
     profile.kyc_status = state['kyc_status']
     profile.verification_status = state['verification_status']
@@ -208,6 +211,7 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
     profile.save(update_fields=[
         field,
         'role',
+        'is_agency',
         'admin_review_note',
         'kyc_status',
         'verification_status',

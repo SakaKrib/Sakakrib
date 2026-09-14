@@ -483,6 +483,7 @@ LOAD USER
       );
 
       let data: Profile | null = null;
+      let subscription: Subscription | null = null;
 
       if (respAny == null) {
         data = null;
@@ -490,70 +491,58 @@ LOAD USER
         const item =
           respAny.items.find(
             (it: any) =>
-              String(
-                it?.profile?.id || it?.id
-              ) === String(userId)
+              String(it?.profile?.id || it?.id) === String(userId)
           ) ??
           respAny.items[0] ??
           null;
 
-        data =
-          (item?.profile ?? item) as Profile | null;
+        data = (item?.profile ?? item) as Profile | null;
+
+        subscription =
+          item?.subscription ??
+          item?.landlord_subscription ??
+          item?.real_estate_subscription ??
+          null;
       } else if (respAny.profile) {
         data = respAny.profile as Profile;
+
+        subscription =
+          respAny.subscription ??
+          respAny.landlord_subscription ??
+          respAny.real_estate_subscription ??
+          null;
       } else if (respAny.id) {
         data = respAny as Profile;
+
+        subscription =
+          respAny.subscription ??
+          respAny.landlord_subscription ??
+          respAny.real_estate_subscription ??
+          null;
       }
 
       if (!data) {
-        throw new Error(
-          'User profile was not found.'
-        );
-      }
-
-      /* ==================================================
-         LOAD LATEST SUBSCRIPTION
-      ================================================== */
-
-      let subscription: Subscription | null = null;
-
-      /*
-       * Subscription access remains role-based because subscriptions
-       * belong to the active landlord / real-estate account role.
-       */
-      if (data.role === 'landlord') {
-        const subscriptionRows =
-          await protectedGet<Subscription[]>(
-            `/rest/v1/landlord_subscriptions?select=id,landlord_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&landlord_id=eq.${encodeURIComponent(
-              String(userId)
-            )}&order=created_at.desc&limit=1`
-          );
-
-        subscription =
-          subscriptionRows?.[0] ?? null;
-      }
-
-      if (data.role === 'real_estate') {
-        const subscriptionRows =
-          await protectedGet<Subscription[]>(
-            `/rest/v1/real_estate_subscriptions?select=id,real_estate_id,plan_id,billing_cycle,status,current_period_start,current_period_end,grace_period_end,auto_renew,created_at,updated_at,paypal_subscription_id,paypal_plan_id,paypal_status,next_billing_at,cancel_at_period_end,cancelled_at,billing_amount_kes,billing_amount_usd,billing_exchange_rate,billing_exchange_rate_timestamp,plan:subscription_plans(id,name,audience,max_listings,max_units_per_listing,monthly_price_kes,annual_price_kes)&real_estate_id=eq.${encodeURIComponent(
-              String(userId)
-            )}&order=created_at.desc&limit=1`
-          );
-
-        subscription =
-          subscriptionRows?.[0] ?? null;
+        throw new Error('User profile was not found.');
       }
 
       setUser({
         ...data,
         subscription,
       });
+
+      
+
+      
+
+      setUser({
+        ...data,
+        subscription,
+      });
     } catch (err) {
+      console.error('Admin user details load failed:', err);
+
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load user.'
+        'Unable to load this user’s details. Please refresh the page and try again.'
       );
 
       setUser(null);

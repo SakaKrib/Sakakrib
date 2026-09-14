@@ -58,17 +58,20 @@ class ApplicationStatusServiceTests(TestCase):
         expected = {
             'pending': {
                 'role': 'renter',
+                'is_agency': False,
                 'kyc_status': 'pending',
                 'kyc_completed': False,
                 'verification_status': 'pending_verification',
             },
             'approved': {
+                'is_agency': False,
                 'kyc_status': 'approved',
                 'kyc_completed': True,
                 'verification_status': 'verified',
             },
             'rejected': {
                 'role': 'renter',
+                'is_agency': False,
                 'kyc_status': 'rejected',
                 'kyc_completed': False,
                 'verification_status': 'rejected',
@@ -112,6 +115,8 @@ class ApplicationStatusServiceTests(TestCase):
                     for key, value in expected[status_value].items():
                         if key == 'role' and status_value == 'approved':
                             value = application_type
+                        if key == 'is_agency' and status_value == 'approved':
+                            value = application_type == 'real_estate'
                         self.assertEqual(getattr(profile, key), value)
 
                     if application_type == 'mover':
