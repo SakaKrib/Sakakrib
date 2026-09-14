@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import {
   Building2,
@@ -21,60 +20,50 @@ import DocumentCapture from '@/components/DocumentCapture';
 import {
   protectedPatch,
   protectedPost,
-  protectedFunctionPost,
 } from '@/lib/djangoLegacyApi';
 
 import {
   validateEmail,
   validatePhone,
-  validateNationalID
+  validateNationalID,
 } from '@/lib/utils';
-
-type EmailType =
-  | 'landlord_application_submitted'
-  | 'landlord_admin_notification';
 
 export default function RegisterLandlordPage() {
   const { profile, refreshProfile } = useAuth();
   const { navigate, setAuthModalOpen, setRoleModalOpen } = useNav();
 
-  const [termsAccepted, setTermsAccepted] =
-    useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [firstName, setFirstName] = useState(
+    profile?.first_name || ''
+  );
 
-  const [sendingEmail, setSendingEmail] =
-    useState(false);
+  const [middleName, setMiddleName] = useState(
+    profile?.middle_name || ''
+  );
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [lastName, setLastName] = useState(
+    profile?.last_name || ''
+  );
 
-  const [success, setSuccess] =
-    useState(false);
+  const [email, setEmail] = useState(
+    profile?.email || ''
+  );
 
-  const [firstName, setFirstName] =
-    useState(profile?.first_name || '');
+  const [phone, setPhone] = useState(
+    profile?.phone || ''
+  );
 
-  const [middleName, setMiddleName] =
-    useState(profile?.middle_name || '');
+  const [nationalId, setNationalId] = useState(
+    profile?.national_id || ''
+  );
 
-  const [lastName, setLastName] =
-    useState(profile?.last_name || '');
-
-  const [email, setEmail] =
-    useState(profile?.email || '');
-
-  const [phone, setPhone] =
-    useState(profile?.phone || '');
-
-  const [nationalId, setNationalId] =
-    useState(profile?.national_id || '');
-
-  const [documentType, setDocumentType] =
-    useState<'national_id' | 'passport'>(
-      'national_id'
-    );
+  const [documentType, setDocumentType] = useState<
+    'national_id' | 'passport'
+  >('national_id');
 
   const [documentUrl, setDocumentUrl] = useState(
     profile?.id_document_url?.trim() || ''
@@ -112,168 +101,120 @@ export default function RegisterLandlordPage() {
     );
   }
 
+  const isRealEstate = profile.role === 'real_estate';
+
+  const applicationStatus = isRealEstate
+    ? profile.real_estate_application_status
+    : profile.landlord_application_status;
+
   /*
    * ------------------------------------------------------
-   * APPROVED LANDLORD
+   * APPLICATION — APPROVED
    * ------------------------------------------------------
    */
-    /*
-    * ------------------------------------------------------
-    * LANDLORD APPLICATION — APPROVED
-    * ------------------------------------------------------
-    */
 
-    if (
-      profile.landlord_application_status === 'approved'
-    ) {
-      return (
-        <StatusCard
-          icon="success"
-          title="Landlord application approved"
-          message="Your landlord application has been approved. You can now manage your properties from your dashboard."
-          actionLabel="Open Dashboard"
-          onAction={() => navigate('dashboard')}
-        />
-      );
-    }
-
-    /*
-    * ------------------------------------------------------
-    * LANDLORD APPLICATION — PENDING
-    * ------------------------------------------------------
-    */
-
-    if (
-      profile.landlord_application_status === 'pending'
-    ) {
-      return (
-        <StatusCard
-          icon="pending"
-          title="Landlord application pending"
-          message="Your landlord application has been submitted and is currently waiting for administrator verification. You cannot submit another application while this request is being reviewed."
-        />
-      );
-    }
-
-    /*
-    * ------------------------------------------------------
-    * LANDLORD — KYC INCOMPLETE
-    * ------------------------------------------------------
-    */
-
-    if (
-      profile.role === 'landlord' &&
-      profile.kyc_completed === false
-    ) {
-      return (
-        <StatusCard
-          icon="warning"
-          title="Complete your identity verification"
-          message="Your identity verification has not been completed. Please complete KYC before continuing with landlord registration."
-          actionLabel="Complete KYC"
-          onAction={() => navigate('kyc-verify')}
-        />
-      );
-    }
-
-    /*
-    * ------------------------------------------------------
-    * RENTER — ROLE SELECTION REQUIRED
-    * ------------------------------------------------------
-    */
-
-    if (profile.role === 'renter') {
-      return (
-        <StatusCard
-          icon="warning"
-          title="Choose your professional role"
-          message="Before becoming a landlord, please confirm your professional role."
-          actionLabel="Choose Role"
-          onAction={() => setRoleModalOpen(true)}
-        />
-      );
-    }
-
-    /*
-    * ------------------------------------------------------
-    * UNSUPPORTED ROLE
-    * ------------------------------------------------------
-    */
-
-    if (
-      profile.role !== null &&
-      profile.role !== 'landlord'
-    ) {
-      return (
-        <StatusCard
-          icon="blocked"
-          title="Landlord registration unavailable"
-          message="Your current account role does not allow landlord registration."
-          actionLabel="Home"
-          onAction={() => navigate('home')}
-        />
-      );
-    }
-
-/*
- * ------------------------------------------------------
- * LANDLORD + KYC COMPLETE
- * ------------------------------------------------------
- *
- * If the user reaches this point:
- *
- * role = landlord
- * kyc_completed = true
- * landlord_application_status = not_requested/rejected
- *
- * Therefore the landlord registration form is rendered
- * below.
- */
-
-/*
- * ------------------------------------------------------
- * LANDLORD + KYC COMPLETE
- * ------------------------------------------------------
- *
- * Fall through to the actual registration form.
- */
-  /*
-   * ------------------------------------------------------
-   * SEND REGISTRATION EMAIL
-   * ------------------------------------------------------
-   *
-   * Email credentials remain inside the Supabase Edge
-   * Function. React never receives SMTP credentials.
-   *
-   * IMPORTANT:
-   * Email failure does NOT invalidate the application.
-   * The application has already been saved successfully.
-   */
-
-  async function sendRegistrationEmail(
-    type: EmailType,
-    applicationData: Record<string, unknown>
-  ): Promise<boolean> {
-    try {
-      await protectedFunctionPost(
-        '/send-notification-emails',
-        {
-          type,
-          application: applicationData,
-        }
-      );
-
-      return true;
-    } catch (error) {
-      console.error(
-        `Failed to request ${type} email:`,
-        error
-      );
-
-      return false;
-    }
+  if (applicationStatus === 'approved') {
+    return (
+      <StatusCard
+        icon="success"
+        title="Application approved"
+        message={`Your ${
+          isRealEstate ? 'real estate' : 'landlord'
+        } application has been approved. You can now manage your properties from your dashboard.`}
+        actionLabel="Open Dashboard"
+        onAction={() => navigate('dashboard')}
+      />
+    );
   }
 
+  /*
+   * ------------------------------------------------------
+   * APPLICATION — PENDING
+   * ------------------------------------------------------
+   */
+
+  if (applicationStatus === 'pending') {
+    return (
+      <StatusCard
+        icon="pending"
+        title="Application pending"
+        message={`Your ${
+          isRealEstate ? 'real estate' : 'landlord'
+        } application has been submitted and is currently waiting for administrator verification. You cannot submit another application while this request is being reviewed.`}
+      />
+    );
+  }
+
+  /*
+   * ------------------------------------------------------
+   * KYC — INCOMPLETE
+   * ------------------------------------------------------
+   */
+
+  if (
+    (profile.role === 'landlord' || profile.role === 'real_estate') &&
+    profile.kyc_completed === false
+  ) {
+    return (
+      <StatusCard
+        icon="warning"
+        title="Complete your identity verification"
+        message={
+          isRealEstate
+            ? 'Your identity verification has not been completed. Please complete KYC before continuing with real estate registration.'
+            : 'Your identity verification has not been completed. Please complete KYC before continuing with landlord registration.'
+        }
+        actionLabel="Complete KYC"
+        onAction={() => navigate('kyc-verify')}
+      />
+    );
+  }
+
+  /*
+   * ------------------------------------------------------
+   * RENTER — ROLE SELECTION REQUIRED
+   * ------------------------------------------------------
+   */
+
+  if (profile.role === 'renter') {
+    return (
+      <StatusCard
+        icon="warning"
+        title="Choose your professional role"
+        message="Before becoming a landlord or Real-Estate Agent, please confirm your professional role."
+        actionLabel="Choose Role"
+        onAction={() => setRoleModalOpen(true)}
+      />
+    );
+  }
+
+  /*
+   * ------------------------------------------------------
+   * UNSUPPORTED ROLE
+   * ------------------------------------------------------
+   */
+
+  if (
+    profile.role !== null &&
+    profile.role !== 'landlord' &&
+    profile.role !== 'real_estate'
+  ) {
+    return (
+      <StatusCard
+        icon="blocked"
+        title="Registration unavailable"
+        message="Your current account role does not allow landlord or Real-Estate registration."
+        actionLabel="Home"
+        onAction={() => navigate('home')}
+      />
+    );
+  }
+
+  /*
+   * ------------------------------------------------------
+   * EFFECTIVE DOCUMENT URL
+   * ------------------------------------------------------
+   */
 
   const effectiveDocumentUrl =
     documentUrl.trim() ||
@@ -282,203 +223,177 @@ export default function RegisterLandlordPage() {
 
   /*
    * ------------------------------------------------------
-   * SUBMIT LANDLORD APPLICATION
+   * SUBMIT APPLICATION
    * ------------------------------------------------------
    */
 
   const handleSubmit = async (
-  event: React.FormEvent
-) => {
-  event.preventDefault();
+    event: React.FormEvent
+  ) => {
+    event.preventDefault();
 
-  if (!profile) {
-    setError(
-      'Please sign in before continuing.'
-    );
-    return;
-  }
+    if (!profile) {
+      setError('Please sign in before continuing.');
+      return;
+    }
 
-  setError(null);
+    setError(null);
 
-  /*
-   * --------------------------------------------------
-   * ACCOUNT / ROLE VALIDATION
-   * --------------------------------------------------
-   */
-
-  if (profile.role !== 'landlord') {
-    setError(
-      'Your account is not registered as a landlord.'
-    );
-    return;
-  }
-
-  /*
-   * KYC must already be completed
-   */
-
-  if (profile.kyc_completed !== true) {
-    setError(
-      'Please complete identity verification before submitting your landlord application.'
-    );
-    return;
-  }
-
-  /*
-   * --------------------------------------------------
-   * NORMALIZE INPUT
-   * --------------------------------------------------
-   */
-
-  const trimmedFirstName =
-    firstName.trim();
-
-  const trimmedMiddleName =
-    middleName.trim();
-
-  const trimmedLastName =
-    lastName.trim();
-
-  const trimmedEmail =
-    email.trim();
-
-  const trimmedPhone =
-    phone.trim();
-
-  const trimmedNationalId =
-    nationalId.trim();
-
-  const trimmedDocumentUrl =
-  effectiveDocumentUrl;
-
-  /*
-   * --------------------------------------------------
-   * PERSONAL DETAILS
-   * --------------------------------------------------
-   */
-
-  if (
-    !trimmedFirstName ||
-    !trimmedLastName
-  ) {
-    setError(
-      'First name and last name are required.'
-    );
-    return;
-  }
-
-  /*
-   * --------------------------------------------------
-   * EMAIL
-   * --------------------------------------------------
-   */
-
-  if (!validateEmail(trimmedEmail)) {
-    setError(
-      'Please enter a valid email address.'
-    );
-    return;
-  }
-
-  /*
-   * --------------------------------------------------
-   * PHONE
-   * --------------------------------------------------
-   */
-
-  if (!validatePhone(trimmedPhone)) {
-    setError(
-      'Please enter a valid Kenyan phone number.'
-    );
-    return;
-  }
-
-  /*
-   * --------------------------------------------------
-   * NATIONAL ID / PASSPORT
-   * --------------------------------------------------
-   */
-
-  if (!trimmedNationalId) {
-    setError(
-      'Please enter your National ID or Passport number.'
-    );
-    return;
-  }
-
-  /*
-   * Validate Kenyan National ID only when
-   * document type is National ID.
-   */
-
-  if (
-    documentType === 'national_id' &&
-    !validateNationalID(trimmedNationalId)
-  ) {
-    setError(
-      'National ID must contain 7-8 digits.'
-    );
-    return;
-  }
-
-  /*
-   * --------------------------------------------------
-   * IDENTITY DOCUMENT
-   * --------------------------------------------------
-   *
-   * DocumentCapture must have successfully uploaded
-   * the image before this form can be submitted.
-   */
-
-  if (!trimmedDocumentUrl) {
-    setError(
-      'Please upload or capture your identity document before submitting.'
-    );
-    return;
-  }
-
-  /*
-   * --------------------------------------------------
-   * TERMS
-   * --------------------------------------------------
-   */
-
-  if (!termsAccepted) {
-    setError(
-      'Please accept the required terms before continuing.'
-    );
-    return;
-  }
-
-  setSubmitting(true);
-
-  try {
     /*
      * --------------------------------------------------
-     * BUILD FULL NAME
+     * ACCOUNT / ROLE VALIDATION
      * --------------------------------------------------
      */
 
-    const fullName = [
-      trimmedFirstName,
-      trimmedMiddleName,
-      trimmedLastName,
-    ]
-      .filter(Boolean)
-      .join(' ');
+    if (
+      profile.role !== 'landlord' &&
+      profile.role !== 'real_estate'
+    ) {
+      setError(
+        'Your account is not registered for this registration type.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * KYC VALIDATION
+     * --------------------------------------------------
+     */
+
+    if (profile.kyc_completed !== true) {
+      setError(
+        profile.role === 'real_estate'
+          ? 'Please complete identity verification before submitting your real estate application.'
+          : 'Please complete identity verification before submitting your landlord application.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * NORMALIZE INPUT
+     * --------------------------------------------------
+     */
+
+    const trimmedFirstName = firstName.trim();
+    const trimmedMiddleName = middleName.trim();
+    const trimmedLastName = lastName.trim();
+    const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
+    const trimmedNationalId = nationalId.trim();
+    const trimmedDocumentUrl = effectiveDocumentUrl;
+
+    /*
+     * --------------------------------------------------
+     * PERSONAL DETAILS
+     * --------------------------------------------------
+     */
+
+    if (!trimmedFirstName || !trimmedLastName) {
+      setError(
+        'First name and last name are required.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * EMAIL
+     * --------------------------------------------------
+     */
+
+    if (!validateEmail(trimmedEmail)) {
+      setError(
+        'Please enter a valid email address.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * PHONE
+     * --------------------------------------------------
+     */
+
+    if (!validatePhone(trimmedPhone)) {
+      setError(
+        'Please enter a valid Kenyan phone number.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * NATIONAL ID / PASSPORT
+     * --------------------------------------------------
+     */
+
+    if (!trimmedNationalId) {
+      setError(
+        'Please enter your National ID or Passport number.'
+      );
+      return;
+    }
+
+    if (
+      documentType === 'national_id' &&
+      !validateNationalID(trimmedNationalId)
+    ) {
+      setError(
+        'National ID must contain 7-8 digits.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * IDENTITY DOCUMENT
+     * --------------------------------------------------
+     */
+
+    if (!trimmedDocumentUrl) {
+      setError(
+        'Please upload or capture your identity document before submitting.'
+      );
+      return;
+    }
+
+    /*
+     * --------------------------------------------------
+     * TERMS
+     * --------------------------------------------------
+     */
+
+    if (!termsAccepted) {
+      setError(
+        'Please accept the required terms before continuing.'
+      );
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      /*
+       * --------------------------------------------------
+       * BUILD FULL NAME
+       * --------------------------------------------------
+       */
+
+      const fullName = [
+        trimmedFirstName,
+        trimmedMiddleName,
+        trimmedLastName,
+      ]
+        .filter(Boolean)
+        .join(' ');
 
       /*
-      * --------------------------------------------------
-      * SAVE IDENTITY DOCUMENT TO PROFILES FIRST
-      * --------------------------------------------------
-      *
-      * DocumentCapture uploads the actual image to
-      * Supabase Storage and gives us documentUrl.
-      *
-      * The profile update itself must go through the
-      * protected-api proxy so the browser never performs
-      * a direct authenticated Supabase database mutation.
-      */
+       * --------------------------------------------------
+       * SAVE IDENTITY DOCUMENT
+       * --------------------------------------------------
+       */
 
       try {
         await protectedPatch(
@@ -505,59 +420,37 @@ export default function RegisterLandlordPage() {
       }
 
       /*
-      * --------------------------------------------------
-      * BUILD APPLICATION
-      * --------------------------------------------------
-      */
+       * --------------------------------------------------
+       * BUILD APPLICATION
+       * --------------------------------------------------
+       */
 
       const application = {
-        applicant_id:
-          profile.id,
-
-        applicant_email:
-          trimmedEmail,
-
-        applicant_name:
-          fullName,
-
-        first_name:
-          trimmedFirstName,
-
-        middle_name:
-          trimmedMiddleName,
-
-        last_name:
-          trimmedLastName,
-
-        phone:
-          trimmedPhone,
-
-        national_id:
-          trimmedNationalId,
-
-        document_type:
-          documentType,
-
-        document_url:
-          trimmedDocumentUrl,
-
-        application_type:
-          'landlord',
-
-        submitted_at:
-          new Date().toISOString(),
+        applicant_id: profile.id,
+        applicant_email: trimmedEmail,
+        applicant_name: fullName,
+        first_name: trimmedFirstName,
+        middle_name: trimmedMiddleName,
+        last_name: trimmedLastName,
+        phone: trimmedPhone,
+        national_id: trimmedNationalId,
+        document_type: documentType,
+        document_url: trimmedDocumentUrl,
+        application_type: profile.role,
+        submitted_at: new Date().toISOString(),
       };
 
       /*
-      * --------------------------------------------------
-      * SAVE LANDLORD APPLICATION
-      * --------------------------------------------------
-      *
-      * submit_landlord_application is an authenticated
-      * database RPC, so call it through protected-api.
-      */
+       * --------------------------------------------------
+       * SUBMIT APPLICATION
+       * --------------------------------------------------
+       *
+       * The backend determines the application type from
+       * the authenticated user's role and handles the
+       * corresponding application workflow.
+       */
 
-      let landlordResult:
+      let applicationResult:
         | {
             success?: boolean;
             code?: string;
@@ -566,134 +459,121 @@ export default function RegisterLandlordPage() {
         | null = null;
 
       try {
-        landlordResult =
-          await protectedPost(
-            '/rest/v1/rpc/submit_landlord_application',
-            {
-              p_first_name:
-                trimmedFirstName,
+        applicationResult = await protectedPost(
+          '/rest/v1/rpc/submit_landlord_application',
+          {
+            p_first_name:
+              trimmedFirstName,
 
-              p_middle_name:
-                trimmedMiddleName,
+            p_middle_name:
+              trimmedMiddleName,
 
-              p_last_name:
-                trimmedLastName,
+            p_last_name:
+              trimmedLastName,
 
-              p_email:
-                trimmedEmail,
+            p_email:
+              trimmedEmail,
 
-              p_phone:
-                trimmedPhone,
+            p_phone:
+              trimmedPhone,
 
-              p_national_id:
-                trimmedNationalId,
+            p_national_id:
+              trimmedNationalId,
 
-              p_document_type:
-                documentType,
+            p_document_type:
+              documentType,
 
-              p_document_url:
-                trimmedDocumentUrl,
-            }
-          );
-      } catch (landlordSubmissionError) {
+            p_document_url:
+              trimmedDocumentUrl,
+          }
+        );
+      } catch (applicationSubmissionError) {
         console.error(
-          'Landlord registration failed:',
-          landlordSubmissionError
+          'Registration submission failed:',
+          applicationSubmissionError
         );
 
         setError(
-          landlordSubmissionError instanceof Error
-            ? landlordSubmissionError.message
-            : 'We could not save your landlord registration. Please try again.'
+          applicationSubmissionError instanceof Error
+            ? applicationSubmissionError.message
+            : `We could not save your ${
+                isRealEstate
+                  ? 'real estate'
+                  : 'landlord'
+              } registration. Please try again.`
         );
 
         return;
       }
 
       /*
-      * --------------------------------------------------
-      * HANDLE RPC BUSINESS-LOGIC FAILURE
-      * --------------------------------------------------
-      */
+       * --------------------------------------------------
+       * HANDLE BUSINESS-LOGIC FAILURE
+       * --------------------------------------------------
+       */
 
       if (
-        landlordResult &&
-        typeof landlordResult === 'object' &&
-        'success' in landlordResult &&
-        landlordResult.success === false
+        applicationResult &&
+        typeof applicationResult === 'object' &&
+        'success' in applicationResult &&
+        applicationResult.success === false
       ) {
         setError(
-          landlordResult.message ||
-            'We could not save your landlord registration. Please try again.'
+          applicationResult.message ||
+            `We could not save your ${
+              isRealEstate
+                ? 'real estate'
+                : 'landlord'
+            } registration. Please try again.`
         );
 
         return;
       }
 
       /*
-      * --------------------------------------------------
-      * REFRESH PROFILE
-      * --------------------------------------------------
-      */
+       * --------------------------------------------------
+       * REFRESH PROFILE
+       * --------------------------------------------------
+       */
 
       try {
         await refreshProfile();
       } catch (profileRefreshError) {
         console.error(
-          'Profile refresh after landlord submission failed:',
+          'Profile refresh after registration submission failed:',
           profileRefreshError
         );
       }
 
       /*
-      * --------------------------------------------------
-      * EMAIL APPLICANT
-      * --------------------------------------------------
-      *
-      * Email failure does NOT invalidate the saved
-      * application.
-      */
-
-      await sendRegistrationEmail(
-        'landlord_application_submitted',
-        application
-      );
-
-      /*
-      * --------------------------------------------------
-      * EMAIL ADMIN
-      * --------------------------------------------------
-      */
-
-      await sendRegistrationEmail(
-        'landlord_admin_notification',
-        application
-      );
-
-      /*
-      * --------------------------------------------------
-      * SUCCESS
-      * --------------------------------------------------
-      */
+       * --------------------------------------------------
+       * SUCCESS
+       * --------------------------------------------------
+       *
+       * Email notifications are handled by the backend.
+       * The frontend only displays the application result.
+       */
 
       setSuccess(true);
+    } catch (submissionError) {
+      console.error(
+        'Registration submission failed:',
+        submissionError
+      );
 
-
-  } catch (submissionError) {
-    console.error(
-      'Landlord submission failed:',
-      submissionError
-    );
-
-    setError(
-      submissionError instanceof Error
-        ? submissionError.message
-        : 'Something went wrong while submitting your landlord registration. Please try again.'
-    );
-  } finally {
-    setSubmitting(false);
-  }
-};
+      setError(
+        submissionError instanceof Error
+          ? submissionError.message
+          : `Something went wrong while submitting your ${
+              isRealEstate
+                ? 'real estate'
+                : 'landlord'
+            } registration. Please try again.`
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   /*
    * ------------------------------------------------------
@@ -704,7 +584,6 @@ export default function RegisterLandlordPage() {
   if (success) {
     return (
       <div className="mx-auto max-w-2xl px-2 py-12">
-
         <div className="card animate-scale-in p-8 text-center">
 
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30">
@@ -712,74 +591,46 @@ export default function RegisterLandlordPage() {
           </div>
 
           <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">
-            Landlord registration submitted
+            {isRealEstate
+              ? 'Real Estate registration submitted'
+              : 'Landlord registration submitted'}
           </h2>
 
           <p className="mt-2 text-gray-500 dark:text-gray-400">
-            Your landlord application has been
-            successfully submitted and is now waiting
-            for administrator verification.
+            Your {isRealEstate ? 'real estate' : 'landlord'} application
+            has been successfully submitted and is now waiting for
+            administrator verification.
           </p>
 
-          <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 text-left dark:border-brand-700 dark:bg-brand-900/20">
-
-            <div className="flex gap-3">
-
-              <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-
-              <div>
-
-                <p className="font-semibold text-brand-900 dark:text-brand-200">
-                  Confirmation email sent
-                </p>
-
-                <p className="mt-1 text-sm text-brand-700 dark:text-brand-300">
-                  We have sent a confirmation to your
-                  registered email address. Our
-                  administration team has also been
-                  notified to review your landlord
-                  application.
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
           <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left dark:border-brand-700 dark:bg-brand-800/30">
-
             <div className="flex gap-3">
 
               <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
 
               <div>
-
                 <p className="font-semibold text-gray-900 dark:text-white">
                   What happens next?
                 </p>
 
                 <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                  Our team will review your identity
-                  information. Once your application is
-                  approved, you will be able to access
-                  landlord features and set up your PMS
-                  subscription.
+                  Our team will review your identity information.
+                  Once your application is approved, you will be
+                  able to access{' '}
+                  {isRealEstate
+                    ? 'real estate'
+                    : 'landlord'}{' '}
+                  features and set up your PMS subscription.
                 </p>
-
               </div>
 
             </div>
-
           </div>
 
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
 
             <button
               type="button"
-              onClick={() =>
-                navigate('dashboard')
-              }
+              onClick={() => navigate('dashboard')}
               className="btn-primary inline-flex items-center justify-center gap-2"
             >
               Go to Dashboard
@@ -788,18 +639,14 @@ export default function RegisterLandlordPage() {
 
             <button
               type="button"
-              onClick={() =>
-                navigate('post-listing')
-              }
+              onClick={() => navigate('post-listing')}
               className="btn-secondary"
             >
               View Listing Requirements
             </button>
 
           </div>
-
         </div>
-
       </div>
     );
   }
@@ -824,12 +671,14 @@ export default function RegisterLandlordPage() {
         <div>
 
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Landlord / Real Estate Owner
+            {isRealEstate
+              ? 'Real Estate Professional'
+              : 'Landlord / Real Estate Owner'}
           </h1>
 
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Create a verified professional profile
-            for managing your properties.
+            Create a verified professional profile for managing
+            your properties.
           </p>
 
         </div>
@@ -837,9 +686,10 @@ export default function RegisterLandlordPage() {
       </div>
 
       <TermsGate
-        context="landlord"
-        onAccept={() =>
-          setTermsAccepted(true)
+        context={
+          profile.role === 'real_estate'
+            ? 'real_estate'
+            : 'landlord'
         }
       >
 
@@ -935,13 +785,16 @@ export default function RegisterLandlordPage() {
             </h3>
 
             <div className="mb-4 grid grid-cols-2 gap-2">
+
               <button
                 type="button"
                 onClick={() => {
                   setDocumentType('national_id');
                   setError(null);
                 }}
-                aria-pressed={documentType === 'national_id'}
+                aria-pressed={
+                  documentType === 'national_id'
+                }
                 className={`btn-secondary transition-all ${
                   documentType === 'national_id'
                     ? '!border-2 !border-brand-600 !bg-brand-100 !text-brand-800 shadow-sm dark:!border-brand-400 dark:!bg-brand-900/40 dark:!text-brand-200'
@@ -949,11 +802,13 @@ export default function RegisterLandlordPage() {
                 }`}
               >
                 <span className="flex items-center justify-center gap-2">
+
                   {documentType === 'national_id' && (
                     <CheckCircle2 className="h-4 w-4" />
                   )}
 
                   National ID
+
                 </span>
               </button>
 
@@ -963,7 +818,9 @@ export default function RegisterLandlordPage() {
                   setDocumentType('passport');
                   setError(null);
                 }}
-                aria-pressed={documentType === 'passport'}
+                aria-pressed={
+                  documentType === 'passport'
+                }
                 className={`btn-secondary transition-all ${
                   documentType === 'passport'
                     ? '!border-2 !border-brand-600 !bg-brand-100 !text-brand-800 shadow-sm dark:!border-brand-400 dark:!bg-brand-900/40 dark:!text-brand-200'
@@ -971,13 +828,16 @@ export default function RegisterLandlordPage() {
                 }`}
               >
                 <span className="flex items-center justify-center gap-2">
+
                   {documentType === 'passport' && (
                     <CheckCircle2 className="h-4 w-4" />
                   )}
 
                   Passport
+
                 </span>
               </button>
+
             </div>
 
             <DocumentCapture
@@ -1011,12 +871,11 @@ export default function RegisterLandlordPage() {
 
               <span className="text-sm leading-6 text-gray-700 dark:text-gray-300">
 
-                I confirm that the information I have
-                provided is accurate and belongs to me,
-                and I agree to the Saka Crib Landlord
-                Terms and Conditions, verification
-                requirements and property management
-                policies.
+                I confirm that the information I have provided is
+                accurate and belongs to me, and I agree to the Saka
+                Crib {isRealEstate ? 'Real Estate' : 'Landlord'} Terms
+                and Conditions, verification requirements and property
+                management policies.
 
               </span>
 
@@ -1053,14 +912,13 @@ export default function RegisterLandlordPage() {
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-
-                {sendingEmail
-                  ? 'Sending confirmation...'
-                  : 'Submitting registration...'}
+                Submitting registration...
               </>
             ) : (
               <>
-                Submit Landlord Registration
+                {isRealEstate
+                  ? 'Submit Real Estate Registration'
+                  : 'Submit Landlord Registration'}
 
                 <ArrowRight className="h-4 w-4" />
               </>
@@ -1148,7 +1006,6 @@ function StatusCard({
             {actionLabel}
 
             <ArrowRight className="h-4 w-4" />
-
           </button>
         )}
 

@@ -103,9 +103,6 @@ interface ReferenceContact {
   relationship: string;
 }
 
-type EmailType =
-  | 'mover_application_submitted'
-  | 'mover_admin_notification';
 
 
    const DAYS = [
@@ -123,34 +120,7 @@ type EmailType =
   const DEFAULT_DAYS: Day[] = [...DAYS];
   const DEFAULT_START = '08:00';
   const DEFAULT_END = '18:00';  
-/*
-|--------------------------------------------------------------------------
-| EMAIL FUNCTION
-|--------------------------------------------------------------------------
-*/
-async function sendRegistrationEmail(
-  type: EmailType,
-  applicationData: Record<string, unknown>
-): Promise<boolean> {
-  try {
-    await protectedFunctionPost(
-      '/send-notification-emails',
-      {
-        type,
-        application: applicationData,
-      }
-    );
 
-    return true;
-  } catch (error) {
-    console.error(
-      `Failed to request ${type} email:`,
-      error
-    );
-
-    return false;
-  }
-}
 /*
 |--------------------------------------------------------------------------
 | PAGE
@@ -186,11 +156,6 @@ export default function RegisterMoverPage() {
 
   const [success, setSuccess] =
     useState(false);
-
-  const [emailStatus, setEmailStatus] =
-    useState<
-      'pending' | 'sent' | 'failed'
-    >('pending');
 
   const [firstName, setFirstName] =
     useState('');
@@ -1349,25 +1314,7 @@ export default function RegisterMoverPage() {
       |--------------------------------------------------------------------------
       */
 
-      const applicantEmailSent =
-        await sendRegistrationEmail(
-          'mover_application_submitted',
-          application
-        );
-
-      const adminEmailSent =
-        await sendRegistrationEmail(
-          'mover_admin_notification',
-          application
-        );
-
-      setEmailStatus(
-        applicantEmailSent &&
-          adminEmailSent
-          ? 'sent'
-          : 'failed'
-      );
-
+     
       setSuccess(true);
     } catch (submissionError) {
       console.error(
@@ -1444,49 +1391,7 @@ export default function RegisterMoverPage() {
             waiting for administrator approval.
           </p>
 
-          {emailStatus === 'sent' && (
-            <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-4 text-left dark:border-brand-700 dark:bg-brand-900/20">
-              <div className="flex gap-3">
-                <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-
-                <div>
-                  <p className="font-semibold text-brand-900 dark:text-brand-200">
-                    Confirmation emails sent
-                  </p>
-
-                  <p className="mt-1 text-sm text-brand-700 dark:text-brand-300">
-                    A confirmation was sent to
-                    your registered email address
-                    and the administration team was
-                    notified.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {emailStatus === 'failed' && (
-            <div className="mt-5 rounded-xl border border-warning-200 bg-warning-50 p-4 text-left dark:border-warning-800 dark:bg-warning-900/20">
-              <div className="flex gap-3">
-                <Mail className="mt-0.5 h-5 w-5 shrink-0 text-warning-600" />
-
-                <div>
-                  <p className="font-semibold text-warning-900 dark:text-warning-200">
-                    Application submitted
-                  </p>
-
-                  <p className="mt-1 text-sm text-warning-700 dark:text-warning-300">
-                    Your application was saved
-                    successfully. We could not confirm
-                    delivery of one or more notification
-                    emails, but this does not affect
-                    your application.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
+          
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
             <button
               type="button"

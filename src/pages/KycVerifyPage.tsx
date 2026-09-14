@@ -41,7 +41,6 @@ type UserRole =
   | null
   | undefined;
 
-const KYC_BUCKET = 'kyc-documents';
 
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
@@ -54,6 +53,8 @@ function getRegistrationRoute(
 ): AppView | null {
   switch (role) {
     case 'landlord':
+      return 'register-landlord';
+    case 'real_estate':
       return 'register-landlord';
     case 'mover':
       return 'register-mover';
@@ -68,6 +69,8 @@ function getRoleLabel(
   switch (role) {
     case 'landlord':
       return 'landlord';
+    case 'real_estate':
+      return 'real estate';
     case 'mover':
       return 'mover';
     case 'professional':
@@ -502,6 +505,8 @@ export default function KycVerifyPage() {
         context={
           role === 'mover'
             ? 'mover'
+            : role === 'real_estate'
+            ? 'real_estate'
             : 'landlord'
         }
         onAccept={() =>
