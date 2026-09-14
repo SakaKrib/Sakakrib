@@ -1,0 +1,111 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart3, Loader2, RefreshCw, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
+import {
+  getRealEstatePMSFinancialReport,
+  type RealEstatePMSFinancialReportData,
+} from '@/lib/RealEstateTs/RealEstatePMSFinancialReportService';
+
+const kes = (value: number) => `KES ${Number(value || 0).toLocaleString('en-KE')}`;
+
+const monthLabel = (value: string) => {
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return value;
+  return new Intl.DateTimeFormat('en-KE', { month: 'short', year: 'numeric' }).format(new Date(year, month - 1, 1));
+};
+
+export default function RealEstatePMSFinancialReport() {
+  const [data, setData] = useState<RealEstatePMSFinancialReportData | null>(null);
+  const [months, setMonths] = useState(12);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (refresh = false, range = months) => {
+    if (refresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const result = await getRealEstatePMSFinancialReport(range);
+      setData(result.data ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load financial report.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [months]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const maxMonthlyValue = useMemo(
+    () => Math.max(1, ...(data?.monthly ?? []).map((item) => Math.max(item.invoiced_kes, item.collected_kes, item.outstanding_kes))),
+    [data],
+  );
+
+  if (loading) {
+    return <div className="flex justify-center py-12 text-sm text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading financial report...</div>;
+  }
+
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-brand-600 dark:text-brand-300" /><h2 className="text-xl font-bold text-gray-900 dark:text-white">Financial reporting</h2></div>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Portfolio-level rent performance from recorded invoices and verified payments.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={months} onChange={(event) => { const next = Number(event.target.value); setMonths(next); void load(false, next); }} className="rounded-lg border bg-white px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-900">
+            <option value={6}>Last 6 months</option>
+            <option value={12}>Last 12 months</option>
+            <option value={24}>Last 24 months</option>
+          </select>
+          <button type="button" onClick={() => void load(true)} disabled={refreshing} className="rounded-lg border bg-white p-2 dark:border-brand-700 dark:bg-brand-900" aria-label="Refresh financial report"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /></button>
+        </div>
+      </div>
+
+      {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{error}</div>}
+
+      {!data ? <div className="rounded-xl border bg-white p-6 text-sm text-gray-500 dark:border-brand-700 dark:bg-brand-900">No financial report data was returned.</div> : <>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Invoiced</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{kes(data.summary.invoiced_kes)}</p><p className="mt-1 text-xs text-gray-500">{data.summary.invoice_count} invoices</p></div>
+          <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Collected</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{kes(data.summary.collected_kes)}</p><p className="mt-1 text-xs text-gray-500">{data.summary.collection_rate.toFixed(1)}% collection rate</p></div>
+          <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Outstanding</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{kes(data.summary.outstanding_kes)}</p><p className="mt-1 text-xs text-gray-500">Recorded unpaid invoices</p></div>
+          <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Pending submissions</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{data.summary.pending_payment_submissions}</p><p className="mt-1 text-xs text-gray-500">Awaiting verification</p></div>
+        </div>
+
+        <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
+          <div className="flex items-center gap-2"><WalletCards className="h-5 w-5 text-brand-600 dark:text-brand-300" /><div><h3 className="font-bold text-gray-900 dark:text-white">Monthly cash collection</h3><p className="text-xs text-gray-500 dark:text-gray-400">Invoice value compared with collected and outstanding amounts.</p></div></div>
+          <div className="mt-5 space-y-4">
+            {data.monthly.map((item) => <div key={item.month}>
+              <div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="font-medium text-gray-700 dark:text-gray-300">{monthLabel(item.month)}</span><span className="text-gray-500">{kes(item.collected_kes)} collected</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-brand-800"><div className="h-2 rounded-full bg-brand-600" style={{ width: `${Math.min(100, (item.invoiced_kes / maxMonthlyValue) * 100)}%` }} /></div>
+              <div className="mt-1 flex justify-between text-[11px] text-gray-400"><span>Invoiced {kes(item.invoiced_kes)}</span><span>Outstanding {kes(item.outstanding_kes)}</span></div>
+            </div>)}
+          </div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900">
+            <div className="border-b p-5 dark:border-brand-800"><h3 className="font-bold text-gray-900 dark:text-white">Property financial performance</h3><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Breakdown of recorded rent by property.</p></div>
+            <div className="divide-y dark:divide-brand-800">
+              {data.properties.length === 0 ? <p className="p-6 text-sm text-gray-500">No property finance records in this period.</p> : data.properties.map((property) => <div key={property.listing_id} className="p-5">
+                <div className="flex items-start justify-between gap-4"><div><p className="font-semibold text-gray-900 dark:text-white">{property.property_name}</p><p className="text-xs text-gray-500">{property.units} units · {property.occupied_units} occupied · {property.vacant_units} vacant</p></div><span className="text-sm font-bold">{property.collection_rate.toFixed(1)}%</span></div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><p className="text-gray-400">Invoiced</p><p className="mt-1 font-semibold">{kes(property.invoiced_kes)}</p></div><div><p className="text-gray-400">Collected</p><p className="mt-1 font-semibold">{kes(property.collected_kes)}</p></div><div><p className="text-gray-400">Outstanding</p><p className="mt-1 font-semibold">{kes(property.outstanding_kes)}</p></div></div>
+              </div>)}
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900">
+            <div className="border-b p-5 dark:border-brand-800"><h3 className="font-bold text-gray-900 dark:text-white">Unit financial performance</h3><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Unit-level breakdown for invoiced rent.</p></div>
+            <div className="max-h-[520px] divide-y overflow-y-auto dark:divide-brand-800">
+              {data.units.length === 0 ? <p className="p-6 text-sm text-gray-500">No unit finance records in this period.</p> : data.units.map((unit) => <div key={unit.unit_id} className="p-5">
+                <div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-gray-900 dark:text-white">Unit {unit.unit_number}</p><p className="text-xs text-gray-500">{unit.property_name}</p></div><span className="text-xs font-bold">{unit.collection_rate.toFixed(1)}%</span></div>
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs"><span className="inline-flex items-center gap-1 text-gray-500"><TrendingUp className="h-3.5 w-3.5" />{kes(unit.collected_kes)}</span><span className="inline-flex items-center gap-1 text-gray-500"><TrendingDown className="h-3.5 w-3.5" />{kes(unit.outstanding_kes)}</span><span className="font-medium">{kes(unit.invoiced_kes)} invoiced</span></div>
+              </div>)}
+            </div>
+          </div>
+        </div>
+      </>}
+    </section>
+  );
+}
