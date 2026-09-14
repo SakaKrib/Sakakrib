@@ -12,7 +12,6 @@ import RealEstatePMSWorkspace from '@/components/PMS/RealEstate/RealEstatePMSWor
 import DashboardPage from './DashboardPage';
 import AdminOperationsPanel from './AdminOperationsPanel';
 import AdminListingPostPanel from './AdminListingPostPanel';
-import PMSSubscriptionPage from '@/components/PMS/PMSSubscriptionPage';
 import type { UserRole } from '@/types/domain';
 
 type ProfessionalRole = 'landlord' | 'real_estate' | 'agency' | 'mover';
@@ -160,7 +159,9 @@ function PMSAccessGate({ role, status }: { role: PMSRole; status: string }) {
   }
 
   if (access.allowed === true) {
-    return role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstatePMSWorkspace />;
+    // Django's access response identifies the actual PMS workspace. This keeps
+    // team members in Real Estate PMS even when their Profile role is different.
+    return access.role === 'landlord' ? <LandlordPMSWorkspace /> : <RealEstatePMSWorkspace />;
   }
 
   const reason = normalizeStatus(access.reason);
@@ -229,10 +230,11 @@ export default function RoleDashboardRouter() {
   const role: ProfessionalRole = rawRole === 'agency' || profile.is_agency === true ? 'real_estate' : rawRole as ProfessionalRole;
   const status = normalizeStatus(profile[applicationField[role]]);
 
-  // Django is the authority for PMS team membership. A non-owner profile role
-  // must reach the PMS access check before its normal role dashboard is selected.
-  if (view === 'pms-dashboard' && role !== 'landlord' && role !== 'real_estate') {
-    return <PMSAccessGate role="real_estate" status="" />;
+  // Django is the authority for PMS access. Check the protected PMS workspace
+  // before the normal role-dashboard application-status routing so a team
+  // member can enter the Real Estate PMS regardless of their Profile role.
+  if (view === 'pms-dashboard') {
+    return <PMSAccessGate role={role === 'real_estate' ? 'real_estate' : 'landlord'} status={status} />;
   }
 
   if (role === 'renter') return <RenterDashboard />;
@@ -242,10 +244,6 @@ export default function RoleDashboardRouter() {
   if (role === 'landlord' || role === 'real_estate') {
     if (status !== 'approved') {
       return <AccessNotice role={role} status={status} />;
-    }
-
-    if (view === 'pms-dashboard') {
-      return <PMSAccessGate role={role} status={status} />;
     }
 
     return role === 'landlord'
