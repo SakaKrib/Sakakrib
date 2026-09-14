@@ -1,38 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, CheckCircle2, Crown, FileText, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Crown, FileText, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
 import PMSPlanSelector, { type PMSBillingCycle, type PMSPlanName, type PMSSubscriptionPlan } from '../PMSPlanSelector';
 import type { RealEstateDashboardData } from '@/lib/RealEstateTs/Realestateservice';
 
-interface SubscriptionData {
-  subscription_id: string | null;
-  plan_id: string | null;
-  plan_name: PMSPlanName | null;
-  subscription_status: string | null;
-  billing_cycle: PMSBillingCycle | null;
-  max_listings: number | null;
-  max_units_per_listing: number | null;
-  current_period_start: string | null;
-  current_period_end: string | null;
-  grace_period_end: string | null;
-  auto_renew: boolean;
-  cancel_at_period_end: boolean;
-  next_billing_at: string | null;
-}
-interface Invoice {
-  id: string;
-  status: string;
-  plan_name: string | null;
-  billing_cycle: string | null;
-  amount_kes: number | null;
-  currency: string | null;
-  payment_provider: string | null;
-  paid_at: string | null;
-  created_at: string | null;
-}
-
+interface SubscriptionData { subscription_id: string | null; plan_id: string | null; plan_name: PMSPlanName | null; subscription_status: string | null; billing_cycle: PMSBillingCycle | null; max_listings: number | null; max_units_per_listing: number | null; current_period_start: string | null; current_period_end: string | null; grace_period_end: string | null; auto_renew: boolean; cancel_at_period_end: boolean; next_billing_at: string | null; }
+interface Invoice { id: string; status: string; plan_name: string | null; billing_cycle: string | null; amount_kes: number | null; currency: string | null; payment_provider: string | null; paid_at: string | null; created_at: string | null; }
 const money = (value: number | null) => value == null ? '—' : new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(value);
-const date = (value: string | null) => value ? new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium' }).format(new Date(value)) : '—';
+const date = (value: string | null) => { if (!value) return '—'; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium' }).format(parsed); };
 const statusClass = (status: string | null) => status === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : status === 'GRACE_PERIOD' || status === 'PENDING_PAYMENT' || status === 'PAST_DUE' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-gray-100 text-gray-700 dark:bg-brand-800 dark:text-gray-300';
 
 export default function RealEstatePMSSubscriptionManagement({ data, isAdmin }: { data: RealEstateDashboardData; isAdmin: boolean }) {
@@ -43,49 +18,16 @@ export default function RealEstatePMSSubscriptionManagement({ data, isAdmin }: {
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PMSPlanName | null>(null);
   const [cycle, setCycle] = useState<PMSBillingCycle>('MONTHLY');
-
-  const load = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true); else setLoading(true);
-    setError(null);
-    try {
-      const [subscriptionResult, invoiceResult] = await Promise.all([
-        protectedGet<SubscriptionData>('/api/subscriptions/me/'),
-        protectedGet<Invoice[]>('/api/subscriptions/invoices/'),
-      ]);
-      setSubscription(subscriptionResult.data ?? null);
-      setInvoices(Array.isArray(invoiceResult.data) ? invoiceResult.data : []);
-      if (subscriptionResult.data) {
-        setCycle(subscriptionResult.data.billing_cycle ?? 'MONTHLY');
-        setSelectedPlan(subscriptionResult.data.plan_name ?? null);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load subscription details.');
-    } finally { setLoading(false); setRefreshing(false); }
-  }, []);
-
+  const load = useCallback(async (refresh = false) => { if (refresh) setRefreshing(true); else setLoading(true); setError(null); try { const [subscriptionResult, invoiceResult] = await Promise.all([protectedGet<SubscriptionData>('/api/subscriptions/me/'), protectedGet<Invoice[]>('/api/subscriptions/invoices/')]); setSubscription(subscriptionResult); setInvoices(Array.isArray(invoiceResult) ? invoiceResult : []); if (subscriptionResult) { setCycle(subscriptionResult.billing_cycle ?? 'MONTHLY'); setSelectedPlan(subscriptionResult.plan_name ?? null); } } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load subscription details.'); } finally { setLoading(false); setRefreshing(false); } }, []);
   useEffect(() => { void load(); }, [load]);
-
   const currentPlanId = subscription?.plan_id ?? data.subscription?.plan_id ?? null;
   const currentPlanName = subscription?.plan_name ?? (data.subscription?.plan_name as PMSPlanName | null) ?? null;
   const currentCycle = subscription?.billing_cycle ?? (data.subscription?.billing_cycle as PMSBillingCycle | null) ?? null;
-
   if (loading) return <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Loading subscription management...</div>;
-
-  return <section className="space-y-5">
-    <div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2"><Crown className="h-5 w-5 text-brand-600 dark:text-brand-300" /><h2 className="text-xl font-bold text-gray-900 dark:text-white">Subscription management</h2></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage the Real Estate PMS subscription that controls your portfolio capacity.</p></div><button type="button" onClick={() => void load(true)} disabled={refreshing} className="rounded-lg border bg-white p-2 dark:border-brand-700 dark:bg-brand-900" aria-label="Refresh subscription"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /></button></div>
+  return <section className="space-y-5"><div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2"><Crown className="h-5 w-5 text-brand-600 dark:text-brand-300" /><h2 className="text-xl font-bold text-gray-900 dark:text-white">Subscription management</h2></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage the Real Estate PMS subscription that controls your portfolio capacity.</p></div><button type="button" onClick={() => void load(true)} disabled={refreshing} className="rounded-lg border bg-white p-2 dark:border-brand-700 dark:bg-brand-900" aria-label="Refresh subscription"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /></button></div>
     {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{error}</div>}
-
-    <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
-      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current plan</p><div className="mt-1 flex items-center gap-2"><h3 className="text-xl font-bold text-gray-900 dark:text-white">{subscription?.plan_name ?? data.subscription?.plan_name ?? 'No active plan'}</h3><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(subscription?.subscription_status ?? data.subscription?.subscription_status ?? null)}`}>{subscription?.subscription_status ?? data.subscription?.subscription_status ?? 'NONE'}</span></div></div><div className="text-sm text-gray-500">{subscription?.billing_cycle ?? data.subscription?.billing_cycle ?? '—'}</div></div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Period start</p><p className="mt-1 font-semibold">{date(subscription?.current_period_start ?? data.subscription?.current_period_start ?? null)}</p></div><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Period end</p><p className="mt-1 font-semibold">{date(subscription?.current_period_end ?? data.subscription?.current_period_end ?? null)}</p></div><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Listing capacity</p><p className="mt-1 font-semibold">{currentPlanId ? (subscription?.max_listings ?? data.subscription?.max_listings ?? 'Unlimited') : '—'}</p></div><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Units / listing</p><p className="mt-1 font-semibold">{subscription?.max_units_per_listing ?? data.subscription?.max_units_per_listing ?? 'Unlimited'}</p></div></div>
-      {subscription?.grace_period_end && <div className="mt-4 rounded-lg bg-orange-50 p-3 text-sm text-orange-800 dark:bg-orange-900/20 dark:text-orange-300"><ShieldAlert className="mr-2 inline h-4 w-4" />Grace period ends {date(subscription.grace_period_end)}.</div>}
-      {subscription?.cancel_at_period_end && <div className="mt-4 rounded-lg bg-orange-50 p-3 text-sm text-orange-800 dark:bg-orange-900/20 dark:text-orange-300">Cancellation is scheduled for the end of the current period.</div>}
-    </div>
-
-    {isAdmin && <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><h3 className="font-bold text-gray-900 dark:text-white">Change plan or billing cycle</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">The existing PMS checkout and upgrade flow handles payment and activation.</p><div className="mt-4"><PMSPlanSelector role="real_estate" selectedPlanName={selectedPlan ?? currentPlanName ?? 'STARTER'} billingCycle={cycle} currentPlanId={currentPlanId} currentPlanName={currentPlanName} currentBillingCycle={currentCycle} onPlanChange={(plan: PMSSubscriptionPlan) => setSelectedPlan(plan.name)} onBillingCycleChange={setCycle} onPaymentSuccess={() => void load(true)} onGoToDashboard={() => {}} /></div></div>}
-
-    <div className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900"><div className="border-b p-5 dark:border-brand-800"><div className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600 dark:text-brand-300" /><div><h3 className="font-bold text-gray-900 dark:text-white">Subscription invoices</h3><p className="text-xs text-gray-500 dark:text-gray-400">Payment history for this PMS subscription.</p></div></div></div><div className="divide-y dark:divide-brand-800">{invoices.length === 0 ? <p className="p-6 text-sm text-gray-500">No subscription invoices yet.</p> : invoices.slice(0, 10).map((invoice) => <div key={invoice.id} className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">{invoice.plan_name ?? 'PMS subscription'} · {invoice.billing_cycle ?? '—'}</p><p className="text-xs text-gray-500">{date(invoice.created_at)} · {invoice.payment_provider ?? '—'}</p></div><div className="flex items-center gap-4"><span className="font-semibold">{money(invoice.amount_kes)}</span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${invoice.status === 'PAID' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : statusClass(invoice.status)}`}>{invoice.status}</span></div></div>)}</div></div>
-
-    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><CalendarDays className="h-4 w-4" />Subscription status and invoice records are read from Django's subscription system.</div>
+    <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current plan</p><div className="mt-1 flex items-center gap-2"><h3 className="text-xl font-bold text-gray-900 dark:text-white">{subscription?.plan_name ?? data.subscription?.plan_name ?? 'No active plan'}</h3><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(subscription?.subscription_status ?? data.subscription?.subscription_status ?? null)}`}>{subscription?.subscription_status ?? data.subscription?.subscription_status ?? 'NONE'}</span></div></div><div className="text-sm text-gray-500">{subscription?.billing_cycle ?? data.subscription?.billing_cycle ?? '—'}</div></div><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Period start</p><p className="mt-1 font-semibold">{date(subscription?.current_period_start ?? data.subscription?.current_period_start ?? null)}</p></div><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Period end</p><p className="mt-1 font-semibold">{date(subscription?.current_period_end ?? data.subscription?.current_period_end ?? null)}</p></div><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Listing capacity</p><p className="mt-1 font-semibold">{currentPlanId ? (subscription?.max_listings ?? data.subscription?.max_listings ?? 'Unlimited') : '—'}</p></div><div className="rounded-lg bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500">Units / listing</p><p className="mt-1 font-semibold">{subscription?.max_units_per_listing ?? data.subscription?.max_units_per_listing ?? 'Unlimited'}</p></div></div>{subscription?.grace_period_end && <div className="mt-4 rounded-lg bg-orange-50 p-3 text-sm text-orange-800 dark:bg-orange-900/20 dark:text-orange-300"><ShieldAlert className="mr-2 inline h-4 w-4" />Grace period ends {date(subscription.grace_period_end)}.</div>}{subscription?.cancel_at_period_end && <div className="mt-4 rounded-lg bg-orange-50 p-3 text-sm text-orange-800 dark:bg-orange-900/20 dark:text-orange-300">Cancellation is scheduled for the end of the current period.</div>}</div>
+    {isAdmin && <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><h3 className="font-bold text-gray-900 dark:text-white">Change plan or billing cycle</h3><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Use the existing PMS checkout and upgrade flow; subscription activation remains controlled by Django payment callbacks.</p><div className="mt-4"><PMSPlanSelector role="real_estate" selectedPlanName={selectedPlan ?? currentPlanName ?? 'STARTER'} billingCycle={cycle} currentPlanId={currentPlanId} currentPlanName={currentPlanName} currentBillingCycle={currentCycle} onPlanChange={(plan: PMSSubscriptionPlan) => setSelectedPlan(plan.name)} onBillingCycleChange={setCycle} onPaymentSuccess={() => void load(true)} onGoToDashboard={() => {}} /></div></div>}
+    <div className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900"><div className="border-b p-5 dark:border-brand-800"><div className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600 dark:text-brand-300" /><div><h3 className="font-bold text-gray-900 dark:text-white">Subscription invoices</h3><p className="text-xs text-gray-500 dark:text-gray-400">Payment history for this PMS subscription.</p></div></div></div><div className="divide-y dark:divide-brand-800">{invoices.length === 0 ? <p className="p-6 text-sm text-gray-500">No subscription invoices yet.</p> : invoices.slice(0, 10).map((invoice) => <div key={invoice.id} className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">{invoice.plan_name ?? 'PMS subscription'} · {invoice.billing_cycle ?? '—'}</p><p className="text-xs text-gray-500">{date(invoice.created_at)} · {invoice.payment_provider ?? '—'}</p></div><div className="flex items-center gap-4"><span className="font-semibold">{money(invoice.amount_kes)}</span><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${invoice.status === 'PAID' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : statusClass(invoice.status)}`}>{invoice.status}</span></div></div>)}</div></div><div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><CalendarDays className="h-4 w-4" />Subscription status and invoice records are read from Django.</div>
   </section>;
 }
