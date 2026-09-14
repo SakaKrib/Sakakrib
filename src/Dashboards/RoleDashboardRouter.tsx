@@ -22,7 +22,7 @@ type PMSAccessResponse = {
   allowed?: boolean;
   reason?: string;
   read_only?: boolean;
-  role?: ProfessionalRole;
+  role?: ProfessionalRole | 'real_estate_agent';
   subscription_id?: string;
   subscription_status?: string;
 };
@@ -224,11 +224,18 @@ export default function RoleDashboardRouter() {
   if (!profile) return <div className="mx-auto max-w-md px-4 py-20 text-center text-sm text-gray-500">Please sign in to access your dashboard.</div>;
   if (profile.is_superuser === true || profile.is_admin === true) return <><DashboardPage /><AdminOperationsPanel /><div className='px-2'><AdminListingPostPanel /></div></>;
   if (!profile.role) return null;
-  if (profile.role === 'renter') return <RenterDashboard />;
 
   const rawRole = String(profile.role).trim().toLowerCase();
   const role: ProfessionalRole = rawRole === 'agency' || profile.is_agency === true ? 'real_estate' : rawRole as ProfessionalRole;
   const status = normalizeStatus(profile[applicationField[role]]);
+
+  // Django is the authority for PMS team membership. A non-owner profile role
+  // must reach the PMS access check before its normal role dashboard is selected.
+  if (view === 'pms-dashboard' && role !== 'landlord' && role !== 'real_estate') {
+    return <PMSAccessGate role="real_estate" status="" />;
+  }
+
+  if (role === 'renter') return <RenterDashboard />;
 
   // Role dashboard is the landing page. PMS is a separate protected workspace.
   // Django remains the sole authority for application approval and subscription entitlement.
