@@ -26,6 +26,8 @@ def _allowed(request, write=False):
     access = pms_access(request.user)
     if not access.get('allowed'):
         return False, Response({'detail': 'PMS access is required.', 'pms_access': access}, status=403)
+    if role == 'real_estate' and access.get('pms_role') != 'ADMIN':
+        return False, Response({'detail': 'Only the Real Estate PMS administrator can manage payment destinations.'}, status=403)
     if write and access.get('read_only'):
         return False, Response({'detail': 'PMS is read-only during the subscription grace period.', 'pms_access': access}, status=403)
     return True, None
