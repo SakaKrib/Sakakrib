@@ -2,7 +2,6 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -12,7 +11,7 @@ from apps.core.domain_property import PropertyUnit, RenterUnitAssociation
 from apps.core.domain_rent import RentInvoice, RentPaymentSubmission
 from apps.listings.models import Listing
 
-from .models import RealEstatePMSListingAssignment, SubscriptionListing
+from .models import RealEstatePMSListingAssignment
 from .services import get_real_estate_pms_context
 
 
@@ -91,10 +90,7 @@ class RealEstatePMSFinancialReportView(APIView):
             str(row.id): row.title
             for row in Listing.objects.filter(id__in=listing_ids)
         }
-        unit_map = {
-            str(row.id): row
-            for row in units
-        }
+        unit_map = {str(row.id): row for row in units}
         associations = {
             str(row.unit_id): row
             for row in RenterUnitAssociation.objects.filter(
