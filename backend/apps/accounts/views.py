@@ -191,9 +191,6 @@ class SessionView(APIView):
             except Exception:
                 logging.getLogger(__name__).exception('Django access-session check failed')
 
-        # The access JWT is intentionally short-lived. If the browser was idle
-        # long enough for it to expire, recover from the HttpOnly refresh cookie
-        # before ever telling React that the user has been logged out.
         raw_refresh = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
         if raw_refresh:
             try:
@@ -225,9 +222,12 @@ class SetRoleView(APIView):
         serializer.is_valid(raise_exception=True)
         if request.user.is_staff or request.user.is_superuser or request.user.is_admin:
             return Response({'error': 'Administrator role cannot be self-selected.'}, status=status.HTTP_403_FORBIDDEN)
-        request.user.role = serializer.validated_data['role']
+        selected_role = serializer.validated_data['role']
+        request.user.role = selected_role
+        if selected_role == 'real_estate':
+            request.user.is_agency = True
         request.user.role_selected_at = timezone.now()
-        request.user.save(update_fields=['role', 'role_selected_at', 'updated_at'])
+        request.user.save(update_fields=['role', 'is_agency', 'role_selected_at', 'updated_at'])
         return Response({'success': True, 'profile': ProfileSerializer(request.user).data})
 
 
