@@ -41,7 +41,9 @@ function formatKES(value: number | null) {
   }).format(value);
 }
 
-function formatDate(value: string) {
+function formatDate(value: string | null | undefined) {
+  if (!value) return 'Not set';
+
   return new Intl.DateTimeFormat('en-KE', {
     dateStyle: 'medium',
   }).format(new Date(value));
