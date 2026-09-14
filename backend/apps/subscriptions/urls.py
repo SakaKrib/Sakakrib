@@ -5,6 +5,7 @@ from .pms_units_views import MyPMSUnitsView
 from .real_estate_pms_analytics_views import RealEstatePMSAnalyticsView
 from .real_estate_pms_calendar_views import RealEstatePMSCalendarView
 from .real_estate_pms_finance_views import RealEstatePMSFinanceView
+from .real_estate_pms_financial_report_views import RealEstatePMSFinancialReportView
 from .real_estate_pms_lease_views import RealEstatePMSLeaseInvoiceView, RealEstatePMSLeaseView
 from .real_estate_pms_media_views import RealEstatePMSMediaDeleteView, RealEstatePMSMediaUpdateView, RealEstatePMSMediaView
 from .real_estate_pms_views import RealEstatePMSListingAssignmentsView, RealEstatePMSTeamView
@@ -45,6 +46,7 @@ urlpatterns = [
     path('real-estate/media/<uuid:media_id>/update/', RealEstatePMSMediaUpdateView.as_view(), name='real-estate-pms-media-update'),
     path('real-estate/media/<uuid:media_id>/delete/', RealEstatePMSMediaDeleteView.as_view(), name='real-estate-pms-media-delete'),
     path('real-estate/finance/', RealEstatePMSFinanceView.as_view(), name='real-estate-pms-finance'),
+    path('real-estate/financial-report/', RealEstatePMSFinancialReportView.as_view(), name='real-estate-pms-financial-report'),
     path('real-estate/calendar/', RealEstatePMSCalendarView.as_view(), name='real-estate-pms-calendar'),
     path('real-estate/analytics/', RealEstatePMSAnalyticsView.as_view(), name='real-estate-pms-analytics'),
     path('real-estate/leases/', RealEstatePMSLeaseView.as_view(), name='real-estate-pms-lease-list-create'),
