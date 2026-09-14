@@ -204,16 +204,16 @@ export default function RealEstateDashboard() {
         const dashboardResult: RealEstateDashboardData = {
           subscription,
           entitlement: {
-            can_start_listing: entitlementResult.canStartListing,
-            can_create: entitlementResult.canCreate,
-            requires_subscription:
+            canStartListing: entitlementResult.canStartListing,
+            canCreate: entitlementResult.canCreate,
+            requiresSubscription:
               entitlementResult.requiresSubscription,
-            requires_individual_payment:
+            requiresIndividualPayment:
               entitlementResult.requiresIndividualPayment,
-            free_listings_remaining:
+            freeListingsRemaining:
               entitlementResult.free_listings_remaining,
-            free_limit: entitlementResult.free_limit,
-            individual_listing_price_kes:
+            freeLimit: entitlementResult.free_limit,
+            individualListingPriceKes:
               entitlementResult.individualListingPriceKes,
           },
           listings,
@@ -620,7 +620,7 @@ export default function RealEstateDashboard() {
 
           {/* ======================================================
               LISTING ENTITLEMENT
-          ====================================================== */}
+          ====================================================== */
 
           <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
 
