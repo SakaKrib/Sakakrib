@@ -16,6 +16,7 @@ import {
   type RealEstateDashboardData,
 } from '@/lib/RealEstateTs/Realestateservice';
 import RealEstatePMS from './Realestatepms';
+import RealEstatePMSAnalytics from './RealEstatePMSAnalytics';
 import RealEstatePMSCalendar from './RealEstatePMSCalendar';
 import RealEstatePMSFinance from './RealEstatePMSFinance';
 import RealEstatePMSOperations from './RealEstatePMSOperations';
@@ -118,6 +119,10 @@ export default function RealEstatePMSWorkspace() {
         <Stat icon={Clock3} label="Pending approval" value={String(stats.pending)} note="Awaiting review" />
         <Stat icon={WalletCards} label="PMS managed" value={String(stats.managed)} note={stats.remaining === null ? 'Unlimited capacity' : `${stats.remaining} remaining`} />
         <Stat icon={ShieldAlert} label="Payment required" value={String(stats.unpaid)} note="Non-PMS listings" />
+      </div>
+
+      <div className="mt-6">
+        <RealEstatePMSAnalytics />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_1fr]">
