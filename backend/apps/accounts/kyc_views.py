@@ -79,18 +79,18 @@ class KycSubmitView(APIView):
         user.national_id = national_id
         user.id_photo_url = id_path
         user.selfie_url = selfie_path
-        # Keep the verified identity document path so the landlord form can
-        # reuse it. PrivateDocumentView authorizes the KYC namespace by owner
-        # or administrator; the path itself is never a credential.
         user.id_document_url = id_path
         user.id_document_type = 'national_id'
         user.kyc_completed = True
         user.kyc_status = 'pending'
         user.verification_status = 'pending_verification'
-        user.save(update_fields=['full_name', 'national_id', 'id_photo_url', 'selfie_url', 'id_document_url', 'id_document_type', 'kyc_completed', 'kyc_status', 'verification_status', 'updated_at'])
+        if user.role == 'real_estate':
+            user.is_agency = True
+        user.save(update_fields=['full_name', 'national_id', 'id_photo_url', 'selfie_url', 'id_document_url', 'id_document_type', 'kyc_completed', 'kyc_status', 'verification_status', 'is_agency', 'updated_at'])
         return Response({'success': True, 'profile': {
             'id': str(user.id), 'full_name': user.full_name, 'national_id': user.national_id,
             'kyc_completed': user.kyc_completed, 'kyc_status': user.kyc_status,
             'verification_status': user.verification_status, 'id_photo_url': user.id_photo_url,
             'selfie_url': user.selfie_url, 'id_document_url': user.id_document_url,
+            'is_agency': user.is_agency,
         }})
