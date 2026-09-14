@@ -1,0 +1,142 @@
+[
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "312127ba-f992-4cf7-b189-6bf1d1cdde66",
+  "fields": {
+    "name": "GROWTH",
+    "max_units_per_listing": 30,
+    "monthly_price_kes": "5000.00",
+    "annual_price_kes": "50000.00",
+    "created_at": "2026-08-18T20:42:46.840Z",
+    "max_listings": 30,
+    "audience": "REAL_ESTATE",
+    "paypal_product_id": "PROD-4UP31696BP026974J",
+    "paypal_monthly_plan_id": "P-65A10702CU4196710NKSVRNI",
+    "paypal_annual_plan_id": "P-3R735391PA142270VNKSVRNQ",
+    "paypal_monthly_price_usd": "38.61",
+    "paypal_annual_price_usd": "386.10",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:46.857Z"
+  }
+},
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "b0458104-f515-4afd-969a-3fa256ce3dee",
+  "fields": {
+    "name": "STARTER",
+    "max_units_per_listing": 10,
+    "monthly_price_kes": "2000.00",
+    "annual_price_kes": "20000.00",
+    "created_at": "2026-08-18T20:42:46.840Z",
+    "max_listings": 10,
+    "audience": "REAL_ESTATE",
+    "paypal_product_id": "PROD-9W739604KR319153B",
+    "paypal_monthly_plan_id": "P-8NK121742Y441061UNKSVRMI",
+    "paypal_annual_plan_id": "P-2NC056426C216082HNKSVRMQ",
+    "paypal_monthly_price_usd": "15.44",
+    "paypal_annual_price_usd": "154.44",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:42.612Z"
+  }
+},
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "d3530c0b-ec22-47d5-b835-ef1a26cf7f5b",
+  "fields": {
+    "name": "PRO",
+    "max_units_per_listing": null,
+    "monthly_price_kes": "3500.00",
+    "annual_price_kes": "35000.00",
+    "created_at": "2026-08-14T16:04:24.496Z",
+    "max_listings": null,
+    "audience": "LANDLORD",
+    "paypal_product_id": "PROD-58693997MY931005E",
+    "paypal_monthly_plan_id": "P-1FM48886G43014222NKSVRLA",
+    "paypal_annual_plan_id": "P-26Y7122510390050CNKSVRLQ",
+    "paypal_monthly_price_usd": "27.03",
+    "paypal_annual_price_usd": "270.27",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:38.514Z"
+  }
+},
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "e396d1b0-7c23-43a8-8017-611c7e0754fb",
+  "fields": {
+    "name": "PRO",
+    "max_units_per_listing": 50,
+    "monthly_price_kes": "10000.00",
+    "annual_price_kes": "100000.00",
+    "created_at": "2026-08-18T20:42:46.840Z",
+    "max_listings": 50,
+    "audience": "REAL_ESTATE",
+    "paypal_product_id": "PROD-2GH73880S79416631",
+    "paypal_monthly_plan_id": "P-22U453244F4751430NKSVROI",
+    "paypal_annual_plan_id": "P-9YL28663T4231354ANKSVROY",
+    "paypal_monthly_price_usd": "77.22",
+    "paypal_annual_price_usd": "772.20",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:51.623Z"
+  }
+},
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "e77ef15d-8c6e-4a2e-8a53-177217f21c60",
+  "fields": {
+    "name": "STARTER",
+    "max_units_per_listing": 5,
+    "monthly_price_kes": "500.00",
+    "annual_price_kes": "5000.00",
+    "created_at": "2026-08-14T16:04:24.496Z",
+    "max_listings": 5,
+    "audience": "LANDLORD",
+    "paypal_product_id": "PROD-16G92191HS578221T",
+    "paypal_monthly_plan_id": "P-69E887248V2197457NKSVRII",
+    "paypal_annual_plan_id": "P-9XN99315FD5675201NKSVRIY",
+    "paypal_monthly_price_usd": "3.86",
+    "paypal_annual_price_usd": "38.61",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:27.965Z"
+  }
+},
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "ee9d84dc-c2e1-4f59-9963-016164b05f41",
+  "fields": {
+    "name": "ENTERPRISE",
+    "max_units_per_listing": null,
+    "monthly_price_kes": "20000.00",
+    "annual_price_kes": "200000.00",
+    "created_at": "2026-08-18T20:42:46.840Z",
+    "max_listings": null,
+    "audience": "REAL_ESTATE",
+    "paypal_product_id": "PROD-4T57348381487744S",
+    "paypal_monthly_plan_id": "P-15553049SN667670FNKSVRPI",
+    "paypal_annual_plan_id": "P-677027163P822194RNKSVRPY",
+    "paypal_monthly_price_usd": "154.44",
+    "paypal_annual_price_usd": "1544.40",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:56.026Z"
+  }
+},
+{
+  "model": "subscriptions.subscriptionplan",
+  "pk": "f4f50355-9b37-466a-add3-c0f1d16b9e63",
+  "fields": {
+    "name": "GROWTH",
+    "max_units_per_listing": 20,
+    "monthly_price_kes": "1500.00",
+    "annual_price_kes": "15000.00",
+    "created_at": "2026-08-14T16:04:24.496Z",
+    "max_listings": 20,
+    "audience": "LANDLORD",
+    "paypal_product_id": "PROD-4DA43972BJ669850V",
+    "paypal_monthly_plan_id": "P-3PF3849014158200KNKSVRJY",
+    "paypal_annual_plan_id": "P-9N90877135972290VNKSVRKI",
+    "paypal_monthly_price_usd": "11.58",
+    "paypal_annual_price_usd": "115.83",
+    "paypal_fx_rate": "0.00772200",
+    "paypal_fx_rate_timestamp": "2026-09-12T13:50:33.393Z"
+  }
+}
+]

@@ -226,7 +226,7 @@ export default function RealEstatePMS({ onCreateListing, onOpenListing }: RealEs
   const data = dashboard;
 
   return (
-    <div className="mx-auto max-w-6xl px-2 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-2 py-6 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div><div className="flex items-center gap-3"><div className="rounded-xl bg-brand-50 p-2.5 dark:bg-brand-900/50"><Building2 className="h-6 w-6 text-brand-600 dark:text-brand-300" /></div><div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">Property Management</h1><p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Real estate portfolio</p></div></div></div>
         <div className="flex items-center gap-2"><button type="button" onClick={() => void loadDashboard(true)} disabled={refreshing} className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-brand-700 dark:bg-brand-900 dark:text-gray-200 dark:hover:bg-brand-800"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh</button>{onCreateListing && <button type="button" onClick={onCreateListing} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-2 py-2 text-sm font-semibold text-white hover:bg-brand-700"><Plus className="h-4 w-4" />Add listing</button>}</div>
