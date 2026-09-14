@@ -11,16 +11,24 @@ from .booking_email_templates import mover_booking_request
 from .domain_bookings import Booking
 from .domain_platform import Mover, NotificationEmail
 from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES, SITE_URL
+from .real_estate_email_templates import (
+    real_estate_admin_notification,
+    real_estate_application_submitted,
+)
 
 # Keep booking email presentation separate while registering it with the
 # existing template/queue architecture used by all other notification emails.
 EMAIL_TEMPLATES = {
     **EMAIL_TEMPLATES,
     "mover_booking_request": mover_booking_request,
+    "real_estate_application_submitted": real_estate_application_submitted,
+    "real_estate_admin_notification": real_estate_admin_notification,
 }
 EMAIL_SUBJECTS = {
     **EMAIL_SUBJECTS,
     "mover_booking_request": "New Saka Krib moving request",
+    "real_estate_application_submitted": "Real estate application submitted - Saka Krib",
+    "real_estate_admin_notification": "New real estate application requires review - Saka Krib",
 }
 
 
