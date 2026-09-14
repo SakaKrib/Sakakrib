@@ -52,7 +52,7 @@ function listingStatusBadge(listing: RealEstateListingSummary) {
     return {
       label: 'Published',
       className:
-        'bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400',
+        'bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-400',
     };
   }
 
@@ -60,7 +60,7 @@ function listingStatusBadge(listing: RealEstateListingSummary) {
     return {
       label: 'Pending review',
       className:
-        'bg-warning-50 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
+        'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
     };
   }
 
@@ -68,7 +68,7 @@ function listingStatusBadge(listing: RealEstateListingSummary) {
     return {
       label: 'Rejected',
       className:
-        'bg-error-50 text-error-700 dark:bg-error-900/30 dark:text-error-400',
+        'bg-error-100 text-error-700 dark:bg-error-900/30 dark:text-error-400',
     };
   }
 
@@ -76,7 +76,7 @@ function listingStatusBadge(listing: RealEstateListingSummary) {
     return {
       label: 'Payment pending',
       className:
-        'bg-warning-50 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
+        'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
     };
   }
 
@@ -306,54 +306,62 @@ export default function RealEstateDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
-      {/* PROFILE / WELCOME */}
-      <div className="card mb-4 overflow-hidden">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-              <Building2 className="h-7 w-7" />
+      <div className="card mb-6 overflow-hidden">
+        <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-brand-100 dark:bg-brand-800/50">
+              <Building2 className="h-7 w-7 text-brand-600 dark:text-brand-400" />
             </div>
             <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
+                Real Estate Dashboard
+              </p>
               <h1 className="truncate text-2xl font-bold text-gray-900 dark:text-white">
-                {profile?.full_name || 'Real Estate Dashboard'}
+                Welcome, {profile?.full_name || 'Real Estate'}
               </h1>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Manage your properties, listings, and business account.
+                Manage your listings and business account.
               </p>
             </div>
+          </div>
+          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-success-50 px-3 py-1.5 text-xs font-semibold text-success-700 dark:bg-success-900/30 dark:text-success-400">
+            <ShieldCheck className="h-4 w-4" />
+            Verified business
           </div>
         </div>
       </div>
 
-      {/* POST LISTING — deliberately on its own row */}
       <div className="card mb-6 p-4">
-        <button
-          type="button"
-          onClick={() => navigate('post-listing')}
-          disabled={!canStartListing && !canCreateListing}
-          className="btn-primary flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Plus className="h-4 w-4" />
-          Post New Listing
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-bold text-gray-900 dark:text-white">Post New Listing</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Add another property to your normal Real Estate listings.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('post-listing')}
+            disabled={!canStartListing && !canCreateListing}
+            className="btn-primary inline-flex shrink-0 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            Post New Listing
+          </button>
+        </div>
       </div>
 
-      {/* STATS */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className="card p-5 transition-shadow hover:shadow-md">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    {stat.label}
-                  </p>
-                  <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">
-                    {stat.value}
-                  </p>
+            <div key={stat.label} className="card p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{stat.label}</p>
+                  <p className="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
                 </div>
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.iconClass}`}>
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${stat.iconClass}`}>
                   <Icon className="h-5 w-5" />
                 </div>
               </div>
@@ -362,47 +370,33 @@ export default function RealEstateDashboard() {
         })}
       </div>
 
-      {/* LISTINGS — one full-width card, never sharing the row with sidebar cards */}
       <div className="card mb-6 overflow-hidden">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-                <Home className="h-5 w-5 text-brand-600" />
-                Your Listings
-              </h2>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {listings.length} {listings.length === 1 ? 'listing' : 'listings'} on your account.
-              </p>
-            </div>
-            {listingEntitlement && (
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {freeListingsUsed} / {freeListingLimit} free used
-              </span>
-            )}
+        <div className="flex flex-col gap-2 border-b border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-brand-800">
+          <div>
+            <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+              <Home className="h-5 w-5 text-brand-600" />
+              Manage Listings
+            </h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Your normal Real Estate listings. PMS-managed properties remain in the dedicated PMS workspace.
+            </p>
           </div>
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {listings.length} {listings.length === 1 ? 'listing' : 'listings'}
+          </span>
         </div>
 
         <div className="p-5">
           {listings.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-gray-200 p-12 text-center dark:border-brand-800">
-              <Home className="mx-auto h-12 w-12 text-gray-300 dark:text-brand-700" />
-              <h3 className="mt-4 font-semibold text-gray-800 dark:text-gray-200">No listings yet</h3>
-              <p className="mx-auto mt-1 max-w-md text-sm text-gray-500 dark:text-gray-400">
-                Create your first listing to get started.
+            <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center dark:border-brand-800">
+              <Home className="mx-auto h-10 w-10 text-gray-300 dark:text-brand-700" />
+              <h3 className="mt-3 font-semibold text-gray-800 dark:text-gray-200">No listings yet</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Create your first normal listing to get started.
               </p>
-              <button
-                type="button"
-                onClick={() => navigate('post-listing')}
-                disabled={!canStartListing && !canCreateListing}
-                className="btn-primary mt-5 inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plus className="h-4 w-4" />
-                Post New Listing
-              </button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {listings.map((listing) => {
                 const badge = listingStatusBadge(listing);
                 return (
@@ -410,40 +404,42 @@ export default function RealEstateDashboard() {
                     key={listing.id}
                     type="button"
                     onClick={() => navigate('listing-detail', { listingId: listing.id } as never)}
-                    className="flex w-full items-center gap-4 rounded-2xl border border-gray-200 p-4 text-left transition hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900/30"
+                    className="group overflow-hidden rounded-xl border border-gray-200 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-md dark:border-brand-800 dark:bg-brand-900/20"
                   >
-                    <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl bg-brand-100 dark:bg-brand-800">
+                    <div className="h-40 w-full bg-brand-100 dark:bg-brand-800">
                       {listing.cover_photo_url ? (
                         <img
                           src={listing.cover_photo_url}
                           alt={listing.title}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-cover transition group-hover:scale-[1.01]"
                           loading="lazy"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
-                          <Home className="h-8 w-8 text-brand-400" />
+                          <Home className="h-10 w-10 text-brand-400" />
                         </div>
                       )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate font-semibold text-gray-900 dark:text-white">
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="min-w-0 truncate font-semibold text-gray-900 dark:text-white">
                           {listing.title || 'Untitled Listing'}
                         </h3>
-                        <span className={`badge ${badge.className}`}>{badge.label}</span>
+                        <span className={`badge shrink-0 ${badge.className}`}>{badge.label}</span>
                       </div>
-                      <p className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                      <p className="mt-2 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                         <MapPin className="h-3.5 w-3.5" />
                         {listing.city}, {listing.county}
                       </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
                         <span className="font-semibold text-brand-600 dark:text-brand-400">
                           {formatKES(listing.price_kes)}
                         </span>
                         <span>{listing.listing_type}</span>
-                        <span>{formatDate(listing.created_at)}</span>
                       </div>
+                      <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                        Created {formatDate(listing.created_at)}
+                      </p>
                     </div>
                   </button>
                 );
@@ -453,30 +449,20 @@ export default function RealEstateDashboard() {
         </div>
       </div>
 
-      {/* ACTIVITY + PMS — same separated two-card row as Landlord Dashboard */}
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        {/* ACTIVITY */}
-        <div className="card overflow-hidden">
-          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-            <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-              <Activity className="h-5 w-5 text-brand-600" />
-              Recent Activity
-            </h3>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Recent activity from your Real Estate account.
-            </p>
+        <div className="card p-5">
+          <div className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-brand-600" />
+            <h2 className="font-bold text-gray-900 dark:text-white">Recent Activity</h2>
           </div>
-
-          <div className="p-5">
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Recent activity from your normal listings.
+          </p>
+          <div className="mt-5">
             {recentActivity.length === 0 ? (
               <div className="py-8 text-center">
                 <Activity className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" />
-                <p className="mt-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  No activity yet
-                </p>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Listing activity will appear here as you create and update listings.
-                </p>
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">No activity yet</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-200 dark:divide-brand-800">
@@ -487,9 +473,9 @@ export default function RealEstateDashboard() {
                       key={`activity-${listing.id}`}
                       type="button"
                       onClick={() => navigate('listing-detail', { listingId: listing.id } as never)}
-                      className="flex w-full items-start gap-3 py-4 text-left first:pt-0 last:pb-0"
+                      className="flex w-full items-center gap-3 py-3 text-left first:pt-0 last:pb-0"
                     >
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
                         <Home className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -508,38 +494,29 @@ export default function RealEstateDashboard() {
           </div>
         </div>
 
-        {/* PMS / PROPERTY MANAGEMENT */}
-        <div className="card overflow-hidden">
-          <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
-            <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-              <Building2 className="h-5 w-5 text-brand-600" />
-              Property Management (PMS)
-            </h3>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Property and unit management remains separate from this normal dashboard.
-            </p>
+        <div className="card p-5">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-brand-600" />
+            <h2 className="font-bold text-gray-900 dark:text-white">Property Management (PMS)</h2>
           </div>
-          <div className="p-5">
-            <div className="rounded-2xl border border-gray-200 p-5 dark:border-brand-800">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
-                <div>
-                  <p className="font-semibold text-gray-900 dark:text-white">
-                    Real Estate PMS workspace
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                    PMS access and subscription are handled through the dedicated PMS flow. Your normal listings remain managed in this dashboard.
-                  </p>
-                </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            PMS is a separate workspace and is not used to load these normal listings.
+          </p>
+          <div className="mt-5 rounded-xl border border-gray-200 p-4 dark:border-brand-800">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-white">Real Estate PMS workspace</p>
+                <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                  PMS access and subscription are handled through the dedicated PMS flow. Normal listings stay in this dashboard.
+                </p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ACCESS / SUBSCRIPTION / ACCOUNT — separate cards, never overlapping */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* LISTING ACCESS */}
         <div className="card p-5">
           <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
             <Building2 className="h-5 w-5 text-brand-600" />
@@ -579,7 +556,6 @@ export default function RealEstateDashboard() {
           )}
         </div>
 
-        {/* SUBSCRIPTION */}
         <div className="card p-5">
           <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
             <CreditCard className="h-5 w-5 text-brand-600" />
@@ -626,7 +602,6 @@ export default function RealEstateDashboard() {
           )}
         </div>
 
-        {/* BUSINESS ACCOUNT */}
         <div className="card p-5">
           <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
             <User className="h-5 w-5 text-brand-600" />
