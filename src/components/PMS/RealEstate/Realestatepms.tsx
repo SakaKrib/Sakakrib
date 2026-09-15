@@ -34,6 +34,7 @@ import type {
 
 import RealEstateListings from './RealEstateListings';
 import RealEstatePMSTeam from './RealEstatePMSTeam';
+import RealEstatePMSSettingsPanel from './RealEstatePMSSettingsPanel';
 
 type TabKey = 'overview' | 'listings' | 'activity' | 'team' | 'settings';
 
@@ -169,18 +170,6 @@ function ActivityFeed() {
   return <div className="overflow-hidden rounded-xl border bg-white dark:divide-brand-800 dark:border-brand-700 dark:bg-brand-900">{notifications.map((notification) => <button key={notification.id} type="button" onClick={() => { if (!notification.read_at) void handleRead(notification.id); }} className="flex w-full flex-col gap-1 border-b p-4 text-left last:border-b-0 hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-800"><div className="flex items-center gap-2">{!notification.read_at && <span className="h-2 w-2 shrink-0 rounded-full bg-brand-600" />}<span className="font-medium text-gray-900 dark:text-white">{notification.title}</span></div><p className="text-sm text-gray-600 dark:text-gray-400">{notification.message}</p><p className="text-xs text-gray-400 dark:text-gray-500">{formatDate(notification.created_at)}</p></button>)}</div>;
 }
 
-function SettingsPanel({ subscription }: { subscription: RealEstatePMSSubscription | null }) {
-  return (
-    <div className="space-y-5">
-      <div className="rounded-xl border bg-white p-6 dark:border-brand-700 dark:bg-brand-900">
-        <div className="flex items-center gap-3"><SettingsIcon className="h-5 w-5 text-brand-600" /><div><h3 className="font-semibold text-gray-900 dark:text-white">Property management settings</h3><p className="text-sm text-gray-500 dark:text-gray-400">Account and subscription configuration</p></div></div>
-        {subscription && <div className="mt-6 divide-y rounded-lg border dark:divide-brand-800 dark:border-brand-700"><div className="flex items-center justify-between gap-4 p-4"><span className="text-sm text-gray-500 dark:text-gray-400">Plan</span><span className="font-medium text-gray-900 dark:text-white">{subscription.plan_name}</span></div><div className="flex items-center justify-between gap-4 p-4"><span className="text-sm text-gray-500 dark:text-gray-400">Billing cycle</span><span className="font-medium text-gray-900 dark:text-white">{subscription.billing_cycle}</span></div><div className="flex items-center justify-between gap-4 p-4"><span className="text-sm text-gray-500 dark:text-gray-400">Subscription status</span><span className="font-medium text-gray-900 dark:text-white">{subscription.subscription_status}</span></div><div className="flex items-center justify-between gap-4 p-4"><span className="text-sm text-gray-500 dark:text-gray-400">Current period</span><span className="text-right font-medium text-gray-900 dark:text-white">{formatDate(subscription.current_period_start)} — {formatDate(subscription.current_period_end)}</span></div></div>}
-      </div>
-      <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 dark:border-brand-700 dark:bg-brand-900/40"><p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Team access</p><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Agent and team-manager access is managed from the Agent Team tab. Payment destinations and additional property configuration will appear here as their backend contracts are introduced.</p></div>
-    </div>
-  );
-}
-
 export default function RealEstatePMS({ onCreateListing, onOpenListing }: RealEstatePMSProps) {
   const [tab, setTab] = useState<TabKey>('overview');
   const [dashboard, setDashboard] = useState<RealEstateDashboardData | null>(null);
@@ -211,13 +200,19 @@ export default function RealEstatePMS({ onCreateListing, onOpenListing }: RealEs
     return { total: listings.length, published, pending, unpaid };
   }, [dashboard]);
 
+  const ownerIsAdmin = String(dashboard?.team_context?.pms_role ?? '') === 'ADMIN';
+
   const tabs: { key: TabKey; label: string; icon: typeof Building2 }[] = [
     { key: 'overview', label: 'Overview', icon: Building2 },
     { key: 'listings', label: 'Listings', icon: Building2 },
     { key: 'activity', label: 'Activity', icon: Activity },
     { key: 'team', label: 'Agent Team', icon: Users },
-    { key: 'settings', label: 'Settings', icon: SettingsIcon },
+    ...(ownerIsAdmin ? [{ key: 'settings' as TabKey, label: 'Settings', icon: SettingsIcon }] : []),
   ];
+
+  useEffect(() => {
+    if (!ownerIsAdmin && tab === 'settings') setTab('overview');
+  }, [ownerIsAdmin, tab]);
 
   if (loading) return <div className="mx-auto flex min-h-[400px] max-w-5xl items-center justify-center"><div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="h-5 w-5 animate-spin" />Loading property management...</div></div>;
 
@@ -247,7 +242,7 @@ export default function RealEstatePMS({ onCreateListing, onOpenListing }: RealEs
 
       {tab === 'team' && <div><div className="mb-5"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Agent Team</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage team access while keeping all listing and unit capacity under the subscribing PMS account.</p></div><RealEstatePMSTeam /></div>}
 
-      {tab === 'settings' && <div><div className="mb-5"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Property management subscription and account configuration.</p></div><SettingsPanel subscription={subscription} /></div>}
+      {tab === 'settings' && ownerIsAdmin && <div><div className="mb-5"><h2 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Property management defaults and account configuration.</p></div><RealEstatePMSSettingsPanel subscription={subscription} isAdmin={ownerIsAdmin} /></div>}
     </div>
   );
 }
