@@ -166,3 +166,14 @@ class RealEstatePMSListingAssignment(models.Model):
             models.Index(fields=['real_estate_id', 'is_active'], name='re_pms_assign_scope_idx'),
             models.Index(fields=['agent_id', 'is_active'], name='re_pms_assign_agent_idx'),
         ]
+
+class RealEstatePMSSettings(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    real_estate_id = models.UUIDField(unique=True)
+    default_rent_due_day = models.PositiveSmallIntegerField(default=1)
+    default_payment_tracking_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField()
+    created_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'real_estate_pms_settings'
