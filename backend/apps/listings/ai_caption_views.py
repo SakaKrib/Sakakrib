@@ -2,6 +2,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.authorization import is_admin
+
 from .ai_caption_services import generate_listing_caption
 
 
@@ -19,4 +21,5 @@ class ListingAiCaptionView(APIView):
             'listing_id': str(listing.id),
             'caption': caption,
             'ai_caption_generated_at': listing.ai_caption_generated_at,
+            'is_admin': is_admin(request.user),
         }, status=200)

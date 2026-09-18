@@ -1,34 +1,28 @@
 from __future__ import annotations
 
-import os
-
-import jwt
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+from django.conf import settings
 from django.db import transaction
 from rest_framework import exceptions
 
 from .models import Profile
 
-GOOGLE_ISSUERS = {'accounts.google.com', 'https://accounts.google.com'}
-GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs'
-
 
 def verify_google_credential(credential: str) -> dict:
-    client_id = os.getenv('GOOGLE_CLIENT_ID', '')
-    if not credential or not client_id:
+    if not credential or not settings.GOOGLE_CLIENT_ID:
         raise exceptions.AuthenticationFailed('Google authentication is not configured.')
-
     try:
-        signing_key = jwt.PyJWKClient(GOOGLE_JWKS_URL).get_signing_key_from_jwt(credential)
-        claims = jwt.decode(
+        claims = id_token.verify_oauth2_token(
             credential,
-            signing_key.key,
-            algorithms=['RS256'],
-            audience=client_id,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID,
         )
-    except jwt.PyJWTError as exc:
+    except Exception as exc:
         raise exceptions.AuthenticationFailed('Invalid Google credential.') from exc
 
-    if claims.get('iss') not in GOOGLE_ISSUERS:
+    issuer = claims.get('iss')
+    if issuer not in ('accounts.google.com', 'https://accounts.google.com'):
         raise exceptions.AuthenticationFailed('Invalid Google token issuer.')
     if not claims.get('sub'):
         raise exceptions.AuthenticationFailed('Google account identifier is missing.')

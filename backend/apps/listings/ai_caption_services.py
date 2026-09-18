@@ -1,13 +1,9 @@
 import json
 import urllib.error
-import urllib.parse
 import urllib.request
 
 from django.conf import settings
 from django.db import transaction
-from django.utils import timezone
-
-from apps.accounts.authorization import is_admin
 
 from .models import Listing
 
@@ -84,11 +80,12 @@ def generate_listing_caption(user, listing_id):
     listing = Listing.objects.select_for_update().filter(pk=listing_id).first()
     if not listing:
         raise LookupError("Listing not found.")
-    if not is_admin(user) and str(listing.user_id) != str(user.pk):
+    if not getattr(user, "is_admin", False) and str(listing.user_id) != str(user.pk):
         raise PermissionError("You may only generate a caption for your own listing.")
 
     caption = _gemini_caption(listing) or _fallback_caption(listing)
     listing.ai_caption = caption
+    from django.utils import timezone
     listing.ai_caption_generated_at = timezone.now()
     listing.save(update_fields=["ai_caption", "ai_caption_generated_at", "updated_at"])
     return listing, caption

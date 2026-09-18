@@ -3,7 +3,6 @@ import uuid
 
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.http import FileResponse
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -21,25 +20,9 @@ def _storage_path(value):
     return value[len('django-media://'):].lstrip('/') if value.startswith('django-media://') else None
 
 
-def _content_type(path):
-    return {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp'}.get(path.rsplit('.', 1)[-1].lower(), 'application/octet-stream')
-
-
 class ProfilePhotoView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
-
-    def get(self, request, user_id):
-        profile = Profile.objects.filter(pk=user_id).first()
-        if not profile:
-            return Response({'detail': 'Profile not found.'}, status=404)
-        storage_path = _storage_path(profile.profile_photo_url)
-        if not storage_path or not default_storage.exists(storage_path):
-            return Response({'detail': 'Profile photo not found.'}, status=404)
-        response = FileResponse(default_storage.open(storage_path, 'rb'), content_type=_content_type(storage_path))
-        response['Content-Disposition'] = 'inline'
-        response['Cache-Control'] = 'private, max-age=300'
-        return response
 
     def post(self, request):
         file = request.FILES.get('file')
@@ -71,6 +54,4 @@ class ProfilePhotoView(APIView):
                 default_storage.delete(saved_path)
             raise
 
-        return Response({
-            'profile_photo_url': request.build_absolute_uri(f'/api/accounts/profile-photo/{profile.id}/'),
-        })
+        return Response({'profile_photo_url': f'/api/accounts/profile-photo/{profile.id}/'})

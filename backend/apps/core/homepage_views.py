@@ -1,3 +1,4 @@
+from django.db.models import Count
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -6,6 +7,7 @@ from apps.accounts.models import Profile
 from apps.core.domain_platform import Mover
 from apps.core.domain_property import Review
 from apps.listings.models import Listing
+from apps.listings.serializers import ListingSerializer
 
 
 class HomepageStatsView(APIView):
@@ -30,4 +32,24 @@ class HomepageStatsView(APIView):
                 is_available=True,
             ).count(),
             'reviews': Review.objects.count(),
+        })
+
+
+class FeaturedListingsView(APIView):
+    """Public read-only featured listings for the homepage."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        listings = Listing.objects.filter(
+            is_published=True,
+            is_approved=True,
+        ).order_by('-created_at')[:12]
+        return Response({
+            'count': len(listings),
+            'results': ListingSerializer(
+                listings,
+                many=True,
+                context={'request': request},
+            ).data,
         })
