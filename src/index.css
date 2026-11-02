@@ -190,3 +190,88 @@ html.dark .maplibregl-ctrl-attrib {
 html.dark .maplibregl-ctrl-attrib a {
   @apply text-gray-200;
 }
+
+
+/* Native app typography: slightly more compact than the website while keeping
+   the browser build's original 16px root scale unchanged. */
+html.capacitor-native {
+  font-size: 15px;
+}
+
+/* Role selection modal: keep the full dialog within short phone viewports.
+   The options scroll independently while the heading and action footer remain
+   visible. These refinements apply only to the native APK/iOS app. */
+@media (max-width: 639px) {
+  html.capacitor-native .role-selection-overlay {
+    padding: 12px;
+  }
+
+  html.capacitor-native .role-selection-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 24px);
+    min-height: 0;
+    border-radius: 16px;
+  }
+
+  html.capacitor-native .role-selection-header {
+    padding: 12px 16px;
+  }
+
+  html.capacitor-native .role-selection-title {
+    font-size: 1.125rem;
+    line-height: 1.35;
+  }
+
+  html.capacitor-native .role-selection-intro {
+    margin-top: 3px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  html.capacitor-native .role-selection-options {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    padding: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html.capacitor-native .role-selection-option {
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  html.capacitor-native .role-selection-option-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 11px;
+  }
+
+  html.capacitor-native .role-selection-option-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  html.capacitor-native .role-selection-option-title {
+    font-size: 0.9375rem;
+    line-height: 1.35;
+  }
+
+  html.capacitor-native .role-selection-option-description {
+    margin-top: 2px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  html.capacitor-native .role-selection-footer {
+    padding: 12px 16px;
+  }
+
+  html.capacitor-native .role-selection-copyright {
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+}
