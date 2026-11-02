@@ -17,7 +17,7 @@ Start with `docker compose up --build`. A one-shot `migrate` service applies pen
 
 Open the web app at http://localhost:5175. Django's API and WebSocket endpoint share http://localhost:8001. Vite proxies `/api` and `/ws` to `backend:8001` over the private Docker network. If `backend/.env` explicitly defines `CORS_ALLOWED_ORIGINS` or `CSRF_TRUSTED_ORIGINS`, add `http://localhost:5175` and `http://127.0.0.1:5175` there as well; explicit environment values override Django defaults.
 
-Override host ports only if necessary: `SAKAKRIB_FRONTEND_PORT=5176 SAKAKRIB_BACKEND_PORT=8002 docker compose up`.
+Override host ports only if necessary: `SAKAKRIB_FRONTEND_PORT=5176 SAKAKRIB_BACKEND_PORT=8002 docker compose up`. If you create or add a new Django migration after the initial startup, apply it with `docker compose run --rm migrate` before restarting backend workers.
 
 ## Hot reload
 
@@ -41,7 +41,7 @@ iOS native builds require macOS and Xcode. For a physical iPhone, use the Mac's 
 
 ### Packaged mobile builds and Django authentication
 
-For a packaged native build, set `VITE_DJANGO_API_URL` to the reachable Django API origin, for example `http://YOUR-TAILSCALE-IP:8001` for local device testing or the HTTPS production API origin for release. Configure Django CORS, CSRF trusted origins, and cookie attributes for the actual WebView origin; verify cross-origin cookie behavior on the device.
+For a packaged native build, set `VITE_DJANGO_API_URL` to the reachable Django API origin, for example `http://YOUR-TAILSCALE-IP:8001` for local device testing or the HTTPS production API origin for release. Configure Django CORS, CSRF trusted origins, and cookie attributes for the actual WebView origin; verify cross-origin cookie behavior on the device. If `backend/.env` defines PayPal local/network return URLs, update their frontend port to 5175.
 
 Leave `CAPACITOR_DEV_SERVER_URL` unset for self-contained builds.
 

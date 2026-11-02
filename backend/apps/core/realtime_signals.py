@@ -23,10 +23,8 @@ def _send(user_ids, *, resource, instance, created, status=None, notify_admin=Fa
             action=action,
             status=status,
         )
-    if notify_admin:
-        admin_ids = Profile.objects.filter(is_active=True, is_admin=True).values_list('id', flat=True)
-        for admin_id in admin_ids:
-            schedule_admin_event(resource=resource, object_id=instance.pk, action=action, status=status)
+    if notify_admin and Profile.objects.filter(is_active=True, is_admin=True).exists():
+        schedule_admin_event(resource=resource, object_id=instance.pk, action=action, status=status)
 
 
 @receiver(post_save, sender=UserNotification)
@@ -53,6 +51,7 @@ def live_booking(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
         status=instance.status,
+        notify_admin=True,
     )
 
 
@@ -65,6 +64,7 @@ def live_mover_payout(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
         status=instance.final_payment_status,
+        notify_admin=True,
     )
 
 
