@@ -1,0 +1,8 @@
+{
+  "_comment": "Single source of truth for brand colours. generate-icons.mjs applies these on top of the defaults inside the source SVGs, so editing a value here recolours every generated asset without touching the SVG sources.",
+  "primary": "#0C3B2E",
+  "accent": "#F5A524",
+  "paper": "#FFF6E3",
+  "notification": "#FFFFFF",
+  "notificationAccent": "#0C3B2E"
+}

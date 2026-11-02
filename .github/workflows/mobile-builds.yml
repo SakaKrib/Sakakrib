@@ -44,6 +44,9 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
+      - name: Generate and install Android icons
+        run: npm run generate:icons -- --sync --patch-manifest
+
       - name: Sync Capacitor Android
         run: npx cap sync android
 
@@ -84,6 +87,9 @@ jobs:
 
       - name: Generate iOS project
         run: npx cap add ios
+
+      - name: Generate and install iOS icons
+        run: npm run generate:icons -- --sync --patch-manifest
 
       - name: Sync Capacitor iOS
         run: npx cap sync ios

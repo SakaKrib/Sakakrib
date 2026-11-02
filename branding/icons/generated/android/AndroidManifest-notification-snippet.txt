@@ -1,0 +1,7 @@
+<!-- Add inside <application> in android/app/src/main/AndroidManifest.xml (or run with --sync --patch-manifest). -->
+<meta-data
+    android:name="com.google.firebase.messaging.default_notification_icon"
+    android:resource="@drawable/ic_stat_sakakrib" />
+<meta-data
+    android:name="com.google.firebase.messaging.default_notification_color"
+    android:resource="@color/sakakrib_notification_color" />
