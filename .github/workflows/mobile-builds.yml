@@ -1,0 +1,114 @@
+name: SakaKrib Mobile Builds
+
+on:
+  push:
+    branches:
+      - backup/casa-ai-before-push
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sakakrib-mobile-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out SakaKrib
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SakaKrib-Android-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS Simulator Build
+    runs-on: macos-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out SakaKrib
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Generate iOS project
+        run: npx cap add ios
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Build iOS Simulator app
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/SakaKribDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package iOS Simulator app
+        run: |
+          APP_PATH="$RUNNER_TEMP/SakaKribDerivedData/Build/Products/Debug-iphonesimulator/App.app"
+          test -d "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/SakaKrib-iOS-Simulator.zip"
+
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: SakaKrib-iOS-Simulator-Build
+          path: ${{ runner.temp }}/SakaKrib-iOS-Simulator.zip
+          if-no-files-found: error
+          retention-days: 14
