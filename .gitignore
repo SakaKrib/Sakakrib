@@ -21,3 +21,13 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Capacitor native build outputs
+android/.gradle/
+android/local.properties
+android/**/build/
+ios/App/Pods/
+ios/App/DerivedData/
+ios/App/build/
+ios/Pods/
+ios/build/
