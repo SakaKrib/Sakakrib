@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { useNav } from '@/context/NavContext';
 
 import {
@@ -91,6 +92,7 @@ function listingStatusBadge(listing: RealEstateListingSummary) {
 
 export default function RealEstateDashboard() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
   const { navigate } = useNav();
 
   const [data, setData] = useState<RealEstateDashboardData | null>(null);
@@ -100,6 +102,7 @@ export default function RealEstateDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (liveEvent && (liveEvent.type !== 'resource.updated' || !['listings', 'payments', 'applications'].includes(liveEvent.resource ?? ''))) return;
     let cancelled = false;
 
     const load = async () => {
@@ -197,7 +200,7 @@ export default function RealEstateDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, profile?.role]);
+  }, [profile?.id, profile?.role, liveEvent?.resource, liveEvent?.object_id]);
 
   if (profile && profile.role !== 'real_estate') {
     return (

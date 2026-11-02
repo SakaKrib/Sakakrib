@@ -22,15 +22,15 @@ const isActiveBooking = (status?: string | null) => ['pending', 'confirmed', 'ac
 export default function RenterDashboard() {
   const { profile, loading: authLoading } = useAuth();
   const { navigate } = useNav();
-  const { event: liveEvent } = useLiveEvents();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && !authLoading));
   const [data, setData] = useState<RenterDashboardResponse>(EMPTY_DASHBOARD);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (authLoading) return; if (!profile) navigate('home'); else if (profile.role !== 'renter') navigate('home'); }, [authLoading, profile, navigate]);
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'renter') return;
-    setLoading(true); setError(null);
+    if (!silent) setLoading(true); setError(null);
     try {
       const [response, notificationResponse] = await Promise.all([renterApi.getDashboard(profile.id), protectedGet<{ notifications?: Notification[] }>('/api/core/notifications/?limit=50')]);
       setData({ association: response?.association ?? null, unit: response?.unit ?? null, property: response?.property ?? null, invoices: Array.isArray(response?.invoices) ? response.invoices : [], bookings: Array.isArray(response?.bookings) ? response.bookings : [] });

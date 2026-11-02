@@ -76,8 +76,11 @@ function subscribe(listener: Listener) {
   };
 }
 
-export function useLiveEvents() {
+export function useLiveEvents(enabled = true) {
   const [event, setEvent] = useState<LiveBusinessEvent | null>(null);
-  useEffect(() => subscribe(setEvent), []);
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribe(setEvent);
+  }, [enabled]);
   return { event };
 }

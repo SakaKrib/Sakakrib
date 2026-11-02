@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 import {
   protectedGet,
@@ -310,6 +311,7 @@ export default function LandlordDashboard({
   onBack,
 }: LandlordDashboardProps) {
   const { profile, refreshProfile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
 
   const [landlord, setLandlord] =
     useState<Profile | null>(null);
@@ -720,6 +722,13 @@ export default function LandlordDashboard({
     profile?.id,
     loadDashboard,
   ]);
+  
+  useEffect(() => {
+    if (liveEvent?.type !== 'resource.updated') return;
+    if (['listings', 'payments', 'applications', 'rent', 'notifications'].includes(liveEvent.resource ?? '')) {
+      void loadDashboard(false);
+    }
+  }, [liveEvent, loadDashboard]);
 
   /* =========================================================
      REFRESH

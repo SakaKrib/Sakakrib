@@ -123,8 +123,8 @@ services:
       - ./backend:/app
       - celery_beat_data:/app/.celery
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       backend:
