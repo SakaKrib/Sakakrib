@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
+  <title>SakaKrib notification small icon</title>
+  <desc>Single-colour white silhouette on transparent background, scaled to fill about 80 percent of the canvas.</desc>
+  <style>/* Default brand colours. generate-icons.mjs overrides these from brand.json. */.fill-primary{fill:#0C3B2E}.fill-accent{fill:#F5A524}.fill-paper{fill:#FFF6E3}.fill-white{fill:#FFFFFF}.stroke-primary{stroke:#0C3B2E}.stroke-accent{stroke:#F5A524}.stroke-paper{stroke:#FFF6E3}.stroke-white{stroke:#FFFFFF}</style>
+  <g transform="translate(512 512) scale(1.29) translate(-512 -512)"><g><path class="stroke-white" d="M694 330 V302 A80 80 0 0 0 614 222 H410 A80 80 0 0 0 330 302 V432 A80 80 0 0 0 410 512 H614 A80 80 0 0 1 694 592 V722 A80 80 0 0 1 614 802 H410 A80 80 0 0 1 330 722 V694" fill="none" stroke-width="96" stroke-linejoin="round"/><circle class="fill-white" cx="694" cy="330" r="68"/><circle class="fill-white" cx="330" cy="694" r="68"/></g></g>
+</svg>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
+  <title>SakaKrib adaptive icon background</title>
+  <desc>Solid brand background layer.</desc>
+  <style>/* Default brand colours. generate-icons.mjs overrides these from brand.json. */.fill-primary{fill:#0C3B2E}.fill-accent{fill:#F5A524}.fill-paper{fill:#FFF6E3}.fill-white{fill:#FFFFFF}.stroke-primary{stroke:#0C3B2E}.stroke-accent{stroke:#F5A524}.stroke-paper{stroke:#FFF6E3}.stroke-white{stroke:#FFFFFF}</style>
+  <rect width="1024" height="1024" class="fill-primary"/>
+</svg>
