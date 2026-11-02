@@ -67,9 +67,9 @@ JWT_COOKIE_SAMESITE = os.getenv('JWT_COOKIE_SAMESITE','Lax')
 JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 REST_FRAMEWORK = {'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CookieJWTAuthentication'],'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],'DEFAULT_RENDERER_CLASSES':['rest_framework.renderers.JSONRenderer']}
-CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS','http://localhost:5174,http://127.0.0.1:5174,http://localhost:5173,http://127.0.0.1:5173,http://100.109.224.0:5173').split(',') if o.strip()]
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS','http://localhost:5175,http://127.0.0.1:5175,http://localhost:5175,http://127.0.0.1:5175,http://100.109.224.0:5175').split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS','http://localhost:5174,http://127.0.0.1:5174,http://localhost:5173,http://127.0.0.1:5173,http://100.109.224.0:5173').split(',') if o.strip()]
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS','http://localhost:5175,http://127.0.0.1:5175,http://localhost:5175,http://127.0.0.1:5175,http://100.109.224.0:5175').split(',') if o.strip()]
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE','Lax')
 CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE','false').lower() == 'true'
@@ -110,10 +110,10 @@ PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET','')
 PAYPAL_BASE_URL = os.getenv('PAYPAL_BASE_URL','https://api-m.sandbox.paypal.com')
 PAYPAL_WEBHOOK_ID = os.getenv('PAYPAL_WEBHOOK_ID','')
 PAYPAL_LISTING_WEBHOOK_ID = os.getenv('PAYPAL_LISTING_WEBHOOK_ID','')
-PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5174/paypal/subscription/return')
-PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL', 'http://localhost:5174/paypal/subscription/cancel')
-PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK', 'http://100.109.224.0:5174/paypal/subscription/return')
-PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK', 'http://100.109.224.0:5174/paypal/subscription/cancel')
+PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5175/paypal/subscription/return')
+PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL', 'http://localhost:5175/paypal/subscription/cancel')
+PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK', 'http://100.109.224.0:5175/paypal/subscription/return')
+PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK', 'http://100.109.224.0:5175/paypal/subscription/cancel')
 PAYPAL_SUBSCRIPTION_RETURN_URL_MODE = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_MODE', 'LOCAL').upper()
 if PAYPAL_SUBSCRIPTION_RETURN_URL_MODE == 'NETWORK':
     PAYPAL_SUBSCRIPTION_RETURN_URL = PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK
