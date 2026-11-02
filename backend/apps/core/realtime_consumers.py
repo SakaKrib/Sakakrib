@@ -1,6 +1,6 @@
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .realtime_events import user_event_group_name
+from .realtime_events import admin_event_group_name, user_event_group_name
 
 
 class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
@@ -18,12 +18,18 @@ class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
 
         self.group_name = user_event_group_name(self.user.pk)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
+        self.admin_group_name = None
+        if getattr(self.user, 'is_staff', False) or getattr(self.user, 'is_admin', False):
+            self.admin_group_name = admin_event_group_name()
+            await self.channel_layer.group_add(self.admin_group_name, self.channel_name)
         await self.accept()
         await self.send_json({"type": "ready", "channel": "user-events"})
 
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if getattr(self, 'admin_group_name', None):
+            await self.channel_layer.group_discard(self.admin_group_name, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         if isinstance(content, dict) and content.get("type") == "ping":

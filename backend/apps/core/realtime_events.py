@@ -42,3 +42,30 @@ def schedule_user_event(user_id, *, resource, object_id, action="updated", statu
             status=status,
         )
     )
+
+def admin_event_group_name():
+    return "live_admins"
+
+
+def schedule_admin_event(*, resource, object_id, action="updated", status=None):
+    from django.db import transaction
+
+    def publish():
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        async_to_sync(channel_layer.group_send)(
+            admin_event_group_name(),
+            {
+                "type": "live_event",
+                "event": {
+                    "type": "resource.updated",
+                    "resource": resource,
+                    "object_id": str(object_id),
+                    "action": action,
+                    "status": str(status) if status is not None else None,
+                },
+            },
+        )
+
+    transaction.on_commit(publish)

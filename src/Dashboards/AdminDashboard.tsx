@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPatch } from '@/lib/djangoApi';
 import { cn } from '@/lib/utils';
@@ -196,6 +197,7 @@ const isPending = (user: UserWithSubscription) =>
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.is_admin || profile?.is_superuser));
   const { navigate } = useNav();
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
   const isSuperUser = profile?.is_superuser === true;
@@ -254,6 +256,13 @@ export default function AdminDashboard() {
     }
     void loadDashboard();
   }, [isSuperUser, isAdmin]);
+  
+  useEffect(() => {
+    if (liveEvent?.type !== 'resource.updated') return;
+    if (['applications', 'listings', 'payments', 'bookings', 'payouts', 'subscriptions'].includes(liveEvent.resource ?? '')) {
+      void loadDashboard();
+    }
+  }, [liveEvent]);
 
   const landlords = useMemo(() => users.filter((user) => normalizeStatus(user.role) === 'landlord'), [users]);
   const movers = useMemo(() => users.filter((user) => normalizeStatus(user.role) === 'mover'), [users]);
