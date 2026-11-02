@@ -11,20 +11,25 @@ export interface DjangoApiException extends Error {
 }
 
 /**
- * Django is the only API source of truth. In the browser, always use the
- * current page origin so /api/... requests reach the Django backend through
- * the same-origin Docker/Vite/reverse-proxy path. A configured origin is only
- * used for non-browser execution.
+ * Browser development uses the current origin so /api/... requests pass
+ * through the Vite proxy. Packaged mobile builds can set
+ * VITE_DJANGO_API_URL to the HTTPS Django API origin because their WebView
+ * origin is not the API host. Authentication continues to use HttpOnly
+ * cookies; JWT values are never exposed to JavaScript.
  */
 const getBaseUrl = (): string => {
+  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)
+    ?.trim()
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
+
+  if (configured) return configured;
+
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
 
-  const configured = import.meta.env.VITE_DJANGO_API_URL as string | undefined;
-  return (configured || '')
-    .replace(/\/+$/, '')
-    .replace(/\/api$/i, '');
+  return '';
 };
 
 const readJson = async <T>(response: Response): Promise<T | null> => {
