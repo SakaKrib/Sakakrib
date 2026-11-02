@@ -39,7 +39,15 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build React app
-        run: npm run build
+        env:
+          VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+        run: |
+          test -n "$VITE_DJANGO_API_URL"
+          npm run build
+          if ! grep -R -F "$VITE_DJANGO_API_URL" dist/assets/; then
+            echo "::error::The production Django API URL was not embedded in the Vite build."
+            exit 1
+          fi
 
       - name: Generate Android project
         run: npx cap add android
