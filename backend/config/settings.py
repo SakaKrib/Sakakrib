@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
+from apps.accounts.middleware import CapacitorCookiePolicyMiddleware
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
@@ -9,10 +10,10 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
-ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, 'localhost', '127.0.0.1', 'backend', '100.109.224.0']))
+ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
 
 INSTALLED_APPS = ['daphne','django.contrib.admin','django.contrib.contenttypes','django.contrib.auth','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','django.contrib.postgres','corsheaders','rest_framework','channels','apps.core','apps.accounts','apps.listings','apps.subscriptions','apps.payments']
-MIDDLEWARE = ['corsheaders.middleware.CorsMiddleware','django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware']
+MIDDLEWARE = ['corsheaders.middleware.CorsMiddleware','apps.accounts.middleware.CapacitorCookiePolicyMiddleware','django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware']
 ROOT_URLCONF = 'config.urls'
 TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -67,9 +68,9 @@ JWT_COOKIE_SAMESITE = os.getenv('JWT_COOKIE_SAMESITE','Lax')
 JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 REST_FRAMEWORK = {'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CookieJWTAuthentication'],'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],'DEFAULT_RENDERER_CLASSES':['rest_framework.renderers.JSONRenderer']}
-CORS_ALLOWED_ORIGINS = list(dict.fromkeys([o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()] + ['http://localhost:5175', 'http://127.0.0.1:5175']))
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys([o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()] + ['http://localhost:5175', 'http://127.0.0.1:5175', 'https://localhost']))
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()] + ['http://localhost:5175', 'http://127.0.0.1:5175']))
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()] + ['http://localhost:5175', 'http://127.0.0.1:5175', 'https://localhost']))
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE','Lax')
 CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE','false').lower() == 'true'
