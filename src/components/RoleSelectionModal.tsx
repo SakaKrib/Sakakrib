@@ -127,13 +127,13 @@ export default function RoleSelectionModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="role-selection-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop intentionally cannot be dismissed. */}
       <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" />
 
       <div
         className={cn(
-          'relative w-full max-w-2xl animate-scale-in rounded-2xl bg-white shadow-2xl dark:bg-brand-900',
+          'role-selection-modal relative w-full max-w-2xl animate-scale-in rounded-2xl bg-white shadow-2xl dark:bg-brand-900',
 
           /*
            * MOBILE ONLY:
@@ -152,11 +152,11 @@ export default function RoleSelectionModal() {
         aria-labelledby="role-selection-title"
       >
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-brand-800">
+        <div className="role-selection-header flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-brand-800">
           <div className="min-w-0 pr-3">
             <h2
               id="role-selection-title"
-              className="text-xl font-bold text-gray-900 dark:text-white"
+              className="role-selection-title text-xl font-bold text-gray-900 dark:text-white"
             >
               Choose Your Role
             </h2>
@@ -178,7 +178,7 @@ export default function RoleSelectionModal() {
         {/* Role Options */}
         <div
           className={cn(
-            'space-y-3 p-6',
+            'role-selection-options space-y-3 p-6',
 
             /*
              * MOBILE ONLY:
@@ -204,7 +204,7 @@ export default function RoleSelectionModal() {
                 disabled={loading}
                 aria-pressed={isSelected}
                 className={cn(
-                  'flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition-all',
+                  'role-selection-option flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition-all',
                   'disabled:cursor-not-allowed disabled:opacity-60',
                   isSelected
                     ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-800/30'
@@ -214,7 +214,7 @@ export default function RoleSelectionModal() {
                 {/* Icon */}
                 <div
                   className={cn(
-                    'flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md',
+                    'role-selection-option-icon flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md',
                     role.gradient
                   )}
                 >
@@ -223,7 +223,7 @@ export default function RoleSelectionModal() {
 
                 {/* Content */}
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                  <h3 className="role-selection-option-title text-base font-semibold text-gray-900 dark:text-white">
                     {role.label}
                   </h3>
 
@@ -261,7 +261,7 @@ export default function RoleSelectionModal() {
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-gray-200 px-6 py-4 dark:border-brand-800">
+        <div className="role-selection-footer shrink-0 border-t border-gray-200 px-6 py-4 dark:border-brand-800">
           <div className="flex items-center justify-between gap-4">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               © Copyright Saka Krib. All Rights Reserved.
