@@ -23,7 +23,7 @@ function isCompleted(status: string | null | undefined): boolean { return normal
 function isCancelled(status: string | null | undefined): boolean { const normalized = normalizeStatus(status); return normalized === 'cancelled' || normalized === 'canceled'; }
 function formatVehicleType(value: string | null | undefined): string { if (!value) return 'Moving Vehicle'; return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()); }
 function formatPaymentStatus(value: string | null | undefined): string { if (!value) return '—'; return value.replace(/_/g, ' ').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()); }
-function getTrackingSocketUrl(bookingId: string): string { const url = new URL(window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.pathname = `/ws/tracking/${encodeURIComponent(bookingId)}/`; url.search = ''; return url.toString(); }
+function getTrackingSocketUrl(bookingId: string): string { const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.trim().replace(/\/+$/, '').replace(/\/api$/i, ''); const url = new URL(configured || window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.pathname = `/ws/tracking/${encodeURIComponent(bookingId)}/`; url.search = ''; return url.toString(); }
 
 export default function MoverTrackingPage() {
   const { selectedMoverId, navigate } = useNav(); const bookingId = selectedMoverId;
