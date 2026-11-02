@@ -6,7 +6,6 @@ const config: CapacitorConfig = {
   appId: 'com.sakakrib.app',
   appName: 'Saka Krib',
   webDir: 'dist',
-  bundledWebRuntime: false,
   ...(devServerUrl
     ? {
         server: {
