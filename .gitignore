@@ -21,6 +21,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+.env.production
+.env.production.local
 
 # Capacitor native build outputs
 android/.gradle/
