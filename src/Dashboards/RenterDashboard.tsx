@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Bell, MessageCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { useNav } from '@/context/NavContext';
 import { cn } from '@/lib/utils';
 import { protectedGet } from '@/lib/djangoApi';
@@ -21,6 +22,7 @@ const isActiveBooking = (status?: string | null) => ['pending', 'confirmed', 'ac
 export default function RenterDashboard() {
   const { profile, loading: authLoading } = useAuth();
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents();
   const [data, setData] = useState<RenterDashboardResponse>(EMPTY_DASHBOARD);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +39,10 @@ export default function RenterDashboard() {
     finally { setLoading(false); }
   }, [profile?.id, profile?.role]);
   useEffect(() => { if (!authLoading && profile?.role === 'renter' && profile.id) void loadDashboard(); }, [authLoading, profile?.role, profile?.id, loadDashboard]);
+  useEffect(() => {
+    if (!liveEvent || liveEvent.type !== 'resource.updated') return;
+    if (['bookings', 'rent', 'notifications', 'payments', 'applications'].includes(liveEvent.resource ?? '')) void loadDashboard(true);
+  }, [liveEvent, loadDashboard]);
   const currentInvoice = useMemo(() => data.invoices.find(invoice => isUnpaidInvoice(invoice.status)) ?? null, [data.invoices]);
   const activeBooking = useMemo(() => data.bookings.find(booking => isActiveBooking(booking.status)) ?? null, [data.bookings]);
   const monthlyRent = data.association?.rent_amount ?? data.unit?.rent ?? null;

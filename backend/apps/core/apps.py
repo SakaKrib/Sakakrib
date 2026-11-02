@@ -7,3 +7,4 @@ class CoreConfig(AppConfig):
 
     def ready(self):
         from . import payment_signals  # noqa: F401
+        from . import realtime_signals  # noqa: F401

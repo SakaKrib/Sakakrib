@@ -2,6 +2,7 @@ import { AlertCircle, Bell, MessageCircle, RefreshCw, UserRound } from 'lucide-r
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { moverApi, type MoverBooking, type MoverCustomer, type MoverInvoice, type MoverNotification, type MoverPayout, type MoverRecord, type MoverScheduleEvent } from '@/lib/Movers';
 import MoverBookingRequests from '@/pages/Movers/MoverBookingRequests';
 import MoverCalendar from '@/pages/Movers/MoverCalendar';
@@ -23,11 +24,12 @@ function getInboxWebSocketUrl() {
 }
 
 export default function MoverDashboard(){
- const {profile,loading:authLoading}=useAuth(); const {navigate}=useNav(); const [mover,setMover]=useState<MoverRecord|null>(null); const [bookings,setBookings]=useState(emptyBookings); const [customers,setCustomers]=useState(emptyCustomers); const [schedule,setSchedule]=useState(emptySchedule); const [invoices,setInvoices]=useState(emptyInvoices); const [payouts,setPayouts]=useState(emptyPayouts); const [notifications,setNotifications]=useState(emptyNotifications); const [loading,setLoading]=useState(true); const [refreshing,setRefreshing]=useState(false); const [error,setError]=useState<string|null>(null);
+ const {profile,loading:authLoading}=useAuth(); const {navigate}=useNav(); const {event:liveEvent}=useLiveEvents(); const [mover,setMover]=useState<MoverRecord|null>(null); const [bookings,setBookings]=useState(emptyBookings); const [customers,setCustomers]=useState(emptyCustomers); const [schedule,setSchedule]=useState(emptySchedule); const [invoices,setInvoices]=useState(emptyInvoices); const [payouts,setPayouts]=useState(emptyPayouts); const [notifications,setNotifications]=useState(emptyNotifications); const [loading,setLoading]=useState(true); const [refreshing,setRefreshing]=useState(false); const [error,setError]=useState<string|null>(null);
  const inboxSocketRef=useRef<WebSocket|null>(null); const inboxReconnectTimerRef=useRef<number|null>(null); const inboxReconnectAttemptRef=useRef(0); const bookingRefreshTimerRef=useRef<number|null>(null);
  useEffect(()=>{if(authLoading)return;if(!profile){navigate('home');return;}if(profile.role!=='mover')navigate('home');},[authLoading,profile,navigate]);
  const loadDashboard=useCallback(async(silent=false)=>{if(!profile?.id||profile.role!=='mover')return;silent?setRefreshing(true):setLoading(true);setError(null);const results=await Promise.allSettled([moverApi.getMover(profile.id),moverApi.getBookings(),moverApi.getCustomers(),moverApi.getSchedule(),moverApi.getInvoices(),moverApi.getPayouts(),moverApi.getNotifications(20)]);const [mr,br,cr,sr,ir,pr,nr]=results;if(mr.status==='fulfilled')setMover(mr.value);if(br.status==='fulfilled')setBookings(br.value??[]);if(cr.status==='fulfilled')setCustomers(cr.value??[]);if(sr.status==='fulfilled')setSchedule(sr.value??[]);if(ir.status==='fulfilled')setInvoices(ir.value??[]);if(pr.status==='fulfilled')setPayouts(pr.value??[]);if(nr.status==='fulfilled')setNotifications(nr.value?.notifications??[]);const failed=results.filter(r=>r.status==='rejected');if(failed.length===results.length)setError('Unable to load mover dashboard data. Please try again.');else if(failed.length>0)setError('Some mover dashboard sections could not be refreshed.');setLoading(false);setRefreshing(false);},[profile?.id,profile?.role]);
  useEffect(()=>{if(!authLoading&&profile?.role==='mover'&&profile.id)void loadDashboard();},[authLoading,profile?.id,profile?.role,loadDashboard]);
+ useEffect(()=>{if(!liveEvent||liveEvent.type!=='resource.updated')return;if(['bookings','payouts','notifications','payments','applications'].includes(liveEvent.resource??''))void loadDashboard(true);},[liveEvent,loadDashboard]);
  useEffect(()=>{
   if(!profile?.id||profile.role!=='mover')return;
   let cancelled=false;
