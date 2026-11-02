@@ -1,8 +1,8 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from apps.core.domain_bookings import Booking, MoverPayout
-from apps.core.domain_platform import Mover, MoverApplication, RenterNotification, UserNotification
+from apps.core.domain_bookings import Booking, MoverPayout, MovingInvoice, MovingPayment, MoverScheduleEvent, MovingDispute
+from apps.core.domain_platform import Mover, MoverApplication, RenterNotification, UserNotification, SupportTicket
 from apps.core.domain_property import PropertyUnit, RenterUnitAssociation
 from apps.core.domain_rent import RentInvoice, RentPayment, RentPaymentSubmission, RentReminder, RentReminderSetting
 from apps.listings.models import Listing
@@ -64,6 +64,71 @@ def live_mover_payout(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
         status=instance.final_payment_status,
+        notify_admin=True,
+    )
+
+
+@receiver(post_save, sender=MovingInvoice)
+def live_moving_invoice(sender, instance, created, **kwargs):
+    mover_user_id = Mover.objects.filter(pk=instance.mover_id).values_list("user_id", flat=True).first()
+    _send(
+        [instance.renter_id, mover_user_id],
+        resource="payments",
+        instance=instance,
+        created=created,
+        status=instance.status,
+        notify_admin=True,
+    )
+
+
+@receiver(post_save, sender=MovingPayment)
+def live_moving_payment(sender, instance, created, **kwargs):
+    booking = Booking.objects.filter(pk=instance.booking_id).first()
+    mover_user_id = Mover.objects.filter(pk=booking.mover_id).values_list("user_id", flat=True).first() if booking else None
+    _send(
+        [instance.payer_id, mover_user_id],
+        resource="payments",
+        instance=instance,
+        created=created,
+        status=instance.status,
+        notify_admin=True,
+    )
+
+
+@receiver(post_save, sender=MoverScheduleEvent)
+def live_mover_schedule(sender, instance, created, **kwargs):
+    mover_user_id = Mover.objects.filter(pk=instance.mover_id).values_list("user_id", flat=True).first()
+    _send(
+        [mover_user_id],
+        resource="schedules",
+        instance=instance,
+        created=created,
+        status=instance.status,
+    )
+
+
+@receiver(post_save, sender=MovingDispute)
+def live_moving_dispute(sender, instance, created, **kwargs):
+    booking = Booking.objects.filter(pk=instance.booking_id).first()
+    mover_user_id = Mover.objects.filter(pk=booking.mover_id).values_list("user_id", flat=True).first() if booking else None
+    _send(
+        [instance.opened_by, instance.resolved_by, booking.renter_id if booking else None, mover_user_id],
+        resource="disputes",
+        instance=instance,
+        created=created,
+        status=instance.status,
+        notify_admin=True,
+    )
+
+
+@receiver(post_save, sender=SupportTicket)
+def live_support_ticket(sender, instance, created, **kwargs):
+    _send(
+        [instance.user_id],
+        resource="support",
+        instance=instance,
+        created=created,
+        status=instance.status,
         notify_admin=True,
     )
 
@@ -184,6 +249,7 @@ def live_landlord_subscription(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
         status=instance.status,
+        notify_admin=True,
     )
 
 
@@ -195,6 +261,7 @@ def live_real_estate_subscription(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
         status=instance.status,
+        notify_admin=True,
     )
 
 
@@ -211,7 +278,7 @@ def live_subscription_invoice(sender, instance, created, **kwargs):
             RealEstateSubscription.objects.filter(pk=instance.real_estate_subscription_id)
             .values_list("real_estate_id", flat=True)
         )
-    _send(user_ids, resource="subscriptions", instance=instance, created=created, status=instance.status)
+    _send(user_ids, resource="subscriptions", instance=instance, created=created, status=instance.status, notify_admin=True)
 
 
 @receiver(post_save, sender=SubscriptionListing)

@@ -725,7 +725,7 @@ export default function LandlordDashboard({
   
   useEffect(() => {
     if (liveEvent?.type !== 'resource.updated') return;
-    if (['listings', 'payments', 'applications', 'rent', 'notifications'].includes(liveEvent.resource ?? '')) {
+    if (['listings', 'payments', 'applications', 'rent', 'notifications', 'pms', 'subscriptions'].includes(liveEvent.resource ?? '')) {
       void loadDashboard(false);
     }
   }, [liveEvent, loadDashboard]);

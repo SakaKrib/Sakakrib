@@ -259,7 +259,7 @@ export default function AdminDashboard() {
   
   useEffect(() => {
     if (liveEvent?.type !== 'resource.updated') return;
-    if (['applications', 'listings', 'payments', 'bookings', 'payouts', 'subscriptions'].includes(liveEvent.resource ?? '')) {
+    if (['applications', 'listings', 'payments', 'bookings', 'payouts', 'subscriptions', 'schedules', 'disputes', 'support', 'pms'].includes(liveEvent.resource ?? '')) {
       void loadDashboard();
     }
   }, [liveEvent]);

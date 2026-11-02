@@ -100,9 +100,9 @@ export default function RealEstateDashboard() {
     useState<ListingEntitlement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
 
   useEffect(() => {
-    if (liveEvent && (liveEvent.type !== 'resource.updated' || !['listings', 'payments', 'applications'].includes(liveEvent.resource ?? ''))) return;
     let cancelled = false;
 
     const load = async () => {
@@ -200,7 +200,16 @@ export default function RealEstateDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, profile?.role, liveEvent?.resource, liveEvent?.object_id]);
+  }, [profile?.id, profile?.role, liveRefreshKey]);
+
+  useEffect(() => {
+    if (
+      liveEvent?.type === 'resource.updated' &&
+      ['listings', 'payments', 'applications', 'subscriptions'].includes(liveEvent.resource ?? '')
+    ) {
+      setLiveRefreshKey((key) => key + 1);
+    }
+  }, [liveEvent]);
 
   if (profile && profile.role !== 'real_estate') {
     return (
