@@ -119,10 +119,10 @@ function AppContent() {
     return <><LiveMovingMap /><MovingGpsTracker /></>;
   }
 
-  return <div className="flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950">
+  return <div className="app-shell flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950">
     <SecurityBanner />
     <Header />
-    <main className="flex-1 pb-20 md:pb-0">{renderView()}</main>
+    <main className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">{renderView()}</main>
     <Footer />
     <BottomBar />
     <AuthModal />
