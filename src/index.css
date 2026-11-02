@@ -4,6 +4,36 @@
 @tailwind components;
 @tailwind utilities;
 
+
+/* Native APK/iOS safe-area support. viewport-fit=cover is enabled in index.html.
+   Browser environments without display cutouts resolve these values to zero. */
+:root {
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-shell {
+  padding-top: var(--app-safe-top);
+}
+
+/* Keep fixed mobile navigation above the device home indicator. */
+@supports (padding: max(0px)) {
+  .app-shell {
+    padding-top: max(0px, var(--app-safe-top));
+  }
+}
+
 @layer base {
   html {
     overflow-x: hidden;
