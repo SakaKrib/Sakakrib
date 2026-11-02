@@ -36,7 +36,7 @@ jobs:
           java-version: '21'
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build React app
         run: npm run build
@@ -77,7 +77,7 @@ jobs:
           cache: npm
 
       - name: Install JavaScript dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build React app
         run: npm run build
