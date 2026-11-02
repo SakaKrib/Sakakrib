@@ -15,7 +15,7 @@ The database and Redis remain on the private Compose network. Compose-managed vo
 
 Start from this branch with: `docker compose up --build`
 
-Open the web app at http://localhost:5174. The backend is available on the host at http://localhost:8001. The frontend proxies /api and /ws to Django over the private Docker network.
+Open the web app at http://localhost:5174. The backend is available on the host at http://localhost:8001. The frontend proxies /api and /ws to Django over the private Docker network. If `backend/.env` explicitly defines `CORS_ALLOWED_ORIGINS` or `CSRF_TRUSTED_ORIGINS`, add `http://localhost:5174` and `http://127.0.0.1:5174` there as well; explicit environment values override Django's defaults.
 
 Override host ports without editing Compose: `SAKAKRIB_FRONTEND_PORT=5175 SAKAKRIB_BACKEND_PORT=8002 docker compose up --build`
 
