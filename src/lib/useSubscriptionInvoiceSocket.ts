@@ -57,7 +57,7 @@ export function useSubscriptionInvoiceSocket() {
       socket.onmessage = (message) => {
         try {
           const data = JSON.parse(message.data) as SubscriptionInvoiceSocketEvent;
-          if ((data as { type?: string }).type === 'pong') {
+          if (data.type === 'pong') {
             if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
             heartbeatTimeout = null;
             return;
