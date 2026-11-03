@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.accounts.authorization import is_admin
 from apps.core.domain_platform import Mover, MoverApplication, NotificationEmail
 from apps.core.email_services import queue_email
+from apps.core.notification_services import dispatch_user_notification
 from apps.core.realtime_events import schedule_admin_event, schedule_user_event
 
 from .models import Profile
@@ -197,6 +198,7 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
         raise LookupError('User profile was not found.')
 
     field = APPLICATION_FIELDS[application_type]
+    previous_status = str(getattr(profile, field, '') or '').strip().lower()
     state = _canonical_profile_state(application_type, status_value)
     now = timezone.now()
     note = str(note or '').strip()
@@ -259,6 +261,27 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
         note=note,
         application=mover_application,
     )
+
+    if previous_status != status_value:
+        decision_label = {
+            'approved': 'approved',
+            'rejected': 'not approved',
+            'pending': 'returned for review',
+        }[status_value]
+        dispatch_user_notification(
+            user_id=profile.id,
+            notification_type=f'{application_type.upper()}_APPLICATION_{status_value.upper()}',
+            title=f'{application_type.replace("_", " ").title()} application update',
+            message=f'Your {application_type.replace("_", " ")} application has been {decision_label}.',
+            data={
+                'application_type': application_type,
+                'application_status': status_value,
+                'admin_review_note': note or None,
+                'deep_link': 'dashboard',
+            },
+            event_key=f'application-status:{application_type}:{profile.id}:{status_value}:{now.isoformat()}',
+            send_email=False,
+        )
 
     # MoverApplication post_save already publishes the mover decision when
     # its canonical application record exists. Avoid sending a duplicate event.
