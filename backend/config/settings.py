@@ -67,6 +67,9 @@ JWT_COOKIE_SECURE = os.getenv('JWT_COOKIE_SECURE','false').lower() == 'true'
 JWT_COOKIE_SAMESITE = os.getenv('JWT_COOKIE_SAMESITE','Lax')
 JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON', '')
+FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE', '')
+FIREBASE_PROJECT_ID = os.getenv('FIREBASE_PROJECT_ID', '')
 REST_FRAMEWORK = {'DEFAULT_AUTHENTICATION_CLASSES':['apps.accounts.authentication.CookieJWTAuthentication'],'DEFAULT_PERMISSION_CLASSES':['rest_framework.permissions.IsAuthenticated'],'DEFAULT_RENDERER_CLASSES':['rest_framework.renderers.JSONRenderer']}
 CORS_ALLOWED_ORIGINS = list(dict.fromkeys([o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()] + ['http://localhost:5175', 'http://127.0.0.1:5175', 'http://100.109.224.0:5175', 'https://localhost']))
 CORS_ALLOW_CREDENTIALS = True
