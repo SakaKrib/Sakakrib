@@ -5,6 +5,7 @@ import { useNav } from '@/context/NavContext';
 import MoverSchedulePicker, { type MoverBlockedInterval, type MoverScheduleValue } from '@/components/Renter/MoverSchedulePicker';
 import ChatBookingCard from '@/components/ChatBookingCard';
 import { protectedGet, protectedPatch, protectedPost, protectedUpload } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { cn, formatKES } from '@/lib/utils';
 
 interface ChatMover { id: string; user_id: string; driver_full_name: string | null; business_name: string | null; profile_photo_url: string | null; phone: string | null; vehicle_type: string | null; number_plate: string | null; operating_city: string | null; operating_county: string | null; }
@@ -33,6 +34,7 @@ function ChatImage({ messageId, attachment }: { messageId: string; attachment: C
 export default function ChatPage() {
   const { selectedChatMoverId, navigate } = useNav();
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
   const [mover, setMover] = useState<ChatMover | null>(null);
   const [booking, setBooking] = useState<MovingBooking | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -94,6 +96,16 @@ export default function ChatPage() {
 
   useEffect(() => { if (!selectedChatMoverId) { setLoading(false); return; } let cancelled = false; const run = async () => { try { const data = await protectedGet<ChatMover>(`/api/core/movers/${encodeURIComponent(String(selectedChatMoverId))}/`); if (!cancelled) setMover(first(data)); } catch (error) { if (!cancelled) setPageError(error instanceof Error ? error.message : 'Unable to load mover chat.'); } finally { if (!cancelled) setLoading(false); } }; void run(); return () => { cancelled = true; }; }, [selectedChatMoverId]);
   useEffect(() => { if (!profile || !mover || !conversationId) return; void load().catch(error => setPageError(error instanceof Error ? error.message : 'Unable to load chat.')); }, [profile, mover, conversationId, load]);
+  useEffect(() => {
+    if (!profile || !mover || !conversationId) return;
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['bookings', 'schedules', 'notifications', 'payments', 'disputes'].includes(liveEvent.resource ?? ''))
+    ) {
+      void load().catch(error => setPageError(error instanceof Error ? error.message : 'Unable to refresh chat.'));
+    }
+  }, [liveEvent, profile, mover, conversationId, load]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
 
   useEffect(() => {
