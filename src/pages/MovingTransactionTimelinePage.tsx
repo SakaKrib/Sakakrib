@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock3, FileText, RefreshCw, Truck, Wallet
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 type TimelineEvent = {
   type: string;
@@ -38,14 +39,15 @@ function eventIcon(type: string) {
 export default function MovingTransactionTimelinePage() {
   const { profile } = useAuth();
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
   const [bookings, setBookings] = useState<TimelineBooking[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id) return;
-    setLoading(true); setError(null);
+    if (!silent) setLoading(true); setError(null);
     try {
       const data = await protectedGet<TimelineBooking[]>('/api/core/moving-transaction-timeline/');
       setBookings(data);
@@ -56,6 +58,13 @@ export default function MovingTransactionTimelinePage() {
   }, [profile?.id]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['payments', 'payouts', 'bookings', 'disputes'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
 
   const current = bookings.find((item) => item.booking_id === selected) ?? null;
   const isAdmin = profile?.is_admin === true || profile?.is_superuser === true;
