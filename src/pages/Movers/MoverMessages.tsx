@@ -164,11 +164,15 @@ export default function MoverMessages() {
           const type = messageType(message);
           const messageConversationId = typeof message.conversation_id === 'string' ? message.conversation_id : '';
           if (messageConversationId === activeConversationId) {
-            setMessages(previous => [...previous.filter(item => messageId(item) !== messageId(message)), message].sort((a, b) => new Date(messageCreatedAt(a)).getTime() - new Date(messageCreatedAt(b)).getTime()));
+            setMessages(previous => [
+              ...previous.filter(item => messageId(item) !== messageId(message)),
+              message,
+            ].sort((a, b) => (
+              new Date(messageCreatedAt(a)).getTime() - new Date(messageCreatedAt(b)).getTime()
+            )));
           }
-          void loadBookings();
-          if (messageConversationId === activeConversationId) {
-            setMessages(previous => [...previous.filter(item => messageId(item) !== messageId(message)), message].sort((a, b) => new Date(messageCreatedAt(a)).getTime() - new Date(messageCreatedAt(b)).getTime()));
+          if (type === 'booking_request' || type === 'booking_response') {
+            void loadBookings();
           }
         } catch { /* ignore malformed websocket events */ }
       };
