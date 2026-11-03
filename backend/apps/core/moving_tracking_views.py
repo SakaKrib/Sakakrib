@@ -94,7 +94,7 @@ def start_moving_journey(*, mover_user_id, booking_id, source=JOURNEY_START_SOUR
     dispatch_user_notification(user_id=booking.renter_id, notification_type="MOVING_STARTED", title="Your move has started", message=f"Your mover has started the journey. Your tracking number is {tracking_number}.", data=event_data, event_key=f"moving-started:renter:{booking.id}", send_email=True, email_template="moving_started")
     dispatch_user_notification(user_id=mover_user_id, notification_type="MOVING_STARTED", title="Journey started", message="The moving journey is now active.", data=event_data, event_key=f"moving-started:mover:{booking.id}", send_email=False)
     conversation_id = conversation_id_for_users(booking.renter_id, mover_user_id)
-    chat_message = ChatMessage.objects.create(conversation_id=conversation_id, sender_id=mover_user_id, receiver_id=booking.renter_id, content=f"Your mover has started the journey. Tracking number: {tracking_number}.", message_type="system", event_data={"event_key": f"moving-started:chat:{booking.id}", **event_data})
+    ChatMessage.objects.create(conversation_id=conversation_id, sender_id=mover_user_id, receiver_id=booking.renter_id, content=f"Your mover has started the journey. Tracking number: {tracking_number}.", message_type="system", event_data={"event_key": f"moving-started:chat:{booking.id}", **event_data})
     return {"booking_id": str(booking.id), "journey_id": str(journey.id), "tracking_number": tracking_number, "started_at": now, "status": "started", "source": source}
 
 
