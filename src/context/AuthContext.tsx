@@ -13,6 +13,7 @@ import {
 } from '@/lib/authGateway';
 
 import { protectedPost } from '@/lib/djangoApi';
+import { unregisterPushDevicesForCurrentUser } from '@/lib/pushNotifications';
 import { useLiveEvents } from '@/lib/useLiveEvents';
 
 interface AuthUser {
@@ -616,6 +617,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async (): Promise<void> => {
+    try {
+      await unregisterPushDevicesForCurrentUser();
+    } catch (error) {
+      console.warn('Unable to unregister this device from push notifications:', error);
+    }
     try {
       await gatewayLogout();
     } catch (error) {
