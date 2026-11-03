@@ -78,13 +78,21 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
         return f'live-mover-map/{booking_id}'
 
     if 'CHAT' in kind or 'MESSAGE' in kind or payload.get('conversation_id'):
-        other_user_id = str(
-            payload.get('other_user_id')
-            or payload.get('mover_user_id')
-            or payload.get('renter_user_id')
-            or payload.get('sender_id')
-            or ''
-        ).strip()
+        if role == 'mover':
+            other_user_id = str(
+                payload.get('renter_user_id')
+                or payload.get('renter_id')
+                or payload.get('sender_id')
+                or payload.get('other_user_id')
+                or ''
+            ).strip()
+        else:
+            # The renter chat route expects the Mover profile ID, not its user ID.
+            other_user_id = str(
+                payload.get('mover_id')
+                or payload.get('other_user_id')
+                or ''
+            ).strip()
         if other_user_id:
             return f'mover-messages/{other_user_id}' if role == 'mover' else f'chat/{other_user_id}'
         if booking_id:
@@ -125,7 +133,7 @@ def _fcm_data(notification_id, notification_type, data, deep_link):
         'deep_link': deep_link,
     }
     source = data if isinstance(data, dict) else {}
-    for key in ('booking_id', 'listing_id', 'mover_id', 'mover_user_id', 'renter_user_id', 'sender_id'):
+    for key in ('booking_id', 'listing_id', 'mover_id', 'mover_user_id', 'renter_user_id', 'renter_id', 'sender_id', 'conversation_id'):
         value = source.get(key)
         if value is not None and str(value).strip():
             payload[key] = str(value)
