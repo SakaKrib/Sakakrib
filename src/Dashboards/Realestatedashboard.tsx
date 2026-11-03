@@ -203,9 +203,13 @@ export default function RealEstateDashboard() {
   }, [profile?.id, profile?.role, liveRefreshKey]);
 
   useEffect(() => {
+    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+      setLiveRefreshKey((key) => key + 1);
+      return;
+    }
     if (
       liveEvent?.type === 'resource.updated' &&
-      ['listings', 'payments', 'applications', 'subscriptions'].includes(liveEvent.resource ?? '')
+      ['listings', 'payments', 'applications', 'subscriptions', 'pms'].includes(liveEvent.resource ?? '')
     ) {
       setLiveRefreshKey((key) => key + 1);
     }
