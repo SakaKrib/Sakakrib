@@ -6,6 +6,18 @@ const config: CapacitorConfig = {
   appId: 'com.sakakrib.app',
   appName: 'Saka Krib',
   webDir: 'dist',
+  server: {
+    // Keep the bundled Android WebView on a secure local origin.
+    // This is important for browser APIs such as navigator.geolocation.
+    hostname: 'localhost',
+    androidScheme: 'https',
+    ...(devServerUrl
+      ? {
+          url: devServerUrl,
+          cleartext: devServerUrl.startsWith('http://'),
+        }
+      : {}),
+  },
   plugins: {
     // Status bar icon colour is set from the app theme at runtime (src/lib/systemBars.ts).
     // 'css' keeps Android insets handled by Capacitor; this is also the default.
@@ -14,14 +26,6 @@ const config: CapacitorConfig = {
       style: 'DEFAULT',
     },
   },
-  ...(devServerUrl
-    ? {
-        server: {
-          url: devServerUrl,
-          cleartext: devServerUrl.startsWith('http://'),
-        },
-      }
-    : {}),
 };
 
 export default config;
