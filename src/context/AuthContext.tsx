@@ -637,14 +637,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await authGateway('session');
 
       if (!result.authenticated) {
-        setSession(null);
-        setProfile(null);
-        setNeedsEmailVerification(Boolean(result.requiresEmailVerification));
-        setPendingVerificationEmail(
-          result.requiresEmailVerification && result.email
-            ? normalizeEmail(result.email)
-            : null,
-        );
+        if (result.requiresEmailVerification) {
+          setSession(null);
+          setProfile(null);
+          setNeedsEmailVerification(true);
+          setPendingVerificationEmail(
+            result.email ? normalizeEmail(result.email) : null,
+          );
+        } else {
+          setSession(null);
+          setProfile(null);
+        }
         return;
       }
 
