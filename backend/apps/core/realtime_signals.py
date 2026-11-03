@@ -44,7 +44,7 @@ def _send(
         schedule_user_event(
             user_id,
             resource=resource,
-            object_id=instance.pk,
+            object_id=event_object_id,
             action=action,
             status=status,
         )
