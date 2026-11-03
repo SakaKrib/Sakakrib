@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 import { KENYAN_CITIES, KENYAN_COUNTIES, cn } from '@/lib/utils';
+import { resolveDjangoMediaUrl } from '@/lib/djangoApi';
 
 interface MediaItem {
   file?: File;
@@ -164,13 +165,13 @@ export default function EditingListingForm({
           <section className="space-y-5 border-t border-gray-200 pt-8 dark:border-brand-700"><h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><Image className="h-5 w-5 text-brand-600" />Photos</h3>
             <p className="text-sm text-gray-500">Upload up to 7 property photos.</p>
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-6 text-sm font-semibold text-gray-600 hover:border-brand-400 dark:border-brand-700 dark:text-gray-300"><Upload className="h-5 w-5" />Choose Photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e => void handlePhotoUpload(e.target.files)} /></label>
-            {photos.length > 0 && <div className="grid gap-3 sm:grid-cols-2">{photos.map((photo, index) => <div key={`${photo.url}-${index}`} className="rounded-lg border p-2"><img src={photo.url} alt={photo.label || `Photo ${index + 1}`} className="h-40 w-full rounded object-cover" /><div className="mt-2 flex gap-2"><input value={photo.label} onChange={e => updatePhotoLabel(index, e.target.value)} className="input-field flex-1" placeholder={`Photo ${index + 1}`} /><button type="button" onClick={() => removePhoto(index)} className="btn-secondary"><X className="h-4 w-4" /></button></div></div>)}</div>}
+            {photos.length > 0 && <div className="grid gap-3 sm:grid-cols-2">{photos.map((photo, index) => <div key={`${photo.url}-${index}`} className="rounded-lg border p-2"><img src={resolveDjangoMediaUrl(photo.url)} alt={photo.label || `Photo ${index + 1}` className="h-40 w-full rounded object-cover" /><div className="mt-2 flex gap-2"><input value={photo.label} onChange={e => updatePhotoLabel(index, e.target.value)} className="input-field flex-1" placeholder={`Photo ${index + 1}`} /><button type="button" onClick={() => removePhoto(index)} className="btn-secondary"><X className="h-4 w-4" /></button></div></div>)}</div>}
           </section>
 
           <section className="space-y-5 border-t border-gray-200 pt-8 dark:border-brand-700"><h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><Video className="h-5 w-5 text-brand-600" />Walkthrough Video</h3>
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-6 text-sm font-semibold text-gray-600 hover:border-brand-400 dark:border-brand-700 dark:text-gray-300"><Upload className="h-5 w-5" />Choose Video<input type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={e => { const file = e.target.files?.[0]; if (!file) return; setVideoUploading(true); Promise.resolve(handleVideoUpload(file)).finally(() => setVideoUploading(false)); }} /></label>
             {videoUploading && <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Preparing video...</div>}
-            {video && <div className="rounded-lg border p-2"><video controls className="max-h-80 w-full rounded" src={video.url} /> <div className="mt-2 flex items-center gap-2"><input value={video.label} onChange={e => { /* label is managed by parent */ }} className="input-field flex-1" placeholder="Walkthrough Video" /><button type="button" onClick={removeVideo} className="btn-secondary"><X className="h-4 w-4" /></button></div><div className="mt-1 text-xs text-gray-400">{guessVideoMimeType(video.url)}</div></div>}
+            {video && <div className="rounded-lg border p-2"><video controls className="max-h-80 w-full rounded" src={resolveDjangoMediaUrl(video.url)} /> <div className="mt-2 flex items-center gap-2"><input value={video.label} onChange={e => { /* label is managed by parent */ }} className="input-field flex-1" placeholder="Walkthrough Video" /><button type="button" onClick={removeVideo} className="btn-secondary"><X className="h-4 w-4" /></button></div><div className="mt-1 text-xs text-gray-400">{guessVideoMimeType(video.url)}</div></div>}
           </section>
 
           <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-6 dark:border-brand-700">
