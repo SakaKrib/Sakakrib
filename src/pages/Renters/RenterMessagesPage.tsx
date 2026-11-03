@@ -3,11 +3,13 @@ import { ArrowRight, Loader2, MessageCircle, RefreshCw, Truck } from 'lucide-rea
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { renterApi, type Booking } from '@/lib/Renter/renterApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 const statusLabel = (status: string) => status.replace(/_/g, ' ');
 
 export default function RenterMessagesPage() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const { navigate } = useNav();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +27,12 @@ export default function RenterMessagesPage() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' && liveEvent.resource === 'chat')
+    ) void load();
+  }, [liveEvent, load]);
 
   const conversations = useMemo(() => {
     const unique = new Map<string, Booking>();
