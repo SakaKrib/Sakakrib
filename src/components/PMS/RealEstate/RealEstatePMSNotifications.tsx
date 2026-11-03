@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, CheckCheck, Loader2, RefreshCw } from 'lucide-react';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 import {
   getMyNotifications,
@@ -18,6 +19,7 @@ function formatDate(value: string | null | undefined) {
 }
 
 export default function RealEstatePMSNotifications() {
+  const { event: liveEvent } = useLiveEvents(true);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,6 +42,13 @@ export default function RealEstatePMSNotifications() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['pms', 'notifications', 'subscriptions', 'applications'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
 
   const handleRead = async (notification: UserNotification) => {
     if (notification.read_at) return;
