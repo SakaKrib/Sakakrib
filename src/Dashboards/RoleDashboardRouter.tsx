@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Clock3, Loader2, ShieldCheck, CreditCard } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { useNav } from '@/context/NavContext';
 import { protectedGet } from '@/lib/djangoApi';
 import RenterDashboard from './RenterDashboard';
@@ -111,10 +112,21 @@ function PMSSubscriptionRequiredNotice() {
 }
 
 function PMSAccessGate({ role, status }: { role: PMSRole; status: string }) {
+  const { event: liveEvent } = useLiveEvents(true);
   const [access, setAccess] = useState<PMSAccessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const { navigate } = useNav();
+
+  useEffect(() => {
+    if (
+      liveEvent?.type === 'ready' && liveEvent.reconnected
+      || liveEvent?.type === 'resource.updated' &&
+        ['subscriptions', 'pms', 'applications'].includes(liveEvent.resource ?? '')
+    ) {
+      setRefreshKey((key) => key + 1);
+    }
+  }, [liveEvent]);
 
   useEffect(() => {
     let cancelled = false;
