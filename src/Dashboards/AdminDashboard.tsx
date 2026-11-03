@@ -197,7 +197,7 @@ const isPending = (user: UserWithSubscription) =>
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
-  const { event: liveEvent } = useLiveEvents(Boolean(profile?.is_admin || profile?.is_superuser));
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.is_admin || profile?.is_superuser || profile?.role === 'admin'));
   const { navigate } = useNav();
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
   const isSuperUser = profile?.is_superuser === true;
