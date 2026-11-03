@@ -98,3 +98,20 @@ class RefreshToken(models.Model):
     class Meta:
         db_table = 'django_refresh_tokens'
         indexes = [models.Index(fields=['user', 'revoked_at']), models.Index(fields=['expires_at'])]
+
+
+
+class PushDeviceToken(models.Model):
+    user = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='push_device_tokens')
+    token = models.TextField(unique=True)
+    platform = models.CharField(max_length=20, default='android')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_registered_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'push_device_tokens'
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+        ]
