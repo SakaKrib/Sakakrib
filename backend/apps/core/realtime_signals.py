@@ -248,6 +248,37 @@ def live_listing_payment(sender, instance, created, **kwargs):
     )
 
 
+@receiver(post_save, sender=Mover)
+def live_mover(sender, instance, created, **kwargs):
+    update_fields = kwargs.get("update_fields")
+    location_only_fields = {
+        "current_latitude", "current_longitude", "location_updated_at", "updated_at",
+    }
+    if not created and update_fields and set(update_fields).issubset(location_only_fields):
+        return
+
+    _send(
+        [instance.user_id],
+        resource="movers",
+        instance=instance,
+        created=created,
+        status=instance.approval_status,
+        notify_admin=True,
+    )
+    relevant_fields = {
+        "approval_status", "is_available", "operating_city", "operating_county",
+        "vehicle_type", "base_rate_kes", "rate_per_km_kes", "working_days",
+        "start_time", "end_time",
+    }
+    if created or not update_fields or relevant_fields.intersection(set(update_fields)):
+        schedule_marketplace_event(
+            resource='movers',
+            object_id=instance.id,
+            action='created' if created else 'updated',
+            status=instance.approval_status,
+        )
+
+
 @receiver(post_save, sender=MoverApplication)
 def live_mover_application(sender, instance, created, **kwargs):
     _send(
