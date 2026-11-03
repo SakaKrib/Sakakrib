@@ -1,6 +1,6 @@
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .realtime_events import admin_event_group_name, user_event_group_name
+from .realtime_events import admin_event_group_name, community_event_group_name, user_event_group_name
 
 
 class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
@@ -18,6 +18,8 @@ class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
 
         self.group_name = user_event_group_name(self.user.pk)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
+        self.community_group_name = community_event_group_name()
+        await self.channel_layer.group_add(self.community_group_name, self.channel_name)
         self.admin_group_name = None
         if (
             getattr(self.user, 'is_staff', False)
@@ -33,6 +35,8 @@ class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, close_code):
         if hasattr(self, "group_name"):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if getattr(self, 'community_group_name', None):
+            await self.channel_layer.group_discard(self.community_group_name, self.channel_name)
         if getattr(self, 'admin_group_name', None):
             await self.channel_layer.group_discard(self.admin_group_name, self.channel_name)
 
