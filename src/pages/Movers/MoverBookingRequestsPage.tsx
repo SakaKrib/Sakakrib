@@ -2,19 +2,21 @@ import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { moverApi, type MoverBooking } from '@/lib/Movers';
 import MoverBookingRequests from './MoverBookingRequests';
 
 export default function MoverBookingRequestsPage() {
+  const { event: liveEvent } = useLiveEvents(true);
   const { profile } = useAuth();
   const { navigate } = useNav();
   const [bookings, setBookings] = useState<MoverBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'mover') return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       setBookings(await moverApi.getBookings());
@@ -26,6 +28,14 @@ export default function MoverBookingRequestsPage() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['bookings', 'notifications', 'chat'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
 
   if (loading) return <div className="flex min-h-[400px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div>;
 
