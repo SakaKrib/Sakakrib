@@ -20,7 +20,7 @@ class ListingApprovalWorkflowTests(TestCase):
         listing.is_approved = False
         listing.status = 'pending'
         listing.is_published = False
-        listing.ai_caption = ''
+        listing.ai_caption = 'AI-generated listing caption'
         listing.title = 'Approved Property'
         listing.city = 'Nairobi'
         listing.county = 'Nairobi'
