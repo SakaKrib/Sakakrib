@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { useLiveEvents } from '@/lib/useLiveEvents';
+import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import { moverApi, type MoverBooking, type MoverCustomer, type MoverInvoice, type MoverNotification, type MoverPayout, type MoverRecord, type MoverScheduleEvent } from '@/lib/Movers';
 import MoverBookingRequests from '@/pages/Movers/MoverBookingRequests';
 import MoverCalendar from '@/pages/Movers/MoverCalendar';
@@ -16,12 +17,7 @@ import MoverStatsCards from '@/pages/Movers/MoverStatsCards';
 
 const emptyBookings: MoverBooking[]=[]; const emptyCustomers: MoverCustomer[]=[]; const emptySchedule:MoverScheduleEvent[]=[]; const emptyInvoices:MoverInvoice[]=[]; const emptyPayouts:MoverPayout[]=[]; const emptyNotifications:MoverNotification[]=[];
 
-function getInboxWebSocketUrl() {
- const configured=(import.meta.env.VITE_DJANGO_API_URL as string|undefined)?.replace(/\/+$/,'').replace(/\/api$/,'');
- const url=new URL(`${configured||window.location.origin}/ws/chat/inbox/`);
- url.protocol=url.protocol==='https:'?'wss:':'ws:';
- return url.toString();
-}
+function getInboxWebSocketUrl() { return getDjangoWebSocketUrl('/ws/chat/inbox/'); }
 
 export default function MoverDashboard(){
  const {profile,loading:authLoading}=useAuth(); const {navigate}=useNav(); const {event:liveEvent}=useLiveEvents(Boolean(profile?.id && profile.role === 'mover' && !authLoading)); const [mover,setMover]=useState<MoverRecord|null>(null); const [bookings,setBookings]=useState(emptyBookings); const [customers,setCustomers]=useState(emptyCustomers); const [schedule,setSchedule]=useState(emptySchedule); const [invoices,setInvoices]=useState(emptyInvoices); const [payouts,setPayouts]=useState(emptyPayouts); const [notifications,setNotifications]=useState(emptyNotifications); const [loading,setLoading]=useState(true); const [refreshing,setRefreshing]=useState(false); const [error,setError]=useState<string|null>(null);
