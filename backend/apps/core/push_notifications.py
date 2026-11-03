@@ -78,7 +78,7 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
         return f'live-mover-map/{booking_id}'
 
     if any(term in kind for term in ('PAYOUT', 'EARNING')):
-        return 'mover-earnings' if role == 'mover' else 'notifications'
+        return 'mover-earnings' if role == 'mover' else 'dashboard'
 
     if 'SCHEDULE' in kind or 'CALENDAR' in kind:
         return 'mover-calendar' if role == 'mover' else 'renter-calendar'
