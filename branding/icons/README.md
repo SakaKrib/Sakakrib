@@ -2,7 +2,7 @@
 
 One original mark, one generator, every platform asset.
 
-**The mark.** A squared **S** drawn as a single route line that starts and ends in a round node: *find a place, then move there*. It is not a house, pin or generic lettermark, and it stands alone without the wordmark. Nodes are the accent colour; the S is the primary colour (light backgrounds) or paper colour (dark backgrounds).
+**The mark.** A smooth, italic **S** drawn as one continuous route line that starts and ends in a round node: *find a place, then move there*. The curve is built from Bézier segments that join with matching tangents, so there are no corners, and it leans 12° to the right. It is not a house, pin or generic lettermark, and it stands alone without the wordmark. Nodes are the accent colour; the S is the primary colour (light backgrounds) or paper colour (dark backgrounds).
 
 ## Regenerate everything
 

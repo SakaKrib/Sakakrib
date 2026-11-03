@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { syncSystemBars } from '@/lib/systemBars';
 
 type Theme = 'light' | 'dark';
 
@@ -22,6 +23,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (theme === 'dark') root.classList.add('dark');
     else root.classList.remove('dark');
     localStorage.setItem('saka-krib-theme', theme);
+    // Match the Android/iOS status bar icon colour to the app theme (no-op in the browser).
+    syncSystemBars(theme);
   }, [theme]);
 
   const toggleTheme = () => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));

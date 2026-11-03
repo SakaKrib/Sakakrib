@@ -10,6 +10,33 @@
 :root {
   --app-safe-top: env(safe-area-inset-top, 0px);
   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Colour drawn behind the status bar in the native app. Keep in sync with
+     BAR_COLOR in src/lib/systemBars.ts and the header background. */
+  --status-bar-bg: #ffffff;
+}
+
+:root.dark {
+  --status-bar-bg: #070d1c;
+}
+
+/* Native app only: draw a theme-coloured strip behind the status bar so its icons
+   (time, battery, signal) always sit on a background that matches the icon colour set by
+   syncSystemBars(). It also covers page content that scrolls up under the status bar. */
+html.capacitor-native::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-safe-top);
+  background: var(--status-bar-bg);
+  pointer-events: none;
+  z-index: 2147483000;
+}
+
+/* Keep the sticky header below the status bar instead of sliding underneath it. */
+html.capacitor-native header.sticky {
+  top: var(--app-safe-top);
 }
 
 html,
