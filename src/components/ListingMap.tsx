@@ -87,6 +87,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   const routeRequestRef = useRef(0);
   const routeOriginRef = useRef<Coordinate | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [locationRequestVersion, setLocationRequestVersion] = useState(0);
   const [deviceGps, setDeviceGps] = useState<DeviceGpsPosition | null>(null);
   const [followListing, setFollowListing] = useState(false);
   const [route, setRoute] = useState<Coordinate[]>([]);
@@ -198,7 +199,9 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   }, [latitude, longitude]);
 
   useEffect(() => {
-    if (!mapReady) return;
+    // Do not trigger Android's location permission prompt just by opening a listing.
+    // Request GPS only after the user taps Follow Listing or Recenter.
+    if (!mapReady || locationRequestVersion === 0) return;
     if (!navigator.geolocation) {
       setLocationError('Location services are not supported by this browser.');
       return;
@@ -227,8 +230,11 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
       }
     };
     const handleError = (error: GeolocationPositionError) => {
-      if (error.code === error.PERMISSION_DENIED) setLocationError('Location permission was denied. Allow location access to use Follow Listing.');
-      else setLocationError('Unable to read your current location.');
+      if (error.code === error.PERMISSION_DENIED) {
+        setLocationError('Location permission is blocked. Allow location for Saka Krib in Android Settings, then tap Follow Listing again.');
+      } else {
+        setLocationError('Unable to read your current location. Check that Location is turned on and try again.');
+      }
     };
     const watchId = navigator.geolocation.watchPosition(handlePosition, handleError, {
       enableHighAccuracy: true,
@@ -240,7 +246,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     };
-  }, [mapReady, requestRoute, followListing]);
+  }, [mapReady, locationRequestVersion, requestRoute, followListing]);
 
   useEffect(() => {
     if (!followListing || !deviceGps) return;
@@ -251,6 +257,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   const handleFollow = () => {
     if (!deviceGps) {
       setFollowListing(true);
+      setLocationRequestVersion((version) => version + 1);
       return;
     }
     setFollowListing((value) => !value);
@@ -260,6 +267,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
 
   const handleRecenter = () => {
     if (!deviceGps) {
+      setLocationRequestVersion((version) => version + 1);
       fitToRoute(route.length ? route : [destination]);
       return;
     }
