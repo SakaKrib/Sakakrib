@@ -4,6 +4,8 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Profile
 
+from apps.core.domain_property import ListingMedia
+
 from .models import Listing
 
 
@@ -126,3 +128,43 @@ class HomepageFeaturedListingsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['listings'], 1)
+
+    def test_anonymous_user_can_load_media_for_public_featured_listing(self):
+        listing = self.make_listing(
+            title='Public listing with a photo',
+            approval_status='approved',
+            is_published=True,
+        )
+        media = ListingMedia.objects.create(
+            listing_id=listing.id,
+            user_id=self.owner.id,
+            url='https://media.example.test/featured-home.jpg',
+            media_type='photo',
+        )
+
+        response = APIClient().get(
+            reverse('listing-media-detail', kwargs={'media_id': media.id})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['url'], media.url)
+
+    def test_anonymous_user_cannot_load_media_for_unpublished_listing(self):
+        listing = self.make_listing(
+            title='Private listing with a photo',
+            approval_status='pending_review',
+            is_published=False,
+        )
+        media = ListingMedia.objects.create(
+            listing_id=listing.id,
+            user_id=self.owner.id,
+            url='https://media.example.test/private-home.jpg',
+            media_type='photo',
+        )
+
+        response = APIClient().get(
+            reverse('listing-media-detail', kwargs={'media_id': media.id})
+        )
+
+        self.assertEqual(response.status_code, 404)
+
