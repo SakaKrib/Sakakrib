@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { initializePushNotifications } from '@/lib/pushNotifications';
+import { initializePushNotifications, installPushNotificationActionListener } from '@/lib/pushNotifications';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NavProvider, useNav } from '@/context/NavContext';
@@ -59,6 +59,25 @@ import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
 function AppContent() {
   const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
   const { profile, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    let cancelled = false;
+    let removeActionListener = () => {};
+
+    void installPushNotificationActionListener()
+      .then((cleanup) => {
+        if (cancelled) cleanup();
+        else removeActionListener = cleanup;
+      })
+      .catch((error) => {
+        console.warn('Unable to attach push notification tap listener:', error);
+      });
+
+    return () => {
+      cancelled = true;
+      removeActionListener();
+    };
+  }, []);
 
   useEffect(() => {
     if (authLoading || !profile?.id) return;
