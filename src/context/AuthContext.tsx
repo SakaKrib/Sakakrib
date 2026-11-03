@@ -688,7 +688,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!profile?.id) return;
 
-    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+    if (liveEvent?.type === 'ready') {
+      // Re-read the canonical session on first connection as well as reconnects.
+      // This closes the small startup window where an approval event could be missed.
       void refreshProfile();
       return;
     }
