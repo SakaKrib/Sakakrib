@@ -54,7 +54,7 @@ export default function MoversPage() {
       (marketplaceEvent?.type === 'ready' && marketplaceEvent.reconnected) ||
       (marketplaceEvent?.type === 'resource.updated' && marketplaceEvent.resource === 'movers')
     ) setLiveRefreshKey((key) => key + 1);
-  }, [marketplaceEvent, liveRefreshKey]);
+  }, [marketplaceEvent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,7 +150,7 @@ export default function MoversPage() {
     return () => {
       cancelled = true;
     };
-  }, [search, filterCity, filterVehicle]);
+  }, [search, filterCity, filterVehicle, liveRefreshKey]);
 
   const clearFilters = () => {
     setFilterCity('');
