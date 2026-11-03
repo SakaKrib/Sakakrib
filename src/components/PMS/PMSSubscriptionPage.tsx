@@ -4,6 +4,7 @@ import { djangoPmsGateway } from "@/lib/djangoPmsGateway";
 import { protectedGet } from "@/lib/djangoLegacyApi";
 import { useNav } from "@/context/NavContext";
 import PMSPlanSelector, { type PMSBillingCycle, type PMSPlanName, type PMSSubscriptionPlan } from "./PMSPlanSelector";
+import { useLiveEvents } from "@/lib/useLiveEvents";
 
 type PMSRole = "landlord" | "real_estate";
 type PMSSubscriptionStatus = "PENDING_PAYMENT" | "ACTIVE" | "GRACE_PERIOD" | "EXPIRED" | "CANCELLED" | "PAST_DUE";
@@ -127,6 +128,7 @@ export default function PMSSubscriptionPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(true);
 
   const loadProfile = useCallback(async () => {
     const { data: authData, error: userError } = await djangoPmsGateway.auth.getUser();
@@ -166,6 +168,16 @@ export default function PMSSubscriptionPage() {
   }, [loadProfile]);
 
   useEffect(() => { void loadSubscription(); }, [loadSubscription]);
+  useEffect(() => {
+    if (
+      liveEvent?.type === "ready" ||
+      (liveEvent?.type === "resource.updated" &&
+        ["subscriptions", "payments"].includes(liveEvent.resource ?? ""))
+    ) {
+      setRefreshing(true);
+      void loadSubscription();
+    }
+  }, [liveEvent, loadSubscription]);
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
