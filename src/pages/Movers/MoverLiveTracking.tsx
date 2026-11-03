@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, MapPin, Navigation, RefreshCw, Radio, Truck } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
+import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import { cn } from '@/lib/utils';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
@@ -9,10 +10,7 @@ type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'un
 type DeviceGpsPosition = Pick<GeolocationCoordinates, 'latitude' | 'longitude' | 'accuracy' | 'speed' | 'heading'>;
 type DeviceGpsEventDetail = DeviceGpsPosition & { timestamp?: number; bookingId?: string };
 const active = (status: string | null | undefined) => String(status ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
-function socketUrl(bookingId: string) {
-  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '');
-  const url = new URL(configured || window.location.origin, window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.pathname = `/ws/tracking/${encodeURIComponent(bookingId)}/`; url.search = ''; return url.toString();
-}
+function socketUrl(bookingId: string) { return getDjangoWebSocketUrl(`/ws/tracking/${encodeURIComponent(bookingId)}/`); }
 function latest(points: MoverTrackingPoint[]) { return [...points].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())[0] ?? null; }
 
 export default function MoverLiveTracking() {
