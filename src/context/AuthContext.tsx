@@ -680,10 +680,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!profile?.id) return;
+
+    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+      void refreshProfile();
+      return;
+    }
+
     if (
       liveEvent?.type !== 'resource.updated' ||
       liveEvent.resource !== 'applications' ||
-      !profile?.id ||
       liveEvent.object_id !== String(profile.id)
     ) {
       return;
