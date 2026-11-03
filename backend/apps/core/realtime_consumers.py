@@ -64,5 +64,9 @@ class PublicMarketplaceEventsConsumer(AsyncJsonWebsocketConsumer):
         if getattr(self, 'group_name', None):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
+    async def receive_json(self, content, **kwargs):
+        if isinstance(content, dict) and content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+
     async def live_event(self, event):
         await self.send_json(event.get("event") or {})
