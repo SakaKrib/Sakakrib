@@ -11,7 +11,7 @@ from .mover_application_views import MoverApplicationSubmitView
 from .password_reset_views import PasswordResetConfirmView, PasswordResetRequestView
 from .private_document_views import PrivateDocumentUploadView, PrivateDocumentView
 from .profile_media_views import ProfilePhotoView
-from .push_notification_views import PushDeviceRegistrationView
+from .push_notification_views import PushDeviceRegistrationView, PushDeviceUnregisterView
 from .views import CsrfTokenView, LoginView, LogoutView, MeView, RefreshView, ResendOtpView, SessionView, SetRoleView, SignupView, VerifyOtpView
 
 urlpatterns = [
@@ -31,7 +31,7 @@ urlpatterns = [
     path('profile-photo/', ProfilePhotoView.as_view(), name='profile-photo-upload'),
     path('profile-photo/<uuid:user_id>/', ProfilePhotoView.as_view(), name='profile-photo'),
     path('push-devices/', PushDeviceRegistrationView.as_view(), name='push-device-registration'),
-    path('push-devices/unregister/', PushDeviceRegistrationView.as_view(), name='push-device-unregister'),
+    path('push-devices/unregister/', PushDeviceUnregisterView.as_view(), name='push-device-unregister'),
     path('documents/upload/', PrivateDocumentUploadView.as_view(), name='private-document-upload'),
     path('documents/view/', PrivateDocumentView.as_view(), name='private-document-view'),
     path('kyc/upload/', KycDocumentUploadView.as_view(), name='kyc-upload'),
