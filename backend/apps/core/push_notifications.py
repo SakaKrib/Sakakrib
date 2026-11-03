@@ -68,7 +68,7 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
         if view in ALLOWED_APP_VIEWS:
             return f'{view}/{object_id}' if object_id else view
 
-    kind = str(notification_type or '').strip().upper()
+    kind = f"{str(notification_type or '').strip().upper()} {str(payload.get('action_type') or '').strip().upper()}"
     role = str(recipient_role or '').strip().lower()
     booking_id = str(payload.get('booking_id') or '').strip()
     listing_id = str(payload.get('listing_id') or '').strip()
