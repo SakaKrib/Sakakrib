@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPost, protectedUpload } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { formatKES } from '@/lib/utils';
 import type { CommunityPost, CommunityPostMedia } from '@/types/domain';
 
@@ -102,6 +103,7 @@ function Caption({ text }: { text: string }) {
 
 export default function CommunityPage() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
   const { navigate } = useNav();
   const [posts, setPosts] = useState<Post[]>([]);
   const [text, setText] = useState('');
@@ -121,8 +123,8 @@ export default function CommunityPage() {
     textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 240)}px`;
   }, [text]);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await protectedGet<{ items: Post[] }>('/api/core/community-posts/');
       setPosts(response?.items || []);
@@ -136,6 +138,16 @@ export default function CommunityPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+      void load(true);
+      return;
+    }
+    if (liveEvent?.type === 'resource.updated' && liveEvent.resource === 'community') {
+      void load(true);
+    }
+  }, [liveEvent]);
 
   const selectFiles = (list: FileList | null) => {
     if (!list) return;
