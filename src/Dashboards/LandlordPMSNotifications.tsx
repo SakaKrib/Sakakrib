@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bell, CheckCircle2, Clock3, RefreshCw } from 'lucide-react';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 type Notification = Record<string, any>;
 
@@ -9,6 +10,7 @@ const formatDate = (value: unknown) => value
   : '—';
 
 export default function LandlordPMSNotifications() {
+  const { event: liveEvent } = useLiveEvents(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -28,6 +30,13 @@ export default function LandlordPMSNotifications() {
   };
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['pms', 'rent', 'notifications', 'subscriptions'].includes(liveEvent.resource ?? ''))
+    ) void load();
+  }, [liveEvent]);
 
   const markRead = async (notification: Notification) => {
     setBusy(String(notification.id));
