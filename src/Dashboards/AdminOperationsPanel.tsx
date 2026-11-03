@@ -7,6 +7,7 @@ import {
 import { useNav } from '@/context/NavContext';
 import { protectedDelete, protectedGet, protectedPost } from '@/lib/djangoApi';
 import AdminEscrowReleasePanel from './AdminEscrowReleasePanel';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 type Tab = 'overview' | 'listings' | 'bookings' | 'transactions' | 'escrow' | 'calendar';
 type TransactionDirection = 'INCOMING' | 'OUTGOING';
@@ -25,6 +26,7 @@ const statusClass = (status?: string | null) => { const value = String(status ||
 
 export default function AdminOperationsPanel() {
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [listings, setListings] = useState<Listing[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -65,6 +67,13 @@ export default function AdminOperationsPanel() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['applications', 'listings', 'movers', 'payments', 'bookings', 'payouts', 'schedules', 'disputes', 'support'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
   const pendingListings = useMemo(() => listings.filter((l) => String(l.approval_status || '').toLowerCase() === 'pending_review'), [listings]);
   const activeBookings = useMemo(() => bookings.filter((b) => ['confirmed','in_progress'].includes(String(b.status || '').toLowerCase())), [bookings]);
   const heldEscrow = useMemo(() => invoices.filter((i) => String(i.status || '').toLowerCase() !== 'released' && !i.released_at), [invoices]);
