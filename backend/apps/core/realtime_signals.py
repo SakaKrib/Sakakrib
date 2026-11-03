@@ -24,7 +24,7 @@ from apps.subscriptions.models import (
 )
 from apps.accounts.models import Profile
 
-from .realtime_events import schedule_admin_event, schedule_user_event
+from .realtime_events import schedule_admin_event, schedule_community_event, schedule_user_event
 
 
 def _send(
@@ -32,6 +32,13 @@ def _send(
     notify_admin=False, action_override=None,
 ):
     action = action_override or ("created" if created else "updated")
+    if resource == "community":
+        schedule_community_event(
+            object_id=instance.pk,
+            action=action,
+            status=status,
+        )
+        return
     for user_id in {str(value) for value in user_ids if value}:
         schedule_user_event(
             user_id,
