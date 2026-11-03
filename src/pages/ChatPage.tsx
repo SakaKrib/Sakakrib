@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import MoverSchedulePicker, { type MoverBlockedInterval, type MoverScheduleValue } from '@/components/Renter/MoverSchedulePicker';
 import ChatBookingCard from '@/components/ChatBookingCard';
-import { protectedGet, protectedPatch, protectedPost, protectedUpload } from '@/lib/djangoApi';
+import { protectedGet, protectedPatch, protectedPost, protectedUpload, getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import { useLiveEvents } from '@/lib/useLiveEvents';
 import { cn, formatKES } from '@/lib/utils';
 
@@ -23,7 +23,7 @@ const first = <T,>(value: T | T[] | null | undefined): T | null => Array.isArray
 const rows = <T,>(value: T | T[] | null | undefined): T[] => value == null ? [] : Array.isArray(value) ? value : [value];
 const dateTime = (value: string | null | undefined) => value ? new Date(value).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—';
 const dateOnly = (value: string | null | undefined) => value ? new Date(`${value}T00:00:00+03:00`).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-const getWebSocketUrl = (conversationId: string) => { const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '').replace(/\/api$/, ''); const url = new URL(`${configured || window.location.origin}/ws/chat/${encodeURIComponent(conversationId)}/`); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; return url.toString(); };
+const getWebSocketUrl = (conversationId: string) => getDjangoWebSocketUrl(`/ws/chat/${encodeURIComponent(conversationId)}/`);
 
 function ChatImage({ messageId, attachment }: { messageId: string; attachment: ChatAttachment }) {
   const [url, setUrl] = useState(attachment.signed_url ?? '');
