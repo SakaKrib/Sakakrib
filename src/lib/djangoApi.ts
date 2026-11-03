@@ -50,6 +50,13 @@ export const getDjangoApiBaseUrl = (): string => {
   return typeof window !== 'undefined' ? window.location.origin : '';
 };
 
+/** Build a WebSocket URL from the exact API host selected for HTTP/auth. */
+export const getDjangoWebSocketUrl = (path: string): string => {
+  const url = new URL(path, getDjangoApiBaseUrl());
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+};
+
 /**
  * Probe the public CSRF endpoint in priority order. The first endpoint that
  * returns Django's JSON CSRF response is used for all API and WebSocket calls
