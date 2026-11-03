@@ -25,7 +25,10 @@ from apps.subscriptions.models import (
 )
 from apps.accounts.models import Profile
 
-from .realtime_events import schedule_admin_event, schedule_community_event, schedule_marketplace_event, schedule_user_event
+from .realtime_events import (
+    schedule_admin_event, schedule_chat_message_event, schedule_community_event,
+    schedule_marketplace_event, schedule_user_event,
+)
 
 
 def _send(
@@ -91,6 +94,44 @@ def live_chat_message(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
         status=instance.message_type,
+    )
+    if not created:
+        return
+
+    # Centralize chat alerts here so every ChatMessage creation path is covered,
+    # including booking workflows that do not call chat_services.send_message().
+    schedule_chat_message_event(instance.id)
+
+    if instance.message_type == "system":
+        return
+
+    sender_profile = Profile.objects.filter(pk=instance.sender_id).only("role").first()
+    notification_data = {
+        "conversation_id": instance.conversation_id,
+        "message_id": str(instance.id),
+        "message_type": instance.message_type,
+        "sender_id": str(instance.sender_id),
+    }
+    if sender_profile and sender_profile.role == "renter":
+        notification_data["renter_user_id"] = str(instance.sender_id)
+    elif sender_profile and sender_profile.role == "mover":
+        mover_profile_id = Mover.objects.filter(
+            user_id=instance.sender_id,
+            approval_status="approved",
+        ).values_list("id", flat=True).first()
+        if mover_profile_id:
+            notification_data["mover_id"] = str(mover_profile_id)
+
+    from .notification_services import dispatch_user_notification
+
+    dispatch_user_notification(
+        user_id=instance.receiver_id,
+        notification_type="CHAT_MESSAGE",
+        title="New message",
+        message=(instance.content or "")[:160] or "You received a message.",
+        data=notification_data,
+        event_key=f"chat:{instance.id}",
+        send_email=False,
     )
 
 
