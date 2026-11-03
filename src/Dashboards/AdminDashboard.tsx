@@ -258,6 +258,10 @@ export default function AdminDashboard() {
   }, [isSuperUser, isAdmin]);
   
   useEffect(() => {
+    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+      void loadDashboard();
+      return;
+    }
     if (liveEvent?.type !== 'resource.updated') return;
     if (['applications', 'listings', 'payments', 'bookings', 'payouts', 'subscriptions', 'schedules', 'disputes', 'support', 'pms'].includes(liveEvent.resource ?? '')) {
       void loadDashboard();
