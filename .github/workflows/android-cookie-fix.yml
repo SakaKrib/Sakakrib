@@ -59,24 +59,28 @@ jobs:
               raise SystemExit(f"Android manifest not found: {manifest}")
 
           content = manifest.read_text(encoding="utf-8")
-          permissions = [
-              '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
-              '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
-              '    <uses-feature android:name="android.hardware.location.gps" android:required="false" />',
+          entries = [
+              ('android.permission.ACCESS_COARSE_LOCATION',
+               '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />'),
+              ('android.permission.ACCESS_FINE_LOCATION',
+               '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'),
+              ('android.hardware.location.gps',
+               '    <uses-feature android:name="android.hardware.location.gps" android:required="false" />'),
           ]
 
           application_index = content.find("<application")
           if application_index < 0:
               raise SystemExit("Could not find <application> in AndroidManifest.xml")
 
-          missing = [entry for entry in permissions if entry.split(' android:')[1].split('"')[0] not in content]
+          missing = [xml for marker, xml in entries if marker not in content]
           if missing:
-              content = content[:application_index] + "\\n".join(missing) + "\\n    " + content[application_index:]
+              content = content[:application_index] + "\n".join(missing) + "\n    " + content[application_index:]
               manifest.write_text(content, encoding="utf-8")
 
-          for permission in ("ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"):
-              if permission not in manifest.read_text(encoding="utf-8"):
-                  raise SystemExit(f"Required Android location permission missing: {permission}")
+          final_content = manifest.read_text(encoding="utf-8")
+          for marker, _ in entries[:2]:
+              if marker not in final_content:
+                  raise SystemExit(f"Required Android location permission missing: {marker}")
 
           print("Android coarse and fine location permissions are declared.")
           PY
@@ -90,10 +94,10 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Verify merged Android location permissions
+      - name: Verify Android location permissions
         run: |
-          grep -R -q "android.permission.ACCESS_COARSE_LOCATION" android/app/src/main/AndroidManifest.xml
-          grep -R -q "android.permission.ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml
+          grep -q "android.permission.ACCESS_COARSE_LOCATION" android/app/src/main/AndroidManifest.xml
+          grep -q "android.permission.ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
         working-directory: android
