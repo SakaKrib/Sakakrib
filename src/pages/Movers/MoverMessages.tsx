@@ -3,6 +3,7 @@ import { ArrowRight, Loader2, MessageCircle, RefreshCw, Send } from 'lucide-reac
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverChatMessage } from '@/lib/Movers';
+import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import ChatBookingCard from '@/components/ChatBookingCard';
 
 type BookingCardMessage = { id: string; sender_id: string; content: string; message_type: string | null; event_data: Record<string, unknown> | null; created_at: string };
@@ -11,12 +12,7 @@ function conversationId(userA: string, userB: string) {
   return [userA, userB].sort().join('__');
 }
 
-function getInboxWebSocketUrl() {
-  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '').replace(/\/api$/, '');
-  const url = new URL(`${configured || window.location.origin}/ws/chat/inbox/`);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString();
-}
+function getInboxWebSocketUrl() { return getDjangoWebSocketUrl('/ws/chat/inbox/'); }
 
 function messageText(message: MoverChatMessage) {
   return typeof message.content === 'string' ? message.content : '';
