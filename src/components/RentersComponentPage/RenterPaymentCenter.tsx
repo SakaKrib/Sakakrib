@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet } from '@/lib/djangoApi';
 import { renterApi, type MovingInvoice, type RentInvoice } from '@/lib/Renter/renterApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 type MovingPayment = { id: string; booking_id: string; invoice_id: string; amount_kes: number; provider: string; status: string; provider_reference: string | null; provider_transaction_id: string | null; mpesa_receipt: string | null; paypal_order_id: string | null; created_at: string; paid_at: string | null; released_at: string | null; updated_at: string };
 type RentSubmission = { id: string; invoice_id: string; transaction_reference: string; status: string; submitted_at: string; confirmed_at: string | null; rejection_reason: string | null };
@@ -18,6 +19,7 @@ const badge = (status?: string | null) => { const s = normalized(status); if (pa
 export default function RenterPaymentCenter() {
   const { profile } = useAuth();
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const [invoices, setInvoices] = useState<RentInvoice[]>([]);
   const [movingInvoices, setMovingInvoices] = useState<MovingInvoice[]>([]);
   const [movingPayments, setMovingPayments] = useState<MovingPayment[]>([]);
@@ -25,9 +27,9 @@ export default function RenterPaymentCenter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'renter') return;
-    setLoading(true); setError(null);
+    if (!silent) setLoading(true); setError(null);
     try {
       const dashboard = await renterApi.getDashboard(profile.id);
       const [rentInvoices, allMovingInvoices, allMovingPayments] = await Promise.all([
@@ -47,6 +49,13 @@ export default function RenterPaymentCenter() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['rent', 'payments', 'bookings', 'notifications', 'pms'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
 
   const pendingRent = useMemo(() => invoices.filter((invoice) => !paid.has(normalized(invoice.status)) && !failed.has(normalized(invoice.status))), [invoices]);
   const pendingMoving = useMemo(() => movingInvoices.filter((invoice) => !paid.has(normalized(invoice.status)) && !failed.has(normalized(invoice.status))), [movingInvoices]);
