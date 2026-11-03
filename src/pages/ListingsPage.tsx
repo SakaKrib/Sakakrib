@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, MapPin, Home, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
 import { protectedGet } from '@/lib/djangoApi';
+import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import type { Listing, ListingMedia } from '@/types/domain';
 
@@ -23,6 +24,18 @@ export default function ListingsPage() {
   const [filterMaxPrice, setFilterMaxPrice] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
+  const { event: marketplaceEvent } = useMarketplaceEvents();
+
+  useEffect(() => {
+    if (
+      (marketplaceEvent?.type === 'ready' && marketplaceEvent.reconnected) ||
+      (marketplaceEvent?.type === 'resource.updated' &&
+        ['listings', 'reviews'].includes(marketplaceEvent.resource ?? ''))
+    ) {
+      setLiveRefreshKey((key) => key + 1);
+    }
+  }, [marketplaceEvent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +75,7 @@ export default function ListingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [search, filterCity, filterType, filterMinPrice, filterMaxPrice]);
+  }, [search, filterCity, filterType, filterMinPrice, filterMaxPrice, liveRefreshKey]);
 
   const clearFilters = () => {
     setFilterCity('');
