@@ -177,6 +177,8 @@ export default function LiveMovingMap() {
   useEffect(() => {
     if (!bookingId || !booking || !active(booking.status)) { socketRef.current?.close(); socketRef.current = null; if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current); reconnectRef.current = null; setSocketState('closed'); return; }
     let disposed = false;
+    let heartbeatTimer: number | null = null;
+    let heartbeatTimeout: number | null = null;
     const clearTimer = () => { if (reconnectRef.current !== null) window.clearTimeout(reconnectRef.current); reconnectRef.current = null; };
     const schedule = () => { if (disposed || !navigator.onLine) { setSocketState('offline'); return; } clearTimer(); setSocketState('reconnecting'); const delay = Math.min(15000, 750 * Math.pow(2, Math.min(attemptRef.current++, 4))); reconnectRef.current = window.setTimeout(connect, delay); };
     const connect = () => {
@@ -185,11 +187,29 @@ export default function LiveMovingMap() {
       const url = socketUrl(bookingId); socketRef.current?.close(); setSocketState(attemptRef.current ? 'reconnecting' : 'connecting');
       let socket: WebSocket; try { socket = new WebSocket(url); } catch { schedule(); return; }
       socketRef.current = socket;
-      socket.onopen = () => { if (socketRef.current !== socket) return; attemptRef.current = 0; setSocketState('live'); };
+      socket.onopen = () => {
+        if (socketRef.current !== socket) return;
+        attemptRef.current = 0;
+        setSocketState('live');
+        if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
+        heartbeatTimer = window.setInterval(() => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          if (heartbeatTimeout !== null) {
+            socket.close();
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'ping' }));
+          heartbeatTimeout = window.setTimeout(() => {
+            heartbeatTimeout = null;
+            socket.close();
+          }, 10000);
+        }, 25000);
+      };
       socket.onmessage = event => {
         if (socketRef.current !== socket) return;
         try {
           const message = JSON.parse(event.data) as { type?: string; location?: TrackingPoint | null; phase?: string; tracking_health?: TrackingHealth | null };
+          if (message.type === 'pong') { if (heartbeatTimeout !== null) window.clearTimeout(heartbeatTimeout); heartbeatTimeout = null; return; }
           if (message.tracking_health) setBooking(previous => previous ? { ...previous, tracking_health: message.tracking_health } : previous);
           if (message.type === 'tracking_health') return;
           if (message.type === 'phase') { if (message.phase === 'HEADING_TO_PICKUP' || message.phase === 'IN_TRANSIT') { setJourneyPhase(message.phase); if (message.phase === 'IN_TRANSIT') { setPickupConfirmationError(null); setConfirmingPickup(false); } } return; }
@@ -201,12 +221,21 @@ export default function LiveMovingMap() {
         } catch { /* Ignore malformed telemetry frames; the next valid frame will restore the live state. */ }
       };
       socket.onerror = () => { if (socketRef.current === socket) setSocketState('reconnecting'); };
-      socket.onclose = () => { if (!disposed && socketRef.current === socket) { socketRef.current = null; void load().then(snapshot => { if (snapshot && active(snapshot.tracking.booking.status)) schedule(); }); } };
+      socket.onclose = () => {
+        if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
+        if (heartbeatTimeout !== null) window.clearTimeout(heartbeatTimeout);
+        heartbeatTimer = null;
+        heartbeatTimeout = null;
+        if (!disposed && socketRef.current === socket) {
+          socketRef.current = null;
+          void load().then(snapshot => { if (snapshot && active(snapshot.tracking.booking.status)) schedule(); });
+        }
+      };
     };
     const recover = () => { attemptRef.current = 0; void load().then(snapshot => { if (snapshot && active(snapshot.tracking.booking.status)) connect(); }); };
     const online = () => recover(); const offline = () => setSocketState('offline');
     window.addEventListener('online', online); window.addEventListener('offline', offline); connect();
-    return () => { disposed = true; clearTimer(); socketRef.current?.close(); socketRef.current = null; window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+    return () => { disposed = true; clearTimer(); if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer); if (heartbeatTimeout !== null) window.clearTimeout(heartbeatTimeout); heartbeatTimer = null; heartbeatTimeout = null; socketRef.current?.close(); socketRef.current = null; window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
   }, [bookingId, booking?.status, load]);
 
   const latest = useMemo(() => [...points].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())[0] ?? null, [points]);
