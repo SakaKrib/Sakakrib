@@ -21,7 +21,7 @@ ALLOWED_APP_VIEWS = {
     'mover-upcoming-jobs', 'mover-customers', 'mover-invoices',
     'mover-earnings', 'mover-notifications', 'mover-messages',
     'moving-financial-records', 'moving-transaction-timeline',
-    'notifications', 'profile',
+    'profile',
 }
 
 
@@ -131,7 +131,9 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
         return 'renter-notifications'
     if role == 'mover':
         return 'mover-notifications'
-    return 'notifications'
+    if role in {'landlord', 'real_estate'}:
+        return 'pms-dashboard'
+    return 'dashboard'
 
 
 def _fcm_data(notification_id, notification_type, data, deep_link):
