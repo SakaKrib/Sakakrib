@@ -30,6 +30,9 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
+        if isinstance(content, dict) and content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+            return
         try:
             receiver_id = content.get("receiver_id")
             if not receiver_id:
