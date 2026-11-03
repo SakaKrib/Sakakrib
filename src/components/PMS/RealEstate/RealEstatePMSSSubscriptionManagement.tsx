@@ -3,6 +3,7 @@ import { CalendarDays, Crown, FileText, Loader2, RefreshCw, ShieldAlert } from '
 import { protectedGet } from '@/lib/djangoApi';
 import PMSPlanSelector, { type PMSBillingCycle, type PMSPlanName, type PMSSubscriptionPlan } from '../PMSPlanSelector';
 import type { RealEstateDashboardData } from '@/lib/RealEstateTs/Realestateservice';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 interface SubscriptionData { subscription_id: string | null; plan_id: string | null; plan_name: PMSPlanName | null; subscription_status: string | null; billing_cycle: PMSBillingCycle | null; max_listings: number | null; max_units_per_listing: number | null; current_period_start: string | null; current_period_end: string | null; grace_period_end: string | null; auto_renew: boolean; cancel_at_period_end: boolean; next_billing_at: string | null; }
 interface Invoice { id: string; status: string; plan_name: string | null; billing_cycle: string | null; amount_kes: number | null; currency: string | null; payment_provider: string | null; paid_at: string | null; created_at: string | null; }
@@ -11,6 +12,7 @@ const date = (value: string | null) => { if (!value) return '—'; const parsed 
 const statusClass = (status: string | null) => status === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : status === 'GRACE_PERIOD' || status === 'PENDING_PAYMENT' || status === 'PAST_DUE' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' : 'bg-gray-100 text-gray-700 dark:bg-brand-800 dark:text-gray-300';
 
 export default function RealEstatePMSSubscriptionManagement({ data, isAdmin }: { data: RealEstateDashboardData; isAdmin: boolean }) {
+  const { event: liveEvent } = useLiveEvents(true);
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,6 +22,13 @@ export default function RealEstatePMSSubscriptionManagement({ data, isAdmin }: {
   const [cycle, setCycle] = useState<PMSBillingCycle>('MONTHLY');
   const load = useCallback(async (refresh = false) => { if (refresh) setRefreshing(true); else setLoading(true); setError(null); try { const [subscriptionResult, invoiceResult] = await Promise.all([protectedGet<SubscriptionData>('/api/subscriptions/me/'), protectedGet<Invoice[]>('/api/subscriptions/invoices/')]); setSubscription(subscriptionResult); setInvoices(Array.isArray(invoiceResult) ? invoiceResult : []); if (subscriptionResult) { setCycle(subscriptionResult.billing_cycle ?? 'MONTHLY'); setSelectedPlan(subscriptionResult.plan_name ?? null); } } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load subscription details.'); } finally { setLoading(false); setRefreshing(false); } }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      liveEvent?.type === 'ready' ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['subscriptions', 'payments'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
   const currentPlanId = subscription?.plan_id ?? data.subscription?.plan_id ?? null;
   const currentPlanName = subscription?.plan_name ?? (data.subscription?.plan_name as PMSPlanName | null) ?? null;
   const currentCycle = subscription?.billing_cycle ?? (data.subscription?.billing_cycle as PMSBillingCycle | null) ?? null;
