@@ -7,6 +7,7 @@ import {
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { protectedGet } from '@/lib/djangoApi';
+import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { formatKES, timeAgo, cn } from '@/lib/utils';
 import ListingMap from '@/components/ListingMap';
 import PropertyUnitsSection, { type PublicPropertyUnit } from '@/components/PropertyUnitsSection';
@@ -45,6 +46,18 @@ export default function ListingDetailPage() {
   const [showMap, setShowMap] = useState(false);
   const [showPaymentInfo, setShowPaymentInfo] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState<PublicPropertyUnit | null>(null);
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
+  const { event: marketplaceEvent } = useMarketplaceEvents();
+
+  useEffect(() => {
+    if (
+      marketplaceEvent?.type === 'resource.updated' &&
+      marketplaceEvent.resource === 'listings' &&
+      (marketplaceEvent.object_id === String(selectedListingId) || marketplaceEvent.action === 'deleted')
+    ) {
+      setLiveRefreshKey((key) => key + 1);
+    }
+  }, [marketplaceEvent, selectedListingId]);
 
   useEffect(() => {
     if (!selectedListingId) return;
@@ -66,7 +79,7 @@ export default function ListingDetailPage() {
       } finally { setLoading(false); }
     };
     fetchData();
-  }, [selectedListingId]);
+  }, [selectedListingId, liveRefreshKey]);
 
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-brand-600" /></div>;
   if (!listing) return (
