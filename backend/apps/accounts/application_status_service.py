@@ -260,17 +260,19 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
         application=mover_application,
     )
 
-    # Publish only after the complete application decision commits successfully.
-    schedule_user_event(
-        profile.id,
-        resource='applications',
-        object_id=profile.id,
-        status=status_value,
-    )
-    schedule_admin_event(
-        resource='applications',
-        object_id=profile.id,
-        status=status_value,
-    )
+    # MoverApplication post_save already publishes the mover decision when
+    # its canonical application record exists. Avoid sending a duplicate event.
+    if application_type != 'mover' or mover_application is None:
+        schedule_user_event(
+            profile.id,
+            resource='applications',
+            object_id=profile.id,
+            status=status_value,
+        )
+        schedule_admin_event(
+            resource='applications',
+            object_id=profile.id,
+            status=status_value,
+        )
 
     return profile
