@@ -16,20 +16,20 @@ const ALLOWED_VIEWS = new Set([
   'mover-upcoming-jobs', 'mover-customers', 'mover-invoices',
   'mover-earnings', 'mover-notifications', 'mover-messages',
   'moving-financial-records', 'moving-transaction-timeline',
-  'notifications', 'profile',
+  'profile',
 ]);
 
 function openNotificationSource(data: Record<string, unknown> | undefined) {
   const raw = String(data?.deep_link || '').trim();
   if (!raw) {
-    window.location.hash = 'notifications';
+    window.location.hash = 'dashboard';
     return;
   }
 
   const route = raw.replace(/^#/, '').replace(/^\/+/, '');
   const [view] = route.split('/');
   if (!ALLOWED_VIEWS.has(view)) {
-    window.location.hash = 'notifications';
+    window.location.hash = 'dashboard';
     return;
   }
 
