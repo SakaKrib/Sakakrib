@@ -4,7 +4,7 @@ export interface LiveBusinessEvent {
   type: 'resource.updated' | 'ready' | 'pong';
   resource?: string;
   object_id?: string;
-  action?: 'created' | 'updated';
+  action?: 'created' | 'updated' | 'deleted';
   status?: string | null;
   reconnected?: boolean;
 }
