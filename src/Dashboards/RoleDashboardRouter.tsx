@@ -119,11 +119,12 @@ function PMSAccessGate({ role, status }: { role: PMSRole; status: string }) {
   const { navigate } = useNav();
 
   useEffect(() => {
-    if (
-      liveEvent?.type === 'ready' && liveEvent.reconnected
-      || liveEvent?.type === 'resource.updated' &&
-        ['subscriptions', 'pms', 'applications'].includes(liveEvent.resource ?? '')
-    ) {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected === true) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['subscriptions', 'pms', 'applications'].includes(liveEvent.resource ?? ''));
+
+    if (shouldRefresh) {
       setRefreshKey((key) => key + 1);
     }
   }, [liveEvent]);
