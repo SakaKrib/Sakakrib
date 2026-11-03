@@ -41,6 +41,7 @@ jobs:
       - name: Build React app
         env:
           VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_FIREBASE_PUSH_ENABLED: 'false'
         run: |
           test -n "$VITE_DJANGO_API_URL"
           npm run build
@@ -91,6 +92,8 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Build React app
+        env:
+          VITE_FIREBASE_PUSH_ENABLED: 'false'
         run: npm run build
 
       - name: Generate iOS project
