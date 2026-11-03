@@ -1,0 +1,71 @@
+name: Android APK (WebView Cookie Fix)
+
+on:
+  push:
+    branches:
+      - backup/casa-ai-before-push
+    paths:
+      - "native/android/**"
+      - ".github/workflows/android-cookie-fix.yml"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "src/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    env:
+      VITE_DJANGO_API_URL: https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net
+      VITE_FIREBASE_PUSH_ENABLED: "false"
+
+    steps:
+      - name: Check out SakaKrib
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Generate Android project
+        run: npm run cap:add:android
+
+      - name: Install Saka Krib native WebView configuration
+        run: |
+          mkdir -p android/app/src/main/java/com/sakakrib/app
+          cp native/android/MainActivity.java android/app/src/main/java/com/sakakrib/app/MainActivity.java
+          grep -q "setAcceptThirdPartyCookies" android/app/src/main/java/com/sakakrib/app/MainActivity.java
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SakaKrib-Android-APK-CookieFix
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
