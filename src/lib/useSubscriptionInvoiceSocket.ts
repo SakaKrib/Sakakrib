@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 export interface SubscriptionInvoiceSocketEvent {
-  type: 'subscription_invoice' | 'ready' | 'error';
+  type: 'subscription_invoice' | 'ready' | 'error' | 'pong';
   event_type?: string;
   status?: string;
   invoice_id?: string;
