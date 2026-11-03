@@ -2,6 +2,7 @@ import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, Clock3, Loader2, MapPin,
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBookingDetail as Detail } from '@/lib/Movers';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { cn, formatKES } from '@/lib/utils';
 import MoverJourneyControls from './MoverJourneyControls';
 import MoverDeliveryDisputePanel from './MoverDeliveryDisputePanel';
@@ -14,6 +15,7 @@ const style = (value: string | null | undefined) => ['confirmed', 'completed'].i
 
 export default function MoverBookingDetail() {
   const { selectedMoverBookingId, navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(selectedMoverBookingId));
   const bookingId = selectedMoverBookingId;
   const [data, setData] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,6 +37,13 @@ export default function MoverBookingDetail() {
   }, [bookingId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['bookings', 'payments', 'payouts', 'schedules', 'disputes', 'chat', 'notifications'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
   useEffect(() => { if (!data?.response_deadline || !data.can_respond) return; const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, [data?.response_deadline, data?.can_respond]);
 
   const remaining = useMemo(() => { if (!data?.response_deadline) return null; const seconds = Math.max(0, Math.floor((new Date(data.response_deadline).getTime() - now) / 1000)); return seconds; }, [data?.response_deadline, now]);
