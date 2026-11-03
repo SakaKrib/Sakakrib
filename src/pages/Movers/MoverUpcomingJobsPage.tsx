@@ -2,23 +2,33 @@ import { BriefcaseBusiness, CalendarDays, MapPin, RefreshCw } from 'lucide-react
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { moverApi, type MoverBooking } from '@/lib/Movers';
 
 const activeStatuses = new Set(['confirmed', 'scheduled', 'in_progress', 'started']);
 
 export default function MoverUpcomingJobsPage() {
+  const { event: liveEvent } = useLiveEvents(true);
   const { profile } = useAuth();
   const { navigate } = useNav();
   const [bookings, setBookings] = useState<MoverBooking[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'mover') return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try { setBookings(await moverApi.getBookings()); } finally { setLoading(false); }
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['bookings', 'schedules', 'notifications'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
 
   const jobs = useMemo(() => bookings.filter((booking) => activeStatuses.has((booking.status ?? '').toLowerCase()) && (booking.moving_date || booking.scheduled_start_at)).sort((a, b) => new Date(a.scheduled_start_at ?? a.moving_date ?? '').getTime() - new Date(b.scheduled_start_at ?? b.moving_date ?? '').getTime()), [bookings]);
 
