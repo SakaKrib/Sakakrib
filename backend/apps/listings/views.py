@@ -9,7 +9,7 @@ from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -128,7 +128,9 @@ class ListingMediaView(APIView):
 
 
 class ListingMediaDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    # Public listing photos must load on the anonymous homepage. The view's
+    # _media_is_visible check still limits anonymous access to published listings.
+    permission_classes = [AllowAny]
 
     def get(self, request, media_id):
         media = ListingMedia.objects.filter(pk=media_id).first()
