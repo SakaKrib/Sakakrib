@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarDays, Check, Clock3, CreditCard, Loader2, MapPin, MessageCircle, Navigation, Play, X, XCircle } from 'lucide-react';
 import { cn, formatKES } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import { protectedGet, protectedPost, getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import MovingBookingEditForm from './MovingBookingEditForm';
 import MovingPayPalPaymentButton from './payments/MovingPayPalPaymentButton';
 
@@ -38,12 +38,7 @@ function getPaymentErrorMessage(error: unknown) {
   return cleaned || 'We could not start the M-Pesa payment. Please check the number and try again.';
 }
 
-function getInboxWebSocketUrl() {
-  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.replace(/\/+$/, '').replace(/\/api$/, '');
-  const url = new URL(`${configured || window.location.origin}/ws/chat/inbox/`);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString();
-}
+function getInboxWebSocketUrl() { return getDjangoWebSocketUrl('/ws/chat/inbox/'); }
 
 export default function ChatBookingCard({ message, booking, isMover, responding, onRespond, onCancel }: Props) {
   const { profile } = useAuth();
