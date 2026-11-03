@@ -41,8 +41,12 @@ class PushDeviceUnregisterView(APIView):
 
     def post(self, request):
         token = str(request.data.get('token') or '').strip()
-        devices = PushDeviceToken.objects.filter(user=request.user, is_active=True)
-        if token:
-            devices = devices.filter(token=token)
+        if not token or len(token) > 8192:
+            return Response({'detail': 'The current device token is required.'}, status=400)
+        devices = PushDeviceToken.objects.filter(
+            user=request.user,
+            token=token,
+            is_active=True,
+        )
         updated = devices.update(is_active=False)
         return Response({'unregistered': True, 'devices_updated': updated}, status=200)
