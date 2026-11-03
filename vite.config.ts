@@ -15,6 +15,11 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
       },
+      // Django serves uploaded property media from MEDIA_URL.
+      '/media': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
       '/ws': {
         target: wsProxyTarget,
         ws: true,
