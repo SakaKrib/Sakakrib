@@ -2,9 +2,11 @@ import { RefreshCw, Search, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { moverApi, type MoverCustomer } from '@/lib/Movers';
 
 export default function MoverCustomers() {
+  const { event: liveEvent } = useLiveEvents(true);
   const { profile } = useAuth();
   const { navigate } = useNav();
   const [customers, setCustomers] = useState<MoverCustomer[]>([]);
@@ -33,6 +35,14 @@ export default function MoverCustomers() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['bookings', 'chat', 'notifications'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
 
   const bookingCount = useMemo(() => customers.reduce((total, customer) => total + customer.booking_count, 0), [customers]);
   const activeCount = useMemo(() => customers.reduce((total, customer) => total + customer.active_booking_count, 0), [customers]);
