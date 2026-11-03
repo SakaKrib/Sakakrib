@@ -32,6 +32,15 @@ class CapacitorCookiePolicyMiddlewareTests(SimpleTestCase):
         self.assertEqual(response.cookies["sakakrib_access"]["samesite"], "None")
         self.assertTrue(response.cookies["sakakrib_access"]["httponly"])
 
+    def test_ios_capacitor_origin_gets_secure_cross_site_cookies(self):
+        response = self._response_for("capacitor://localhost")
+
+        self.assertTrue(response.cookies[settings.CSRF_COOKIE_NAME]["secure"])
+        self.assertEqual(response.cookies["csrftoken"]["samesite"], "None")
+        self.assertTrue(response.cookies[settings.JWT_ACCESS_COOKIE]["secure"])
+        self.assertEqual(response.cookies["sakakrib_access"]["samesite"], "None")
+        self.assertTrue(response.cookies["sakakrib_access"]["httponly"])
+
     def test_regular_browser_origin_keeps_existing_cookie_policy(self):
         response = self._response_for("http://100.109.224.0:5175")
 
