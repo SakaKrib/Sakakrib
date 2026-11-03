@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Q
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
@@ -57,6 +58,16 @@ def _send(
 @receiver(post_save, sender=UserNotification)
 def live_user_notification(sender, instance, created, **kwargs):
     _send([instance.user_id], resource="notifications", instance=instance, created=created)
+    if created:
+        from .push_notifications import send_user_notification_push
+        transaction.on_commit(lambda: send_user_notification_push(
+            user_id=instance.user_id,
+            notification_id=instance.id,
+            notification_type=instance.notification_type,
+            title=instance.title,
+            body=instance.message,
+            data=instance.data,
+        ))
 
 
 @receiver(post_save, sender=RenterNotification)
@@ -67,6 +78,9 @@ def live_renter_notification(sender, instance, created, **kwargs):
         instance=instance,
         created=created,
     )
+    if created:
+        from .push_notifications import send_renter_notification_push
+        transaction.on_commit(lambda: send_renter_notification_push(notification=instance))
 
 
 @receiver(post_save, sender=Booking)
