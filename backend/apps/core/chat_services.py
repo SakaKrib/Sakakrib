@@ -6,7 +6,6 @@ from apps.accounts.models import Profile
 from .chat_media_services import sign_chat_attachment
 from .domain_bookings import ChatMessage
 from .domain_platform import Mover
-from .notification_services import dispatch_user_notification
 
 
 MESSAGE_TYPES = {
@@ -74,32 +73,6 @@ def send_message(*, sender_id, receiver_id, content="", message_type="text", eve
     normalized_event_data = event_data if isinstance(event_data, dict) else None
     conversation_id = conversation_id_for_users(sender_id, receiver_id)
     message = ChatMessage.objects.create(conversation_id=conversation_id, sender_id=sender_id, receiver_id=receiver_id, content=text, message_type=message_type, event_data=normalized_event_data)
-    sender = Profile.objects.filter(pk=sender_id).only("role").first()
-    notification_data = {
-        "conversation_id": conversation_id,
-        "message_id": str(message.id),
-        "message_type": message_type,
-        "sender_id": str(sender_id),
-    }
-    if sender and sender.role == "renter":
-        notification_data["renter_user_id"] = str(sender_id)
-    elif sender and sender.role == "mover":
-        mover_profile_id = Mover.objects.filter(
-            user_id=sender_id,
-            approval_status="approved",
-        ).values_list("id", flat=True).first()
-        if mover_profile_id:
-            notification_data["mover_id"] = str(mover_profile_id)
-
-    dispatch_user_notification(
-        user_id=receiver_id,
-        notification_type="CHAT_MESSAGE",
-        title="New message",
-        message=text[:160] if text else "You received a message.",
-        data=notification_data,
-        event_key=f"chat:{message.id}",
-        send_email=False,
-    )
     return message
 
 
