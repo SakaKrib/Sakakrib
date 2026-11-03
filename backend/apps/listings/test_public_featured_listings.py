@@ -70,6 +70,45 @@ class HomepageFeaturedListingsTests(TestCase):
         self.assertEqual(featured_ids, marketplace_ids)
         self.assertIn(str(visible_but_legacy_flag_false.id), featured_ids)
 
+    def test_featured_listings_filter_by_city_and_listing_type(self):
+        nairobi_rent = self.make_listing(
+            title='Nairobi rental',
+            approval_status='approved',
+            is_published=True,
+        )
+        nairobi_rent.city = 'Nairobi'
+        nairobi_rent.save(update_fields=['city'])
+
+        sale = self.make_listing(
+            title='Nairobi sale',
+            approval_status='approved',
+            is_published=True,
+        )
+        sale.city = 'Nairobi'
+        sale.listing_type = 'sale'
+        sale.save(update_fields=['city', 'listing_type'])
+
+        mombasa_rent = self.make_listing(
+            title='Mombasa rental',
+            approval_status='approved',
+            is_published=True,
+        )
+        mombasa_rent.city = 'Mombasa'
+        mombasa_rent.save(update_fields=['city'])
+
+        response = APIClient().get(
+            reverse('listing-featured'),
+            {'city': 'Nairobi', 'listing_type': 'sale'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [item['id'] for item in response.data['results']],
+            [str(sale.id)],
+        )
+        self.assertNotIn(str(nairobi_rent.id), {item['id'] for item in response.data['results']})
+        self.assertNotIn(str(mombasa_rent.id), {item['id'] for item in response.data['results']})
+
     def test_homepage_listing_stat_counts_same_public_listing_set(self):
         self.make_listing(
             title='Approved and published',
