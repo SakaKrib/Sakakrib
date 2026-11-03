@@ -30,7 +30,8 @@ export default function RenterMessagesPage() {
   useEffect(() => {
     if (
       (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
-      (liveEvent?.type === 'resource.updated' && liveEvent.resource === 'chat')
+      (liveEvent?.type === 'resource.updated' &&
+        ['chat', 'notifications', 'bookings'].includes(liveEvent.resource ?? ''))
     ) void load();
   }, [liveEvent, load]);
 
