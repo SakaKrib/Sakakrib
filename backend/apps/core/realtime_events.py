@@ -127,3 +127,42 @@ def schedule_marketplace_event(*, resource, object_id, action="updated", status=
         )
 
     transaction.on_commit(publish)
+
+
+
+def publish_chat_message(message_id):
+    """Broadcast every persisted chat message to its conversation and both inboxes."""
+    import hashlib
+
+    from .chat_services import serialize_message
+    from .domain_bookings import ChatMessage
+
+    message = ChatMessage.objects.filter(pk=message_id).first()
+    if message is None:
+        return
+
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        return
+
+    serialized = serialize_message(message)
+    conversation_digest = hashlib.sha256(
+        message.conversation_id.encode()
+    ).hexdigest()[:40]
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{conversation_digest}",
+        {"type": "chat.message", "message": serialized},
+    )
+
+    for user_id in {str(message.sender_id), str(message.receiver_id)}:
+        user_digest = hashlib.sha256(user_id.encode()).hexdigest()[:40]
+        async_to_sync(channel_layer.group_send)(
+            f"chat_inbox_{user_digest}",
+            {"type": "chat.inbox_message", "message": serialized},
+        )
+
+
+def schedule_chat_message_event(message_id):
+    from django.db import transaction
+
+    transaction.on_commit(lambda: publish_chat_message(message_id))
