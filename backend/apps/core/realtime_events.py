@@ -97,3 +97,33 @@ def schedule_community_event(*, object_id, action="updated", status=None):
         )
 
     transaction.on_commit(publish)
+
+
+
+def marketplace_event_group_name():
+    return "live_public_marketplace"
+
+
+def schedule_marketplace_event(*, resource, object_id, action="updated", status=None):
+    """Broadcast public catalogue invalidations without exposing record content."""
+    from django.db import transaction
+
+    def publish():
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        async_to_sync(channel_layer.group_send)(
+            marketplace_event_group_name(),
+            {
+                "type": "live_event",
+                "event": {
+                    "type": "resource.updated",
+                    "resource": str(resource),
+                    "object_id": str(object_id),
+                    "action": action,
+                    "status": str(status) if status is not None else None,
+                },
+            },
+        )
+
+    transaction.on_commit(publish)
