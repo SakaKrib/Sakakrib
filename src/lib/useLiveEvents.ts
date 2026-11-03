@@ -6,6 +6,7 @@ export interface LiveBusinessEvent {
   object_id?: string;
   action?: 'created' | 'updated';
   status?: string | null;
+  reconnected?: boolean;
 }
 
 type Listener = (event: LiveBusinessEvent) => void;
@@ -13,6 +14,7 @@ const listeners = new Set<Listener>();
 let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
 let attempts = 0;
+let hasConnectedOnce = false;
 
 function websocketUrl() {
   const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)
@@ -41,6 +43,10 @@ function connect() {
   socket.onmessage = (message) => {
     try {
       const event = JSON.parse(message.data) as LiveBusinessEvent;
+      if (event.type === 'ready') {
+        event.reconnected = hasConnectedOnce;
+        hasConnectedOnce = true;
+      }
       listeners.forEach((listener) => listener(event));
     } catch {
       // REST remains authoritative if a malformed event frame is received.
@@ -72,6 +78,7 @@ function subscribe(listener: Listener) {
       reconnectTimer = null;
       socket?.close();
       socket = null;
+      hasConnectedOnce = false;
     }
   };
 }
