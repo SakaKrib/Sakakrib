@@ -1,7 +1,7 @@
 from datetime import date
+from unittest.mock import patch
 
 from django.test import TestCase
-from unittest.mock import patch
 
 from apps.core.domain_platform import Mover, MoverApplication
 
@@ -130,29 +130,36 @@ class ApplicationStatusServiceTests(TestCase):
                         self.assertEqual(mover_application.reviewed_by, self.admin.id)
 
     def test_application_status_publishes_live_events_to_applicant_and_admin(self):
-        profile = self._profile('landlord', 'live-event')
-
         with patch('apps.accounts.application_status_service.schedule_user_event') as publish_user, patch(
             'apps.accounts.application_status_service.schedule_admin_event'
         ) as publish_admin:
-            set_application_status(
-                admin_user=self.admin,
-                user_id=profile.id,
-                application_type='landlord',
-                status_value='approved',
-            )
+            for application_type in ('landlord', 'real_estate', 'mover'):
+                with self.subTest(application_type=application_type):
+                    profile = self._profile(application_type, 'live-event')
+                    if application_type == 'mover':
+                        self._mover_application(profile, '59')
 
-        publish_user.assert_called_once_with(
-            profile.id,
-            resource='applications',
-            object_id=profile.id,
-            status='approved',
-        )
-        publish_admin.assert_called_once_with(
-            resource='applications',
-            object_id=profile.id,
-            status='approved',
-        )
+                    set_application_status(
+                        admin_user=self.admin,
+                        user_id=profile.id,
+                        application_type=application_type,
+                        status_value='approved',
+                    )
+
+                    publish_user.assert_any_call(
+                        profile.id,
+                        resource='applications',
+                        object_id=profile.id,
+                        status='approved',
+                    )
+                    publish_admin.assert_any_call(
+                        resource='applications',
+                        object_id=profile.id,
+                        status='approved',
+                    )
+
+        self.assertEqual(publish_user.call_count, 3)
+        self.assertEqual(publish_admin.call_count, 3)
 
     def test_approved_mover_application_materializes_missing_mover(self):
         profile = self._profile('mover', 'missing-record')
