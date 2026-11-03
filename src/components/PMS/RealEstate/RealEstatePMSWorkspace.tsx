@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { loadRealEstateDashboardData, type RealEstateDashboardData } from '@/lib/RealEstateTs/Realestateservice';
 import RealEstatePMS from './Realestatepms';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import RealEstatePMSAnalytics from './RealEstatePMSAnalytics';
 import RealEstatePMSCalendar from './RealEstatePMSCalendar';
 import RealEstatePMSFinance from './RealEstatePMSFinance';
@@ -30,9 +31,17 @@ function formatDate(value: string | null | undefined) { if (!value) return '—'
 function Stat({ icon: Icon, label, value, note }: { icon: typeof CalendarDays; label: string; value: string; note: string }) { return <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{note}</p></div><div className="rounded-xl bg-brand-50 p-2.5 dark:bg-brand-800"><Icon className="h-5 w-5 text-brand-600 dark:text-brand-300" /></div></div></div>; }
 
 export default function RealEstatePMSWorkspace() {
+  const { event: liveEvent } = useLiveEvents(true);
   const { profile } = useAuth(); const { navigate } = useNav(); const [tab, setTab] = useState<WorkspaceTab>('overview'); const [data, setData] = useState<RealEstateDashboardData | null>(null); const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false); const [error, setError] = useState<string | null>(null);
   const load = useCallback(async (refresh = false) => { if (refresh) setRefreshing(true); else setLoading(true); setError(null); try { setData(await loadRealEstateDashboardData(profile?.id ?? '')); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load real-estate PMS statistics.'); } finally { setLoading(false); setRefreshing(false); } }, [profile?.id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['pms', 'rent', 'subscriptions', 'notifications', 'applications', 'listings', 'payments'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
   const stats = useMemo(() => { const listings = data?.listings ?? []; const published = listings.filter((item) => item.is_published && item.is_approved).length; const pending = listings.filter((item) => !item.is_approved && !['rejected', 'declined'].includes((item.approval_status ?? '').toLowerCase())).length; const managed = listings.filter((item) => item.pms_managed).length; const unpaid = listings.filter((item) => !item.is_paid && !item.pms_managed).length; const capacity = data?.subscription?.max_listings; const remaining = capacity == null ? null : Math.max(0, capacity - managed); const publishedRate = listings.length ? Math.round((published / listings.length) * 100) : 0; const utilization = capacity ? Math.min(100, Math.round((managed / capacity) * 100)) : null; return { listings, published, pending, managed, unpaid, capacity, remaining, publishedRate, utilization }; }, [data]);
   if (loading) return <div className="flex min-h-[420px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">Loading real-estate property management...</div>;
   if (error || !data) return <div className="mx-auto max-w-4xl px-4 py-12"><div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300"><p className="font-semibold">Unable to load real-estate PMS</p><p className="mt-1">{error ?? 'No dashboard data was returned.'}</p><button type="button" onClick={() => void load(true)} className="btn-primary mt-4 inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />Retry</button></div></div>;
