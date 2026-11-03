@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { renterApi, type Booking, type RentInvoice } from '@/lib/Renter/renterApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import RenterCalendar, { type RenterCalendarEvent } from './RenterCalendar';
 
 const money = (value: number | null | undefined) => `KES ${(value ?? 0).toLocaleString('en-KE')}`;
@@ -15,14 +16,15 @@ const todayKey = () => {
 export default function RenterCalendarPage() {
   const { profile } = useAuth();
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const [invoices, setInvoices] = useState<RentInvoice[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'renter') return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const calendar = await renterApi.getCalendar(profile.id);
@@ -36,6 +38,13 @@ export default function RenterCalendarPage() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['rent', 'bookings', 'notifications', 'pms', 'payments'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
 
   const events = useMemo<RenterCalendarEvent[]>(() => {
     const movingEvents: RenterCalendarEvent[] = [];
