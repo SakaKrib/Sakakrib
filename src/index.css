@@ -34,11 +34,6 @@ html.capacitor-native::before {
   z-index: 2147483000;
 }
 
-/* Keep the sticky header below the status bar instead of sliding underneath it. */
-html.capacitor-native header.sticky {
-  top: var(--app-safe-top);
-}
-
 html,
 body,
 #root {
