@@ -77,6 +77,15 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
     if booking_id and any(term in kind for term in ('TRACK', 'MAP', 'LOCATION', 'MOVING_STARTED')):
         return f'live-mover-map/{booking_id}'
 
+    if any(term in kind for term in ('PAYOUT', 'EARNING')):
+        return 'mover-earnings' if role == 'mover' else 'notifications'
+
+    if 'SCHEDULE' in kind or 'CALENDAR' in kind:
+        return 'mover-calendar' if role == 'mover' else 'renter-calendar'
+
+    if 'DISPUTE' in kind:
+        return f'mover-booking-detail/{booking_id}' if booking_id and role == 'mover' else 'my-bookings'
+
     if 'CHAT' in kind or 'MESSAGE' in kind or payload.get('conversation_id'):
         if role == 'mover':
             other_user_id = str(
@@ -109,13 +118,13 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
 
     if any(term in kind for term in ('RENT', 'INVOICE', 'PAYMENT_SUBMISSION')):
         return 'renter-invoices' if role == 'renter' else 'pms-dashboard'
+    if 'PAYMENT' in kind:
+        return 'renter-payment' if role == 'renter' else 'moving-financial-records'
 
     if any(term in kind for term in ('SUBSCRIPTION', 'PLAN')):
         return 'subscription-plans'
     if any(term in kind for term in ('APPLICATION', 'KYC', 'VERIFICATION')):
         return 'dashboard'
-    if 'SCHEDULE' in kind or 'CALENDAR' in kind:
-        return 'mover-calendar' if role == 'mover' else 'renter-calendar'
     if 'MOVER' in kind:
         return 'mover-notifications' if role == 'mover' else 'movers'
     if role == 'renter':
