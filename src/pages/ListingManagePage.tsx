@@ -5,6 +5,7 @@ import { useNav } from '@/context/NavContext';
 import EditingListingForm from '@/components/listings/EditingListingForm';
 import { KENYAN_CITIES, KENYAN_COUNTIES, HOUSE_SIZES, formatKES } from '@/lib/utils';
 import { protectedDelete, protectedGet, protectedPatch, protectedUpload } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 interface LocationSuggestion { display_name: string; lat: string | number; lon: string | number; }
 interface MediaItem { id?: string; url: string; label: string; type: 'photo' | 'video'; media_type?: 'photo' | 'video'; position?: number; }
@@ -37,6 +38,19 @@ export default function ListingManagePage() {
   const [phone, setPhone] = useState(''); const [email, setEmail] = useState(''); const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([]);
   const [photos, setPhotos] = useState<MediaItem[]>([]); const [video, setVideo] = useState<MediaItem | null>(null);
   const [originalPropertyName, setOriginalPropertyName] = useState(''); const [originalPropertyType, setOriginalPropertyType] = useState('');
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
+  const { event: liveEvent } = useLiveEvents(Boolean(selectedListingManageId));
+
+  useEffect(() => {
+    if (
+      liveEvent?.type === 'ready' && liveEvent.reconnected ||
+      liveEvent?.type === 'resource.updated' &&
+        liveEvent.resource === 'listings' &&
+        liveEvent.object_id === String(selectedListingManageId)
+    ) {
+      setLiveRefreshKey((key) => key + 1);
+    }
+  }, [liveEvent, selectedListingManageId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,7 +81,7 @@ export default function ListingManagePage() {
       finally { if (!cancelled) setLoading(false); }
     };
     void load(); return () => { cancelled = true; };
-  }, [selectedListingManageId]);
+  }, [selectedListingManageId, liveRefreshKey]);
 
   useEffect(() => {
     const query = locationSearch.trim(); if (query.length < 3) { setLocationSuggestions([]); return; }
