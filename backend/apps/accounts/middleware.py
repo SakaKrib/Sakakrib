@@ -2,15 +2,17 @@ from django.conf import settings
 
 
 class CapacitorCookiePolicyMiddleware:
-    """Allow credentialed cross-origin API cookies from Capacitor's HTTPS WebView.
+    """Apply cross-site cookie attributes only to known API client origins.
 
-    The regular browser development origin keeps the existing cookie policy.
-    Capacitor's bundled Android WebView uses https://localhost and calls the
-    API on the Tailscale HTTPS hostname, so those cookies must be Secure and
-    SameSite=None. This is scoped to that exact app origin and API responses.
+    Capacitor's Android WebView and the network browser frontend call the API
+    on a different origin. Their JWT and CSRF cookies therefore need Secure
+    and SameSite=None. Local browser development keeps the default policy.
     """
 
-    capacitor_origin = "https://localhost"
+    cross_site_origins = {
+        "https://localhost",
+        "http://100.109.224.0:5175",
+    }
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -19,7 +21,7 @@ class CapacitorCookiePolicyMiddleware:
         response = self.get_response(request)
         if (
             request.path.startswith("/api/")
-            and request.headers.get("Origin") == self.capacitor_origin
+            and request.headers.get("Origin") in self.cross_site_origins
         ):
             cookie_names = {
                 settings.CSRF_COOKIE_NAME,
