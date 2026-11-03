@@ -29,12 +29,13 @@ from .realtime_events import schedule_admin_event, schedule_community_event, sch
 
 def _send(
     user_ids, *, resource, instance, created, status=None,
-    notify_admin=False, action_override=None,
+    notify_admin=False, action_override=None, object_id=None,
 ):
     action = action_override or ("created" if created else "updated")
+    event_object_id = instance.pk if object_id is None else object_id
     if resource == "community":
         schedule_community_event(
-            object_id=instance.pk,
+            object_id=event_object_id,
             action=action,
             status=status,
         )
@@ -50,7 +51,7 @@ def _send(
     if notify_admin and Profile.objects.filter(is_active=True).filter(
         Q(is_admin=True) | Q(is_staff=True) | Q(is_superuser=True) | Q(role='admin')
     ).exists():
-        schedule_admin_event(resource=resource, object_id=instance.pk, action=action, status=status)
+        schedule_admin_event(resource=resource, object_id=event_object_id, action=action, status=status)
 
 
 @receiver(post_save, sender=UserNotification)
@@ -235,6 +236,7 @@ def live_mover_application(sender, instance, created, **kwargs):
         created=created,
         status=instance.status,
         notify_admin=True,
+        object_id=instance.applicant_id,
     )
 
 @receiver(post_save, sender=PropertyUnit)
