@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNav } from '@/context/NavContext';
 import { renterApi } from '@/lib/Renter/renterApi';
 import { cn, formatKES } from '@/lib/utils';
+import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 
 interface MoverTrackingBooking { id: string; renter_id: string; mover_id: string; pickup_address: string; dropoff_address: string; moving_date: string | null; booking_amount: number | null; commission_amount: number | null; total_amount: number | null; status: string | null; payment_status: string | null; payment_method: string | null; distance_km: number | null; rate_per_km_kes: number | null; base_rate_kes: number | null; pickup_latitude: number | null; pickup_longitude: number | null; dropoff_latitude: number | null; dropoff_longitude: number | null; requested_at: string | null; request_expires_at: string | null; confirmed_at: string | null; scheduled_start_at: string | null; scheduled_end_at: string | null; started_at: string | null; completed_at: string | null; cancelled_at: string | null; cancellation_reason: string | null; cancellation_details: string | null; tracking_number: string | null; renter_confirmed_delivery_at: string | null; mover_confirmed_delivery_at: string | null; contact_released_at: string | null; last_known_latitude: number | null; last_known_longitude: number | null; last_location_at: string | null; dispute_status: string | null; created_at: string | null; updated_at: string | null; }
 interface MovingTrackingPoint { id: number; booking_id: string; mover_id: string; latitude: number; longitude: number; accuracy_meters: number | null; speed_kph: number | null; heading_degrees: number | null; recorded_at: string; }
@@ -23,7 +24,7 @@ function isCompleted(status: string | null | undefined): boolean { return normal
 function isCancelled(status: string | null | undefined): boolean { const normalized = normalizeStatus(status); return normalized === 'cancelled' || normalized === 'canceled'; }
 function formatVehicleType(value: string | null | undefined): string { if (!value) return 'Moving Vehicle'; return value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()); }
 function formatPaymentStatus(value: string | null | undefined): string { if (!value) return '—'; return value.replace(/_/g, ' ').replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()); }
-function getTrackingSocketUrl(bookingId: string): string { const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.trim().replace(/\/+$/, '').replace(/\/api$/i, ''); const url = new URL(configured || window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.pathname = `/ws/tracking/${encodeURIComponent(bookingId)}/`; url.search = ''; return url.toString(); }
+function getTrackingSocketUrl(bookingId: string): string { return getDjangoWebSocketUrl(`/ws/tracking/${encodeURIComponent(bookingId)}/`); }
 
 export default function MoverTrackingPage() {
   const { selectedMoverId, navigate } = useNav(); const bookingId = selectedMoverId;
