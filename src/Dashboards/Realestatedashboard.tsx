@@ -209,7 +209,7 @@ export default function RealEstateDashboard() {
     }
     if (
       liveEvent?.type === 'resource.updated' &&
-      ['listings', 'payments', 'applications', 'subscriptions', 'pms'].includes(liveEvent.resource ?? '')
+      ['listings', 'payments', 'applications', 'subscriptions', 'pms', 'notifications', 'reviews'].includes(liveEvent.resource ?? '')
     ) {
       setLiveRefreshKey((key) => key + 1);
     }
