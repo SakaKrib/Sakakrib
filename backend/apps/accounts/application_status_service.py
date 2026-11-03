@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.accounts.authorization import is_admin
 from apps.core.domain_platform import Mover, MoverApplication, NotificationEmail
 from apps.core.email_services import queue_email
+from apps.core.realtime_events import schedule_admin_event, schedule_user_event
 
 from .models import Profile
 
@@ -257,6 +258,19 @@ def set_application_status(*, admin_user, user_id, application_type, status_valu
         status_value=status_value,
         note=note,
         application=mover_application,
+    )
+
+    # Publish only after the complete application decision commits successfully.
+    schedule_user_event(
+        profile.id,
+        resource='applications',
+        object_id=profile.id,
+        status=status_value,
+    )
+    schedule_admin_event(
+        resource='applications',
+        object_id=profile.id,
+        status=status_value,
     )
 
     return profile
