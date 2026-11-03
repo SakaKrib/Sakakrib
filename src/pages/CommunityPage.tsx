@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -123,7 +123,7 @@ export default function CommunityPage() {
     textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 240)}px`;
   }, [text]);
 
-  const load = async (silent = false) => {
+  const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const response = await protectedGet<{ items: Post[] }>('/api/core/community-posts/');
@@ -133,11 +133,11 @@ export default function CommunityPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
@@ -147,7 +147,7 @@ export default function CommunityPage() {
     if (liveEvent?.type === 'resource.updated' && liveEvent.resource === 'community') {
       void load(true);
     }
-  }, [liveEvent]);
+  }, [liveEvent, load]);
 
   const selectFiles = (list: FileList | null) => {
     if (!list) return;
