@@ -40,10 +40,9 @@ def _send(
             action=action,
             status=status,
         )
-    admin_exists = Profile.objects.filter(is_active=True).filter(
+    if notify_admin and Profile.objects.filter(is_active=True).filter(
         Q(is_admin=True) | Q(is_staff=True) | Q(is_superuser=True) | Q(role='admin')
-    ).exists()
-    if notify_admin and admin_exists:
+    ).exists():
         schedule_admin_event(resource=resource, object_id=instance.pk, action=action, status=status)
 
 
