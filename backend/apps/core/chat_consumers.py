@@ -38,12 +38,24 @@ class MovingChatConsumer(AsyncJsonWebsocketConsumer):
             if str(receiver_id) != str(expected_receiver):
                 raise ValidationError("Receiver is not a participant in this conversation")
 
-            await self._send(
+            message = await self._send(
                 receiver_id=expected_receiver,
                 content=content.get("content", ""),
                 message_type=content.get("message_type", "text"),
                 event_data=content.get("event_data"),
             )
+            from .chat_services import serialize_message
+
+            serialized = await database_sync_to_async(serialize_message)(message)
+            await self.channel_layer.group_send(
+                self.group_name,
+                {"type": "chat.message", "message": serialized},
+            )
+            for user_id in {str(self.user.pk), str(expected_receiver)}:
+                await self.channel_layer.group_send(
+                    user_chat_group_name(user_id),
+                    {"type": "chat.inbox_message", "message": serialized},
+                )
         except (ValidationError, ValueError, TypeError) as exc:
             await self.send_json({"type": "error", "detail": str(exc)})
 
