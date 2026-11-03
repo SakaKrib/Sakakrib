@@ -141,12 +141,6 @@ export default function MoverMessages() {
   useEffect(() => { void loadBookings(); }, [loadBookings]);
   useEffect(() => { void loadConversation(); }, [loadConversation]);
   useEffect(() => {
-    if (!activeConversationId) return;
-    const timer = window.setInterval(() => { void loadConversation(); }, 5000);
-    return () => window.clearInterval(timer);
-  }, [activeConversationId, loadConversation]);
-
-  useEffect(() => {
     if (!profile?.id || profile.role !== 'mover') return;
     let cancelled = false;
     const connect = () => {
@@ -165,9 +159,9 @@ export default function MoverMessages() {
           if (messageConversationId === activeConversationId) {
             setMessages(previous => [...previous.filter(item => messageId(item) !== messageId(message)), message].sort((a, b) => new Date(messageCreatedAt(a)).getTime() - new Date(messageCreatedAt(b)).getTime()));
           }
-          if (type === 'booking_request' || type === 'booking_response') {
-            void loadBookings();
-            if (messageConversationId === activeConversationId) void loadConversation();
+          void loadBookings();
+          if (messageConversationId === activeConversationId) {
+            setMessages(previous => [...previous.filter(item => messageId(item) !== messageId(message)), message].sort((a, b) => new Date(messageCreatedAt(a)).getTime() - new Date(messageCreatedAt(b)).getTime()));
           }
         } catch { /* ignore malformed websocket events */ }
       };
