@@ -415,6 +415,20 @@ def live_landlord_payment_method(sender, instance, created, **kwargs):
 @receiver(post_save, sender=PMSSubscriptionNotification)
 def live_pms_subscription_notification(sender, instance, created, **kwargs):
     _send([instance.landlord_id], resource="pms", instance=instance, created=created)
+    if created:
+        from .push_notifications import send_user_notification_push
+        transaction.on_commit(lambda: send_user_notification_push(
+            user_id=instance.landlord_id,
+            notification_id=instance.id,
+            notification_type=instance.notification_type,
+            title=instance.title,
+            body=instance.message,
+            data={
+                'subscription_id': str(instance.subscription_id) if instance.subscription_id else None,
+                'action_type': instance.action_type,
+                'deep_link': 'pms-dashboard',
+            },
+        ))
 
 
 @receiver(post_save, sender=CommunityPost)
