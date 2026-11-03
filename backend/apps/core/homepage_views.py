@@ -16,8 +16,8 @@ class HomepageStatsView(APIView):
     def get(self, request):
         return Response({
             'listings': Listing.objects.filter(
+                approval_status='approved',
                 is_published=True,
-                is_approved=True,
             ).count(),
             'landlords': Profile.objects.filter(
                 role='landlord',
