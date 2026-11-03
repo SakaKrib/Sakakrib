@@ -19,7 +19,12 @@ class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
         self.group_name = user_event_group_name(self.user.pk)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         self.admin_group_name = None
-        if getattr(self.user, 'is_staff', False) or getattr(self.user, 'is_admin', False):
+        if (
+            getattr(self.user, 'is_staff', False)
+            or getattr(self.user, 'is_superuser', False)
+            or getattr(self.user, 'is_admin', False)
+            or str(getattr(self.user, 'role', '') or '').strip().lower() == 'admin'
+        ):
             self.admin_group_name = admin_event_group_name()
             await self.channel_layer.group_add(self.admin_group_name, self.channel_name)
         await self.accept()
