@@ -11,6 +11,7 @@ class CapacitorCookiePolicyMiddleware:
 
     cross_site_origins = {
         "https://localhost",
+        "capacitor://localhost",
         "http://100.109.224.0:5175",
     }
 
