@@ -2,18 +2,20 @@ import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { moverApi, type MoverScheduleEvent } from '@/lib/Movers';
 import MoverCalendar from './MoverCalendar';
 
 export default function MoverCalendarPage() {
+  const { event: liveEvent } = useLiveEvents(true);
   const { profile } = useAuth();
   const { navigate } = useNav();
   const [schedule, setSchedule] = useState<MoverScheduleEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'mover') return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       setSchedule(await moverApi.getSchedule());
     } finally {
@@ -22,6 +24,14 @@ export default function MoverCalendarPage() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['schedules', 'bookings', 'notifications'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
 
   if (loading) return <div className="flex min-h-[400px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div>;
 
