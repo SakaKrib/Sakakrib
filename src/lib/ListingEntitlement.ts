@@ -1,4 +1,4 @@
-import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import { protectedGet, protectedPost, getDjangoWebSocketUrl } from '@/lib/djangoApi';
 
 export type ListingRole = 'landlord' | 'real_estate';
 export type SubscriptionStatus = 'trial' | 'active' | 'pending_payment' | 'grace_period' | 'expired' | 'cancelled' | 'none';
@@ -241,13 +241,6 @@ export async function getListingPaymentIntent(paymentIntentId: string): Promise<
   return protectedGet(`/api/listings/payment-intents/${encodeURIComponent(paymentIntentId)}/`);
 }
 
-function getPaymentWebSocketBase() {
-  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined || window.location.origin).replace(/\/+$/, '');
-  const url = new URL(configured);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString().replace(/\/$/, '');
-}
-
 /**
  * Wait primarily for the Django Channels event. A short REST check runs in
  * parallel as a recovery path if the browser misses the WebSocket event.
@@ -284,7 +277,7 @@ export async function waitForListingPaymentIntent(paymentIntentId: string, { max
     };
 
     try {
-      socket = new WebSocket(`${getPaymentWebSocketBase()}/ws/payments/${encodeURIComponent(paymentIntentId)}/`);
+      socket = new WebSocket(getDjangoWebSocketUrl(`/ws/payments/${encodeURIComponent(paymentIntentId)}/`));
       socket.onmessage = (message) => {
         try {
           const event = JSON.parse(message.data) as { type?: string; status?: string };
