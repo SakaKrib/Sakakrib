@@ -155,6 +155,46 @@ class ApplicationStatusServiceTests(TestCase):
                     status='approved',
                 )
 
+    def test_application_decision_creates_one_in_app_notification(self):
+        profile = self._profile('landlord', 'push-notification')
+
+        with patch('apps.accounts.application_status_service.dispatch_user_notification') as notify:
+            set_application_status(
+                admin_user=self.admin,
+                user_id=profile.id,
+                application_type='landlord',
+                status_value='approved',
+                note='Documents verified',
+            )
+
+        notify.assert_called_once()
+        kwargs = notify.call_args.kwargs
+        self.assertEqual(kwargs['user_id'], profile.id)
+        self.assertEqual(kwargs['notification_type'], 'LANDLORD_APPLICATION_APPROVED')
+        self.assertEqual(kwargs['data']['application_status'], 'approved')
+        self.assertEqual(kwargs['data']['deep_link'], 'dashboard')
+        self.assertFalse(kwargs['send_email'])
+
+    def test_repeating_same_application_decision_does_not_send_duplicate_push_source(self):
+        profile = self._profile('landlord', 'push-repeat')
+        profile.landlord_application_status = 'approved'
+        profile.role = 'landlord'
+        profile.is_agency = False
+        profile.kyc_completed = True
+        profile.kyc_status = 'approved'
+        profile.verification_status = 'verified'
+        profile.save()
+
+        with patch('apps.accounts.application_status_service.dispatch_user_notification') as notify:
+            set_application_status(
+                admin_user=self.admin,
+                user_id=profile.id,
+                application_type='landlord',
+                status_value='approved',
+            )
+
+        notify.assert_not_called()
+
     def test_mover_application_event_uses_applicant_profile_id(self):
         profile = self._profile('mover', 'live-event')
         self._mover_application(profile, '59')
