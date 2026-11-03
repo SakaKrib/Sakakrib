@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from apps.core.domain_bookings import (
@@ -217,6 +217,20 @@ def live_rent_payment(sender, instance, created, **kwargs):
     )
 
 
+@receiver(pre_save, sender=Listing)
+def remember_listing_publication_state(sender, instance, **kwargs):
+    instance._was_public_marketplace_listing = False
+    if not instance._state.adding:
+        previous = sender.objects.filter(pk=instance.pk).values(
+            'approval_status', 'is_published',
+        ).first()
+        instance._was_public_marketplace_listing = bool(
+            previous
+            and previous['approval_status'] == 'approved'
+            and previous['is_published']
+        )
+
+
 @receiver(post_save, sender=Listing)
 def live_listing(sender, instance, created, **kwargs):
     _send(
@@ -227,12 +241,16 @@ def live_listing(sender, instance, created, **kwargs):
         status=instance.approval_status,
         notify_admin=True,
     )
-    if instance.approval_status == 'approved' and instance.is_published:
+    is_public_now = (
+        instance.approval_status == 'approved' and instance.is_published
+    )
+    was_public = bool(getattr(instance, '_was_public_marketplace_listing', False))
+    if is_public_now or was_public:
         schedule_marketplace_event(
             resource='listings',
             object_id=instance.id,
-            action='created' if created else 'updated',
-            status=instance.approval_status,
+            action='created' if created else ('updated' if is_public_now else 'deleted'),
+            status=instance.approval_status if is_public_now else 'unpublished',
         )
 
 
@@ -246,6 +264,20 @@ def live_listing_payment(sender, instance, created, **kwargs):
         status=instance.status,
         notify_admin=True,
     )
+
+
+@receiver(pre_save, sender=Mover)
+def remember_mover_publication_state(sender, instance, **kwargs):
+    instance._was_public_marketplace_mover = False
+    if not instance._state.adding:
+        previous = sender.objects.filter(pk=instance.pk).values(
+            'approval_status', 'is_available',
+        ).first()
+        instance._was_public_marketplace_mover = bool(
+            previous
+            and previous['approval_status'] == 'approved'
+            and previous['is_available']
+        )
 
 
 @receiver(post_save, sender=Mover)
@@ -271,12 +303,17 @@ def live_mover(sender, instance, created, **kwargs):
         "start_time", "end_time",
     }
     if created or not update_fields or relevant_fields.intersection(set(update_fields)):
-        schedule_marketplace_event(
-            resource='movers',
-            object_id=instance.id,
-            action='created' if created else 'updated',
-            status=instance.approval_status,
+        is_public_now = (
+            instance.approval_status == 'approved' and instance.is_available
         )
+        was_public = bool(getattr(instance, '_was_public_marketplace_mover', False))
+        if is_public_now or was_public:
+            schedule_marketplace_event(
+                resource='movers',
+                object_id=instance.id,
+                action='created' if created else ('updated' if is_public_now else 'deleted'),
+                status=instance.approval_status if is_public_now else 'unavailable',
+            )
 
 
 @receiver(post_save, sender=MoverApplication)
