@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, MapPin, Home, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
-import { protectedGet } from '@/lib/djangoApi';
+import { protectedGet, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import type { Listing, ListingMedia } from '@/types/domain';
@@ -179,7 +179,7 @@ export default function ListingsPage() {
                 >
                   <div className="relative h-44 overflow-hidden bg-gray-200 dark:bg-brand-800">
                     {firstPhoto?.url ? (
-                      <img src={firstPhoto.url} alt={listing.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                      <img src={resolveDjangoMediaUrl(firstPhoto.url)} alt={listing.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                     ) : (
                       <div className="flex h-full items-center justify-center">
                         <Home className="h-10 w-10 text-gray-400" />
