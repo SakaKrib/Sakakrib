@@ -13,12 +13,12 @@ interface ListingListResponse {
 }
 
 export default function ListingsPage() {
-  const { navigate } = useNav();
+  const { navigate, listingSearchFilters } = useNav();
   const [listings, setListings] = useState<(Listing & { media?: ListingMedia[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filterCity, setFilterCity] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'rent' | 'sale'>('all');
+  const [filterCity, setFilterCity] = useState(() => listingSearchFilters.city);
+  const [filterType, setFilterType] = useState<'all' | 'rent' | 'sale'>(() => listingSearchFilters.listingType);
   const [filterMinPrice, setFilterMinPrice] = useState('');
   const [filterMaxPrice, setFilterMaxPrice] = useState('');
   const [showFilters, setShowFilters] = useState(false);
