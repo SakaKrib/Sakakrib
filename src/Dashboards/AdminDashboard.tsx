@@ -263,7 +263,7 @@ export default function AdminDashboard() {
       return;
     }
     if (liveEvent?.type !== 'resource.updated') return;
-    if (['applications', 'listings', 'payments', 'bookings', 'payouts', 'subscriptions', 'schedules', 'disputes', 'support', 'pms'].includes(liveEvent.resource ?? '')) {
+    if (['applications', 'listings', 'payments', 'bookings', 'payouts', 'subscriptions', 'schedules', 'disputes', 'support', 'pms', 'community', 'reviews'].includes(liveEvent.resource ?? '')) {
       void loadDashboard();
     }
   }, [liveEvent]);
