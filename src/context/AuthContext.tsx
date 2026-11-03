@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import type { Profile, UserRole } from '@/types/domain';
 
@@ -13,6 +13,7 @@ import {
 } from '@/lib/authGateway';
 
 import { protectedPost } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 interface AuthUser {
   id: string;
@@ -180,6 +181,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
   const [pendingVerificationEmail, setPendingVerificationEmail] =
     useState<string | null>(null);
+
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
 
   const clearAuthState = () => {
     setSession(null);
@@ -629,7 +632,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshProfile = async (): Promise<void> => {
+  const refreshProfile = useCallback(async (): Promise<void> => {
+    try {
+      const result = await authGateway('session');
+
+      if (!result.authenticated) {
+        setSession(null);
+        setProfile(null);
+        setNeedsEmailVerification(Boolean(result.requiresEmailVerification));
+        setPendingVerificationEmail(
+          result.requiresEmailVerification && result.email
+            ? normalizeEmail(result.email)
+            : null,
+        );
+        return;
+      }
+
+      if (!result.user || !result.profile) {
+        setSession(null);
+        setProfile(null);
+        return;
+      }
+
+      if (result.profile.email_verified !== true) {
+        const verificationEmail = result.email ?? result.user.email ?? null;
+        setSession(null);
+        setProfile(null);
+        setNeedsEmailVerification(true);
+        setPendingVerificationEmail(
+          verificationEmail ? normalizeEmail(verificationEmail) : null,
+        );
+        return;
+      }
+
+      setSession(toAuthSession(result.user));
+      setProfile(result.profile);
+      setNeedsEmailVerification(false);
+      setPendingVerificationEmail(null);
+    } catch (error) {
+      console.error('Django session refresh error:', error);
+      // Preserve the current authenticated state on transient transport
+      // failures. A failed refresh is not itself proof that the user signed out.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      liveEvent?.type !== 'resource.updated' ||
+      liveEvent.resource !== 'applications' ||
+      !profile?.id ||
+      liveEvent.object_id !== String(profile.id)
+    ) {
+      return;
+    }
+
+    void refreshProfile();
+  }, [liveEvent, profile?.id, refreshProfile]);
+
+  const setRole = async (role: UserRole) => {
     try {
       const result = await authGateway('session');
 
