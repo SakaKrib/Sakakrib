@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import type { Listing } from '@/types/domain';
 import { djangoRequest } from '@/lib/djangoApi';
+import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 
 interface HomepageStats {
   listings: number;
@@ -31,7 +32,19 @@ export default function HomePage() {
   const [mediaMap, setMediaMap] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<HomepageStats>({ listings: 0, landlords: 0, movers: 0, reviews: 0 });
   const [error, setError] = useState("");
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
+  const { event: marketplaceEvent } = useMarketplaceEvents();
   const isAdmin = profile?.is_admin === true || profile?.role === 'admin';
+
+  useEffect(() => {
+    if (
+      (marketplaceEvent?.type === 'ready' && marketplaceEvent.reconnected) ||
+      (marketplaceEvent?.type === 'resource.updated' &&
+        ['listings', 'reviews'].includes(marketplaceEvent.resource ?? ''))
+    ) {
+      setLiveRefreshKey((key) => key + 1);
+    }
+  }, [marketplaceEvent]);
 
   useEffect(() => {
     let mounted = true;
@@ -51,7 +64,7 @@ export default function HomePage() {
     };
     void fetchHomepageData();
     return () => { mounted = false; };
-  }, []);
+  }, [liveRefreshKey]);
 
   useEffect(() => {
     let mounted = true;
@@ -79,7 +92,7 @@ export default function HomePage() {
     };
     void fetchFeaturedListings();
     return () => { mounted = false; };
-  }, []);
+  }, [liveRefreshKey]);
 
   const handleSearch = () => navigate('listings', undefined, { city: searchCity, listingType: searchType });
   const visibleFeatured = featured.filter((listing) => {
