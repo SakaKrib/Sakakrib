@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 export type PaymentSocketStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'UPGRADED';
 
 export interface PaymentSocketEvent {
-  type: 'payment_status' | 'ready' | 'error';
+  type: 'payment_status' | 'ready' | 'error' | 'pong';
   status?: PaymentSocketStatus;
   message?: string;
   provider?: string;
