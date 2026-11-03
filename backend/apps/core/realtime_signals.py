@@ -25,7 +25,7 @@ from apps.subscriptions.models import (
 )
 from apps.accounts.models import Profile
 
-from .realtime_events import schedule_admin_event, schedule_community_event, schedule_user_event
+from .realtime_events import schedule_admin_event, schedule_community_event, schedule_marketplace_event, schedule_user_event
 
 
 def _send(
@@ -227,6 +227,13 @@ def live_listing(sender, instance, created, **kwargs):
         status=instance.approval_status,
         notify_admin=True,
     )
+    if instance.approval_status == 'approved' and instance.is_published:
+        schedule_marketplace_event(
+            resource='listings',
+            object_id=instance.id,
+            action='created' if created else 'updated',
+            status=instance.approval_status,
+        )
 
 
 @receiver(post_save, sender=ListingPayment)
@@ -356,6 +363,17 @@ def live_subscription_listing(sender, instance, created, **kwargs):
 @receiver(post_save, sender=ListingMedia)
 def live_listing_media(sender, instance, created, **kwargs):
     _send([instance.user_id], resource="listings", instance=instance, created=created)
+    if Listing.objects.filter(
+        pk=instance.listing_id,
+        approval_status='approved',
+        is_published=True,
+    ).exists():
+        schedule_marketplace_event(
+            resource='listings',
+            object_id=instance.listing_id,
+            action='updated',
+            status='approved',
+        )
 
 
 @receiver(post_save, sender=LandlordPaymentMethod)
@@ -418,6 +436,17 @@ def live_review(sender, instance, created, **kwargs):
         created=created,
         notify_admin=True,
     )
+    if instance.listing_id and Listing.objects.filter(
+        pk=instance.listing_id,
+        approval_status='approved',
+        is_published=True,
+    ).exists():
+        schedule_marketplace_event(
+            resource='listings',
+            object_id=instance.listing_id,
+            action='updated',
+            status='approved',
+        )
 
 
 @receiver(post_save, sender=MovingJourney)
@@ -499,6 +528,7 @@ def live_real_estate_pms_settings(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Listing)
 def live_listing_deleted(sender, instance, **kwargs):
+    was_public = instance.approval_status == 'approved' and instance.is_published
     _send(
         [instance.user_id],
         resource="listings",
@@ -507,6 +537,13 @@ def live_listing_deleted(sender, instance, **kwargs):
         notify_admin=True,
         action_override="deleted",
     )
+    if was_public:
+        schedule_marketplace_event(
+            resource='listings',
+            object_id=instance.id,
+            action='deleted',
+            status='deleted',
+        )
 
 
 @receiver(post_delete, sender=ListingMedia)
