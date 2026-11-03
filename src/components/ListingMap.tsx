@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import {
   FullscreenControl,
   LngLatBounds,
@@ -87,7 +89,6 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   const routeRequestRef = useRef(0);
   const routeOriginRef = useRef<Coordinate | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [locationRequestVersion, setLocationRequestVersion] = useState(0);
   const [deviceGps, setDeviceGps] = useState<DeviceGpsPosition | null>(null);
   const [followListing, setFollowListing] = useState(false);
   const [route, setRoute] = useState<Coordinate[]>([]);
@@ -199,20 +200,18 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   }, [latitude, longitude]);
 
   useEffect(() => {
-    // Do not trigger Android's location permission prompt just by opening a listing.
-    // Request GPS only after the user taps Follow Listing or Recenter.
-    if (!mapReady || locationRequestVersion === 0) return;
-    if (!navigator.geolocation) {
-      setLocationError('Location services are not supported by this browser.');
-      return;
-    }
-    const handlePosition = (position: GeolocationPosition) => {
-      const next = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
-      };
-      const origin: Coordinate = [next.longitude, next.latitude];
+    // The map itself is the user's request to use live location. On Android,
+    // request native location permission before starting the GPS watch.
+    if (!mapReady) return;
+
+    let cancelled = false;
+    let browserWatchId: number | null = null;
+    let nativeWatchId: string | null = null;
+
+    const handleCoordinates = (latitude: number, longitude: number, accuracy: number | null) => {
+      if (cancelled) return;
+      const next = { latitude, longitude, accuracy };
+      const origin: Coordinate = [longitude, latitude];
       setDeviceGps(next);
       setLocationError(null);
       const marker = userMarkerRef.current;
@@ -229,24 +228,76 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
         mapRef.current?.easeTo({ center: origin, duration: 400 });
       }
     };
-    const handleError = (error: GeolocationPositionError) => {
-      if (error.code === error.PERMISSION_DENIED) {
-        setLocationError('Location permission is blocked. Allow location for Saka Krib in Android Settings, then tap Follow Listing again.');
-      } else {
-        setLocationError('Unable to read your current location. Check that Location is turned on and try again.');
+
+    const handleLocationError = (message?: string) => {
+      if (cancelled) return;
+      setLocationError(message || 'Unable to read your current location. Check that Location is turned on and try again.');
+    };
+
+    const startLocationTracking = async () => {
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const permission = await Geolocation.requestPermissions();
+          if (cancelled) return;
+          if (permission.location !== 'granted') {
+            handleLocationError('Location permission is required. Allow location access for Saka Krib, then reopen the live map.');
+            return;
+          }
+
+          nativeWatchId = await Geolocation.watchPosition(
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+            (position, error) => {
+              if (error) {
+                handleLocationError(error.message);
+                return;
+              }
+              if (position) {
+                handleCoordinates(
+                  position.coords.latitude,
+                  position.coords.longitude,
+                  Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+                );
+              }
+            },
+          );
+          if (cancelled && nativeWatchId) {
+            await Geolocation.clearWatch({ id: nativeWatchId });
+            nativeWatchId = null;
+          }
+          return;
+        }
+
+        if (!navigator.geolocation) {
+          handleLocationError('Location services are not supported by this browser.');
+          return;
+        }
+
+        browserWatchId = navigator.geolocation.watchPosition(
+          (position) => handleCoordinates(
+            position.coords.latitude,
+            position.coords.longitude,
+            Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+          ),
+          (error) => handleLocationError(
+            error.code === error.PERMISSION_DENIED
+              ? 'Location permission was denied. Allow location access in your browser settings.'
+              : 'Unable to read your current location. Check that Location is turned on and try again.',
+          ),
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+        );
+      } catch (error) {
+        handleLocationError(error instanceof Error ? error.message : 'Unable to start GPS tracking.');
       }
     };
-    const watchId = navigator.geolocation.watchPosition(handlePosition, handleError, {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 15000,
-    });
-    watchIdRef.current = watchId;
+
+    void startLocationTracking();
+
     return () => {
-      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
+      cancelled = true;
+      if (browserWatchId !== null) navigator.geolocation?.clearWatch(browserWatchId);
+      if (nativeWatchId !== null) void Geolocation.clearWatch({ id: nativeWatchId });
     };
-  }, [mapReady, locationRequestVersion, requestRoute, followListing]);
+  }, [mapReady, requestRoute, followListing]);
 
   useEffect(() => {
     if (!followListing || !deviceGps) return;
@@ -257,7 +308,6 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   const handleFollow = () => {
     if (!deviceGps) {
       setFollowListing(true);
-      setLocationRequestVersion((version) => version + 1);
       return;
     }
     setFollowListing((value) => !value);
@@ -267,7 +317,6 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
 
   const handleRecenter = () => {
     if (!deviceGps) {
-      setLocationRequestVersion((version) => version + 1);
       fitToRoute(route.length ? route : [destination]);
       return;
     }
