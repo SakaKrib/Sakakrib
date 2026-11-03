@@ -12,24 +12,123 @@ export interface DjangoApiException extends Error {
 
 /**
  * Browser development uses the current origin so /api/... requests pass
- * through the Vite proxy. Packaged mobile builds can set
- * VITE_DJANGO_API_URL to the HTTPS Django API origin because their WebView
- * origin is not the API host. Authentication continues to use HttpOnly
- * cookies; JWT values are never exposed to JavaScript.
+ * through the Vite proxy. Native builds can provide a primary Tailscale URL
+ * and a fallback Ngrok URL. We select one reachable host once per app run,
+ * before authentication, so HttpOnly cookies remain on a single origin.
  */
-const getBaseUrl = (): string => {
-  const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)
-    ?.trim()
-    .replace(/\/+$/, '')
-    .replace(/\/api$/i, '');
+type ApiEnvironment = ImportMetaEnv & {
+  readonly VITE_DJANGO_API_FALLBACK_URL?: string;
+  readonly VITE_DJANGO_API_URLS?: string;
+};
 
-  if (configured) return configured;
+const normalizeApiBaseUrl = (value?: string): string => String(value || '')
+  .trim()
+  .replace(/\/+$/, '')
+  .replace(/\/api$/i, '');
 
-  if (typeof window !== 'undefined') {
-    return window.location.origin;
+const configuredApiBaseUrls = (): string[] => {
+  const env = import.meta.env as ApiEnvironment;
+  const values = [
+    env.VITE_DJANGO_API_URL,
+    env.VITE_DJANGO_API_FALLBACK_URL,
+    ...(env.VITE_DJANGO_API_URLS || '').split(','),
+  ];
+  return values
+    .map(normalizeApiBaseUrl)
+    .filter((value): value is string => Boolean(value))
+    .filter((value, index, all) => all.indexOf(value) === index);
+};
+
+let activeApiBaseUrl: string | null = null;
+let apiBaseSelectionPromise: Promise<string> | null = null;
+
+/** Returns the selected API base, or the primary configured base before selection. */
+export const getDjangoApiBaseUrl = (): string => {
+  if (activeApiBaseUrl) return activeApiBaseUrl;
+  const [primary] = configuredApiBaseUrls();
+  if (primary) return primary;
+  return typeof window !== 'undefined' ? window.location.origin : '';
+};
+
+/**
+ * Probe the public CSRF endpoint in priority order. The first endpoint that
+ * returns Django's JSON CSRF response is used for all API and WebSocket calls
+ * until the app restarts. A failed preferred tunnel therefore falls back to
+ * the next configured tunnel before the user signs in.
+ */
+export const ensureDjangoApiBaseUrl = async (): Promise<string> => {
+  if (activeApiBaseUrl) return activeApiBaseUrl;
+  if (apiBaseSelectionPromise) return apiBaseSelectionPromise;
+
+  const candidates = configuredApiBaseUrls();
+  if (!candidates.length) {
+    activeApiBaseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    return activeApiBaseUrl;
   }
 
-  return '';
+  const selection = (async () => {
+    for (const candidate of candidates) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2500);
+      try {
+        const response = await fetch(`${candidate}/api/accounts/csrf/`, {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) continue;
+        const body = await response.json() as { csrfToken?: string };
+        if (typeof body?.csrfToken === 'string' && body.csrfToken.length > 0) {
+          activeApiBaseUrl = candidate;
+          return candidate;
+        }
+      } catch {
+        // Try the next configured endpoint if this tunnel is offline or unreachable.
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    // Keep the preferred URL so the eventual API error identifies the primary
+    // endpoint rather than silently redirecting requests to an unknown host.
+    activeApiBaseUrl = candidates[0];
+    console.warn('No configured Django API endpoint passed the startup check; using the primary URL.');
+    return activeApiBaseUrl;
+  })();
+
+  apiBaseSelectionPromise = selection;
+  try {
+    return await selection;
+  } finally {
+    if (apiBaseSelectionPromise === selection) apiBaseSelectionPromise = null;
+  }
+};
+
+/**
+ * Resolve Django-hosted media paths against the same selected API host used
+ * for authenticated requests. Preserve non-Django/CDN image URLs unchanged.
+ */
+export const resolveDjangoMediaUrl = (value?: string | null): string => {
+  const url = String(value || '').trim();
+  if (!url) return '';
+
+  const baseUrl = getDjangoApiBaseUrl();
+  if (url.startsWith('/api/') || url.startsWith('/media/')) {
+    return `${baseUrl}${url}`;
+  }
+
+  try {
+    const parsed = new URL(url, baseUrl || window.location.origin);
+    if (parsed.pathname.startsWith('/api/') || parsed.pathname.startsWith('/media/')) {
+      return `${baseUrl}${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    // Preserve non-URL values for the existing fallback behavior.
+  }
+
+  return url;
 };
 
 const readJson = async <T>(response: Response): Promise<T | null> => {
@@ -71,7 +170,8 @@ const getCsrfToken = async (forceRefresh = false): Promise<string> => {
   if (csrfTokenPromise) return csrfTokenPromise;
 
   csrfTokenPromise = (async () => {
-    const response = await fetch(`${getBaseUrl()}/api/accounts/csrf/`, {
+    const baseUrl = await ensureDjangoApiBaseUrl();
+    const response = await fetch(`${baseUrl}/api/accounts/csrf/`, {
       method: 'GET',
       credentials: 'include',
       headers: { Accept: 'application/json' },
@@ -102,8 +202,9 @@ const refreshAuthentication = async (): Promise<boolean> => {
 
   refreshPromise = (async () => {
     try {
+      const baseUrl = await ensureDjangoApiBaseUrl();
       const csrfToken = await getCsrfToken();
-      const response = await fetch(`${getBaseUrl()}/api/accounts/refresh/`, {
+      const response = await fetch(`${baseUrl}/api/accounts/refresh/`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -114,7 +215,7 @@ const refreshAuthentication = async (): Promise<boolean> => {
 
       if (response.status === 403) {
         const freshCsrfToken = await getCsrfToken(true);
-        const retry = await fetch(`${getBaseUrl()}/api/accounts/refresh/`, {
+        const retry = await fetch(`${baseUrl}/api/accounts/refresh/`, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -155,6 +256,7 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     throw new Error('Django API paths must target /api/.');
   }
 
+  const baseUrl = await ensureDjangoApiBaseUrl();
   const method = String(init.method || 'GET').toUpperCase();
   const headers = new Headers(init.headers);
   headers.set('Accept', headers.get('Accept') || 'application/json');
@@ -166,7 +268,7 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     headers.set('X-CSRFToken', await getCsrfToken());
   }
 
-  const execute = () => fetch(`${getBaseUrl()}${path}`, {
+  const execute = () => fetch(`${baseUrl}${path}`, {
     ...init,
     method,
     credentials: 'include',
@@ -212,10 +314,11 @@ export const protectedBlob = async (
     throw new Error('Django API paths must target /api/.');
   }
 
+  const baseUrl = await ensureDjangoApiBaseUrl();
   const headers = new Headers(init.headers);
   headers.set('Accept', headers.get('Accept') || '*/*');
 
-  const execute = () => fetch(`${getBaseUrl()}${path}`, {
+  const execute = () => fetch(`${baseUrl}${path}`, {
     ...init,
     method: 'GET',
     credentials: 'include',
@@ -245,13 +348,14 @@ const requestMultipart = async <T>(
     throw new Error('Django API paths must target /api/.');
   }
 
+  const baseUrl = await ensureDjangoApiBaseUrl();
   const csrfToken = await getCsrfToken();
   const headers = new Headers({
     Accept: 'application/json',
     'X-CSRFToken': csrfToken,
   });
 
-  const execute = () => fetch(`${getBaseUrl()}${path}`, {
+  const execute = () => fetch(`${baseUrl}${path}`, {
     method: 'POST',
     credentials: 'include',
     headers,

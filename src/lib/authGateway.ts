@@ -1,4 +1,4 @@
-import { djangoRequest } from '@/lib/djangoApi';
+import { djangoRequest, ensureDjangoApiBaseUrl } from '@/lib/djangoApi';
 
 interface GatewayUser {
   id: string;
@@ -37,13 +37,7 @@ type AuthGatewayAction =
   | 'set_role'
   | 'logout';
 
-const getBaseUrl = (): string => {
-  const configured = import.meta.env.VITE_DJANGO_API_URL as string | undefined;
-  const fallback = typeof window !== 'undefined' ? window.location.origin : '';
-  return (configured || fallback)
-    .replace(/\/+$/, '')
-    .replace(/\/api$/i, '');
-};
+
 
 const actionPath: Record<Exclude<AuthGatewayAction, 'session'>, string> = {
   signup: '/api/accounts/signup/',
@@ -73,7 +67,8 @@ const getCsrfToken = async (forceRefresh = false): Promise<string> => {
   if (csrfTokenPromise) return csrfTokenPromise;
 
   csrfTokenPromise = (async () => {
-    const response = await fetch(`${getBaseUrl()}/api/accounts/csrf/`, {
+    const baseUrl = await ensureDjangoApiBaseUrl();
+    const response = await fetch(`${baseUrl}/api/accounts/csrf/`, {
       method: 'GET',
       credentials: 'include',
       headers: { Accept: 'application/json' },
@@ -99,12 +94,13 @@ export const authGateway = async (
     return djangoRequest<GatewaySessionResponse>('/api/accounts/session/');
   }
 
+  const baseUrl = await ensureDjangoApiBaseUrl();
   const path = actionPath[action];
   const headers = new Headers({ Accept: 'application/json' });
   headers.set('Content-Type', 'application/json');
   headers.set('X-CSRFToken', await getCsrfToken());
 
-  const execute = () => fetch(`${getBaseUrl()}${path}`, {
+  const execute = () => fetch(`${baseUrl}${path}`, {
     method: 'POST',
     credentials: 'include',
     headers,

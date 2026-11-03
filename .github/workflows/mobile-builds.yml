@@ -41,12 +41,17 @@ jobs:
       - name: Build React app
         env:
           VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || '' }}
           VITE_FIREBASE_PUSH_ENABLED: 'false'
         run: |
           test -n "$VITE_DJANGO_API_URL"
           npm run build
           if ! grep -R -F "$VITE_DJANGO_API_URL" dist/assets/; then
-            echo "::error::The production Django API URL was not embedded in the Vite build."
+            echo "::error::The primary Django API URL was not embedded in the Vite build."
+            exit 1
+          fi
+          if [ -n "$VITE_DJANGO_API_FALLBACK_URL" ] && ! grep -R -F "$VITE_DJANGO_API_FALLBACK_URL" dist/assets/; then
+            echo "::error::The fallback Django API URL was not embedded in the Vite build."
             exit 1
           fi
 
@@ -93,6 +98,8 @@ jobs:
 
       - name: Build React app
         env:
+          VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || '' }}
           VITE_FIREBASE_PUSH_ENABLED: 'false'
         run: npm run build
 

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
-import { protectedGet, protectedPost, protectedUpload } from '@/lib/djangoApi';
+import { protectedGet, protectedPost, protectedUpload, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useLiveEvents } from '@/lib/useLiveEvents';
 import { formatKES } from '@/lib/utils';
 import type { CommunityPost, CommunityPostMedia } from '@/types/domain';
@@ -39,19 +39,6 @@ function initials(post: Post) {
 
 function roleLabel(role?: string | null) {
   return String(role || '').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function relativeMediaUrl(value?: string | null) {
-  const url = String(value || '').trim();
-  if (!url) return '';
-  if (url.startsWith('/')) return url;
-  try {
-    const parsed = new URL(url, window.location.origin);
-    if (parsed.pathname.startsWith('/api/')) return `${parsed.pathname}${parsed.search}`;
-  } catch {
-    // Keep valid external URLs unchanged.
-  }
-  return url;
 }
 
 function communityTime(post: Post) {
@@ -278,7 +265,7 @@ export default function CommunityPage() {
             const own = String(post.user_id) === String(profile?.id);
             const media = post.post_type === 'listing' ? (post.media || []) : (post.community_media || []);
             const currentSlide = slides[post.id] || 0;
-            const authorPhoto = relativeMediaUrl(post.author?.profile_photo_url);
+            const authorPhoto = resolveDjangoMediaUrl(post.author?.profile_photo_url);
             const caption = (post.ai_caption || post.content || '').trim();
 
             return <article key={post.id} className="card overflow-hidden p-4 sm:p-5">
@@ -294,7 +281,7 @@ export default function CommunityPage() {
                 {post.post_type === 'listing' && post.listing && <div className="mt-3 overflow-hidden rounded-2xl border border-brand-100 bg-brand-50/30 dark:border-brand-800 dark:bg-brand-950/30">
                   <button type="button" onClick={() => navigate('listing-detail', post.listing_id!)} className="block w-full text-left">
                     {media.length > 0 && <div className="relative aspect-[4/3] w-full overflow-hidden bg-gray-100 dark:bg-gray-900">
-                      <img src={relativeMediaUrl(media[currentSlide]?.url)} alt={media[currentSlide]?.label || post.listing.title || 'Listing image'} className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                      <img src={resolveDjangoMediaUrl(media[currentSlide]?.url)} alt={media[currentSlide]?.label || post.listing.title || 'Listing image'} className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
                       {media.length > 1 && <div className="absolute inset-0">
                         <button type="button" onClick={(event) => { event.stopPropagation(); changeSlide(post.id, media.length, -1); }} className="absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white" aria-label="Previous listing image"><ChevronLeft className="h-5 w-5" /></button>
                         <button type="button" onClick={(event) => { event.stopPropagation(); changeSlide(post.id, media.length, 1); }} className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white" aria-label="Next listing image"><ChevronRight className="h-5 w-5" /></button>
@@ -305,7 +292,7 @@ export default function CommunityPage() {
                   </button>
                 </div>}
 
-                {post.post_type !== 'listing' && media.length > 0 && <div className={`mt-3 grid gap-1 overflow-hidden rounded-2xl ${media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>{media.slice(0, MAX_IMAGES).map((item, index) => <img key={item.id || index} src={relativeMediaUrl(item.url)} alt={item.label || `Community image ${index + 1}`} className={`${media.length === 1 ? 'h-64' : 'h-40'} w-full object-cover sm:h-64`} onError={(event) => { event.currentTarget.style.display = 'none'; }} />)}</div>}
+                {post.post_type !== 'listing' && media.length > 0 && <div className={`mt-3 grid gap-1 overflow-hidden rounded-2xl ${media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>{media.slice(0, MAX_IMAGES).map((item, index) => <img key={item.id || index} crossOrigin="use-credentials" src={resolveDjangoMediaUrl(item.url)} alt={item.label || `Community image ${index + 1}`} className={`${media.length === 1 ? 'h-64' : 'h-40'} w-full object-cover sm:h-64`} onError={(event) => { event.currentTarget.style.display = 'none'; }} />)}</div>}
 
                 <div className="mt-4 border-t border-gray-100 pt-3 dark:border-gray-800"><button type="button" onClick={() => void toggleLike(post)} disabled={own || reacting === post.id} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60 ${post.user_reaction === 'like' ? 'bg-brand-100 text-brand-700 dark:bg-brand-900/60 dark:text-brand-200' : 'text-gray-500 hover:bg-brand-50 hover:text-brand-600 dark:text-gray-400 dark:hover:bg-brand-950/50 dark:hover:text-brand-300'}`} title={own ? 'You cannot react to your own post' : 'Like this post'}>{reacting === post.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Like<span className="text-xs">{post.reaction_count || 0}</span></button></div>
               </div>
