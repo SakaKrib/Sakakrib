@@ -4,7 +4,7 @@ from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from apps.core.domain_bookings import (
-    Booking, MovingCancellationEvent, MovingDispute, MovingInvoice,
+    Booking, ChatMessage, MovingCancellationEvent, MovingDispute, MovingInvoice,
     MovingPayment, MoverPayout, MoverScheduleEvent,
 )
 from apps.core.domain_financial import MovingFinancialDocument
@@ -81,6 +81,17 @@ def live_renter_notification(sender, instance, created, **kwargs):
     if created:
         from .push_notifications import send_renter_notification_push
         transaction.on_commit(lambda: send_renter_notification_push(notification=instance))
+
+
+@receiver(post_save, sender=ChatMessage)
+def live_chat_message(sender, instance, created, **kwargs):
+    _send(
+        [instance.sender_id, instance.receiver_id],
+        resource="chat",
+        instance=instance,
+        created=created,
+        status=instance.message_type,
+    )
 
 
 @receiver(post_save, sender=Booking)
@@ -637,6 +648,17 @@ def live_listing_media_deleted(sender, instance, **kwargs):
         created=False,
         action_override="deleted",
     )
+    if Listing.objects.filter(
+        pk=instance.listing_id,
+        approval_status='approved',
+        is_published=True,
+    ).exists():
+        schedule_marketplace_event(
+            resource='listings',
+            object_id=instance.listing_id,
+            action='updated',
+            status='approved',
+        )
 
 
 @receiver(post_delete, sender=SupportTicket)
@@ -671,6 +693,148 @@ def live_community_post_reaction_deleted(sender, instance, **kwargs):
     _send(
         [instance.user_id, post_owner_id],
         resource="community",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+@receiver(post_delete, sender=Mover)
+def live_mover_deleted(sender, instance, **kwargs):
+    was_public = (
+        instance.approval_status == 'approved' and instance.is_available
+    )
+    _send(
+        [instance.user_id],
+        resource="movers",
+        instance=instance,
+        created=False,
+        notify_admin=True,
+        action_override="deleted",
+    )
+    if was_public:
+        schedule_marketplace_event(
+            resource='movers',
+            object_id=instance.id,
+            action='deleted',
+            status='deleted',
+        )
+
+
+@receiver(post_delete, sender=PropertyUnit)
+def live_property_unit_deleted(sender, instance, **kwargs):
+    renter_ids = RenterUnitAssociation.objects.filter(
+        unit_id=instance.id,
+    ).values_list("renter_user_id", flat=True)
+    _send(
+        [instance.user_id, *renter_ids],
+        resource="pms",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=RenterUnitAssociation)
+def live_renter_association_deleted(sender, instance, **kwargs):
+    _send(
+        [instance.landlord_id, instance.renter_user_id],
+        resource="pms",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=LandlordPaymentMethod)
+def live_landlord_payment_method_deleted(sender, instance, **kwargs):
+    _send(
+        [instance.landlord_id],
+        resource="pms",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=PMSSubscriptionNotification)
+def live_pms_subscription_notification_deleted(sender, instance, **kwargs):
+    _send(
+        [instance.landlord_id],
+        resource="pms",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=CommunityPostMedia)
+def live_community_post_media_deleted(sender, instance, **kwargs):
+    post_owner_id = CommunityPost.objects.filter(pk=instance.post_id).values_list(
+        "user_id", flat=True
+    ).first()
+    _send(
+        [instance.user_id, post_owner_id],
+        resource="community",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=Review)
+def live_review_deleted(sender, instance, **kwargs):
+    mover_user_id = (
+        Mover.objects.filter(pk=instance.mover_id).values_list("user_id", flat=True).first()
+        if instance.mover_id else None
+    )
+    _send(
+        [instance.reviewer_id, instance.reviewee_id, mover_user_id],
+        resource="reviews",
+        instance=instance,
+        created=False,
+        notify_admin=True,
+        action_override="deleted",
+    )
+    if instance.listing_id and Listing.objects.filter(
+        pk=instance.listing_id,
+        approval_status='approved',
+        is_published=True,
+    ).exists():
+        schedule_marketplace_event(
+            resource='listings',
+            object_id=instance.listing_id,
+            action='updated',
+            status='approved',
+        )
+
+
+@receiver(post_delete, sender=RealEstatePMSMember)
+def live_real_estate_pms_member_deleted(sender, instance, **kwargs):
+    _send(
+        [instance.real_estate_id, instance.user_id],
+        resource="pms",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=RealEstatePMSListingAssignment)
+def live_real_estate_pms_assignment_deleted(sender, instance, **kwargs):
+    _send(
+        [instance.real_estate_id, instance.agent_id, instance.assigned_by_id],
+        resource="pms",
+        instance=instance,
+        created=False,
+        action_override="deleted",
+    )
+
+
+@receiver(post_delete, sender=RealEstatePMSSettings)
+def live_real_estate_pms_settings_deleted(sender, instance, **kwargs):
+    _send(
+        [instance.real_estate_id],
+        resource="pms",
         instance=instance,
         created=False,
         action_override="deleted",
