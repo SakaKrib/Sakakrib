@@ -10,7 +10,8 @@ The application code now registers native Capacitor devices, stores their FCM re
 4. Create the Android Capacitor platform if it is not already present: `npx cap add android`.
 5. Place `google-services.json` at `android/app/google-services.json`. Do not commit this file if the project policy treats Firebase configuration as private.
 6. Copy `branding/icons/generated/android/drawable/ic_stat_sakakrib.xml` to `android/app/src/main/res/drawable/ic_stat_sakakrib.xml`.
-7. Add the contents of `branding/icons/generated/android/AndroidManifest-notification-snippet.txt` inside the Android manifest's `<application>` element. This sets the monochrome small notification icon and the Saka Krib notification colour.
+7. Copy `branding/icons/generated/android/res/values/sakakrib_notification_color.xml` to `android/app/src/main/res/values/sakakrib_notification_color.xml`.
+8. Add the contents of `branding/icons/generated/android/AndroidManifest-notification-snippet.txt` inside the Android manifest's `<application>` element. This sets the monochrome small notification icon and the Saka Krib notification colour.
 
 The frontend creates the `sakakrib_notifications` channel and registers only after the signed-in user grants notification permission.
 
