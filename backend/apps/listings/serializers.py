@@ -19,7 +19,9 @@ class ListingMediaSerializer(serializers.ModelSerializer):
         value = obj.url or ''
         if not value.startswith('django-media://'):
             return value
-        return f'/api/listings/media/{obj.id}/'
+        path = f'/api/listings/media/{obj.id}/'
+        request = self.context.get('request')
+        return request.build_absolute_uri(path) if request else path
 
 
 class PropertyUnitPublicSerializer(serializers.Serializer):
