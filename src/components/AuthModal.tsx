@@ -21,6 +21,7 @@ import { protectedPost } from '@/lib/djangoApi';
 import { cn, validateEmail } from '@/lib/utils';
 
 import EmailOtpVerification from '@/components/EmailOtpVerification';
+import { clearPendingOtp, loadPendingOtp, savePendingOtp } from '@/lib/pendingAuth';
 
 interface PasswordRule {
   label: string;
@@ -59,6 +60,7 @@ export default function AuthModal() {
     signInWithGoogle,
     verifyEmailOtp,
     resendSignupOtp,
+    isAuthenticated,
     needsEmailVerification,
     pendingVerificationEmail,
   } = useAuth();
@@ -71,11 +73,15 @@ export default function AuthModal() {
     setAuthMode,
   } = useNav();
 
-  const [email, setEmail] = useState('');
+  // If the page was reloaded while the user was away reading their OTP email, start on the
+  // OTP screen again for the same address (see src/lib/pendingAuth.ts).
+  const [restoredOtp] = useState(() => loadPendingOtp());
+
+  const [email, setEmail] = useState(restoredOtp?.email ?? '');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
 
-  const [otpStep, setOtpStep] = useState(false);
+  const [otpStep, setOtpStep] = useState(restoredOtp !== null);
 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +160,32 @@ export default function AuthModal() {
     needsEmailVerification,
     pendingVerificationEmail,
   ]);
+
+  /*
+   * ==========================================================
+   * KEEP THE OTP SCREEN ALIVE ACROSS RELOADS
+   * ==========================================================
+   *
+   * Remember it while it is showing; forget it as soon as the user
+   * goes back, closes the modal, or verification completes.
+   */
+  useEffect(() => {
+    if (authModalOpen && otpStep && verificationEmail) {
+      savePendingOtp(verificationEmail, authMode);
+    } else {
+      clearPendingOtp();
+    }
+  }, [authModalOpen, otpStep, verificationEmail, authMode]);
+
+  // A restored OTP screen must not linger if the account is already verified and signed in
+  // (for example verified in another tab before this page reloaded).
+  useEffect(() => {
+    if (authModalOpen && otpStep && isAuthenticated) {
+      clearPendingOtp();
+      setOtpStep(false);
+      setAuthModalOpen(false);
+    }
+  }, [authModalOpen, otpStep, isAuthenticated, setAuthModalOpen]);
 
   /*
    * ==========================================================

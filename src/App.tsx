@@ -7,6 +7,8 @@ import Footer from '@/components/Footer';
 import BottomBar from '@/components/BottomBar';
 import SecurityBanner from '@/components/SecurityBanner';
 import AuthModal from '@/components/AuthModal';
+import SplashScreen from '@/components/SplashScreen';
+import BackButtonHandler from '@/components/BackButtonHandler';
 import RoleSelectionModal from '@/components/RoleSelectionModal';
 import MovingGpsTracker from '@/components/MovingGpsTracker';
 import LiveMovingMap from '@/components/LiveMovingMap';
@@ -116,7 +118,7 @@ function AppContent() {
   };
 
   if (view === 'live-mover-map' && (profile?.role === 'mover' || profile?.role === 'renter')) {
-    return <><LiveMovingMap /><MovingGpsTracker /></>;
+    return <><LiveMovingMap /><MovingGpsTracker /><BackButtonHandler /></>;
   }
 
   return <div className="app-shell flex min-h-screen flex-col overflow-hidden bg-gray-50 dark:bg-brand-950">
@@ -129,9 +131,10 @@ function AppContent() {
     <RoleSelectionModal />
     <MovingGpsTracker />
     <RenterBookingChatRedirector />
+    <BackButtonHandler />
   </div>;
 }
 
 export default function App() {
-  return <ThemeProvider><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
+  return <ThemeProvider><SplashScreen /><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
 }
