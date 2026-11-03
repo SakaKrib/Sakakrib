@@ -111,18 +111,58 @@ export default function ChatPage() {
   useEffect(() => {
     if (!profile || !mover || !conversationId) return;
     let cancelled = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
     const connect = () => {
       if (cancelled) return;
       socketRef.current?.close();
       const socket = new WebSocket(getWebSocketUrl(conversationId));
       socketRef.current = socket;
-      socket.onopen = () => { reconnectAttemptRef.current = 0; setSocketConnected(true); };
-      socket.onmessage = event => { try { const payload = JSON.parse(event.data) as { type?: string; message?: ChatMessage }; if (payload.type === 'message' && payload.message?.conversation_id === conversationId) setMessages(prev => [...prev.filter(item => item.id !== payload.message!.id), payload.message!].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())); } catch { /* ignore malformed event */ } };
+      socket.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setSocketConnected(true);
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = setInterval(() => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          if (heartbeatTimeout) {
+            socket.close();
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'ping' }));
+          heartbeatTimeout = setTimeout(() => {
+            heartbeatTimeout = null;
+            socket.close();
+          }, 10000);
+        }, 25000);
+      };
+      socket.onmessage = event => {
+        try {
+          const payload = JSON.parse(event.data) as { type?: string; message?: ChatMessage };
+          if (payload.type === 'pong') {
+            if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+            heartbeatTimeout = null;
+            return;
+          }
+          if (payload.type === 'message' && payload.message?.conversation_id === conversationId) {
+            setMessages(prev => [...prev.filter(item => item.id !== payload.message!.id), payload.message!].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+          }
+        } catch { /* ignore malformed event */ }
+      };
       socket.onerror = () => setSocketConnected(false);
-      socket.onclose = () => { if (cancelled) return; setSocketConnected(false); const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, 15000); reconnectAttemptRef.current += 1; reconnectTimerRef.current = window.setTimeout(connect, delay); };
+      socket.onclose = () => {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+        heartbeatTimer = null;
+        heartbeatTimeout = null;
+        if (cancelled) return;
+        setSocketConnected(false);
+        const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, 15000);
+        reconnectAttemptRef.current += 1;
+        reconnectTimerRef.current = window.setTimeout(connect, delay);
+      };
     };
     connect();
-    return () => { cancelled = true; if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current); socketRef.current?.close(); socketRef.current = null; };
+    return () => { cancelled = true; if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current); if (heartbeatTimer) clearInterval(heartbeatTimer); if (heartbeatTimeout) clearTimeout(heartbeatTimeout); socketRef.current?.close(); socketRef.current = null; };
   }, [profile, mover, conversationId]);
 
   const sendText = async () => {
