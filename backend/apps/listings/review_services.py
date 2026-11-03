@@ -18,8 +18,17 @@ def review_listing(admin_user, listing_id, decision, note=''):
     except Listing.DoesNotExist as exc: raise LookupError('Listing not found.') from exc
 
     was_approved = listing.approval_status == 'approved'
-    listing.approval_status = decision; listing.is_published = decision == 'approved'; listing.admin_reviewed_at = timezone.now(); listing.admin_review_note = note
-    listing.save(update_fields=['approval_status','is_published','admin_reviewed_at','admin_review_note','updated_at'])
+    is_approved = decision == 'approved'
+    listing.approval_status = decision
+    listing.is_approved = is_approved
+    listing.status = decision
+    listing.is_published = is_approved
+    listing.admin_reviewed_at = timezone.now()
+    listing.admin_review_note = note
+    listing.save(update_fields=[
+        'approval_status', 'is_approved', 'status', 'is_published',
+        'admin_reviewed_at', 'admin_review_note', 'updated_at',
+    ])
 
     if decision == 'approved' and not was_approved:
         caption = (listing.ai_caption or '').strip()
