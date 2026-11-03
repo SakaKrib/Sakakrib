@@ -74,6 +74,8 @@ export default function MoverMessages() {
   const inboxSocketRef = useRef<WebSocket | null>(null);
   const inboxReconnectTimerRef = useRef<number | null>(null);
   const inboxReconnectAttemptRef = useRef(0);
+  const inboxHeartbeatTimerRef = useRef<number | null>(null);
+  const inboxHeartbeatTimeoutRef = useRef<number | null>(null);
 
   const loadBookings = useCallback(async () => {
     if (!profile?.id || profile.role !== 'mover') { setLoading(false); return; }
@@ -151,6 +153,19 @@ export default function MoverMessages() {
       socket.onopen = () => {
         const wasReconnect = inboxReconnectAttemptRef.current > 0;
         inboxReconnectAttemptRef.current = 0;
+        if (inboxHeartbeatTimerRef.current !== null) window.clearInterval(inboxHeartbeatTimerRef.current);
+        inboxHeartbeatTimerRef.current = window.setInterval(() => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          if (inboxHeartbeatTimeoutRef.current !== null) {
+            socket.close();
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'ping' }));
+          inboxHeartbeatTimeoutRef.current = window.setTimeout(() => {
+            inboxHeartbeatTimeoutRef.current = null;
+            socket.close();
+          }, 10000);
+        }, 25000);
         if (wasReconnect) {
           void loadBookings();
           void loadConversation();
@@ -159,6 +174,13 @@ export default function MoverMessages() {
       socket.onmessage = event => {
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: MoverChatMessage };
+          if (payload.type === 'pong') {
+            if (inboxHeartbeatTimeoutRef.current !== null) {
+              window.clearTimeout(inboxHeartbeatTimeoutRef.current);
+              inboxHeartbeatTimeoutRef.current = null;
+            }
+            return;
+          }
           const message = payload.message;
           if (payload.type !== 'message' || !message) return;
           const type = messageType(message);
@@ -178,6 +200,10 @@ export default function MoverMessages() {
       };
       socket.onerror = () => socket.close();
       socket.onclose = () => {
+        if (inboxHeartbeatTimerRef.current !== null) window.clearInterval(inboxHeartbeatTimerRef.current);
+        if (inboxHeartbeatTimeoutRef.current !== null) window.clearTimeout(inboxHeartbeatTimeoutRef.current);
+        inboxHeartbeatTimerRef.current = null;
+        inboxHeartbeatTimeoutRef.current = null;
         if (cancelled) return;
         const delay = Math.min(1000 * 2 ** inboxReconnectAttemptRef.current, 15000);
         inboxReconnectAttemptRef.current += 1;
@@ -188,6 +214,10 @@ export default function MoverMessages() {
     return () => {
       cancelled = true;
       if (inboxReconnectTimerRef.current) window.clearTimeout(inboxReconnectTimerRef.current);
+      if (inboxHeartbeatTimerRef.current !== null) window.clearInterval(inboxHeartbeatTimerRef.current);
+      if (inboxHeartbeatTimeoutRef.current !== null) window.clearTimeout(inboxHeartbeatTimeoutRef.current);
+      inboxHeartbeatTimerRef.current = null;
+      inboxHeartbeatTimeoutRef.current = null;
       inboxSocketRef.current?.close();
       inboxSocketRef.current = null;
     };
