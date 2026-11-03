@@ -123,8 +123,9 @@ export default function PMSInvoiceHistory() {
   }, [loadInvoices]);
 
   useEffect(() => {
-    if (event?.type !== 'subscription_invoice') return;
-    void loadInvoices();
+    if (event?.type === 'subscription_invoice' || event?.type === 'ready') {
+      void loadInvoices();
+    }
   }, [event, loadInvoices]);
 
   const handleRefresh = async () => {
