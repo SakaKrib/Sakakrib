@@ -158,7 +158,16 @@ export default function ListingDetailPage() {
 
           <div className="card p-6"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Description</h2><p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-gray-600 dark:text-gray-400">{listing.description}</p></div>
           {listing.deposit_required && <div className="card p-6"><h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><DollarSign className="h-5 w-5 text-brand-600" /> Deposit Details</h2><div className="mt-3 space-y-2"><div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Deposit Amount</span><span className="font-semibold text-gray-900 dark:text-white">{formatKES(Number(listing.deposit_amount ?? 0))}</span></div><div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Payment Structure</span><span className="font-semibold capitalize text-gray-900 dark:text-white">{listing.deposit_structure}</span></div></div></div>}
-          {video && <div className="card p-6"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Walkthrough Video</h2><video src={video.url} controls className="mt-3 w-full rounded-lg" /></div>}
+          {video && <div className="card p-6"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Walkthrough Video</h2><video
+            src={video.url}
+            autoPlay
+            muted
+            playsInline
+            loop
+            controls
+            preload="auto"
+            className="listing-walkthrough-video mt-3 w-full rounded-lg"
+          /></div>}
           <div className="card p-6"><h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><Star className="h-5 w-5 text-brand-600" /> Reviews{reviews.length > 0 && <span className="text-sm font-normal text-gray-400">({avgRating.toFixed(1)} avg, {reviews.length} review{reviews.length !== 1 ? 's' : ''})</span>}</h2>{reviews.length === 0 ? <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No reviews yet. Be the first to review this listing.</p> : <div className="mt-4 space-y-4">{reviews.map((review) => <div key={review.id} className="border-l-2 border-brand-200 pl-4 dark:border-brand-700"><div className="flex items-center gap-2"><div className="flex">{[1,2,3,4,5].map((s) => <Star key={s} className={cn('h-4 w-4', s <= review.rating ? 'fill-warning-500 text-warning-500' : 'text-gray-300 dark:text-brand-700')} />)}</div><span className="text-xs text-gray-400">{timeAgo(review.created_at ?? '')}</span></div><p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{review.comment}</p></div>)}</div>}</div>
         </div>
 
