@@ -40,7 +40,7 @@ export default function HomePage() {
     if (
       (marketplaceEvent?.type === 'ready' && marketplaceEvent.reconnected) ||
       (marketplaceEvent?.type === 'resource.updated' &&
-        ['listings', 'reviews'].includes(marketplaceEvent.resource ?? ''))
+        ['listings', 'reviews', 'movers'].includes(marketplaceEvent.resource ?? ''))
     ) {
       setLiveRefreshKey((key) => key + 1);
     }
