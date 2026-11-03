@@ -707,28 +707,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [liveEvent, profile?.id, refreshProfile]);
 
   const setRole = async (role: UserRole) => {
-    try {
-      const result = await authGateway('session');
-
-      if (!result.authenticated) {
-        if (result.requiresEmailVerification) {
-          requireEmailVerification(result.email ?? null);
-        } else {
-          clearAuthState();
-        }
-
-        return;
-      }
-
-      applyGatewayAuth(result);
-    } catch (error) {
-      console.error('Django session refresh error:', error);
-      // Preserve the current authenticated state on transient transport
-      // failures. A failed refresh is not itself proof that the user signed out.
-    }
-  };
-
-  const setRole = async (role: UserRole) => {
     if (!session?.user) {
       return { error: 'Not authenticated.' };
     }
