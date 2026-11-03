@@ -55,8 +55,13 @@ jobs:
             exit 1
           fi
 
-      - name: Generate Android project
-        run: npx cap add android
+      - name: Ensure Android project exists
+        run: |
+          if [ -d android ]; then
+            echo "Using the Android project already tracked in the repository."
+          else
+            npx cap add android
+          fi
 
       - name: Declare Android location permissions
         run: |
@@ -160,8 +165,13 @@ jobs:
           VITE_FIREBASE_PUSH_ENABLED: 'false'
         run: npm run build
 
-      - name: Generate iOS project
-        run: npx cap add ios
+      - name: Ensure iOS project exists
+        run: |
+          if [ -d ios ]; then
+            echo "Using the iOS project already tracked in the repository."
+          else
+            npx cap add ios
+          fi
 
       - name: Generate and install iOS icons
         run: npm run generate:icons -- --sync --patch-manifest
