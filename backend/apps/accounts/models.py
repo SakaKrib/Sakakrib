@@ -113,5 +113,5 @@ class PushDeviceToken(models.Model):
     class Meta:
         db_table = 'push_device_tokens'
         indexes = [
-            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['user', 'is_active'], name='push_device_user_active_idx'),
         ]
