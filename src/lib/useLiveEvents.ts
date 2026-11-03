@@ -15,6 +15,15 @@ let socket: WebSocket | null = null;
 let reconnectTimer: number | null = null;
 let attempts = 0;
 let hasConnectedOnce = false;
+let heartbeatTimer: number | null = null;
+let heartbeatTimeout: number | null = null;
+
+function clearHeartbeat() {
+  if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
+  if (heartbeatTimeout !== null) window.clearTimeout(heartbeatTimeout);
+  heartbeatTimer = null;
+  heartbeatTimeout = null;
+}
 
 function websocketUrl() {
   const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)
@@ -39,10 +48,31 @@ function connect() {
     return;
   }
 
-  socket.onopen = () => { attempts = 0; };
-  socket.onmessage = (message) => {
+  const connection = socket;
+  connection.onopen = () => {
+    attempts = 0;
+    clearHeartbeat();
+    heartbeatTimer = window.setInterval(() => {
+      if (connection.readyState !== WebSocket.OPEN) return;
+      if (heartbeatTimeout !== null) {
+        connection.close();
+        return;
+      }
+      connection.send(JSON.stringify({ type: 'ping' }));
+      heartbeatTimeout = window.setTimeout(() => {
+        heartbeatTimeout = null;
+        connection.close();
+      }, 10000);
+    }, 25000);
+  };
+  connection.onmessage = (message) => {
     try {
       const event = JSON.parse(message.data) as LiveBusinessEvent;
+      if (event.type === 'pong') {
+        if (heartbeatTimeout !== null) window.clearTimeout(heartbeatTimeout);
+        heartbeatTimeout = null;
+        return;
+      }
       if (event.type === 'ready') {
         event.reconnected = hasConnectedOnce;
         hasConnectedOnce = true;
@@ -52,9 +82,10 @@ function connect() {
       // REST remains authoritative if a malformed event frame is received.
     }
   };
-  socket.onerror = () => socket?.close();
-  socket.onclose = () => {
-    socket = null;
+  connection.onerror = () => connection.close();
+  connection.onclose = () => {
+    clearHeartbeat();
+    if (socket === connection) socket = null;
     scheduleReconnect();
   };
 }
@@ -76,6 +107,7 @@ function subscribe(listener: Listener) {
     if (!listeners.size) {
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       reconnectTimer = null;
+      clearHeartbeat();
       socket?.close();
       socket = null;
       hasConnectedOnce = false;
