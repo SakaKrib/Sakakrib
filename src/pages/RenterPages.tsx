@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet } from '@/lib/djangoApi';
 import { renterApi, type Booking, type RentInvoice } from '@/lib/Renter/renterApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 const money = (value: number | null | undefined) => `KES ${(value ?? 0).toLocaleString('en-KE')}`;
 const date = (value?: string | null) => value ? new Date(value).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
@@ -29,18 +30,22 @@ function Guard({ children }: { children: ReactNode }) {
 
 export function RenterInvoicesPage() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const [invoices, setInvoices] = useState<RentInvoice[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => { if (!profile?.id) return; setLoading(true); setError(null); try { setInvoices(await renterApi.getInvoices(profile.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load invoices.'); } finally { setLoading(false); } }, [profile?.id]);
+  const load = useCallback(async (silent = false) => { if (!profile?.id) return; if (!silent) setLoading(true); setError(null); try { setInvoices(await renterApi.getInvoices(profile.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load invoices.'); } finally { setLoading(false); } }, [profile?.id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if ((liveEvent?.type === 'ready' && liveEvent.reconnected) || (liveEvent?.type === 'resource.updated' && ['rent', 'payments', 'notifications'].includes(liveEvent.resource ?? ''))) void load(true); }, [liveEvent, load]);
   const outstanding = useMemo(() => invoices.filter(i => !['PAID','COMPLETED','SETTLED','CANCELLED','CANCELED'].includes(i.status?.toUpperCase() ?? '')).reduce((s, i) => s + i.amount_kes, 0), [invoices]);
   return <Guard><PageShell title="Rent & Invoices" description="Review your rent invoices, due dates, payment status, and payment records.">{loading ? <div className="flex min-h-[300px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div> : <><div className="mb-5 grid gap-4 sm:grid-cols-2"><div className="card p-5"><p className="text-xs text-gray-500 dark:text-gray-400">Invoices</p><p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{invoices.length}</p></div><div className="card p-5"><p className="text-xs text-gray-500 dark:text-gray-400">Outstanding</p><p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{money(outstanding)}</p></div></div>{error && <div className="mb-5 rounded-xl bg-error-50 p-4 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>}<div className="card overflow-hidden"><div className="border-b border-gray-100 p-5 dark:border-brand-800"><h2 className="font-bold text-gray-900 dark:text-white">Invoice history</h2></div>{invoices.length === 0 ? <div className="p-10 text-center"><FileText className="mx-auto h-9 w-9 text-gray-400" /><p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No rent invoices found.</p></div> : <div className="divide-y divide-gray-100 dark:divide-brand-800">{invoices.map(invoice => <div key={invoice.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">{invoice.invoice_number}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{date(invoice.billing_period_start)} to {date(invoice.billing_period_end)} · Due {date(invoice.due_date)}</p></div><div className="sm:text-right"><p className="font-bold text-gray-900 dark:text-white">{money(invoice.amount_kes)}</p><span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(invoice.status)}`}>{invoice.status}</span></div></div>)}</div>}</div></>}</PageShell></Guard>;
 }
 
 export function RenterPaymentPage() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const [associationId, setAssociationId] = useState<string | null>(null); const [rows, setRows] = useState<Array<{ id: string; amount_kes: number; period_year: number; period_month: number; status: string; payment_provider: string | null; payment_method: string | null; mpesa_receipt: string | null; paid_at: string | null; created_at: string }>>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => { if (!profile?.id) return; setLoading(true); setError(null); try { const dashboard = await renterApi.getDashboard(profile.id); setAssociationId(dashboard.association?.id ?? null); if (dashboard.association?.id) setRows(await renterApi.getPaymentHistory(dashboard.association.id)); else setRows([]); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load payment history.'); } finally { setLoading(false); } }, [profile?.id]);
+  const load = useCallback(async (silent = false) => { if (!profile?.id) return; if (!silent) setLoading(true); setError(null); try { const dashboard = await renterApi.getDashboard(profile.id); setAssociationId(dashboard.association?.id ?? null); if (dashboard.association?.id) setRows(await renterApi.getPaymentHistory(dashboard.association.id)); else setRows([]); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load payment history.'); } finally { setLoading(false); } }, [profile?.id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if ((liveEvent?.type === 'ready' && liveEvent.reconnected) || (liveEvent?.type === 'resource.updated' && ['rent', 'payments', 'notifications', 'pms'].includes(liveEvent.resource ?? ''))) void load(true); }, [liveEvent, load]);
   return <Guard><PageShell title="Payment History" description="Confirmed rent payments recorded against your rental association.">{loading ? <div className="flex min-h-[300px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div> : <>{error && <div className="mb-5 rounded-xl bg-error-50 p-4 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400">{error}</div>} {!associationId ? <div className="card p-10 text-center"><Wallet className="mx-auto h-9 w-9 text-gray-400" /><p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No rental association is linked to this account.</p></div> : <div className="card overflow-hidden"><div className="border-b border-gray-100 p-5 dark:border-brand-800"><h2 className="font-bold text-gray-900 dark:text-white">Payment records</h2></div>{rows.length === 0 ? <div className="p-10 text-center"><CheckCircle2 className="mx-auto h-9 w-9 text-gray-400" /><p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No payment history yet.</p></div> : <div className="divide-y divide-gray-100 dark:divide-brand-800">{rows.map(row => <div key={row.id} className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">{row.period_year}-{String(row.period_month).padStart(2, '0')}</p><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{row.payment_provider || row.payment_method || 'Payment'}{row.mpesa_receipt ? ` · Receipt ${row.mpesa_receipt}` : ''}</p></div><div className="sm:text-right"><p className="font-bold text-gray-900 dark:text-white">{money(row.amount_kes)}</p><span className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(row.status)}`}>{row.status}</span></div></div>)}</div>}</div>}</>}</PageShell></Guard>;
 }
 
@@ -51,6 +56,7 @@ const monthLabel = (year: number, month: number) => new Date(year, month - 1, 1)
 
 export function RenterCalendarPage() {
   const { profile } = useAuth(); const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const today = new Date();
   const [data, setData] = useState<{ invoices: RentInvoice[]; bookings: Booking[] }>({ invoices: [], bookings: [] });
   const [performance, setPerformance] = useState<ChatPerformance | null>(null);
@@ -58,12 +64,12 @@ export function RenterCalendarPage() {
   const [activePanel, setActivePanel] = useState<'activities' | 'chat'>('activities');
   const [loading, setLoading] = useState(true); const [performanceLoading, setPerformanceLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [performanceError, setPerformanceError] = useState<string | null>(null);
 
-  const load = useCallback(async () => { if (!profile?.id) return; setLoading(true); setError(null); try { setData(await renterApi.getCalendar(profile.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load calendar.'); } finally { setLoading(false); } }, [profile?.id]);
+  const load = useCallback(async (silent = false) => { if (!profile?.id) return; if (!silent) setLoading(true); setError(null); try { setData(await renterApi.getCalendar(profile.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load calendar.'); } finally { setLoading(false); } }, [profile?.id]);
   useEffect(() => { void load(); }, [load]);
 
-  const loadPerformance = useCallback(async () => {
+  const loadPerformance = useCallback(async (silent = false) => {
     if (!profile?.id) return;
-    setPerformanceLoading(true); setPerformanceError(null);
+    if (!silent) setPerformanceLoading(true); setPerformanceError(null);
     try {
       const result = await protectedGet<ChatPerformance>(`/api/core/renter/chat-performance/?year=${selectedMonth.getFullYear()}&month=${selectedMonth.getMonth() + 1}`);
       setPerformance(result);
@@ -71,6 +77,18 @@ export function RenterCalendarPage() {
     finally { setPerformanceLoading(false); }
   }, [profile?.id, selectedMonth]);
   useEffect(() => { void loadPerformance(); }, [loadPerformance]);
+  useEffect(() => {
+    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+      void load(true);
+      void loadPerformance(true);
+      return;
+    }
+    if (liveEvent?.type !== 'resource.updated') return;
+    if (['rent', 'bookings', 'notifications', 'pms', 'payments'].includes(liveEvent.resource ?? '')) {
+      void load(true);
+    }
+    if (liveEvent.resource === 'chat') void loadPerformance(true);
+  }, [liveEvent, load, loadPerformance]);
 
   const events = useMemo(() => [...data.bookings.filter(b => b.moving_date).map(b => ({ id: `move-${b.id}`, date: b.moving_date as string, title: 'Moving service', detail: `${b.pickup_address} → ${b.dropoff_address}`, action: () => navigate('mover-tracking', b.id), icon: Truck })), ...data.invoices.filter(i => i.due_date).map(i => ({ id: `invoice-${i.id}`, date: i.due_date, title: 'Rent due', detail: `${i.invoice_number} · ${money(i.amount_kes)}`, action: () => navigate('renter-invoices'), icon: Wallet }))].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()), [data, navigate]);
 
@@ -109,8 +127,10 @@ export function RenterCalendarPage() {
 
 export function RenterMovingHistoryPage() {
   const { profile } = useAuth(); const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const [bookings, setBookings] = useState<Booking[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => { if (!profile?.id) return; setLoading(true); setError(null); try { setBookings(await renterApi.getBookings(profile.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load moving history.'); } finally { setLoading(false); } }, [profile?.id]);
+  const load = useCallback(async (silent = false) => { if (!profile?.id) return; if (!silent) setLoading(true); setError(null); try { setBookings(await renterApi.getBookings(profile.id)); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load moving history.'); } finally { setLoading(false); } }, [profile?.id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if ((liveEvent?.type === 'ready' && liveEvent.reconnected) || (liveEvent?.type === 'resource.updated' && ['bookings', 'payments', 'disputes', 'notifications', 'chat'].includes(liveEvent.resource ?? ''))) void load(true); }, [liveEvent, load]);
   return <Guard><PageShell title="Moving History" description="Your mover bookings, destinations, dates, and payment status.">{loading ? <div className="flex min-h-[300px] items-center justify-center"><RefreshCw className="h-7 w-7 animate-spin text-brand-500" /></div> : <>{error && <div className="mb-5 rounded-xl bg-error-50 p-4 text-sm text-error-700">{error}</div>}<div className="card overflow-hidden">{bookings.length === 0 ? <div className="p-10 text-center"><Truck className="mx-auto h-9 w-9 text-gray-400" /><p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No moving bookings found.</p></div> : <div className="divide-y divide-gray-100 dark:divide-brand-800">{bookings.map(booking => <button key={booking.id} type="button" onClick={() => navigate('mover-tracking', booking.id)} className="flex w-full flex-col gap-3 p-5 text-left hover:bg-gray-50 dark:hover:bg-brand-900/30 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-brand-500" /><p className="truncate font-semibold text-gray-900 dark:text-white">{booking.pickup_address} → {booking.dropoff_address}</p></div><p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{date(booking.moving_date)} · Booking {booking.id.slice(0, 8)}</p></div><div className="flex items-center gap-2 sm:shrink-0"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(booking.status)}`}>{booking.status}</span><span className="text-sm font-semibold text-gray-900 dark:text-white">{money(booking.total_amount)}</span></div></button>)}</div>}</div></>}</PageShell></Guard>;
 }
