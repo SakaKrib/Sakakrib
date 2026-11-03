@@ -40,8 +40,12 @@ export default function RenterDashboard() {
   }, [profile?.id, profile?.role]);
   useEffect(() => { if (!authLoading && profile?.role === 'renter' && profile.id) void loadDashboard(); }, [authLoading, profile?.role, profile?.id, loadDashboard]);
   useEffect(() => {
+    if (liveEvent?.type === 'ready' && liveEvent.reconnected) {
+      void loadDashboard(true);
+      return;
+    }
     if (!liveEvent || liveEvent.type !== 'resource.updated') return;
-    if (['bookings', 'rent', 'notifications', 'payments', 'applications', 'disputes'].includes(liveEvent.resource ?? '')) void loadDashboard(true);
+    if (['bookings', 'rent', 'notifications', 'payments', 'applications', 'disputes', 'pms'].includes(liveEvent.resource ?? '')) void loadDashboard(true);
   }, [liveEvent, loadDashboard]);
   const currentInvoice = useMemo(() => data.invoices.find(invoice => isUnpaidInvoice(invoice.status)) ?? null, [data.invoices]);
   const activeBooking = useMemo(() => data.bookings.find(booking => isActiveBooking(booking.status)) ?? null, [data.bookings]);
