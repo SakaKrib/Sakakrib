@@ -70,7 +70,12 @@ export default function HomePage() {
     let mounted = true;
     const fetchFeaturedListings = async () => {
       try {
-        const response = await djangoRequest<FeaturedListingsResponse>('/api/listings/featured/');
+        const params = new URLSearchParams();
+        if (searchCity.trim()) params.set('city', searchCity.trim());
+        params.set('listing_type', searchType);
+        const response = await djangoRequest<FeaturedListingsResponse>(
+          `/api/listings/featured/?${params.toString()}`,
+        );
         if (!mounted) return;
         const listings = Array.isArray(response?.results) ? response.results as ListingWithMedia[] : [];
         setFeatured(listings);
@@ -92,7 +97,7 @@ export default function HomePage() {
     };
     void fetchFeaturedListings();
     return () => { mounted = false; };
-  }, [liveRefreshKey]);
+  }, [liveRefreshKey, searchCity, searchType]);
 
   const handleSearch = () => navigate('listings', undefined, { city: searchCity, listingType: searchType });
   const visibleFeatured = featured.filter((listing) => {
