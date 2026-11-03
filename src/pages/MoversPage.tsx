@@ -19,6 +19,7 @@ import {
 } from '@/lib/utils';
 
 import { protectedGet } from '@/lib/djangoLegacyApi';
+import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 
 import type { Mover } from '@/types/domain';
 
@@ -36,6 +37,8 @@ const vehicleLabel = (type?: string | null): string => {
 
 export default function MoversPage() {
   const { navigate } = useNav();
+  const { event: marketplaceEvent } = useMarketplaceEvents();
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
   const [movers, setMovers] = useState<Mover[]>([]);
   const [ratingsMap, setRatingsMap] = useState<RatingsMap>({});
   const [loading, setLoading] = useState(true);
@@ -45,6 +48,13 @@ export default function MoversPage() {
   const [filterVehicle, setFilterVehicle] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [commissionRate, setCommissionRate] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (
+      (marketplaceEvent?.type === 'ready' && marketplaceEvent.reconnected) ||
+      (marketplaceEvent?.type === 'resource.updated' && marketplaceEvent.resource === 'movers')
+    ) setLiveRefreshKey((key) => key + 1);
+  }, [marketplaceEvent, liveRefreshKey]);
 
   useEffect(() => {
     let cancelled = false;
