@@ -36,6 +36,21 @@ function openNotificationSource(data: Record<string, unknown> | undefined) {
   window.location.hash = route;
 }
 
+export async function installPushNotificationActionListener(): Promise<() => void> {
+  if (!Capacitor.isNativePlatform()) return () => {};
+  const listener = await PushNotifications.addListener(
+    'pushNotificationActionPerformed',
+    (action) => {
+      openNotificationSource(
+        action.notification.data as Record<string, unknown> | undefined,
+      );
+    },
+  );
+  return () => {
+    void listener.remove();
+  };
+}
+
 export async function initializePushNotifications(): Promise<() => void> {
   if (!Capacitor.isNativePlatform()) return () => {};
 
@@ -59,10 +74,6 @@ export async function initializePushNotifications(): Promise<() => void> {
 
   await addListener(PushNotifications.addListener('registrationError', (error) => {
     console.error('Native push registration failed:', error);
-  }));
-
-  await addListener(PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-    openNotificationSource(action.notification.data as Record<string, unknown> | undefined);
   }));
 
   const permission = await PushNotifications.checkPermissions();
