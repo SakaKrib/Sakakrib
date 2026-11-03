@@ -51,8 +51,13 @@ export async function installPushNotificationActionListener(): Promise<() => voi
   };
 }
 
+const FIREBASE_PUSH_ENABLED =
+  import.meta.env.VITE_FIREBASE_PUSH_ENABLED === 'true';
+
 export async function initializePushNotifications(): Promise<() => void> {
-  if (!Capacitor.isNativePlatform()) return () => {};
+  if (!Capacitor.isNativePlatform() || !FIREBASE_PUSH_ENABLED) {
+    return () => {};
+  }
 
   const listeners: PluginListenerHandle[] = [];
   const addListener = async (handle: Promise<PluginListenerHandle>) => {
