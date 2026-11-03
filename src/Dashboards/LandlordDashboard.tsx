@@ -729,7 +729,7 @@ export default function LandlordDashboard({
       return;
     }
     if (liveEvent?.type !== 'resource.updated') return;
-    if (['listings', 'payments', 'applications', 'rent', 'notifications', 'pms', 'subscriptions'].includes(liveEvent.resource ?? '')) {
+    if (['listings', 'payments', 'applications', 'rent', 'notifications', 'pms', 'subscriptions', 'reviews'].includes(liveEvent.resource ?? '')) {
       void loadDashboard(true);
     }
   }, [liveEvent, loadDashboard]);
