@@ -8,6 +8,7 @@ import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverBooking, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
 import { renterApi } from '@/lib/Renter/renterApi';
 import { cn } from '@/lib/utils';
+import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -28,7 +29,7 @@ const ROUTE_REFRESH_METERS = 500;
 const PICKUP_CONFIRMATION_RADIUS_METERS = 250;
 const GPS_FRESHNESS_MS = 2 * 60 * 1000;
 const active = (value: string | null | undefined) => String(value ?? '').trim().toLowerCase().replace(/-/g, '_') === 'in_progress';
-function socketUrl(bookingId: string) { const configured = (import.meta.env.VITE_DJANGO_API_URL as string | undefined)?.trim().replace(/\/+$/, '').replace(/\/api$/i, ''); const url = new URL(configured || window.location.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; url.pathname = `/ws/tracking/${encodeURIComponent(bookingId)}/`; url.search = ''; return url.toString(); }
+function socketUrl(bookingId: string) { return getDjangoWebSocketUrl(`/ws/tracking/${encodeURIComponent(bookingId)}/`); }
 function validCoordinate(value: number | null | undefined) { return typeof value === 'number' && Number.isFinite(value); }
 function routeUrl(from: Coordinate, to: Coordinate) { return `${ROUTING_URL}/${from[0]},${from[1]};${to[0]},${to[1]}?overview=full&geometries=geojson&steps=false`; }
 function markerElement(label: string, color: string, icon: string) { const element = document.createElement('div'); element.setAttribute('role', 'img'); element.setAttribute('aria-label', label); element.title = label; element.style.width = '38px'; element.style.height = '38px'; element.style.borderRadius = '50%'; element.style.background = color; element.style.border = '4px solid white'; element.style.boxShadow = '0 3px 12px rgba(0,0,0,.35)'; element.style.display = 'flex'; element.style.alignItems = 'center'; element.style.justifyContent = 'center'; element.style.fontSize = '18px'; element.textContent = icon; return element; }
