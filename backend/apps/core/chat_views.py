@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 
 from .access_scopes import chat_messages_for_user
 from .chat_services import conversation_id_for_users, list_conversation, send_message, serialize_message
+from .chat_consumers import user_chat_group_name
 
 
 def _error(exc):
@@ -20,13 +21,19 @@ def _broadcast(message):
     layer = get_channel_layer()
     if not layer:
         return
+    serialized = serialize_message(message)
     conversation_id = message.conversation_id
     import hashlib
     group_name = f"chat_{hashlib.sha256(conversation_id.encode()).hexdigest()[:40]}"
     async_to_sync(layer.group_send)(
         group_name,
-        {"type": "chat.message", "message": serialize_message(message)},
+        {"type": "chat.message", "message": serialized},
     )
+    for user_id in {str(message.sender_id), str(message.receiver_id)}:
+        async_to_sync(layer.group_send)(
+            user_chat_group_name(user_id),
+            {"type": "chat.inbox_message", "message": serialized},
+        )
 
 
 class ChatConversationView(APIView):
