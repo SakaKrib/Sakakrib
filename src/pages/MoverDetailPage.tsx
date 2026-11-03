@@ -8,6 +8,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
+import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import GPSLocationInput, { type GPSLocationValue } from '@/components/Helpers/GPSLocationInput';
 import { formatKES, cn } from '@/lib/utils';
 import type { Mover, Review } from '@/types/domain';
@@ -18,6 +19,8 @@ function formatMovingDate(value: Date | null) { if (!value) return ''; const yea
 
 export default function MoverDetailPage() {
   const { selectedMoverId, navigate } = useNav();
+  const { event: marketplaceEvent } = useMarketplaceEvents();
+  const [liveRefreshKey, setLiveRefreshKey] = useState(0);
   const { profile } = useAuth();
   const [mover, setMover] = useState<Mover | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -38,6 +41,14 @@ export default function MoverDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (
+      marketplaceEvent?.type === 'resource.updated' &&
+      marketplaceEvent.resource === 'movers' &&
+      (marketplaceEvent.object_id === String(selectedMoverId) || marketplaceEvent.action === 'deleted')
+    ) setLiveRefreshKey((key) => key + 1);
+  }, [marketplaceEvent, selectedMoverId]);
+
+  useEffect(() => {
     if (!selectedMoverId) return;
     const fetchData = async () => {
       setLoading(true); setError(null);
@@ -52,7 +63,7 @@ export default function MoverDetailPage() {
       } finally { setLoading(false); }
     };
     void fetchData();
-  }, [selectedMoverId]);
+  }, [selectedMoverId, liveRefreshKey]);
 
   useEffect(() => {
     if (!mover || pickupLocation.latitude === null || pickupLocation.longitude === null || dropoffLocation.latitude === null || dropoffLocation.longitude === null) { setQuote(null); return; }
