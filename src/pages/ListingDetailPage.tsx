@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
 import { useAuth } from '@/context/AuthContext';
-import { protectedGet } from '@/lib/djangoApi';
+import { protectedGet, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { formatKES, timeAgo, cn } from '@/lib/utils';
 import ListingMap from '@/components/ListingMap';
@@ -120,14 +120,14 @@ export default function ListingDetailPage() {
       {photos.length > 0 ? (
         <div className="mb-6">
           <div className="relative h-64 overflow-hidden rounded-xl bg-gray-200 sm:h-96 dark:bg-brand-800">
-            <img src={photos[activeImage]?.url} alt={photos[activeImage]?.label ?? listing.title} className="h-full w-full object-cover" />
+            <img src={resolveDjangoMediaUrl(photos[activeImage]?.url)} alt={photos[activeImage]?.label ?? listing.title} className="h-full w-full object-cover" />
             {photos.length > 1 && <>
               <button onClick={() => setActiveImage((activeImage - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-2 text-gray-700"><ChevronLeft className="h-5 w-5" /></button>
               <button onClick={() => setActiveImage((activeImage + 1) % photos.length)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-2 text-gray-700"><ChevronRight className="h-5 w-5" /></button>
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-gray-900/60 px-3 py-1 text-xs font-medium text-white">{activeImage + 1} / {photos.length}</div>
             </>}
           </div>
-          {photos.length > 1 && <div className="mt-3 flex gap-2 overflow-x-auto pb-2">{photos.map((photo, i) => <button key={photo.id} onClick={() => setActiveImage(i)} className={cn('h-16 w-24 shrink-0 overflow-hidden rounded-lg border-2', i === activeImage ? 'border-brand-500' : 'border-transparent')}><img src={photo.url} alt={photo.label ?? ''} className="h-full w-full object-cover" /></button>)}</div>}
+          {photos.length > 1 && <div className="mt-3 flex gap-2 overflow-x-auto pb-2">{photos.map((photo, i) => <button key={photo.id} onClick={() => setActiveImage(i)} className={cn('h-16 w-24 shrink-0 overflow-hidden rounded-lg border-2', i === activeImage ? 'border-brand-500' : 'border-transparent')}><img src={resolveDjangoMediaUrl(photo.url)} alt={photo.label ?? ''} className="h-full w-full object-cover" /></button>)}</div>}
         </div>
       ) : <div className="mb-6 flex h-64 items-center justify-center rounded-xl bg-gray-200 dark:bg-brand-800"><Home className="h-12 w-12 text-gray-400" /></div>}
 
@@ -165,7 +165,7 @@ export default function ListingDetailPage() {
             </div>
             <div className="mt-3 aspect-video max-h-[70dvh] w-full overflow-hidden bg-black">
               <video
-                src={video.url}
+                src={resolveDjangoMediaUrl(video.url)}
                 autoPlay
                 muted
                 playsInline
