@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 
 export type PaymentSocketStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED' | 'REFUNDED' | 'UPGRADED';
 
@@ -15,13 +16,6 @@ export interface PaymentSocketEvent {
   details?: Record<string, unknown>;
 }
 
-const getApiBase = () => (import.meta.env.VITE_DJANGO_API_URL as string | undefined || window.location.origin).replace(/\/+$/, '');
-
-const getWebSocketBase = () => {
-  const url = new URL(getApiBase());
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  return url.toString().replace(/\/$/, '');
-};
 
 export function usePaymentStatusSocket(invoiceId: string | null | undefined) {
   const [event, setEvent] = useState<PaymentSocketEvent | null>(null);
@@ -40,7 +34,7 @@ export function usePaymentStatusSocket(invoiceId: string | null | undefined) {
 
     const connect = () => {
       if (cancelled) return;
-      const socket = new WebSocket(`${getWebSocketBase()}/ws/payments/${encodeURIComponent(invoiceId)}/`);
+      const socket = new WebSocket(getDjangoWebSocketUrl(`/ws/payments/${encodeURIComponent(invoiceId)}/`));
       socketRef.current = socket;
 
       socket.onopen = () => {
