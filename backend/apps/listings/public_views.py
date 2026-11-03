@@ -15,10 +15,19 @@ class FeaturedListingsView(APIView):
         # Match the public listing criteria used by ListingListView.
         # approval_status + is_published are the canonical marketplace state;
         # is_approved is retained as a synchronized legacy compatibility field.
-        listings = Listing.objects.filter(
+        queryset = Listing.objects.filter(
             approval_status='approved',
             is_published=True,
-        ).order_by('-created_at')[:12]
+        )
+
+        city = str(request.query_params.get('city') or '').strip()
+        listing_type = str(request.query_params.get('listing_type') or '').strip().lower()
+        if city:
+            queryset = queryset.filter(city__iexact=city)
+        if listing_type in {'rent', 'sale'}:
+            queryset = queryset.filter(listing_type=listing_type)
+
+        listings = list(queryset.order_by('-created_at')[:12])
         return Response({
             'count': len(listings),
             'results': ListingSerializer(
