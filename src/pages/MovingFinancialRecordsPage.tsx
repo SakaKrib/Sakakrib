@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { movingFinancialApi, type MovingFinancialDocument } from '@/lib/movingFinancialApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 
 const money = (value: number | null | undefined) => `KES ${(value ?? 0).toLocaleString()}`;
 const date = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : '—';
@@ -11,18 +12,26 @@ function statusLabel(status: string) { return status.replace(/_/g, ' ').toLowerC
 export default function MovingFinancialRecordsPage() {
   const { profile } = useAuth();
   const { navigate } = useNav();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
   const [documents, setDocuments] = useState<MovingFinancialDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id) return;
-    setLoading(true); setError(null);
+    if (!silent) setLoading(true); setError(null);
     try { setDocuments(await movingFinancialApi.getDocuments()); }
     catch (err) { setError(err instanceof Error ? err.message : 'Unable to load financial records.'); }
     finally { setLoading(false); }
   }, [profile?.id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['payments', 'payouts', 'bookings', 'disputes'].includes(liveEvent.resource ?? ''))
+    ) void load(true);
+  }, [liveEvent, load]);
 
   const summary = useMemo(() => ({
     receipts: documents.filter((d) => d.document_type === 'RENTER_RECEIPT').length,
