@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, BarChart3, Bell, CalendarDays, CreditCard, LayoutDashboard, RefreshCw, Settings2, TrendingUp, Wallet } from 'lucide-react';
 import { djangoPmsGateway, type PMSDashboardSnapshot } from '@/lib/djangoPmsGateway';
 import LandlordPMSOverview from './LandlordPMSOverview';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import LandlordPMSRentControls from './LandlordPMSRentControls';
 import LandlordPMSActivity from './LandlordPMSActivity';
 import LandlordPMSFinance from './LandlordPMSFinance';
@@ -32,13 +33,14 @@ const tabs: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutDashboar
 ];
 
 export default function LandlordPMSWorkspace() {
+  const { event: liveEvent } = useLiveEvents(true);
   const [tab, setTab] = useState<WorkspaceTab>('overview');
   const [snapshot, setSnapshot] = useState<PMSDashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     const result = await djangoPmsGateway.dashboard();
     if (result.error) {
@@ -51,6 +53,13 @@ export default function LandlordPMSWorkspace() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const shouldRefresh =
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' &&
+        ['pms', 'rent', 'subscriptions', 'notifications', 'applications', 'listings', 'payments'].includes(liveEvent.resource ?? ''));
+    if (shouldRefresh) void load(true);
+  }, [liveEvent, load]);
 
   const badges = useMemo(() => {
     const notifications = Array.isArray(snapshot?.notifications) ? snapshot.notifications : [];
