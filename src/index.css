@@ -128,6 +128,30 @@ body {
   @apply bg-gray-400 dark:bg-brand-600;
 }
 
+/* Native APK/iOS: hide every WebView scrollbar without disabling scrolling.
+   This applies to the page and nested horizontal/vertical scroll containers. */
+html.capacitor-native,
+html.capacitor-native * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+html.capacitor-native::-webkit-scrollbar,
+html.capacitor-native *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+/* Native video controls: keep the control bar, but remove the large central
+   overlay play button. Muted inline autoplay lets the walkthrough be visible. */
+html.capacitor-native .listing-walkthrough-video::-webkit-media-controls-overlay-play-button,
+html.capacitor-native .listing-walkthrough-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
 /* Smooth transitions for theme */
 * {
   transition-property: background-color, border-color;
