@@ -3,6 +3,8 @@ import { PushNotifications, type PluginListenerHandle } from '@capacitor/push-no
 
 import { protectedPost } from '@/lib/djangoApi';
 
+let currentRegistrationToken: string | null = null;
+
 const ALLOWED_VIEWS = new Set([
   'home', 'listings', 'listing-detail', 'listing-manage', 'movers',
   'mover-detail', 'mover-booking-detail', 'chat', 'community',
@@ -44,6 +46,7 @@ export async function initializePushNotifications(): Promise<() => void> {
   };
 
   await addListener(PushNotifications.addListener('registration', async (token) => {
+    currentRegistrationToken = token.value;
     try {
       await protectedPost('/api/accounts/push-devices/', {
         token: token.value,
@@ -93,6 +96,9 @@ export async function initializePushNotifications(): Promise<() => void> {
 }
 
 export async function unregisterPushDevicesForCurrentUser() {
-  if (!Capacitor.isNativePlatform()) return;
-  await protectedPost('/api/accounts/push-devices/unregister/', {});
+  if (!Capacitor.isNativePlatform() || !currentRegistrationToken) return;
+  await protectedPost('/api/accounts/push-devices/unregister/', {
+    token: currentRegistrationToken,
+  });
+  currentRegistrationToken = null;
 }
