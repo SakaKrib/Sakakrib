@@ -148,7 +148,14 @@ export default function MoverMessages() {
       inboxSocketRef.current?.close();
       const socket = new WebSocket(getInboxWebSocketUrl());
       inboxSocketRef.current = socket;
-      socket.onopen = () => { inboxReconnectAttemptRef.current = 0; };
+      socket.onopen = () => {
+        const wasReconnect = inboxReconnectAttemptRef.current > 0;
+        inboxReconnectAttemptRef.current = 0;
+        if (wasReconnect) {
+          void loadBookings();
+          void loadConversation();
+        }
+      };
       socket.onmessage = event => {
         try {
           const payload = JSON.parse(event.data) as { type?: string; message?: MoverChatMessage };
