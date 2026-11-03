@@ -15,6 +15,8 @@ The application code now registers native Capacitor devices, stores their FCM re
 
 The frontend creates the `sakakrib_notifications` channel and registers only after the signed-in user grants notification permission.
 
+FCM registration is disabled by default to prevent native crashes when Firebase is not configured. Set `VITE_FIREBASE_PUSH_ENABLED=true` only for builds where the platform's Firebase configuration is installed and initialized. The repository's standard mobile CI builds deliberately set this flag to `false` because they generate platform projects without Firebase credentials/configuration. Django-backed in-app notifications continue to work while FCM registration is disabled.
+
 ## Django Firebase credentials
 
 Create a Firebase service account with permission to send Firebase Cloud Messaging messages. Store its JSON file outside the repository on the backend host, with read permissions restricted to the backend service account.
