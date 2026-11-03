@@ -46,3 +46,23 @@ class UserLiveEventsConsumer(AsyncJsonWebsocketConsumer):
 
     async def live_event(self, event):
         await self.send_json(event.get("event") or {})
+
+
+
+class PublicMarketplaceEventsConsumer(AsyncJsonWebsocketConsumer):
+    """Public, metadata-only invalidation stream for approved marketplace records."""
+
+    async def connect(self):
+        from .realtime_events import marketplace_event_group_name
+
+        self.group_name = marketplace_event_group_name()
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        await self.send_json({"type": "ready", "channel": "public-marketplace"})
+
+    async def disconnect(self, close_code):
+        if getattr(self, 'group_name', None):
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def live_event(self, event):
+        await self.send_json(event.get("event") or {})
