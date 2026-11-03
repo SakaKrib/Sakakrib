@@ -26,6 +26,8 @@ export function useSubscriptionInvoiceSocket() {
   useEffect(() => {
     let cancelled = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
     let attempts = 0;
 
     const connect = () => {
@@ -37,11 +39,29 @@ export function useSubscriptionInvoiceSocket() {
         attempts = 0;
         setConnected(true);
         setConnectionError(null);
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = setInterval(() => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          if (heartbeatTimeout) {
+            socket.close();
+            return;
+          }
+          socket.send(JSON.stringify({ type: 'ping' }));
+          heartbeatTimeout = setTimeout(() => {
+            heartbeatTimeout = null;
+            socket.close();
+          }, 10000);
+        }, 25000);
       };
 
       socket.onmessage = (message) => {
         try {
           const data = JSON.parse(message.data) as SubscriptionInvoiceSocketEvent;
+          if ((data as { type?: string }).type === 'pong') {
+            if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+            heartbeatTimeout = null;
+            return;
+          }
           setEvent(data);
           if (data.type === 'subscription_invoice') {
             setConnectionError(null);
@@ -57,6 +77,10 @@ export function useSubscriptionInvoiceSocket() {
       };
 
       socket.onclose = () => {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
+        heartbeatTimer = null;
+        heartbeatTimeout = null;
         setConnected(false);
         if (cancelled) return;
         attempts += 1;
@@ -70,6 +94,8 @@ export function useSubscriptionInvoiceSocket() {
     return () => {
       cancelled = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
       socketRef.current?.close();
       socketRef.current = null;
     };
