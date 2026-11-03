@@ -3,6 +3,7 @@ import { Bell, CheckCircle2, MessageCircle, RefreshCw, Truck } from 'lucide-reac
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPatch } from '@/lib/djangoApi';
+import { useLiveEvents } from '@/lib/useLiveEvents';
 import { renterApi, type Booking } from '@/lib/Renter/renterApi';
 
 type Notification = { id: string; title: string; message: string; data?: Record<string, unknown> | null; action_payload?: Record<string, unknown> | null; read_at?: string | null; created_at: string };
@@ -10,14 +11,15 @@ const time = (value: string) => new Date(value).toLocaleString('en-KE', { day: '
 
 export default function RenterNotificationsPage() {
   const { profile } = useAuth();
+  const { event: liveEvent } = useLiveEvents(Boolean(profile?.id && profile.role === 'renter'));
   const { navigate } = useNav();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!profile?.id || profile.role !== 'renter') { setLoading(false); return; }
-    setLoading(true); setError(null);
+    if (!silent) setLoading(true); setError(null);
     try {
       const response = await protectedGet<{ notifications?: Notification[] }>('/api/core/notifications/?limit=100');
       setNotifications(Array.isArray(response?.notifications) ? response.notifications : []);
@@ -27,6 +29,15 @@ export default function RenterNotificationsPage() {
   }, [profile?.id, profile?.role]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (
+      (liveEvent?.type === 'ready' && liveEvent.reconnected) ||
+      (liveEvent?.type === 'resource.updated' && liveEvent.resource === 'notifications')
+    ) {
+      void load(true);
+    }
+  }, [liveEvent, load]);
 
   const openNotification = async (notification: Notification) => {
     if (!notification.read_at) {
