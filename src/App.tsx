@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { initializePushNotifications } from '@/lib/pushNotifications';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NavProvider, useNav } from '@/context/NavContext';
@@ -58,6 +59,27 @@ import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
 function AppContent() {
   const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
   const { profile, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (authLoading || !profile?.id) return;
+    let cancelled = false;
+    let removeListeners = () => {};
+
+    void initializePushNotifications()
+      .then((cleanup) => {
+        if (cancelled) cleanup();
+        else removeListeners = cleanup;
+      })
+      .catch((error) => {
+        console.warn('Native push notifications are unavailable:', error);
+      });
+
+    return () => {
+      cancelled = true;
+      removeListeners();
+    };
+  }, [profile?.id, authLoading]);
+
 
   useEffect(() => {
     if (view === 'mover-messages' && !authLoading && !profile && !authModalOpen) {
