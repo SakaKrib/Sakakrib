@@ -58,17 +58,74 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
+      - name: Declare Android location permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          if not manifest.is_file():
+              raise SystemExit(f"Android manifest not found: {manifest}")
+
+          content = manifest.read_text(encoding="utf-8")
+          entries = [
+              '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
+              '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
+              '    <uses-feature android:name="android.hardware.location.gps" android:required="false" />',
+          ]
+          application_index = content.find("<application")
+          if application_index < 0:
+              raise SystemExit("Could not find <application> in AndroidManifest.xml")
+
+          missing = [
+              entry for entry in entries
+              if entry.split('"')[1] not in content
+          ]
+          if missing:
+              content = content[:application_index] + "\\n".join(missing) + "\\n    " + content[application_index:]
+              manifest.write_text(content, encoding="utf-8")
+
+          final_content = manifest.read_text(encoding="utf-8")
+          for permission in (
+              "android.permission.ACCESS_COARSE_LOCATION",
+              "android.permission.ACCESS_FINE_LOCATION",
+          ):
+              if permission not in final_content:
+                  raise SystemExit(f"Required Android location permission missing: {permission}")
+          print("Android location permissions are declared.")
+          PY
+
+      - name: Install Saka Krib native WebView configuration
+        run: |
+          mkdir -p android/app/src/main/java/com/sakakrib/app
+          cp native/android/MainActivity.java android/app/src/main/java/com/sakakrib/app/MainActivity.java
+          grep -q "setAcceptThirdPartyCookies" android/app/src/main/java/com/sakakrib/app/MainActivity.java
+
       - name: Generate and install Android icons
         run: npm run generate:icons -- --sync --patch-manifest
 
       - name: Sync Capacitor Android
         run: npx cap sync android
 
+      - name: Verify Android location permissions before packaging
+        run: |
+          grep -q "android.permission.ACCESS_COARSE_LOCATION" android/app/src/main/AndroidManifest.xml
+          grep -q "android.permission.ACCESS_FINE_LOCATION" android/app/src/main/AndroidManifest.xml
+
       - name: Build debug APK
         working-directory: android
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Verify permissions inside APK
+        working-directory: android
+        run: |
+          AAPT="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt | sort -V | tail -n 1)"
+          test -n "$AAPT"
+          "$AAPT" dump permissions app/build/outputs/apk/debug/app-debug.apk | tee "$RUNNER_TEMP/apk-permissions.txt"
+          grep -q "android.permission.ACCESS_COARSE_LOCATION" "$RUNNER_TEMP/apk-permissions.txt"
+          grep -q "android.permission.ACCESS_FINE_LOCATION" "$RUNNER_TEMP/apk-permissions.txt"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
