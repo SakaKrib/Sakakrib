@@ -1,3 +1,4 @@
+import { isLocationSupported, requestPosition } from '@/lib/location';
 import { useEffect, useState } from 'react';
 import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
 
@@ -95,16 +96,16 @@ export default function ListingManagePage() {
   }, [locationSearch]);
 
   const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) { setError('GPS location is not supported by this browser.'); return; }
+    if (!isLocationSupported()) { setError('GPS location is not supported on this device.'); return; }
     setUsingGPS(true); setError(null);
-    navigator.geolocation.getCurrentPosition(async position => {
+    requestPosition(async position => {
       const lat = position.coords.latitude; const lon = position.coords.longitude; setLatitude(lat); setLongitude(lon);
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${lat}&lon=${lon}`, { headers: { Accept: 'application/json' } });
         const data = await response.json(); const address = data.address ?? {}; const detectedCity = address.city || address.town || address.village || ''; const detectedCounty = address.county || '';
         setCity(isKnownCity(detectedCity) ? detectedCity : 'custom'); setCustomCity(isKnownCity(detectedCity) ? '' : detectedCity); setCounty(detectedCounty); setLocationSearch(data.display_name || `${lat}, ${lon}`); setLocationSuggestions([]);
       } catch { setError('GPS coordinates were captured, but the address could not be determined automatically.'); } finally { setUsingGPS(false); }
-    }, () => { setUsingGPS(false); setError('Unable to get your current location. Please allow location access and try again.'); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }, (err) => { setUsingGPS(false); setError(err.message); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   };
 
   const addSocialLink = () => setSocialLinks(current => [...current, { platform: 'WhatsApp', url: '' }]);

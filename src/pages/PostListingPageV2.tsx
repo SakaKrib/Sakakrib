@@ -1,3 +1,4 @@
+import { isLocationSupported, requestPosition } from '@/lib/location';
 import { useEffect, useRef, useState } from 'react';
 import { FileText, CheckCircle2, Loader2, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -413,9 +414,9 @@ export default function PostListingPageV2() {
   };
 
   const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) { setError('Location services are not supported by this browser.'); return; }
+    if (!isLocationSupported()) { setError('Location services are not supported on this device.'); return; }
     setUsingGPS(true); setError(null);
-    navigator.geolocation.getCurrentPosition(async (position) => {
+    requestPosition(async (position) => {
       const lat = position.coords.latitude; const lon = position.coords.longitude;
       try {
         setLatitude(lat); setLongitude(lon);
@@ -437,7 +438,7 @@ export default function PostListingPageV2() {
         setLocationSuggestions([{ display_name: detectedLocation, lat: String(lat), lon: String(lon), place_id: data?.place_id, type: data?.type, address }]);
       } catch (err) { setError(err instanceof Error ? err.message : 'Unable to determine your location.'); }
       finally { setUsingGPS(false); }
-    }, (geoError) => { setUsingGPS(false); setError(geoError.code === geoError.PERMISSION_DENIED ? 'Location permission was denied. Please allow location access and try again.' : 'Unable to get your current location.'); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }, (geoError) => { setUsingGPS(false); setError(geoError.message); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   };
 
   useEffect(() => {

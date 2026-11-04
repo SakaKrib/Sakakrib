@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { moverApi } from '@/lib/Movers/moverApi';
+import { getCurrentPosition, isLocationSupported, watchPosition, type DevicePosition, type LocationError } from '@/lib/location';
 
 interface BookingState { id: string; status: string | null; payment_status: string | null; }
 interface PendingLocation { latitude: number; longitude: number; accuracy_meters: number | null; speed_kph: number | null; heading_degrees: number | null; }
@@ -18,7 +19,11 @@ const GPS_PROBE_INTERVAL_MS = 5000;
 export default function MovingGpsTracker() {
   const { profile } = useAuth();
   const { selectedMoverBookingId, selectedMoverId } = useNav();
-  const watchIdRef = useRef<number | null>(null);
+  const stopWatchRef = useRef<(() => void) | null>(null);
+  const startingRef = useRef(false);
+  // Set when the mover denied location. Background timers must not keep re-prompting; only an
+  // explicit tap (the 'sakakrib:request-mover-gps' event) clears it.
+  const blockedRef = useRef(false);
   const gpsProbeTimerRef = useRef<number | null>(null);
   const bookingIdRef = useRef<string | null>(null);
   const lastSentAtRef = useRef(0);
@@ -32,11 +37,12 @@ export default function MovingGpsTracker() {
     const clearRetry = () => { if (retryTimerRef.current !== null) { window.clearTimeout(retryTimerRef.current); retryTimerRef.current = null; } };
     const clearGpsProbe = () => { if (gpsProbeTimerRef.current !== null) { window.clearInterval(gpsProbeTimerRef.current); gpsProbeTimerRef.current = null; } };
     const stop = () => {
-      if (watchIdRef.current !== null && 'geolocation' in navigator) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
+      if (stopWatchRef.current) { stopWatchRef.current(); stopWatchRef.current = null; }
+      startingRef.current = false;
       clearRetry(); clearGpsProbe(); pendingRef.current = null; sendingRef.current = false;
     };
 
-    const canTrack = Boolean(profile) && normalized(profile?.role) === 'mover' && 'geolocation' in navigator;
+    const canTrack = Boolean(profile) && normalized(profile?.role) === 'mover' && isLocationSupported();
     if (!canTrack) {
       stop();
       bookingIdRef.current = null;
@@ -63,17 +69,17 @@ export default function MovingGpsTracker() {
       } finally { sendingRef.current = false; }
     };
 
-    const publish = (position: GeolocationPosition) => {
+    const publish = (position: DevicePosition) => {
       const bookingId = bookingIdRef.current;
       if (cancelledRef.current || !bookingId) return;
-      const rawAccuracy = position.coords.accuracy;
+      const rawAccuracy = position.accuracy ?? NaN;
       const accuracy = Number.isFinite(rawAccuracy) && rawAccuracy >= 0 && rawAccuracy <= 10000 ? rawAccuracy : null;
       const devicePosition = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
+        latitude: position.latitude,
+        longitude: position.longitude,
         accuracy_meters: accuracy,
-        speed_kph: position.coords.speed == null ? null : Math.max(0, position.coords.speed * 3.6),
-        heading_degrees: position.coords.heading == null ? null : position.coords.heading,
+        speed_kph: position.speed == null ? null : Math.max(0, position.speed * 3.6),
+        heading_degrees: position.heading == null ? null : position.heading,
         timestamp: position.timestamp,
         bookingId,
       };
@@ -88,23 +94,33 @@ export default function MovingGpsTracker() {
       void sendPending(bookingId);
     };
 
-    const handleGpsError = (error: GeolocationPositionError) => { console.warn('Mover GPS unavailable:', error.code, error.message); };
+    const handleGpsError = (error: LocationError) => {
+      console.warn('Mover GPS unavailable:', error.code, error.message);
+      if (error.code === 'permission_denied') blockedRef.current = true;
+      // Lets the UI tell the mover why renters cannot see them (denied, GPS off, ...).
+      window.dispatchEvent(new CustomEvent('sakakrib:mover-gps-error', { detail: { code: error.code, message: error.message } }));
+    };
 
     const probeGps = () => {
       if (cancelledRef.current || !bookingIdRef.current || !navigator.onLine) return;
-      navigator.geolocation.getCurrentPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS });
+      void getCurrentPosition({ enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS }).then(publish).catch(handleGpsError);
     };
 
     const startGps = () => {
-      if (cancelledRef.current || watchIdRef.current !== null) return;
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        publish,
-        handleGpsError,
-        { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS }
-      );
-      probeGps();
-      clearGpsProbe();
-      gpsProbeTimerRef.current = window.setInterval(probeGps, GPS_PROBE_INTERVAL_MS);
+      if (cancelledRef.current || stopWatchRef.current || startingRef.current || blockedRef.current) return;
+      startingRef.current = true;
+      // First call asks for location permission (system dialog in the app).
+      void watchPosition(publish, handleGpsError, { enableHighAccuracy: true, maximumAge: GPS_MAX_AGE_MS, timeout: GPS_TIMEOUT_MS })
+        .then((stopWatching) => {
+          startingRef.current = false;
+          if (cancelledRef.current || !bookingIdRef.current) { stopWatching(); return; }
+          blockedRef.current = false;
+          stopWatchRef.current = stopWatching;
+          probeGps();
+          clearGpsProbe();
+          gpsProbeTimerRef.current = window.setInterval(probeGps, GPS_PROBE_INTERVAL_MS);
+        })
+        .catch((error: LocationError) => { startingRef.current = false; handleGpsError(error); });
     };
 
     const selectActiveBooking = async () => {
@@ -123,7 +139,7 @@ export default function MovingGpsTracker() {
           stop();
           bookingIdRef.current = nextBookingId;
           if (nextBookingId) startGps();
-        } else if (nextBookingId && watchIdRef.current === null) {
+        } else if (nextBookingId && stopWatchRef.current === null) {
           startGps();
         }
       } catch (error) {
@@ -134,7 +150,8 @@ export default function MovingGpsTracker() {
     const restart = () => { void selectActiveBooking(); };
     const handleVisibility = () => { if (document.visibilityState === 'visible') restart(); };
     const handleExplicitGpsRequest = () => {
-      if (bookingIdRef.current && watchIdRef.current !== null) {
+      blockedRef.current = false;
+      if (bookingIdRef.current && stopWatchRef.current !== null) {
         probeGps();
         return;
       }

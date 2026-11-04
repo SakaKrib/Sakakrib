@@ -9,6 +9,8 @@ import { moverApi, type MoverBooking, type MoverTrackingPoint, type MoverTrackin
 import { renterApi } from '@/lib/Renter/renterApi';
 import { cn } from '@/lib/utils';
 import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
+import { Capacitor } from '@capacitor/core';
+import { LocationError, checkLocationPermission, describeLocationError, isLocationSupported, requestLocationPermission } from '@/lib/location';
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -119,46 +121,50 @@ export default function LiveMovingMap() {
 
   useEffect(() => {
     if (!isMover) { setLocationPermission('unsupported'); setLocationError(null); return; }
-    if (!window.isSecureContext) {
+    if (!isLocationSupported()) { setLocationPermission('unsupported'); setLocationError('This device or browser does not provide device location.'); return; }
+    if (!Capacitor.isNativePlatform() && !window.isSecureContext) {
       setLocationPermission('denied');
       setLocationError('This page is using HTTP. Live location requires HTTPS on your phone. Open SakaKrib using an HTTPS address.');
       return;
     }
-    if (!('geolocation' in navigator)) { setLocationPermission('unsupported'); setLocationError('This browser does not provide device location.'); return; }
     let disposed = false;
-    let permissionStatus: PermissionStatus | null = null;
-    const handlePermissionChange = () => {
-      if (!disposed && permissionStatus) setLocationPermission(permissionStatus.state as LocationPermissionState);
-    };
     const refresh = async () => {
       try {
-        if (!navigator.permissions?.query) { if (!disposed) setLocationPermission('prompt'); return; }
-        permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-        if (!disposed) setLocationPermission(permissionStatus.state as LocationPermissionState);
-        permissionStatus.addEventListener('change', handlePermissionChange);
+        const state = await checkLocationPermission();
+        if (!disposed) setLocationPermission(state);
       } catch { if (!disposed) setLocationPermission('prompt'); }
     };
+    // Re-check when the mover comes back from the phone's Settings screen or the permission
+    // dialog, and when the background tracker reports a GPS problem.
+    const handleGpsError = (event: Event) => {
+      const detail = (event as CustomEvent<{ code?: string; message?: string }>).detail;
+      if (detail?.code === 'permission_denied') setLocationPermission('denied');
+      if (detail?.message) setLocationError(detail.message);
+    };
+    const handleVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     void refresh();
-    return () => { disposed = true; permissionStatus?.removeEventListener('change', handlePermissionChange); };
+    document.addEventListener('visibilitychange', handleVisible);
+    window.addEventListener('sakakrib:mover-gps-error', handleGpsError);
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', handleVisible);
+      window.removeEventListener('sakakrib:mover-gps-error', handleGpsError);
+    };
   }, [isMover]);
 
-  const requestLocation = useCallback(() => {
+  // Must be called from a tap: shows the system permission dialog in the app and the browser's
+  // prompt on the web, then tells the background tracker to start publishing.
+  const requestLocation = useCallback(async () => {
     if (!isMover) return;
     setLocationError(null);
-    if (!window.isSecureContext) {
-      setLocationPermission('denied');
-      setLocationError('This page is using HTTP. The browser will not allow device location here. Open SakaKrib over HTTPS on your phone.');
-      return;
+    try {
+      await requestLocationPermission();
+      setLocationPermission('granted');
+      window.dispatchEvent(new Event('sakakrib:request-mover-gps'));
+    } catch (error) {
+      if (error instanceof LocationError && error.code === 'permission_denied') setLocationPermission('denied');
+      setLocationError(describeLocationError(error));
     }
-    if (!('geolocation' in navigator)) { setLocationPermission('unsupported'); setLocationError('Your browser does not support device location.'); return; }
-    navigator.geolocation.getCurrentPosition(
-      () => { setLocationPermission('granted'); window.dispatchEvent(new Event('sakakrib:request-mover-gps')); },
-      (error) => {
-        if (error.code === 1) { setLocationPermission('denied'); setLocationError('Location permission is blocked for this site. Change the site location permission in your browser, then return here and try again.'); }
-        else setLocationError(error.message || 'Unable to obtain your current location. Check the phone Location setting and try again.');
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 },
-    );
   }, [isMover]);
 
   useEffect(() => {

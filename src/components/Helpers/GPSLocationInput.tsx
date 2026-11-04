@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { isLocationSupported, requestPosition } from '@/lib/location';
 import { useEffect, useRef, useState } from 'react';
 import {
   Loader2,
@@ -258,10 +260,7 @@ export default function GPSLocationInput({
     () => {
       setGpsError(null);
 
-      if (
-        typeof navigator === 'undefined' ||
-        !navigator.geolocation
-      ) {
+      if (!isLocationSupported()) {
         setGpsError(
           'Location services are not available in this browser. Please use a browser that supports GPS location.'
         );
@@ -277,6 +276,7 @@ export default function GPSLocationInput({
        * generally is not.
        */
       if (
+        !Capacitor.isNativePlatform() &&
         typeof window !== 'undefined' &&
         !window.isSecureContext
       ) {
@@ -305,7 +305,7 @@ export default function GPSLocationInput({
       setUsingGPS(true);
       setLocationSuggestions([]);
 
-      navigator.geolocation.getCurrentPosition(
+      requestPosition(
         async (position) => {
           const latitude =
             position.coords.latitude;
@@ -449,38 +449,10 @@ export default function GPSLocationInput({
         },
 
         (geoError) => {
-          console.error(
-            'Geolocation error:',
-            geoError
-          );
-
-          let message =
-            'Unable to get your current location. Please try again.';
-
-          switch (
-            geoError.code
-          ) {
-            case geoError.PERMISSION_DENIED:
-              message =
-                'Location permission was denied. Please allow location access for this site in your browser settings and try again.';
-              break;
-
-            case geoError.POSITION_UNAVAILABLE:
-              message =
-                'Your current location could not be determined. Please make sure GPS/location services are enabled on your device and try again.';
-              break;
-
-            case geoError.TIMEOUT:
-              message =
-                'The request for your current location timed out. Please try again.';
-              break;
-
-            default:
-              message =
-                'Unable to get your current location. Please try again.';
-          }
-
-          setGpsError(message);
+          console.error('Geolocation error:', geoError);
+          // geoError.message is already an instruction the person can act on (allow location,
+          // turn on GPS, ...) for both the Android app and the browser.
+          setGpsError(geoError.message);
           setUsingGPS(false);
         },
 

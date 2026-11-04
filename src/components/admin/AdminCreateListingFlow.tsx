@@ -1,3 +1,4 @@
+import { isLocationSupported, requestPosition } from '@/lib/location';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Building2, CheckCircle2, ChevronRight, Home, Loader2, Search, UserCheck } from 'lucide-react';
 
@@ -157,9 +158,9 @@ export default function AdminCreateListingFlow({ users, formatKES, HOUSE_SIZES, 
   const removeSocialLink = (index: number) => setSocialLinks((current) => current.filter((_link, i) => i !== index));
 
   const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) return;
+    if (!isLocationSupported()) return;
     setUsingGPS(true);
-    navigator.geolocation.getCurrentPosition((position) => { setLatitude(position.coords.latitude); setLongitude(position.coords.longitude); setUsingGPS(false); }, () => setUsingGPS(false));
+    requestPosition((position) => { setLatitude(position.coords.latitude); setLongitude(position.coords.longitude); setUsingGPS(false); }, () => setUsingGPS(false));
   };
 
   const handlePhotoUpload = async (files: FileList | null) => {

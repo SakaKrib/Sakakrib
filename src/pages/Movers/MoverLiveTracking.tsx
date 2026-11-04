@@ -4,6 +4,7 @@ import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
 import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import { cn } from '@/lib/utils';
+import { isLocationSupported, requestPosition } from '@/lib/location';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
 type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'unavailable' | 'timeout';
@@ -32,7 +33,7 @@ export default function MoverLiveTracking() {
   const attemptRef = useRef(0);
 
   const requestGps = useCallback(() => {
-    if (!bookingId || !('geolocation' in navigator)) { setGpsState('unavailable'); setGpsMessage('Live location is not available in this browser.'); return; }
+    if (!bookingId || !isLocationSupported()) { setGpsState('unavailable'); setGpsMessage('Live location is not available in this browser.'); return; }
     if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
     setGpsState('requesting');
     setGpsPosition(null);
@@ -44,7 +45,7 @@ export default function MoverLiveTracking() {
       setGpsState('timeout');
       setGpsMessage('The browser has not returned a GPS position yet. Check the browser location prompt/permission and try again.');
     }, 22000);
-    navigator.geolocation.getCurrentPosition(
+    requestPosition(
       position => {
         if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
         gpsTimeoutRef.current = null;
@@ -56,15 +57,15 @@ export default function MoverLiveTracking() {
       err => {
         if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current);
         gpsTimeoutRef.current = null;
-        if (err.code === err.PERMISSION_DENIED) {
+        if (err.code === 'permission_denied') {
           setGpsState('denied');
-          setGpsMessage('Location permission was denied. Allow location access for this site in your browser settings, then try again.');
-        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setGpsMessage(err.message);
+        } else if (err.code === 'services_off') {
           setGpsState('unavailable');
-          setGpsMessage(`The browser could not determine your position: ${err.message || 'position unavailable'}`);
+          setGpsMessage(err.message);
         } else {
           setGpsState('timeout');
-          setGpsMessage(`The browser could not return a GPS position in time: ${err.message || 'request timed out'}`);
+          setGpsMessage(err.message);
         }
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },

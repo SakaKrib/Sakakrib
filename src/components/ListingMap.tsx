@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { Geolocation } from '@capacitor/geolocation';
+import { describeLocationError, watchPosition } from '@/lib/location';
 import {
   FullscreenControl,
   LngLatBounds,
@@ -95,6 +94,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
   const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationRetry, setLocationRetry] = useState(0);
   const [routeError, setRouteError] = useState<string | null>(null);
 
   const destination: Coordinate = [longitude, latitude];
@@ -205,8 +205,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
     if (!mapReady) return;
 
     let cancelled = false;
-    let browserWatchId: number | null = null;
-    let nativeWatchId: string | null = null;
+    let stopWatching: (() => void) | null = null;
 
     const handleCoordinates = (latitude: number, longitude: number, accuracy: number | null) => {
       if (cancelled) return;
@@ -234,59 +233,18 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
       setLocationError(message || 'Unable to read your current location. Check that Location is turned on and try again.');
     };
 
+    // Asks for permission (system dialog in the app, browser prompt on the web) and starts
+    // following the device. Failures become a readable message with a retry button.
     const startLocationTracking = async () => {
       try {
-        if (Capacitor.isNativePlatform()) {
-          const permission = await Geolocation.requestPermissions();
-          if (cancelled) return;
-          if (permission.location !== 'granted') {
-            handleLocationError('Location permission is required. Allow location access for Saka Krib, then reopen the live map.');
-            return;
-          }
-
-          nativeWatchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
-            (position, error) => {
-              if (error) {
-                handleLocationError(error.message);
-                return;
-              }
-              if (position) {
-                handleCoordinates(
-                  position.coords.latitude,
-                  position.coords.longitude,
-                  Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
-                );
-              }
-            },
-          );
-          if (cancelled && nativeWatchId) {
-            await Geolocation.clearWatch({ id: nativeWatchId });
-            nativeWatchId = null;
-          }
-          return;
-        }
-
-        if (!navigator.geolocation) {
-          handleLocationError('Location services are not supported by this browser.');
-          return;
-        }
-
-        browserWatchId = navigator.geolocation.watchPosition(
-          (position) => handleCoordinates(
-            position.coords.latitude,
-            position.coords.longitude,
-            Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
-          ),
-          (error) => handleLocationError(
-            error.code === error.PERMISSION_DENIED
-              ? 'Location permission was denied. Allow location access in your browser settings.'
-              : 'Unable to read your current location. Check that Location is turned on and try again.',
-          ),
-          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+        const stop = await watchPosition(
+          (position) => handleCoordinates(position.latitude, position.longitude, position.accuracy),
+          (error) => handleLocationError(error.message),
         );
+        if (cancelled) stop();
+        else stopWatching = stop;
       } catch (error) {
-        handleLocationError(error instanceof Error ? error.message : 'Unable to start GPS tracking.');
+        handleLocationError(describeLocationError(error));
       }
     };
 
@@ -294,10 +252,9 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
 
     return () => {
       cancelled = true;
-      if (browserWatchId !== null) navigator.geolocation?.clearWatch(browserWatchId);
-      if (nativeWatchId !== null) void Geolocation.clearWatch({ id: nativeWatchId });
+      stopWatching?.();
     };
-  }, [mapReady, requestRoute, followListing]);
+  }, [mapReady, requestRoute, followListing, locationRetry]);
 
   useEffect(() => {
     if (!followListing || !deviceGps) return;
@@ -353,8 +310,17 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
           </div>
         </div>
         {(locationError || routeError) && (
-          <div className="absolute bottom-3 left-3 right-3 rounded-lg bg-white/95 px-3 py-2 text-xs text-gray-600 shadow-sm backdrop-blur dark:bg-brand-900/95 dark:text-gray-300">
-            {locationError || routeError}
+          <div className="absolute bottom-3 left-3 right-3 flex items-start gap-3 rounded-lg bg-white/95 px-3 py-2 text-xs text-gray-600 shadow-sm backdrop-blur dark:bg-brand-900/95 dark:text-gray-300">
+            <span className="min-w-0 flex-1">{locationError || routeError}</span>
+            {locationError && (
+              <button
+                type="button"
+                onClick={() => { setLocationError(null); setLocationRetry((value) => value + 1); }}
+                className="shrink-0 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+              >
+                Enable location
+              </button>
+            )}
           </div>
         )}
       </div>
