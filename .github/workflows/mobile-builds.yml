@@ -55,13 +55,15 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure Android project exists
+      - name: Ensure Android manifest exists
         run: |
-          if [ -d android ]; then
-            echo "Using the Android project already tracked in the repository."
-          else
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "Tracked Android platform is incomplete (missing $MANIFEST). Regenerating it from the installed Capacitor version."
+            rm -rf android
             npx cap add android
           fi
+          test -f "$MANIFEST"
 
       - name: Declare Android location permissions
         run: |
@@ -167,11 +169,12 @@ jobs:
 
       - name: Ensure iOS project exists
         run: |
-          if [ -d ios ]; then
-            echo "Using the iOS project already tracked in the repository."
-          else
+          if [ ! -f ios/App/App.xcodeproj/project.pbxproj ]; then
+            echo "Tracked iOS platform is incomplete (missing project.pbxproj). Regenerating it from the installed Capacitor version."
+            rm -rf ios
             npx cap add ios
           fi
+          test -f ios/App/App.xcodeproj/project.pbxproj
 
       - name: Generate and install iOS icons
         run: npm run generate:icons -- --sync --patch-manifest
