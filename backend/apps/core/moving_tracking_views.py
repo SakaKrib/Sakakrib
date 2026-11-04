@@ -15,6 +15,7 @@ from .notification_services import dispatch_user_notification
 from .moving_tracking_consumers import tracking_group_name
 from .moving_tracking_health import TRACKING_HEALTHY_AFTER_SECONDS, tracking_health
 from .domain_property import Review
+from .moving_proximity import notify_journey_proximity
 
 
 def _serialize_point(point):
@@ -124,6 +125,8 @@ def record_mover_location(*, mover_user_id, booking_id, latitude, longitude, acc
     mover.save(update_fields=["current_latitude", "current_longitude", "location_updated_at", "updated_at"])
     booking.last_known_latitude = latitude; booking.last_known_longitude = longitude; booking.last_location_at = now; booking.updated_at = now
     booking.save(update_fields=["last_known_latitude", "last_known_longitude", "last_location_at", "updated_at"])
+    # Push "nearby" / "arrived" alerts for Point A (pickup) and Point B (drop-off).
+    notify_journey_proximity(booking=booking, mover=mover, journey=journey, latitude=latitude, longitude=longitude, accuracy_meters=accuracy_meters)
     _broadcast_location(point)
     return {"accepted": True, "throttled": False, "booking_id": str(booking.id), "latitude": latitude, "longitude": longitude, "recorded_at": point.recorded_at}
 

@@ -54,8 +54,69 @@ export async function installPushNotificationActionListener(): Promise<() => voi
 const FIREBASE_PUSH_ENABLED =
   import.meta.env.VITE_FIREBASE_PUSH_ENABLED === 'true';
 
+export type PushPermissionState = 'granted' | 'denied' | 'prompt' | 'unsupported';
+
+/** True only in the installed app, in a build that was configured with Firebase. */
+export function isPushAvailable(): boolean {
+  return Capacitor.isNativePlatform() && FIREBASE_PUSH_ENABLED;
+}
+
+function toPermissionState(receive: string): PushPermissionState {
+  if (receive === 'granted') return 'granted';
+  if (receive === 'denied') return 'denied';
+  return 'prompt'; // 'prompt' and 'prompt-with-rationale'
+}
+
+/** Current notification permission, without showing any dialog. */
+export async function getPushPermissionState(): Promise<PushPermissionState> {
+  if (!isPushAvailable()) return 'unsupported';
+  try {
+    const permission = await PushNotifications.checkPermissions();
+    return toPermissionState(permission.receive);
+  } catch (error) {
+    console.warn('Unable to read notification permission:', error);
+    return 'unsupported';
+  }
+}
+
+async function registerForPush(): Promise<void> {
+  if (Capacitor.getPlatform() === 'android') {
+    try {
+      await PushNotifications.createChannel({
+        id: 'sakakrib_notifications',
+        name: 'Saka Krib',
+        description: 'Bookings, messages, listings, payments and account updates',
+        importance: 5,
+      });
+    } catch (error) {
+      console.warn('Unable to create the Saka Krib notification channel:', error);
+    }
+  }
+  await PushNotifications.register();
+}
+
+/**
+ * Ask the user to allow notifications (system Allow / Don't allow dialog on Android 13+ and
+ * iOS) and, if they agree, register this phone with Firebase. Call it from a button the user
+ * tapped, after explaining why (see NotificationPermissionPrompt).
+ */
+export async function enablePushNotifications(): Promise<PushPermissionState> {
+  if (!isPushAvailable()) return 'unsupported';
+  let permission = await PushNotifications.checkPermissions();
+  if (permission.receive !== 'granted') {
+    permission = await PushNotifications.requestPermissions();
+  }
+  if (permission.receive === 'granted') await registerForPush();
+  return toPermissionState(permission.receive);
+}
+
+/**
+ * Attach the listeners that save this phone's Firebase token with the server, and register
+ * right away if the user already allowed notifications. It never shows a permission dialog by
+ * itself: that happens only through enablePushNotifications().
+ */
 export async function initializePushNotifications(): Promise<() => void> {
-  if (!Capacitor.isNativePlatform() || !FIREBASE_PUSH_ENABLED) {
+  if (!isPushAvailable()) {
     return () => {};
   }
 
@@ -81,27 +142,9 @@ export async function initializePushNotifications(): Promise<() => void> {
     console.error('Native push registration failed:', error);
   }));
 
-  const permission = await PushNotifications.checkPermissions();
-  let receivePermission = permission.receive;
-  if (receivePermission !== 'granted') {
-    const requested = await PushNotifications.requestPermissions();
-    receivePermission = requested.receive;
-  }
-
-  if (receivePermission === 'granted') {
-    if (Capacitor.getPlatform() === 'android') {
-      try {
-        await PushNotifications.createChannel({
-          id: 'sakakrib_notifications',
-          name: 'Saka Krib',
-          description: 'Bookings, messages, listings, payments and account updates',
-          importance: 5,
-        });
-      } catch (error) {
-        console.warn('Unable to create the Saka Krib notification channel:', error);
-      }
-    }
-    await PushNotifications.register();
+  // Already allowed earlier (or in system settings): refresh the token quietly.
+  if ((await getPushPermissionState()) === 'granted') {
+    await registerForPush();
   }
 
   return () => {
