@@ -3,6 +3,7 @@ from decimal import Decimal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.conf import settings
+from django.core import signing
 from django.db import transaction
 from django.utils import timezone
 
@@ -20,6 +21,13 @@ def _paypal_return_url(base_url, invoice_id):
     parts = urlsplit(base_url)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query['invoice_id'] = str(invoice_id)
+    # A short-lived signed token lets the return page read only this invoice's
+    # final status even when PayPal opens the HTTPS fallback outside the app.
+    query['state'] = signing.dumps(
+        {'invoice_id': str(invoice_id)},
+        salt='sakakrib.paypal-subscription-return',
+        compress=True,
+    )
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
