@@ -90,6 +90,51 @@ public class MainActivity extends BridgeActivity {
 
 If the generated project uses `MainActivity.kt`, apply the equivalent CookieManager setting there instead. This is scoped to the Saka Krib app's WebView; do not enable cleartext traffic or disable CSRF.
 
+### Android App Links and stable APK signing
+
+The GitHub Actions Android job adds verified HTTPS intent filters for these payment return paths on the configured public hostname:
+
+- `/paypal/subscription/return`
+- `/paypal/subscription/cancel`
+- `/listing/payment/return`
+
+Django serves the Digital Asset Links document at `/.well-known/assetlinks.json`; Vite proxies that path to Django when Tailscale Serve targets the frontend on port 5175. The document stays empty until a signing-certificate fingerprint is configured.
+
+**Use a stable signing key.** The workflow supports these GitHub Actions repository secrets:
+
+- `ANDROID_SIGNING_KEYSTORE_BASE64`
+- `ANDROID_SIGNING_KEYSTORE_PASSWORD`
+- `ANDROID_SIGNING_KEY_ALIAS`
+- `ANDROID_SIGNING_KEY_PASSWORD`
+
+Create the keystore on a trusted machine and keep the original file in a safe backup. Do not commit it or share it in chat. Example command (keytool prompts for passwords and certificate details):
+
+```bash
+keytool -genkeypair -v -keystore sakakrib-upload.jks -alias sakakrib-upload -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Get the public SHA-256 certificate fingerprint:
+
+```bash
+keytool -list -v -keystore sakakrib-upload.jks -alias sakakrib-upload
+```
+
+Add the four values above as GitHub Actions repository secrets. For `ANDROID_SIGNING_KEYSTORE_BASE64`, base64-encode the keystore file on your machine (for example, `base64 -w 0 sakakrib-upload.jks`) and paste that encoded value directly into the GitHub secret field. Never paste the keystore or passwords into a chat or commit them to the repository.
+
+Then set this variable in the backend's private `backend/.env`, using the SHA-256 fingerprint from keytool with its colon separators:
+
+```env
+ANDROID_APP_SHA256_CERT_FINGERPRINTS=AA:BB:CC:...:YY:ZZ
+```
+
+Restart Django after changing the environment. Verify the public document at:
+
+`https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net/.well-known/assetlinks.json`
+
+The Android build uploads a fingerprint text file alongside the APK. Only use it for permanent verification after the workflow confirms that stable signing secrets were configured. If the workflow warns that it used a temporary runner debug certificate, do not put that fingerprint in Django's environment.
+
+Changing from a previously installed debug-signed APK to the new stable certificate may require uninstalling the old app before installing the new APK. Back up any app-only data first.
+
 ### iOS
 
 iOS native builds require macOS and Xcode. For a physical iPhone, use the Mac's reachable Vite address on port 5175 for development. Do not ship development HTTP exceptions in production.
