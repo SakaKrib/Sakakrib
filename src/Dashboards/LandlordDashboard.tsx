@@ -35,6 +35,7 @@ import {
   BadgeCheck,
   Crown,
   ChartBar as BarChart3,
+  Search,
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
@@ -51,7 +52,8 @@ import type {
   Subscription,
   Profile,
 } from '@/types/domain';
-import {cn} from "@/lib/utils"
+import {cn} from "@/lib/utils";
+import SecureImage from '@/components/SecureImage';
 
 import {
   fetchListingEntitlement,
@@ -363,6 +365,8 @@ export default function LandlordDashboard({
 
   const [page, setPage] =
     useState<DashboardPage>('overview');
+  const [allListingsSearch, setAllListingsSearch] = useState('');
+  const [allListingsStatus, setAllListingsStatus] = useState('all');
 
   const [savingProfile, setSavingProfile] =
     useState(false);
@@ -1447,6 +1451,15 @@ const pmsBenefits = [
     );
   }
 
+  const filteredAllListings = useMemo(() => {
+    const term = allListingsSearch.trim().toLowerCase();
+    return listings.filter((listing) => {
+      const searchable = [listing.title, listing.property_name, listing.city, listing.county, listing.location_search].filter(Boolean).join(' ').toLowerCase();
+      const status = isDraftListing(listing) ? 'draft' : getListingStatus(listing);
+      return (!term || searchable.includes(term)) && (allListingsStatus === 'all' || status === allListingsStatus);
+    });
+  }, [listings, allListingsSearch, allListingsStatus]);
+
   /* =========================================================
      PAGE HEADER DATA
   ========================================================= */
@@ -1544,6 +1557,12 @@ const pmsBenefits = [
         </div>
 
         <div className="p-5">
+          {title === 'All Listings' && (
+            <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_190px]">
+              <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={allListingsSearch} onChange={(event) => setAllListingsSearch(event.target.value)} placeholder="Search by title or location" className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white" /></div>
+              <select value={allListingsStatus} onChange={(event) => setAllListingsStatus(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white"><option value="all">All statuses</option><option value="approved">Approved</option><option value="pending">Pending review</option><option value="rejected">Rejected</option><option value="draft">Drafts</option><option value="unknown">Other</option></select>
+            </div>
+          )}
           {pageListings.length ===
           0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 p-12 text-center dark:border-brand-800">
@@ -1596,15 +1615,7 @@ const pmsBenefits = [
                         <div className="flex min-w-0 gap-4">
                           <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl bg-brand-100 dark:bg-brand-800">
                             {image ? (
-                              <img
-                                src={image}
-                                alt={
-                                  listing.title ||
-                                  'Property'
-                                }
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
+                              <SecureImage src={image} alt={listing.title || 'Property'} className="h-full w-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><Home className="h-8 w-8 text-brand-400" /></div>} />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center">
                                 <Home className="h-8 w-8 text-brand-400" />
@@ -3002,9 +3013,8 @@ const pmsBenefits = [
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
                 {listings
-                  .slice(0, 5)
                   .map(
                     (listing) => {
                       const image =
@@ -3017,20 +3027,12 @@ const pmsBenefits = [
                           key={
                             listing.id
                           }
-                          className="flex flex-col gap-4 rounded-2xl border border-gray-200 p-3 transition-colors hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between dark:border-brand-800 dark:hover:bg-brand-900/30"
+                          className="flex w-[310px] shrink-0 snap-start flex-col justify-between gap-4 rounded-2xl border border-gray-200 p-3 transition-colors hover:bg-gray-50 dark:border-brand-800 dark:hover:bg-brand-900/30"
                         >
                           <div className="flex min-w-0 items-center gap-3">
                             <div className="h-14 w-16 shrink-0 overflow-hidden rounded-xl bg-brand-100 dark:bg-brand-800">
                               {image ? (
-                                <img
-                                  src={image}
-                                  alt={
-                                    listing.title ||
-                                    'Property'
-                                  }
-                                  className="h-full w-full object-cover"
-                                  loading="lazy"
-                                />
+                                <SecureImage src={image} alt={listing.title || 'Property'} className="h-full w-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><Home className="h-8 w-8 text-brand-400" /></div>} />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center">
                                   <Home className="h-6 w-6 text-brand-400" />
@@ -3266,7 +3268,7 @@ const pmsBenefits = [
     case 'all':
       return renderListingsPage(
         'All Listings',
-        listings,
+        filteredAllListings,
         'No listings yet',
         'You have not posted any property listings yet.'
       );  
