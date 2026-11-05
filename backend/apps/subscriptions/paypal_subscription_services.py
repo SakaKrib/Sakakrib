@@ -303,12 +303,11 @@ def process_paypal_subscription_webhook(payload):
 
     elif event_type == 'BILLING.SUBSCRIPTION.PAYMENT.FAILED':
         invoice = SubscriptionInvoice.objects.select_for_update().filter(
-            paypal_subscription_id=subscription_id, status='PENDING'
+            paypal_subscription_id=subscription_id,
+            status__in=('PENDING', 'CANCELLED'),
         ).order_by('-created_at').first()
-        if invoice is None:
-            invoice = SubscriptionInvoice.objects.select_for_update().filter(
-                paypal_subscription_id=subscription_id
-            ).order_by('-created_at').first()
+        # Never rewrite an older PAID invoice as FAILED when a later renewal
+        # attempt fails and has no pending invoice row.
         if invoice:
             invoice.status = 'FAILED'
             invoice.result_description = str(resource.get('status_change_note') or payload.get('summary') or 'PayPal subscription payment failed')[:2000]
