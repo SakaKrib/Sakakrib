@@ -178,6 +178,65 @@ class PayPalSubscriptionLifecycleTests(TestCase):
         self.assertEqual(subscription.status, "CANCELLED")
         publish.assert_called_once()
 
+    def test_sale_after_cancel_event_settles_the_original_invoice(self):
+        profile = self.make_profile()
+        plan = self.make_plan()
+        subscription = self.make_subscription(
+            profile,
+            plan,
+            status="PENDING_PAYMENT",
+            paypal_status="APPROVAL_PENDING",
+            auto_renew=False,
+        )
+        invoice = self.make_invoice(subscription)
+
+        cancel_payload = {
+            "id": "PAYPAL-EVENT-CANCEL-BEFORE-SALE",
+            "event_type": "BILLING.SUBSCRIPTION.CANCELLED",
+            "summary": "Checkout cancellation notification",
+            "resource": {"id": subscription.paypal_subscription_id},
+        }
+        with patch("apps.subscriptions.paypal_subscription_services.publish_payment_status"):
+            with self.captureOnCommitCallbacks(execute=True):
+                process_paypal_subscription_webhook(cancel_payload)
+
+        with patch("apps.subscriptions.paypal_subscription_services.publish_payment_status"):
+            with self.captureOnCommitCallbacks(execute=True):
+                result = process_paypal_subscription_webhook(
+                    self.sale_payload(
+                        event_id="PAYPAL-EVENT-SALE-AFTER-CANCEL",
+                        sale_id="SALE-AFTER-CANCEL",
+                    )
+                )
+
+        invoice.refresh_from_db()
+        subscription.refresh_from_db()
+        self.assertEqual(result["status"], "PAID")
+        self.assertEqual(result["invoice_id"], str(invoice.id))
+        self.assertEqual(invoice.status, "PAID")
+        self.assertEqual(invoice.provider_transaction_id, "SALE-AFTER-CANCEL")
+        self.assertEqual(subscription.status, "ACTIVE")
+
+    def test_later_payment_failure_does_not_overwrite_a_paid_invoice(self):
+        profile = self.make_profile()
+        plan = self.make_plan()
+        subscription = self.make_subscription(profile, plan)
+        invoice = self.make_invoice(subscription, status="PAID", webhook_event_id="PREVIOUS-PAID-EVENT")
+        payload = {
+            "id": "PAYPAL-EVENT-LATER-FAILURE",
+            "event_type": "BILLING.SUBSCRIPTION.PAYMENT.FAILED",
+            "summary": "A later renewal attempt failed",
+            "resource": {"id": subscription.paypal_subscription_id},
+        }
+
+        with patch("apps.subscriptions.paypal_subscription_services.publish_payment_status"):
+            with self.captureOnCommitCallbacks(execute=True):
+                process_paypal_subscription_webhook(payload)
+
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, "PAID")
+        self.assertEqual(invoice.webhook_event_id, "PREVIOUS-PAID-EVENT")
+
     def test_same_paypal_webhook_event_is_idempotent(self):
         profile = self.make_profile()
         plan = self.make_plan()
