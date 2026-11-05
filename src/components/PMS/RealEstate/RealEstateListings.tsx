@@ -250,7 +250,7 @@ export default function RealEstateListings({
       </div>
       <div className="flex snap-x snap-mandatory gap-5 overflow-x-auto pb-3">
         {listings.map((listing) => (
-          <div className="w-[300px] shrink-0 snap-start"><ListingCard listing={listing} onOpenListing={onOpenListing} /></div>
+          <div key={listing.id} className="w-[300px] shrink-0 snap-start"><ListingCard listing={listing} onOpenListing={onOpenListing} /></div>
         ))}
       </div>
     </section>
