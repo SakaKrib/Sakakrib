@@ -20,6 +20,7 @@ export default function PayPalSubscriptionCancelPage() {
   const returnStateToken = params.get('state');
   const [state, setState] = useState<PaymentState>('checking');
   const [message, setMessage] = useState('We are checking PayPal’s final payment status. Please keep SakaKrib open.');
+  const [listingId, setListingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!invoiceId) {
@@ -42,6 +43,7 @@ export default function PayPalSubscriptionCancelPage() {
               `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
             );
         if (disposed) return;
+        setListingId(invoice.listing_id || null);
 
         const status = String(invoice.status || '').toUpperCase();
 
@@ -87,9 +89,10 @@ export default function PayPalSubscriptionCancelPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId]);
 
-  const continueAfterSuccess = () => {
-    // RoleDashboardRouter selects the landlord or real-estate PMS.
-    navigate('pms-dashboard');
+  // Keep the current browser tab or native app context; never force a web URL.
+  const continueToPms = () => navigate('pms-dashboard');
+  const continueToListing = () => {
+    if (listingId) navigate('post-listing', listingId);
   };
 
   return (
@@ -103,16 +106,23 @@ export default function PayPalSubscriptionCancelPage() {
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
         {state === 'success' && (
-          <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">
-            Go to PMS Management Dashboard
-          </button>
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+            <button type="button" onClick={continueToPms} className="btn-primary inline-flex items-center justify-center gap-2">
+              Go to PMS Management Dashboard
+            </button>
+            {listingId && (
+              <button type="button" onClick={continueToListing} className="btn-secondary inline-flex items-center justify-center gap-2">
+                Continue to Listing
+              </button>
+            )}
+          </div>
         )}
         {(state === 'failed' || state === 'unconfirmed') && (
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary">Back to Plans</button>
             {state === 'unconfirmed' && (
               <button type="button" onClick={() => window.location.reload()} className="btn-secondary inline-flex items-center justify-center gap-2">
-                <RefreshCw className="h-4 w-4" /> Check Payment Again
+                <RefreshCw className="h-4 w-4" />Check Payment Again
               </button>
             )}
           </div>
