@@ -270,11 +270,7 @@ jobs:
           fi
           printf '%s\n' "$FINGERPRINT" > "$RUNNER_TEMP/android-debug-ephemeral-sha256-fingerprint.txt"
           echo "EPHEMERAL DEBUG APK SHA-256 fingerprint (not for assetlinks): $FINGERPRINT"
-          if [ "$ANDROID_STABLE_SIGNING_CONFIGURED" != "true" ]; then
-            echo "::warning::This is an ephemeral debug fingerprint. Do not publish it in assetlinks.json."
-          else
-            echo "Stable signing certificate fingerprint recorded."
-          fi
+          echo "::warning::This debug APK uses the GitHub runner's ephemeral debug certificate. Never use this fingerprint for permanent Android App Links verification."
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
