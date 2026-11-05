@@ -345,6 +345,12 @@ jobs:
           act=next((x for x in root.iter('activity') if x.get(a+'name','').endswith('MainActivity')),None)
           if act is None: raise SystemExit('MainActivity missing from manifest')
           for path in ('/paypal/subscription/return','/paypal/subscription/cancel','/listing/payment/return'):
+            already=any(
+              intent.get(a+'autoVerify')=='true' and
+              any(d.get(a+'scheme')=='https' and d.get(a+'host')==parsed.hostname and d.get(a+'path')==path for d in intent.findall('data'))
+              for intent in act.findall('intent-filter')
+            )
+            if already: continue
             filt=ET.SubElement(act,'intent-filter',{a+'autoVerify':'true'})
             ET.SubElement(filt,'action',{a+'name':'android.intent.action.VIEW'})
             ET.SubElement(filt,'category',{a+'name':'android.intent.category.DEFAULT'})
@@ -358,6 +364,30 @@ jobs:
           cp native/android/MainActivity.java android/app/src/main/java/com/sakakrib/app/MainActivity.java
       - name: Sync Capacitor Android
         run: npx cap sync android
+      - name: Verify generated release Android App Link manifest
+        env:
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+        run: |
+          python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          from urllib.parse import urlsplit
+          from pathlib import Path
+          root=ET.parse(Path('android/app/src/main/AndroidManifest.xml')).getroot()
+          a='{http://schemas.android.com/apk/res/android}'
+          host=urlsplit(os.environ['SAKAKRIB_PUBLIC_BASE_URL']).hostname
+          expected={'/paypal/subscription/return','/paypal/subscription/cancel','/listing/payment/return'}; found=set()
+          for activity in root.iter('activity'):
+            for intent in activity.findall('intent-filter'):
+              if intent.get(a+'autoVerify')!='true': continue
+              actions={e.get(a+'name') for e in intent.findall('action')}; cats={e.get(a+'name') for e in intent.findall('category')}
+              if 'android.intent.action.VIEW' not in actions or 'android.intent.category.DEFAULT' not in cats or 'android.intent.category.BROWSABLE' not in cats:
+                raise SystemExit('App Link intent filter lacks required action/category')
+              for data in intent.findall('data'):
+                if data.get(a+'scheme')=='https' and data.get(a+'host')==host and data.get(a+'path') in expected: found.add(data.get(a+'path'))
+          if expected-found: raise SystemExit(f'Missing release App Link filters: {sorted(expected-found)}')
+          print(f'Validated release manifest App Links: {sorted(found)}')
+          PY
+
       - name: Install stable keystore and configure release signing
         env:
           ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
