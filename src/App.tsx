@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { getDjangoApiBaseUrl } from '@/lib/djangoApi';
 import { initializePushNotifications, installPushNotificationActionListener } from '@/lib/pushNotifications';
@@ -93,6 +94,9 @@ function AppContent() {
         }
 
         didRoute = true;
+        // Close the PayPal Custom Tab after Android has delivered the verified
+        // App Link, then resume the existing in-app payment return route.
+        void Browser.close().catch(() => {});
         window.location.assign(
           `${window.location.origin}${incoming.pathname}${incoming.search}`,
         );
