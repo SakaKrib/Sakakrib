@@ -8,7 +8,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
-SAKAKRIB_PUBLIC_FRONTEND_URL = os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
+# One canonical public development/production origin. The legacy frontend variable remains a fallback for compatibility.
+SAKAKRIB_PUBLIC_BASE_URL = os.getenv('SAKAKRIB_PUBLIC_BASE_URL', '').strip().rstrip('/')
+SAKAKRIB_PUBLIC_FRONTEND_URL = (
+    SAKAKRIB_PUBLIC_BASE_URL
+    or os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
+)
 SAKAKRIB_ANDROID_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_RETURN_URL', '').strip()
 SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL', '').strip()
 SAKAKRIB_IOS_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_RETURN_URL', '').strip()
