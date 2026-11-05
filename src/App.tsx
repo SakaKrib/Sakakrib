@@ -175,9 +175,10 @@ function AppContent() {
 
   // Payment return paths are entry points only. Once a return-page action
   // navigates to another app view, let the normal hash-based router take over.
-  if (view === 'home' && window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
-  if (view === 'home' && window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
-  if (view === 'home' && window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
+  const isPaymentReturnEntry = view === 'home' && !window.location.hash;
+  if (isPaymentReturnEntry && window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
+  if (isPaymentReturnEntry && window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
+  if (isPaymentReturnEntry && window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
 
   const renderView = () => {
     switch (view) {
