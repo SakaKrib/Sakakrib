@@ -356,7 +356,7 @@ jobs:
             ET.SubElement(filt,'category',{a+'name':'android.intent.category.DEFAULT'})
             ET.SubElement(filt,'category',{a+'name':'android.intent.category.BROWSABLE'})
             ET.SubElement(filt,'data',{a+'scheme':'https',a+'host':parsed.hostname,a+'path':path})
-          ET.indent(root,space='    '); p.write_text('<?xml version="1.0" encoding="utf-8"?>\\n'+ET.tostring(root,encoding='unicode')+'\\n')
+          ET.indent(root,space='    '); p.write_text('<?xml version="1.0" encoding="utf-8"?>\n'+ET.tostring(root,encoding='unicode')+'\n')
           PY
       - name: Install native WebView configuration
         run: |
@@ -432,7 +432,7 @@ jobs:
           KEY_FP="$(keytool -list -v -keystore keystores/sakakrib-upload.jks -storepass "$ANDROID_SIGNING_KEYSTORE_PASSWORD" -alias "$ANDROID_SIGNING_KEY_ALIAS" 2>/dev/null | sed -n 's/.*SHA256: //p' | head -n 1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           APK_FP_NORMALIZED="$(printf '%s' "$APK_FP" | tr -d ':')"
           if [ -z "$APK_FP_NORMALIZED" ] || [ "$APK_FP_NORMALIZED" != "$KEY_FP" ]; then echo "::error::APK signing fingerprint differs from configured keystore"; exit 1; fi
-          printf '%s\\n' "$APK_FP" > "$RUNNER_TEMP/android-release-sha256-fingerprint.txt"
+          printf '%s\n' "$APK_FP" > "$RUNNER_TEMP/android-release-sha256-fingerprint.txt"
           echo "Verified release APK stable signing fingerprint: $APK_FP"
       - name: Upload stable-signed Android release APK
         uses: actions/upload-artifact@v4
