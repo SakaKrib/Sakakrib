@@ -23,14 +23,37 @@ def _paypal_return_url(base_url, invoice_id):
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def _paypal_frontend_urls(frontend_origin, invoice_id):
-    """Build PayPal browser redirects, preferring the configured public frontend.
+def _paypal_frontend_urls(frontend_origin, invoice_id, client_platform='web'):
+    """Keep web and native PayPal return destinations independently configurable.
 
-    The configured public URL is intentionally independent of the request
-    Origin: Capacitor uses https://localhost, which is not reachable by the
-    external browser PayPal opens. Redirects never establish payment success;
-    the verified PayPal webhook remains authoritative.
+    Native app links are optional until Android App Links / iOS Universal Links
+    are verified for the public domain. If they are not configured, preserve
+    the existing public website return flow rather than sending users to an
+    invalid or unverified app URL.
     """
+    platform = str(client_platform or 'web').strip().lower()
+    if platform not in ('web', 'android', 'ios'):
+        platform = 'web'
+
+    if platform in ('android', 'ios'):
+        prefix = 'SAKAKRIB_ANDROID_PAYPAL' if platform == 'android' else 'SAKAKRIB_IOS_PAYPAL'
+        app_return = str(getattr(settings, f'{prefix}_RETURN_URL', '') or '').strip()
+        app_cancel = str(getattr(settings, f'{prefix}_CANCEL_URL', '') or '').strip()
+        if app_return and app_cancel:
+            urls = []
+            for value in (app_return, app_cancel):
+                parts = urlsplit(value)
+                if (
+                    parts.scheme.lower() != 'https'
+                    or not parts.netloc
+                    or parts.username
+                    or parts.password
+                ):
+                    raise ValueError(f'{prefix} return and cancel URLs must be valid HTTPS app-link URLs.')
+                urls.append(_paypal_return_url(value, invoice_id))
+            return tuple(urls)
+
+    # Existing web checkout behavior is intentionally unchanged.
     public_frontend = str(
         getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '') or ''
     ).strip().rstrip('/')
@@ -71,8 +94,7 @@ def _paypal_frontend_urls(frontend_origin, invoice_id):
         _paypal_return_url(settings.PAYPAL_SUBSCRIPTION_CANCEL_URL, invoice_id),
     )
 
-
-def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None, frontend_origin=None):
+def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None, frontend_origin=None, client_platform='web'):
     billing_cycle = str(billing_cycle or 'MONTHLY').upper()
     provider = str(provider or '').lower()
     if billing_cycle not in ('MONTHLY', 'ANNUAL'):
@@ -164,7 +186,7 @@ def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phon
     if provider == 'paypal':
         from .paypal_subscription_services import create_paypal_subscription
         try:
-            return_url, cancel_url = _paypal_frontend_urls(frontend_origin, invoice.id)
+            return_url, cancel_url = _paypal_frontend_urls(frontend_origin, invoice.id, client_platform)
             remote = create_paypal_subscription(
                 plan_id=paypal_plan_id,
                 custom_id=str(invoice.id),
