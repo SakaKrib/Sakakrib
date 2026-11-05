@@ -14,6 +14,9 @@ SAKAKRIB_PUBLIC_FRONTEND_URL = (
     SAKAKRIB_PUBLIC_BASE_URL
     or os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
 )
+
+def _sakakrib_public_url(path):
+    return f'{SAKAKRIB_PUBLIC_BASE_URL}{path}' if SAKAKRIB_PUBLIC_BASE_URL else ''
 SAKAKRIB_ANDROID_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_RETURN_URL', '').strip()
 SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL', '').strip()
 SAKAKRIB_IOS_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_RETURN_URL', '').strip()
@@ -63,7 +66,7 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
 MEDIA_URL = '/media/'
-CHAT_ATTACHMENT_BASE_URL = os.getenv('CHAT_ATTACHMENT_BASE_URL', '')
+CHAT_ATTACHMENT_BASE_URL = os.getenv('CHAT_ATTACHMENT_BASE_URL', '').strip().rstrip('/') or SAKAKRIB_PUBLIC_BASE_URL
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 JWT_ALGORITHM = 'HS256'
@@ -109,16 +112,16 @@ MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY','')
 MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET','')
 MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE','')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY','')
-MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL','')
-MPESA_LISTING_CALLBACK_URL = os.getenv('MPESA_LISTING_CALLBACK_URL','')
-MPESA_SUBSCRIPTION_CALLBACK_URL = os.getenv('MPESA_SUBSCRIPTION_CALLBACK_URL','')
+MPESA_CALLBACK_URL = os.getenv('MPESA_CALLBACK_URL', '').strip() or _sakakrib_public_url('/api/core/payments/moving/mpesa/callback/')
+MPESA_LISTING_CALLBACK_URL = os.getenv('MPESA_LISTING_CALLBACK_URL', '').strip() or _sakakrib_public_url('/api/payments/listing/mpesa/callback/')
+MPESA_SUBSCRIPTION_CALLBACK_URL = os.getenv('MPESA_SUBSCRIPTION_CALLBACK_URL', '').strip() or _sakakrib_public_url('/api/subscriptions/callbacks/mpesa/')
 MPESA_BASE_URL = os.getenv('MPESA_BASE_URL','https://sandbox.safaricom.co.ke')
 MPESA_STK_URL = os.getenv('MPESA_STK_URL', 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest')
 MPESA_PAYOUT_CALLBACK_SECRET = os.getenv('MPESA_PAYOUT_CALLBACK_SECRET','')
 MPESA_PAYOUT_INITIATOR_NAME = os.getenv('MPESA_PAYOUT_INITIATOR_NAME','')
 MPESA_PAYOUT_SECURITY_CREDENTIAL = os.getenv('MPESA_PAYOUT_SECURITY_CREDENTIAL','')
 MPESA_PAYOUT_COMMAND_ID = os.getenv('MPESA_PAYOUT_COMMAND_ID','BusinessPayment')
-MPESA_PAYOUT_RESULT_URL = os.getenv('MPESA_PAYOUT_RESULT_URL','')
+MPESA_PAYOUT_RESULT_URL = os.getenv('MPESA_PAYOUT_RESULT_URL', '').strip() or _sakakrib_public_url('/api/core/payments/mover-payout/callback/')
 PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID','')
 PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET','')
 PAYPAL_BASE_URL = os.getenv('PAYPAL_BASE_URL','https://api-m.sandbox.paypal.com')
