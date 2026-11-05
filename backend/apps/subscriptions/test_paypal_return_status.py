@@ -114,3 +114,19 @@ class PayPalReturnStatusTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         approve.assert_not_called()
+    def test_paypal_subscription_webhook_accepts_canonical_and_legacy_paths(self):
+        payload = {'id': 'WH-TEST-EVENT', 'event_type': 'BILLING.SUBSCRIPTION.ACTIVATED', 'resource': {'id': 'I-TEST'}}
+        with patch('apps.subscriptions.views.verify_paypal_webhook') as verify, patch(
+            'apps.subscriptions.views.process_paypal_subscription_webhook',
+            return_value={'status': 'PROCESSED', 'event_id': 'WH-TEST-EVENT'},
+        ) as process:
+            for path in (
+                '/api/subscriptions/paypal/webhook/',
+                '/api/subscriptions/callbacks/paypal/',
+            ):
+                response = self.client.post(path, payload, format='json')
+                self.assertEqual(response.status_code, 200, path)
+                self.assertTrue(response.data['success'], path)
+
+        self.assertEqual(verify.call_count, 2)
+        self.assertEqual(process.call_count, 2)
