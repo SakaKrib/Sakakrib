@@ -295,3 +295,112 @@ class PayPalSubscriptionApproveView(APIView):
     subscription ID to the invoice in that case; the webhook remains the
     only authority that marks the invoice PAID.
     """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = str(request.data.get('state') or '').strip()
+        paypal_subscription_id = str(request.data.get('paypal_subscription_id') or '').strip()
+        requested_invoice_id = str(request.data.get('invoice_id') or '').strip()
+        if not token or not paypal_subscription_id:
+            return Response({'success': False, 'detail': 'Signed state and PayPal subscription ID are required.'}, status=400)
+        try:
+            payload = signing.loads(
+                token,
+                salt='sakakrib.paypal-subscription-return',
+                max_age=60 * 60 * 24,
+            )
+        except signing.BadSignature:
+            return Response({'success': False, 'detail': 'Payment return state is invalid or expired.'}, status=400)
+
+        invoice_id = payload.get('invoice_id') if isinstance(payload, dict) else None
+        if not invoice_id or (requested_invoice_id and str(invoice_id) != requested_invoice_id):
+            return Response({'success': False, 'detail': 'Payment return state does not match this invoice.'}, status=400)
+
+        invoice = SubscriptionInvoice.objects.filter(
+            pk=invoice_id,
+            status='PENDING',
+            payment_provider='PAYPAL',
+        ).first()
+        if not invoice:
+            return Response({'success': False, 'detail': 'Pending PayPal subscription invoice not found.'}, status=404)
+        try:
+            result = record_paypal_subscription_approval(invoice.id, paypal_subscription_id)
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=502)
+        return Response(result)
+
+
+class PayPalSubscriptionUpgradeConfirmView(APIView):
+    """Confirm a PayPal plan revision from its signed, invoice-scoped return state."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        token = str(request.data.get('state') or '').strip()
+        requested_invoice_id = str(request.data.get('invoice_id') or '').strip()
+        if not token:
+            return Response({'success': False, 'detail': 'Signed payment return state is required.'}, status=400)
+        try:
+            payload = signing.loads(
+                token,
+                salt='sakakrib.paypal-subscription-return',
+                max_age=60 * 60 * 24,
+            )
+        except signing.BadSignature:
+            return Response({'success': False, 'detail': 'Payment return state is invalid or expired.'}, status=400)
+
+        invoice_id = payload.get('invoice_id') if isinstance(payload, dict) else None
+        if not invoice_id or (requested_invoice_id and str(invoice_id) != requested_invoice_id):
+            return Response({'success': False, 'detail': 'Payment return state does not match this invoice.'}, status=400)
+
+        invoice = SubscriptionInvoice.objects.filter(
+            pk=invoice_id,
+            status='PENDING',
+            payment_provider='PAYPAL',
+            upgrade_plan_id__isnull=False,
+        ).first()
+        if not invoice:
+            return Response({'success': False, 'detail': 'Pending PayPal subscription upgrade not found.'}, status=404)
+
+        if invoice.landlord_subscription_id:
+            subscription = LandlordSubscription.objects.filter(pk=invoice.landlord_subscription_id).first()
+            owner_id = subscription.landlord_id if subscription else None
+        else:
+            subscription = RealEstateSubscription.objects.filter(pk=invoice.real_estate_subscription_id).first()
+            owner_id = subscription.real_estate_id if subscription else None
+        profile = get_user_model().objects.filter(pk=owner_id, is_active=True).first() if owner_id else None
+        if not profile:
+            return Response({'success': False, 'detail': 'Subscription owner could not be verified.'}, status=404)
+
+        try:
+            result = confirm_paypal_subscription_upgrade(profile=profile, invoice_id=invoice.id)
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=502)
+        return Response(result)
+
+
+class PayPalSubscriptionWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        payload = request.data
+        try:
+            verify_paypal_webhook(payload, request.headers)
+            result = process_paypal_subscription_webhook(payload)
+        except ValueError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=400)
+        except RuntimeError as exc:
+            return Response({'success': False, 'detail': str(exc)}, status=503)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            return Response({'success': False, 'detail': str(exc)}, status=500)
+        return Response({'success': True, **result})
