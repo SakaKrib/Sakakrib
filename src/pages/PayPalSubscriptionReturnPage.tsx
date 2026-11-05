@@ -15,7 +15,6 @@ export default function PayPalSubscriptionReturnPage() {
   const returnStateToken = params.get('state');
   const [state, setState] = useState<'waiting' | 'success' | 'failed'>('waiting');
   const [message, setMessage] = useState('We are securely confirming your PayPal payment. Please keep this page open.');
-  const [listingId, setListingId] = useState<string | null>(null);
   const { event, connected, connectionError } = usePaymentStatusSocket(invoiceId);
 
   // PayPal may reopen the app through its HTTPS return URL instead of
@@ -38,7 +37,6 @@ export default function PayPalSubscriptionReturnPage() {
 
   useEffect(() => {
     if (!event || event.type !== 'payment_status') return;
-    if (event.listing_id) setListingId(event.listing_id);
     if (event.status === 'PAID') {
       setState('success');
       setMessage(event.message || 'Your payment has been confirmed and your subscription is active.');
@@ -75,14 +73,6 @@ export default function PayPalSubscriptionReturnPage() {
           ? await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/paypal/return-status/?state=${encodeURIComponent(returnStateToken)}`)
           : await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
         if (cancelled) return;
-        if (invoice.listing_id) setListingId(invoice.listing_id);
-        else if (returnStateToken) {
-          // Listing details remain private; retrieve them only when the user
-          // still has an authenticated SakaKrib session.
-          void protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`)
-            .then((details) => { if (!cancelled && details.listing_id) setListingId(details.listing_id); })
-            .catch(() => {});
-        }
         const status = invoice.status.toUpperCase() as PaymentSocketStatus | string;
         if (status === 'PAID') {
           setState('success');
@@ -101,11 +91,7 @@ export default function PayPalSubscriptionReturnPage() {
   }, [invoiceId, returnStateToken]);
 
   const continueAfterSuccess = () => {
-    if (listingId) {
-      navigate('post-listing', listingId);
-      return;
-    }
-    // RoleDashboardRouter resolves pms-dashboard to the correct PMS boundary for landlord or real-estate users.
+    // RoleDashboardRouter resolves this to the landlord or real-estate PMS.
     navigate('pms-dashboard');
   };
 
@@ -118,7 +104,7 @@ export default function PayPalSubscriptionReturnPage() {
         <h1 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">{state === 'waiting' ? 'Confirming your payment' : state === 'success' ? 'Payment successful' : 'Payment unsuccessful'}</h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
         {state === 'waiting' && <div className="mx-auto mt-6 max-w-sm rounded-xl bg-gray-50 p-4 text-left text-xs text-gray-600 dark:bg-gray-800/70 dark:text-gray-300"><p className="font-semibold text-gray-800 dark:text-white">Secure confirmation in progress</p><p className="mt-1">PayPal is sending the payment result to SakaKrib. We will update this page automatically.</p><p className="mt-2">Live connection: {connected ? 'connected' : 'reconnecting…'}</p>{connectionError && <p className="mt-1 text-amber-600 dark:text-amber-400">{connectionError}</p>}</div>}
-        {state === 'success' && <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">{listingId ? 'Continue to Listing' : 'Go to PMS Management Dashboard'}</button>}
+        {state === 'success' && <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">Go to PMS Management Dashboard</button>}
         {state === 'failed' && (
           <button
             type="button"
