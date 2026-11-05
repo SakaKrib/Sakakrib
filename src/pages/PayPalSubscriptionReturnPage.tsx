@@ -4,7 +4,7 @@ import { protectedGet, protectedPost } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
 import { usePaymentStatusSocket, type PaymentSocketStatus } from '@/lib/usePaymentStatusSocket';
 
-interface InvoiceStatusResponse { id?: string; invoice_id?: string; status: string; result_description?: string | null; listing_id?: string | null; }
+interface InvoiceStatusResponse { id?: string; invoice_id?: string; status: string; result_description?: string | null; listing_id?: string | null; upgrade?: boolean; }
 
 export default function PayPalSubscriptionReturnPage() {
   const { navigate } = useNav();
@@ -65,6 +65,31 @@ export default function PayPalSubscriptionReturnPage() {
           ? await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/paypal/return-status/?state=${encodeURIComponent(returnStateToken)}`)
           : await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
         if (cancelled) return;
+        if (invoice.upgrade && returnStateToken && invoice.status.toUpperCase() === 'PENDING') {
+          try {
+            const upgrade = await protectedPost<{
+              success?: boolean;
+              upgrade_scheduled?: boolean;
+              target_plan_name?: string;
+            }>('/api/subscriptions/paypal/upgrade/confirm/', {
+              invoice_id: invoiceId,
+              state: returnStateToken,
+            });
+            if (cancelled) return;
+            if (upgrade?.success && upgrade.upgrade_scheduled) {
+              setState('success');
+              setMessage(
+                upgrade.target_plan_name
+                  ? `Your PayPal subscription upgrade to ${upgrade.target_plan_name} is confirmed and will take effect on the next billing cycle.`
+                  : 'Your PayPal subscription upgrade is confirmed and will take effect on the next billing cycle.',
+              );
+              return;
+            }
+          } catch {
+            // PayPal may need a moment to apply the revised plan; retry on the next status poll.
+          }
+        }
+
         const status = invoice.status.toUpperCase() as PaymentSocketStatus | string;
         if (status === 'PAID') {
           setState('success');
