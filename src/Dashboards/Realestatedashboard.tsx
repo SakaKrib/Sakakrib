@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   User,
   XCircle,
+  ArrowLeft,
+  Search,
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
@@ -26,6 +28,7 @@ import {
 } from '@/lib/RealEstateTs/Realestateservice';
 
 import { protectedGet } from '@/lib/djangoApi';
+import SecureImage from '@/components/SecureImage';
 
 import {
   fetchListingEntitlement,
@@ -101,6 +104,9 @@ export default function RealEstateDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveRefreshKey, setLiveRefreshKey] = useState(0);
+  const [showAllListings, setShowAllListings] = useState(false);
+  const [listingSearch, setListingSearch] = useState('');
+  const [listingStatusFilter, setListingStatusFilter] = useState('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -320,6 +326,33 @@ export default function RealEstateDashboard() {
     },
   ];
 
+  const filteredListings = listings.filter((listing) => {
+    const term = listingSearch.trim().toLowerCase();
+    const searchable = [listing.title, listing.city, listing.county, listing.description].filter(Boolean).join(' ').toLowerCase();
+    const status = listing.is_published ? 'published' : (listing.approval_status || '').toLowerCase() === 'pending_review' ? 'pending' : (listing.approval_status || '').toLowerCase() === 'rejected' ? 'rejected' : !listing.is_paid ? 'payment_pending' : 'other';
+    return (!term || searchable.includes(term)) && (listingStatusFilter === 'all' || status === listingStatusFilter);
+  });
+
+  if (showAllListings) {
+    return (
+      <div className="mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
+        <div className="card overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-gray-200 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-brand-800">
+            <div><button type="button" onClick={() => setShowAllListings(false)} className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300"><ArrowLeft className="h-4 w-4" />Back to dashboard</button><h1 className="text-2xl font-bold text-gray-900 dark:text-white">All Listings</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{filteredListings.length} of {listings.length} listings</p></div>
+            <button type="button" onClick={() => navigate('post-listing')} className="btn-primary inline-flex items-center gap-2"><Plus className="h-4 w-4" />Post New Listing</button>
+          </div>
+          <div className="p-5">
+            <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
+              <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={listingSearch} onChange={(event) => setListingSearch(event.target.value)} placeholder="Search by title or location" className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white" /></div>
+              <select value={listingStatusFilter} onChange={(event) => setListingStatusFilter(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white"><option value="all">All statuses</option><option value="published">Published</option><option value="pending">Pending review</option><option value="rejected">Rejected</option><option value="payment_pending">Payment pending</option><option value="other">Other</option></select>
+            </div>
+            {filteredListings.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{filteredListings.map((listing) => { const badge = listingStatusBadge(listing); return <button key={listing.id} type="button" onClick={() => navigate('listing-detail', { listingId: listing.id } as never)} className="group overflow-hidden rounded-xl border border-gray-200 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-md dark:border-brand-800 dark:bg-brand-900/20"><div className="h-40 w-full bg-brand-100 dark:bg-brand-800"><SecureImage src={listing.cover_photo_url} alt={listing.title} className="h-full w-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><Home className="h-10 w-10 text-brand-400" /></div>} /></div><div className="p-4"><div className="flex items-start justify-between gap-2"><h3 className="min-w-0 truncate font-semibold text-gray-900 dark:text-white">{listing.title || 'Untitled Listing'}</h3><span className={`badge shrink-0 ${badge.className}`}>{badge.label}</span></div><p className="mt-2 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3.5 w-3.5" />{listing.city}, {listing.county}</p><div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400"><span className="font-semibold text-brand-600 dark:text-brand-400">{formatKES(listing.price_kes)}</span><span>{listing.listing_type}</span></div><p className="mt-2 text-xs text-gray-400 dark:text-gray-500">Created {formatDate(listing.created_at)}</p></div></button>; })}</div> : <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center text-sm text-gray-500 dark:border-brand-800 dark:text-gray-400">No listings match your search or filter.</div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const recentActivity = listings.slice(0, 5);
 
   return (
@@ -399,9 +432,7 @@ export default function RealEstateDashboard() {
               Your normal Real Estate listings. PMS-managed properties remain in the dedicated PMS workspace.
             </p>
           </div>
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {listings.length} {listings.length === 1 ? 'listing' : 'listings'}
-          </span>
+          <div className="flex items-center gap-3"><span className="text-xs font-medium text-gray-500 dark:text-gray-400">{listings.length} {listings.length === 1 ? 'listing' : 'listings'}</span>{listings.length > 0 && <button type="button" onClick={() => setShowAllListings(true)} className="inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300">View All <ArrowLeft className="h-4 w-4 rotate-180" /></button>}</div>
         </div>
 
         <div className="p-5">
@@ -414,7 +445,7 @@ export default function RealEstateDashboard() {
               </p>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3">
               {listings.map((listing) => {
                 const badge = listingStatusBadge(listing);
                 return (
@@ -422,16 +453,11 @@ export default function RealEstateDashboard() {
                     key={listing.id}
                     type="button"
                     onClick={() => navigate('listing-detail', { listingId: listing.id } as never)}
-                    className="group overflow-hidden rounded-xl border border-gray-200 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-md dark:border-brand-800 dark:bg-brand-900/20"
+                    className="group w-[290px] shrink-0 snap-start overflow-hidden rounded-xl border border-gray-200 bg-white text-left transition hover:-translate-y-0.5 hover:shadow-md dark:border-brand-800 dark:bg-brand-900/20"
                   >
                     <div className="h-40 w-full bg-brand-100 dark:bg-brand-800">
                       {listing.cover_photo_url ? (
-                        <img
-                          src={listing.cover_photo_url}
-                          alt={listing.title}
-                          className="h-full w-full object-cover transition group-hover:scale-[1.01]"
-                          loading="lazy"
-                        />
+                        <SecureImage src={listing.cover_photo_url} alt={listing.title} className="h-full w-full object-cover transition group-hover:scale-[1.01]" fallback={<div className="flex h-full w-full items-center justify-center"><Home className="h-10 w-10 text-brand-400" /></div>} />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
                           <Home className="h-10 w-10 text-brand-400" />
