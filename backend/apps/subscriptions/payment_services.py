@@ -24,12 +24,37 @@ def _paypal_return_url(base_url, invoice_id):
 
 
 def _paypal_frontend_urls(frontend_origin, invoice_id):
-    """Build PayPal return/cancel URLs for the frontend that started checkout.
+    """Build PayPal browser redirects, preferring the configured public frontend.
 
-    Only origins already allowed by Django CORS are accepted. If the request
-    does not provide an allowed Origin, the configured PayPal URLs remain the
-    safe fallback.
+    The configured public URL is intentionally independent of the request
+    Origin: Capacitor uses https://localhost, which is not reachable by the
+    external browser PayPal opens. Redirects never establish payment success;
+    the verified PayPal webhook remains authoritative.
     """
+    public_frontend = str(
+        getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '') or ''
+    ).strip().rstrip('/')
+    if public_frontend:
+        parts = urlsplit(public_frontend)
+        if (
+            parts.scheme.lower() != 'https'
+            or not parts.netloc
+            or parts.username
+            or parts.password
+            or parts.path not in ('', '/')
+            or parts.query
+            or parts.fragment
+        ):
+            raise ValueError(
+                'SAKAKRIB_PUBLIC_FRONTEND_URL must be an HTTPS origin '
+                'without a path, query string, or credentials.'
+            )
+        origin = f'{parts.scheme}://{parts.netloc}'
+        return (
+            _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id),
+            _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id),
+        )
+
     origin = str(frontend_origin or '').strip().rstrip('/')
     allowed_origins = {
         str(value).strip().rstrip('/')
