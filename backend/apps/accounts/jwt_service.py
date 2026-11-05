@@ -71,13 +71,22 @@ def _clear_legacy_refresh_cookie(response):
 
 
 def set_auth_cookies(response, access_token: str, refresh_token: str):
-    common = {'httponly': True, 'secure': settings.JWT_COOKIE_SECURE, 'samesite': settings.JWT_COOKIE_SAMESITE, 'domain': settings.JWT_COOKIE_DOMAIN, 'path': '/'}
+    # Authentication cookies belong to the API host (for example, the
+    # configured Tailscale hostname). Omitting Domain makes them host-only.
+    # SameSite=None is required for credentialed requests from the Capacitor
+    # WebView origin, and browsers require Secure whenever it is used.
+    common = {'httponly': True, 'secure': True, 'samesite': 'None', 'path': '/'}
     response.set_cookie(settings.JWT_ACCESS_COOKIE, access_token, max_age=settings.JWT_ACCESS_LIFETIME_SECONDS, **common)
     response.set_cookie(settings.JWT_REFRESH_COOKIE, refresh_token, max_age=settings.JWT_REFRESH_LIFETIME_SECONDS, **common)
     _clear_legacy_refresh_cookie(response)
 
 
 def clear_auth_cookies(response):
-    response.delete_cookie(settings.JWT_ACCESS_COOKIE, path='/', domain=settings.JWT_COOKIE_DOMAIN, samesite=settings.JWT_COOKIE_SAMESITE)
-    response.delete_cookie(settings.JWT_REFRESH_COOKIE, path='/', domain=settings.JWT_COOKIE_DOMAIN, samesite=settings.JWT_COOKIE_SAMESITE)
+    # Clear host-only cookies and cookies issued by the former configured
+    # Domain attribute so stale credentials cannot shadow the new cookies.
+    for cookie_name in (settings.JWT_ACCESS_COOKIE, settings.JWT_REFRESH_COOKIE):
+        response.delete_cookie(cookie_name, path='/', samesite='None')
+        legacy_domain = getattr(settings, 'LEGACY_JWT_COOKIE_DOMAIN', None)
+        if legacy_domain:
+            response.delete_cookie(cookie_name, path='/', domain=legacy_domain, samesite='None')
     _clear_legacy_refresh_cookie(response)
