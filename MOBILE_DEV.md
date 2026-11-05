@@ -43,14 +43,14 @@ The laptop's Tailscale Serve HTTPS hostname is:
 
 `https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net`
 
-Tailscale Serve must proxy that hostname to Saka Krib's host port 8001, not port 8000:
+Tailscale Serve should proxy that hostname to Saka Krib's Vite host port 5175. Vite forwards `/api`, `/media`, `/.well-known`, and `/ws` to Django on port 8001:
 
 ```bash
-tailscale serve --bg --https=443 http://127.0.0.1:8001
+tailscale serve --bg --https=443 http://127.0.0.1:5175
 tailscale serve status
 ```
 
-The status should show the HTTPS hostname forwarding to `http://127.0.0.1:8001`. This changes the laptop's Tailscale Serve routing; it does not change Docker port mappings. Keep Tailscale connected on both laptop and Android phone, and keep the Saka Krib backend running.
+The status should show the HTTPS hostname forwarding to `http://127.0.0.1:5175`. This changes the laptop's Tailscale Serve routing; it does not change Docker port mappings. Keep Tailscale connected on both laptop and Android phone, and keep the Saka Krib backend running.
 
 Copy `.env.production.example` to `.env.production` (or add the same variable to your existing root `.env.production`):
 
