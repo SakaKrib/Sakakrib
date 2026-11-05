@@ -154,3 +154,44 @@ def notify_real_estate_pms_listing_assignment(sender, instance, created, update_
         event_key=f'real-estate-pms:assignment:owner:{instance.id}:{event}:{instance.updated_at.isoformat()}',
         send_email=False,
     ))
+
+
+@receiver(post_save, sender=SubscriptionInvoice)
+def notify_subscription_payment_received(sender, instance, **kwargs):
+    """Push + in-app alert to the account owner when a subscription invoice is paid."""
+    if str(instance.status or '').upper() != 'PAID':
+        return
+
+    user_id = None
+    kind = 'subscription'
+    if instance.landlord_subscription_id:
+        row = LandlordSubscription.objects.filter(pk=instance.landlord_subscription_id).only('landlord_id').first()
+        user_id = getattr(row, 'landlord_id', None)
+    elif instance.real_estate_subscription_id:
+        row = RealEstateSubscription.objects.filter(pk=instance.real_estate_subscription_id).only('real_estate_id').first()
+        user_id = getattr(row, 'real_estate_id', None)
+        kind = 'real estate subscription'
+    if not user_id:
+        return
+
+    try:
+        amount = f"KES {int(instance.amount_kes):,}"
+    except (TypeError, ValueError):
+        amount = 'Your payment'
+    data = {
+        'invoice_id': str(instance.id),
+        'subscription_id': str(instance.landlord_subscription_id or instance.real_estate_subscription_id or ''),
+        'amount_kes': str(instance.amount_kes),
+        'provider': str(instance.payment_provider or ''),
+        'action_type': 'SUBSCRIPTION_PAID',
+        'deep_link': 'pms-dashboard',
+    }
+    transaction.on_commit(lambda: dispatch_user_notification(
+        user_id=user_id,
+        notification_type='SUBSCRIPTION_PAYMENT_RECEIVED',
+        title='Payment received',
+        message=f'{amount} received for your {kind}. Your property management tools are active.',
+        data=data,
+        event_key=f'subscription-paid:{instance.id}',
+        send_email=False,
+    ))

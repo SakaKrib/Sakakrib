@@ -1,6 +1,6 @@
 import { isLocationSupported, requestPosition } from '@/lib/location';
 import { useEffect, useRef, useState } from 'react';
-import { FileText, CheckCircle2, Loader2, X, CreditCard, Building2 } from 'lucide-react';
+import { FileText, CheckCircle2, Loader2, X, CreditCard, Building2, Home, Layers, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import PropertyListingForm from './PropertyListingForm';
@@ -87,6 +87,7 @@ export default function PostListingPageV2() {
   const [subscriptionPlansError, setSubscriptionPlansError] = useState<string | null>(null);
 
   const [pmsMode, setPmsMode] = useState(false);
+  const [kindChosen, setKindChosen] = useState(false);
   const [pmsSelectorOpen, setPmsSelectorOpen] = useState(false);
 
   const [aiCaption, setAiCaption] = useState('');
@@ -666,6 +667,41 @@ export default function PostListingPageV2() {
     const resumeDraft = (id: string) => navigate('post-listing', id);
     const forgetLocalDraft = (id: string) => { try { if (profile?.id && readLocalDraft(profile.id)?.draftId === id) localStorage.removeItem(localDraftKey(profile.id)); } catch { /* ignore */ } };
 
+    // Subscribed owners pick what they are posting; the two forms are different.
+    const hasPmsSubscription = Boolean(listingEntitlement?.pmsAccess) && (listingEntitlement?.subscriptionStatus === 'active' || listingEntitlement?.subscriptionStatus === 'grace_period');
+    const pmsCapacityLeft = Number(listingEntitlement?.subscriptionListingsRemaining ?? 0);
+    const pmsBlockedReason = listingEntitlement?.subscriptionStatus === 'grace_period'
+      ? 'Your subscription is in its read-only grace period. Renew to add properties.'
+      : pmsCapacityLeft <= 0 ? 'Your plan has no property capacity left. Upgrade to add another property.' : null;
+    if (hasPmsSubscription && !draftId && !formHasContent && !kindChosen && !pmsMode) {
+      const who = listingRole === 'landlord' ? 'landlord' : 'real estate agency';
+      return <>
+        <ListingDraftsPanel onContinue={resumeDraft} onDeleted={forgetLocalDraft} />
+        <div className="mx-auto w-full max-w-3xl px-2 py-8 sm:px-6">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">What are you posting?</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Your {who} subscription is active, so you can list managed properties as well as single homes.</p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="card flex flex-col p-5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-100 dark:bg-brand-800/50"><Layers className="h-5 w-5 text-brand-600 dark:text-brand-300" /></div>
+              <p className="mt-3 flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-white">Managed property <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-800 dark:text-brand-200"><Sparkles className="h-3 w-3" />PMS</span></p>
+              <p className="mt-1 flex-1 text-sm text-gray-500 dark:text-gray-400">An apartment block, estate or building with several units. Add units with rent and photos, take booking requests, track tenants and payments.</p>
+              {pmsBlockedReason && <p className="mt-3 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:bg-warning-900/20 dark:text-warning-400">{pmsBlockedReason}</p>}
+              {pmsBlockedReason
+                ? <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary mt-4 w-full">View plans</button>
+                : <button type="button" onClick={() => { setPmsMode(true); setKindChosen(true); }} className="btn-primary mt-4 w-full">Post a managed property</button>}
+              {!pmsBlockedReason && <p className="mt-2 text-center text-xs text-gray-400">{pmsCapacityLeft} propert{pmsCapacityLeft === 1 ? 'y' : 'ies'} left on your plan</p>}
+            </div>
+            <div className="card flex flex-col p-5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100 dark:bg-brand-800"><Home className="h-5 w-5 text-gray-600 dark:text-gray-300" /></div>
+              <p className="mt-3 text-base font-semibold text-gray-900 dark:text-white">Single listing</p>
+              <p className="mt-1 flex-1 text-sm text-gray-500 dark:text-gray-400">One house or rental unit with a simple form: details, photos, price and contact. No unit management.</p>
+              <button type="button" onClick={() => { setPmsMode(false); setKindChosen(true); }} className="btn-secondary mt-4 w-full">Post a single listing</button>
+            </div>
+          </div>
+        </div>
+      </>;
+    }
+
     // All free listings are used: tell the landlord up front and offer pay-per-listing or a subscription.
     if (paymentRequired && !draftId && !formHasContent && !limitGateDismissed) {
       return <>
@@ -696,6 +732,7 @@ export default function PostListingPageV2() {
 
     return <>
       {!draftId && !formHasContent && <ListingDraftsPanel onContinue={resumeDraft} onDeleted={forgetLocalDraft} />}
+      {!pmsMode && !hasPmsSubscription && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-brand-700 dark:bg-brand-900"><div className="flex items-center gap-3"><Building2 className="h-5 w-5 shrink-0 text-brand-600" /><p className="text-sm text-gray-600 dark:text-gray-300">Managing several units or tenants? Subscribe to unlock property management.</p></div><button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary px-4 py-1.5 text-xs">See plans</button></div></div>}
       {pmsMode && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30"><div><p className="text-sm font-semibold text-brand-800 dark:text-brand-300">Property Management listing selected</p><p className="text-xs text-brand-700 dark:text-brand-300">{listingEntitlement?.subscriptionStatus === 'grace_period' ? 'Your PMS subscription is in a read-only grace period. Renew before adding a new property.' : listingEntitlement?.subscriptionStatus === 'active' && Number(listingEntitlement.subscriptionListingsRemaining ?? 0) <= 0 ? 'Your active PMS subscription has reached its listing capacity. Upgrade before adding another property.' : listingEntitlement?.pmsAccess && listingEntitlement.subscriptionStatus === 'active' ? 'This listing will use your active PMS subscription capacity.' : 'Complete the property, units, media and review steps, then choose your subscription.'}</p></div><button type="button" onClick={removePmsMode} className="inline-flex items-center gap-1 rounded-lg border border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 dark:border-brand-700 dark:text-brand-300"><X className="h-4 w-4" />Use standard listing</button></div></div>}
     <PropertyListingForm
       step={step} STEPS={STEPS} error={error} submitting={submitting} setStep={setStep} canProceed={canProceed} handleSubmit={handleSubmit}

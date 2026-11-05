@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import SecureImage from '@/components/SecureImage';
 import {
   Activity,
   Bell,
@@ -148,7 +149,7 @@ function ListingPreview({ listings, onOpenListing, onViewAll }: { listings: Real
     <div className="space-y-4">
       {previewListings.map((listing) => { const status = getListingStatus(listing); const StatusIcon = status.icon; return (
         <button key={listing.id} type="button" onClick={() => onOpenListing?.(listing.id)} disabled={!onOpenListing} className={`flex w-full items-center gap-4 rounded-xl border bg-white p-4 text-left transition dark:border-brand-700 dark:bg-brand-900 ${onOpenListing ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md' : 'cursor-default'}`}>
-          <div className="h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-brand-800">{listing.cover_photo_url ? <img src={listing.cover_photo_url} alt={listing.title} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Building2 className="h-7 w-7 text-gray-300 dark:text-brand-600" /></div>}</div>
+          <div className="h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-brand-800">{listing.cover_photo_url ? <SecureImage src={listing.cover_photo_url} alt={listing.title} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><Building2 className="h-7 w-7 text-gray-300 dark:text-brand-600" /></div>}</div>
           <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-semibold text-gray-900 dark:text-white">{listing.title}</h3><span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${status.className}`}><StatusIcon className="h-3 w-3" />{status.label}</span></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{listing.city}{listing.county ? `, ${listing.county}` : ''}</p><div className="mt-2 flex items-center gap-3"><span className="text-sm font-semibold text-gray-900 dark:text-white">{listing.price_kes !== null ? formatKES(listing.price_kes) : 'Price on request'}</span><span className="text-xs capitalize text-gray-500 dark:text-gray-400">{listing.listing_type}</span></div></div>
         </button>
       ); })}

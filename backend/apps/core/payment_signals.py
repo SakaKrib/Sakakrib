@@ -226,3 +226,25 @@ def schedule_listing_payment_receipt(sender, instance, **kwargs):
 
     from .listing_payment_email_tasks import send_listing_payment_success_email
     transaction.on_commit(lambda: send_listing_payment_success_email.delay(str(instance.id)))
+
+
+@receiver(post_save, sender=ListingPayment)
+def notify_listing_payment_received(sender, instance, **kwargs):
+    """Push + in-app alert to the lister when their pay-per-listing fee is confirmed."""
+    if str(instance.status or '').upper() != 'PAID' or not instance.user_id:
+        return
+
+    from .notification_services import dispatch_user_notification
+    try:
+        amount = f"KES {int(instance.amount_kes):,}"
+    except (TypeError, ValueError):
+        amount = 'Your payment'
+    transaction.on_commit(lambda: dispatch_user_notification(
+        user_id=instance.user_id,
+        notification_type='LISTING_PAYMENT_RECEIVED',
+        title='Listing payment received',
+        message=f'{amount} received. Your listing has been submitted for review.',
+        data={'listing_id': str(instance.listing_id), 'payment_id': str(instance.id), 'deep_link': f'listing-detail/{instance.listing_id}'},
+        event_key=f'listing-paid:{instance.id}',
+        send_email=False,
+    ))

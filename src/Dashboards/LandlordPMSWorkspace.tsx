@@ -81,9 +81,9 @@ export default function LandlordPMSWorkspace() {
   };
 
   return (
-    <section className="mx-auto mt-6 max-w-7xl space-y-5 px-2 py-4 text-center sm:px-6 lg:px-8">
+    <section className="mx-auto mt-2 max-w-7xl space-y-4 px-3 py-3 text-left sm:mt-6 sm:space-y-5 sm:px-6 sm:py-4 lg:px-8">
       <LandlordPMSEntitlementHeader />
-      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-brand-700 dark:bg-brand-950">
+      <div className="rounded-2xl border border-gray-200 bg-white/95 p-2 shadow-sm sm:p-3 dark:border-brand-700 dark:bg-brand-950/95">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">PMS workspace</div>
@@ -106,9 +106,9 @@ export default function LandlordPMSWorkspace() {
             </button>
           </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto px-2">
+        <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] sm:gap-2 sm:px-2 [&::-webkit-scrollbar]:hidden">
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setTab(id)} className={`mb-1 inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${tab === id ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}>
+            <button key={id} type="button" onClick={() => setTab(id)} className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-[13px] font-semibold sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm transition ${tab === id ? 'bg-brand-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-brand-900'}`}>
               <Icon className="h-4 w-4" />
               {labelFor(id, label)}
             </button>
