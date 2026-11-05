@@ -354,7 +354,7 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
               type="button"
               onClick={() => void openNativeSubscriptionApproval()}
               disabled={disabled || working}
-              className="w-full rounded-xl bg-[#0070ba] px-4 py-3 font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-none border border-[#e6a900] bg-[#ffc439] px-4 py-3 font-semibold text-[#111111] transition hover:bg-[#f2b72f] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {working ? 'Opening PayPal…' : 'Subscribe with PayPal'}
             </button>
