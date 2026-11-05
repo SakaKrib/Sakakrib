@@ -18,7 +18,7 @@ function parseMovingDate(value: string) { if (!value) return null; const [year, 
 function formatMovingDate(value: Date | null) { if (!value) return ''; const year = value.getFullYear(); const month = String(value.getMonth() + 1).padStart(2, '0'); const day = String(value.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`; }
 
 export default function MoverDetailPage() {
-  const { selectedMoverId, navigate } = useNav();
+  const { selectedMoverId, navigate, movingRequestContext, clearMovingRequest } = useNav();
   const { event: marketplaceEvent } = useMarketplaceEvents();
   const [liveRefreshKey, setLiveRefreshKey] = useState(0);
   const { profile } = useAuth();
@@ -31,6 +31,12 @@ export default function MoverDetailPage() {
   const [dropoff, setDropoff] = useState('');
   const [pickupLocation, setPickupLocation] = useState<GPSLocationValue>({ locationSearch: '', latitude: null, longitude: null });
   const [dropoffLocation, setDropoffLocation] = useState<GPSLocationValue>({ locationSearch: '', latitude: null, longitude: null });
+  // Coming from a listing's "Need a Mover?" card: the property is the drop-off point.
+  useEffect(() => {
+    const ctx = movingRequestContext;
+    if (!ctx || ctx.latitude == null || ctx.longitude == null) return;
+    setDropoffLocation({ locationSearch: ctx.address || 'Listing location', latitude: ctx.latitude, longitude: ctx.longitude });
+  }, [movingRequestContext]);
   const [movingDate, setMovingDate] = useState('');
   const [movingTime, setMovingTime] = useState('');
   const [movingEndTime, setMovingEndTime] = useState('');
@@ -117,13 +123,13 @@ export default function MoverDetailPage() {
     setSubmitting(true);
     try {
       const result = await protectedPost<{ booking_id: string; conversation_id?: string; status: string; quote: MoverQuote; scheduled_start_at?: string; scheduled_end_at?: string }>('/api/core/bookings/request/', {
-        mover_id: mover.id, pickup_address: pickup.trim(), dropoff_address: dropoff.trim(), moving_date: movingDate,
+        mover_id: mover.id, listing_id: movingRequestContext?.listingId ?? undefined, pickup_address: pickup.trim(), dropoff_address: dropoff.trim(), moving_date: movingDate,
         moving_time: movingTime, moving_end_time: movingEndTime,
         pickup_latitude: pickupLocation.latitude, pickup_longitude: pickupLocation.longitude,
         dropoff_latitude: dropoffLocation.latitude, dropoff_longitude: dropoffLocation.longitude,
         preferred_payment_method: paymentMethod,
       });
-      setSubmittedQuote(result.quote); setBookingSuccess(true);
+      setSubmittedQuote(result.quote); setBookingSuccess(true); clearMovingRequest();
       window.setTimeout(() => navigate('chat', mover.id), 450);
     } catch (err) { setError(err instanceof Error ? err.message : 'Booking request failed.'); }
     finally { setSubmitting(false); }

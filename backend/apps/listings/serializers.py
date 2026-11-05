@@ -175,6 +175,7 @@ class ListingSerializer(serializers.ModelSerializer):
             'id': str(profile.id),
             'full_name': profile.full_name or '',
             'verification_status': profile.verification_status,
+            'role': profile.role if profile.role in {'landlord', 'real_estate'} else 'landlord',
         }
 
 

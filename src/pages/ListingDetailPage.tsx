@@ -26,7 +26,7 @@ type ListingPaymentMethod = {
 };
 
 type ListingDetailResponse = Listing & {
-  landlord: Profile | null;
+  landlord: (Profile & { role?: string | null }) | null;
   units?: PublicPropertyUnit[];
   payment_methods?: ListingPaymentMethod[];
 };
@@ -34,11 +34,11 @@ type ListingDetailResponse = Listing & {
 type ReviewListResponse = { items: Review[] };
 
 export default function ListingDetailPage() {
-  const { selectedListingId, navigate } = useNav();
+  const { selectedListingId, navigate, beginMovingRequest } = useNav();
   const { profile } = useAuth();
   const [listing, setListing] = useState<ListingDetailResponse | null>(null);
   const [media, setMedia] = useState<ListingMedia[]>([]);
-  const [landlord, setLandlord] = useState<Profile | null>(null);
+  const [landlord, setLandlord] = useState<ListingDetailResponse['landlord']>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
@@ -102,6 +102,9 @@ export default function ListingDetailPage() {
   const paymentAvailable = isPropertyManagement && Boolean(listing.payment_enabled);
   const units = isPropertyManagement ? (listing.units ?? []) : [];
   const paymentMethods = paymentAvailable ? (listing.payment_methods ?? []) : [];
+  const isRealEstate = landlord?.role === 'real_estate';
+  const ownerLabel = isRealEstate ? 'Real Estate' : 'Landlord';
+  const verifiedLabel = isRealEstate ? 'Verified Real Estate Agent' : 'Verified Landlord';
   const hasCoordinates = Number.isFinite(Number(listing.latitude)) && Number.isFinite(Number(listing.longitude));
 
   const handleBookUnit = (unit: PublicPropertyUnit) => {
@@ -140,7 +143,7 @@ export default function ListingDetailPage() {
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">{listing.listing_type === 'rent' ? 'For Rent' : 'For Sale'}</span>
-              {landlord?.verification_status === 'verified' && <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400"><ShieldCheck className="h-3 w-3" /> Verified Landlord</span>}
+              {landlord?.verification_status === 'verified' && <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400"><ShieldCheck className="h-3 w-3" /> {verifiedLabel}</span>}
               <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">{listingTimeLabel}</span>
             </div>
             <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6 dark:border-brand-800">
@@ -182,9 +185,9 @@ export default function ListingDetailPage() {
         <div className="space-y-6">
           {isPropertyManagement && (bookingAvailable || paymentAvailable) && <div className="card p-6"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Property Actions</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose a vacant unit to request, or view the payment information configured by the property owner.</p><div className="mt-4 grid gap-3">{bookingAvailable && <p className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">Rental requests are made on individual vacant units below.</p>}{paymentAvailable && <button type="button" onClick={() => setShowPaymentInfo(true)} className="flex items-center justify-center gap-2 rounded-lg border border-brand-200 bg-white px-4 py-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:bg-brand-900 dark:text-brand-300"><CreditCard className="h-4 w-4" /> Payment Methods</button>}</div></div>}
 
-          <div className="card p-6"><h3 className="text-base font-semibold text-gray-900 dark:text-white">Contact Landlord</h3>{landlord && <div className="mt-3 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">{((landlord.full_name ?? 'U').charAt(0)).toUpperCase()}</div><div><p className="text-sm font-semibold text-gray-900 dark:text-white">{landlord.full_name || 'Landlord'}</p>{landlord.verification_status === 'verified' && <p className="flex items-center gap-1 text-xs text-success-600 dark:text-success-400"><ShieldCheck className="h-3 w-3" /> Verified</p>}</div></div>}{!showContact ? <button type="button" onClick={handleShowContact} className="btn-primary mt-4 w-full">{profile ? 'Show Contact Details' : 'Sign in to Contact'}</button> : <div className="mt-4 space-y-3">{listing.contact_phone && <a href={`tel:${listing.contact_phone}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"><Phone className="h-4 w-4 text-brand-600" /> {listing.contact_phone}</a>}{listing.contact_email && <a href={`mailto:${listing.contact_email}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"><Mail className="h-4 w-4 text-brand-600" /> {listing.contact_email}</a>}{Array.isArray(listing.social_links) && listing.social_links.length > 0 && <div className="space-y-2">{(listing.social_links as any[]).map((link, i) => { const socialLink = typeof link === 'string' ? { platform: 'Link', url: link } : link; return <a key={i} href={socialLink.url ?? '#'} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"><Link2 className="h-4 w-4 text-brand-600" /> {socialLink.platform}</a>; })}</div>}</div>}</div>
+          <div className="card p-6"><h3 className="text-base font-semibold text-gray-900 dark:text-white">Contact {ownerLabel}</h3>{landlord && <div className="mt-3 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">{((landlord.full_name ?? 'U').charAt(0)).toUpperCase()}</div><div><p className="text-sm font-semibold text-gray-900 dark:text-white">{landlord.full_name || ownerLabel}</p>{landlord.verification_status === 'verified' && <p className="flex items-center gap-1 text-xs text-success-600 dark:text-success-400"><ShieldCheck className="h-3 w-3" /> {verifiedLabel}</p>}</div></div>}{!showContact ? <button type="button" onClick={handleShowContact} className="btn-primary mt-4 w-full">{profile ? 'Show Contact Details' : 'Sign in to Contact'}</button> : <div className="mt-4 space-y-3">{listing.contact_phone && <a href={`tel:${listing.contact_phone}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"><Phone className="h-4 w-4 text-brand-600" /> {listing.contact_phone}</a>}{listing.contact_email && <a href={`mailto:${listing.contact_email}`} className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"><Mail className="h-4 w-4 text-brand-600" /> {listing.contact_email}</a>}{Array.isArray(listing.social_links) && listing.social_links.length > 0 && <div className="space-y-2">{(listing.social_links as any[]).map((link, i) => { const socialLink = typeof link === 'string' ? { platform: 'Link', url: link } : link; return <a key={i} href={socialLink.url ?? '#'} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-lg bg-gray-50 px-2 py-3 text-sm dark:bg-brand-800/50"><Link2 className="h-4 w-4 text-brand-600" /> {socialLink.platform}</a>; })}</div>}</div>}</div>
 
-          <div className="card p-6"><h3 className="text-base font-semibold text-gray-900 dark:text-white">Need a Mover?</h3><p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Browse verified movers to help you relocate to this property.</p><button onClick={() => navigate('movers')} className="btn-secondary mt-3 w-full">Find Movers</button></div>
+          <div className="card p-6"><h3 className="text-base font-semibold text-gray-900 dark:text-white">Need a Mover?</h3><p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Browse verified movers. This property's location is used as the drop-off point in your booking.</p><button onClick={() => { beginMovingRequest({ listingId: String(listing.id), address: [listing.title, listing.city, listing.county].filter(Boolean).join(', '), latitude: hasCoordinates ? Number(listing.latitude) : null, longitude: hasCoordinates ? Number(listing.longitude) : null }); navigate('movers'); }} className="btn-secondary mt-3 w-full">Find Movers</button></div>
         </div>
       </div>
 
