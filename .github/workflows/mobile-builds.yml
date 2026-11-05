@@ -284,7 +284,10 @@ jobs:
 
   android_release:
     name: Android Release APK (stable signing)
-    if: github.event_name == 'workflow_dispatch' && inputs.build_android_release == true
+    # This workflow lives on the feature branch, not the repository default branch.
+    # Build the stable-signed release on every push to this branch so no default-branch
+    # workflow_dispatch registration is required. Manual dispatch remains supported too.
+    if: github.ref == 'refs/heads/backup/casa-ai-before-push' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_android_release == true))
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -358,12 +361,53 @@ jobs:
             ET.SubElement(filt,'data',{a+'scheme':'https',a+'host':parsed.hostname,a+'path':path})
           ET.indent(root,space='    '); p.write_text('<?xml version="1.0" encoding="utf-8"?>\n'+ET.tostring(root,encoding='unicode')+'\n')
           PY
+      - name: Declare Android location permissions for release
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          path = Path("android/app/src/main/AndroidManifest.xml")
+          ET.register_namespace("android", "http://schemas.android.com/apk/res/android")
+          tree = ET.parse(path)
+          root = tree.getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+          required = {
+              "android.permission.ACCESS_COARSE_LOCATION",
+              "android.permission.ACCESS_FINE_LOCATION",
+          }
+          present = {
+              node.get(android + "name")
+              for node in root.findall("uses-permission")
+          }
+          for permission in sorted(required - present):
+              ET.SubElement(root, "uses-permission", {android + "name": permission})
+          gps = root.find("uses-feature[@android:name='android.hardware.location.gps']", {"android": "http://schemas.android.com/apk/res/android"})
+          if gps is None:
+              ET.SubElement(root, "uses-feature", {
+                  android + "name": "android.hardware.location.gps",
+                  android + "required": "false",
+              })
+          ET.indent(tree, space="    ")
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+          final = path.read_text(encoding="utf-8")
+          for permission in required:
+              if permission not in final:
+                  raise SystemExit(f"Missing required permission: {permission}")
+          print("Release manifest includes coarse and fine location permissions.")
+          PY
+      - name: Generate and install Android icons
+        run: npm run generate:icons -- --sync --patch-manifest
       - name: Install native WebView configuration
         run: |
           mkdir -p android/app/src/main/java/com/sakakrib/app
           cp native/android/MainActivity.java android/app/src/main/java/com/sakakrib/app/MainActivity.java
       - name: Sync Capacitor Android
         run: npx cap sync android
+      - name: Verify generated release Android permissions
+        run: |
+          grep -q 'android.permission.ACCESS_COARSE_LOCATION' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.ACCESS_FINE_LOCATION' android/app/src/main/AndroidManifest.xml
       - name: Verify generated release Android App Link manifest
         env:
           SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
