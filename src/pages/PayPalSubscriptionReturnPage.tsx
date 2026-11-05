@@ -4,7 +4,7 @@ import { protectedGet, protectedPost } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
 import { usePaymentStatusSocket, type PaymentSocketStatus } from '@/lib/usePaymentStatusSocket';
 
-interface InvoiceStatusResponse { id: string; status: string; result_description?: string | null; listing_id?: string | null; }
+interface InvoiceStatusResponse { id?: string; invoice_id?: string; status: string; result_description?: string | null; listing_id?: string | null; }
 interface UpgradeConfirmResponse { success?: boolean; status?: string; detail?: string; target_plan_name?: string; }
 
 export default function PayPalSubscriptionReturnPage() {
@@ -12,6 +12,7 @@ export default function PayPalSubscriptionReturnPage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const invoiceId = params.get('invoice_id');
   const paypalSubscriptionId = params.get('subscription_id');
+  const returnStateToken = params.get('state');
   const [state, setState] = useState<'waiting' | 'success' | 'failed'>('waiting');
   const [message, setMessage] = useState('We are securely confirming your PayPal payment. Please keep this page open.');
   const [listingId, setListingId] = useState<string | null>(null);
@@ -70,9 +71,18 @@ export default function PayPalSubscriptionReturnPage() {
         // Normal PayPal subscription creation invoices are not upgrade invoices.
       }
       try {
-        const invoice = await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
+        const invoice = returnStateToken
+          ? await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/paypal/return-status/?state=${encodeURIComponent(returnStateToken)}`)
+          : await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
         if (cancelled) return;
         if (invoice.listing_id) setListingId(invoice.listing_id);
+        else if (returnStateToken) {
+          // Listing details remain private; retrieve them only when the user
+          // still has an authenticated SakaKrib session.
+          void protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`)
+            .then((details) => { if (!cancelled && details.listing_id) setListingId(details.listing_id); })
+            .catch(() => {});
+        }
         const status = invoice.status.toUpperCase() as PaymentSocketStatus | string;
         if (status === 'PAID') {
           setState('success');
@@ -88,7 +98,7 @@ export default function PayPalSubscriptionReturnPage() {
     void checkStatus();
     const timer = window.setInterval(checkStatus, 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [invoiceId]);
+  }, [invoiceId, returnStateToken]);
 
   const continueAfterSuccess = () => {
     if (listingId) {
