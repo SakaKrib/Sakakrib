@@ -1,3 +1,4 @@
+from django.core import signing
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -247,6 +248,40 @@ class MpesaSubscriptionCallbackView(APIView):
         except Exception as exc:
             return Response({'ResultCode': 1, 'ResultDesc': f'Settlement failed: {exc}'}, status=500)
         return Response({'ResultCode': 0, 'ResultDesc': 'Accepted', **result})
+
+
+class PayPalSubscriptionReturnStatusView(APIView):
+    """Expose only the final invoice status to a holder of a signed PayPal return token."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        token = str(request.query_params.get('state') or '').strip()
+        if not token:
+            return Response({'detail': 'Payment return state is required.'}, status=400)
+        try:
+            payload = signing.loads(
+                token,
+                salt='sakakrib.paypal-subscription-return',
+                max_age=60 * 60 * 24,
+            )
+        except signing.BadSignature:
+            return Response({'detail': 'Payment return state is invalid or expired.'}, status=400)
+
+        invoice_id = payload.get('invoice_id') if isinstance(payload, dict) else None
+        invoice = SubscriptionInvoice.objects.filter(
+            pk=invoice_id,
+            payment_provider='PAYPAL',
+        ).only('id', 'status', 'result_description').first()
+        if not invoice:
+            return Response({'detail': 'PayPal invoice not found.'}, status=404)
+
+        return Response({
+            'invoice_id': str(invoice.id),
+            'status': invoice.status,
+            'result_description': invoice.result_description,
+        })
 
 
 class PayPalSubscriptionApproveView(APIView):
