@@ -26,6 +26,8 @@ class SubscriptionUpgradeView(APIView):
                     profile=request.user,
                     target_plan_id=request.data.get('target_plan_id'),
                     billing_cycle=request.data.get('billing_cycle'),
+                    frontend_origin=request.headers.get('Origin'),
+                    client_platform=request.data.get('client_platform', 'web'),
                 )
             elif provider == 'mpesa':
                 result = create_mpesa_subscription_upgrade(
