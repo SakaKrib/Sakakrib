@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { AlertCircle, CheckCircle2, Crown, Loader2, Smartphone, X, XCircle } from 'lucide-react';
 import { initiateMpesaSubscriptionCheckout, type PMSBillingCycle, type PMSCheckoutAudience } from '@/lib/LandlordTs/Pmspayments';
 import { usePaymentStatusSocket } from '@/lib/usePaymentStatusSocket';
@@ -118,13 +120,18 @@ export default function PMSCheckoutModal({ open, onClose, role, plan, listingId,
         provider: 'paypal',
         target_plan_id: plan.planId,
         billing_cycle: plan.billingCycle,
+        client_platform: Capacitor.getPlatform(),
       });
       if (!response?.success || !response.invoice_id || !response.approval_url) {
         throw new Error(response?.detail || response?.message || 'Unable to start the PayPal subscription upgrade.');
       }
       setInvoiceId(response.invoice_id);
       setStep('paypal-waiting');
-      window.location.assign(response.approval_url);
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({ url: response.approval_url, toolbarColor: '#ffffff' });
+      } else {
+        window.location.assign(response.approval_url);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start the PayPal subscription upgrade.');
       setStep('failed');
