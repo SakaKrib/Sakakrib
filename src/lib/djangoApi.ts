@@ -83,11 +83,12 @@ export const ensureDjangoApiBaseUrl = async (): Promise<string> => {
           credentials: 'include',
           cache: 'no-store',
           signal: controller.signal,
+          // Keep this probe a simple credentialed GET. Adding a custom
+          // header here forces an OPTIONS preflight before the app has even
+          // selected its API host; some tunnel/proxy paths answer that
+          // preflight with wildcard CORS, which browsers reject with cookies.
           headers: {
             Accept: 'application/json',
-            // Force a real CORS preflight so a host is selected only when it
-            // supports the credentialed requests used by the APK.
-            'X-CSRFToken': 'api-host-connectivity-check',
           },
         });
         if (!response.ok) continue;
@@ -103,11 +104,12 @@ export const ensureDjangoApiBaseUrl = async (): Promise<string> => {
       }
     }
 
-    // Keep the preferred URL so the eventual API error identifies the primary
-    // endpoint rather than silently redirecting requests to an unknown host.
-    activeApiBaseUrl = candidates[0];
-    console.warn('No configured Django API endpoint passed the startup check; using the primary URL.');
-    return activeApiBaseUrl;
+    // Do not silently select an endpoint that failed its connectivity check.
+    // That makes every subsequent request fail against a known-bad host and
+    // hides the real startup problem behind generic "Failed to fetch" errors.
+    throw new Error(
+      'Unable to connect to SakaKrib. None of the configured Django API endpoints passed the connection check. Check the mobile API URLs and the tunnel CORS configuration.',
+    );
   })();
 
   apiBaseSelectionPromise = selection;
