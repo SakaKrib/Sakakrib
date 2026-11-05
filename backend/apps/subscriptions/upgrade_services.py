@@ -17,6 +17,7 @@ from .models import (
     SubscriptionPlan,
 )
 from .services import get_current_subscription
+from .payment_services import _paypal_frontend_urls
 
 
 _PLAN_RANK = {
@@ -162,7 +163,7 @@ def create_mpesa_subscription_upgrade(profile, target_plan_id, billing_cycle, ph
     }
 
 
-def create_paypal_subscription_upgrade(profile, target_plan_id, billing_cycle):
+def create_paypal_subscription_upgrade(profile, target_plan_id, billing_cycle, frontend_origin=None, client_platform='web'):
     """Request a PayPal plan revision on the existing subscription.
 
     PayPal applies the revised price from the next billing cycle and requires
@@ -248,10 +249,23 @@ def create_paypal_subscription_upgrade(profile, target_plan_id, billing_cycle):
     from .paypal_subscription_services import _paypal_json, _paypal_token
 
     try:
+        return_url, cancel_url = _paypal_frontend_urls(
+            frontend_origin,
+            invoice.id,
+            client_platform,
+        )
         remote = _paypal_json(
             f'/v1/billing/subscriptions/{paypal_subscription_id}/revise',
             method='POST',
-            body={'plan_id': str(paypal_plan_id)},
+            body={
+                'plan_id': str(paypal_plan_id),
+                'application_context': {
+                    'brand_name': 'SakaKrib',
+                    'user_action': 'SUBSCRIBE_NOW',
+                    'return_url': return_url,
+                    'cancel_url': cancel_url,
+                },
+            },
             token=_paypal_token(),
         )
     except Exception:
