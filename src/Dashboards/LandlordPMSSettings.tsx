@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Check, CreditCard, Loader2, Plus, Trash2, Wallet } from 'lucide-react';
 import { protectedDelete, protectedGet, protectedPatch, protectedPost } from '@/lib/djangoApi';
 
+import Select from '@/components/ui/Select';
 type PaymentMethod = {
   id: string;
   provider: 'MPESA' | 'PAYPAL' | string;
@@ -237,10 +238,10 @@ export default function LandlordPMSSettings() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className={labelClassName}>Payment provider</span>
-              <select value={form.provider} disabled={Boolean(editingId)} onChange={(e) => setForm((current) => ({ ...current, provider: e.target.value as FormState['provider'] }))} className={inputClassName}>
+              <Select value={form.provider} disabled={Boolean(editingId)} onChange={(e) => setForm((current) => ({ ...current, provider: e.target.value as FormState['provider'] }))} className={inputClassName}>
                 <option value="MPESA">M-Pesa</option>
                 <option value="PAYPAL">PayPal</option>
-              </select>
+              </Select>
             </label>
 
             <label className="block">
@@ -253,10 +254,10 @@ export default function LandlordPMSSettings() {
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="block">
                 <span className={labelClassName}>M-Pesa payment method</span>
-                <select value={form.mpesa_method} onChange={(e) => setForm((current) => ({ ...current, mpesa_method: e.target.value as FormState['mpesa_method'] }))} className={inputClassName}>
+                <Select value={form.mpesa_method} onChange={(e) => setForm((current) => ({ ...current, mpesa_method: e.target.value as FormState['mpesa_method'] }))} className={inputClassName}>
                   <option value="PAYBILL">PayBill</option>
                   <option value="TILL">Till</option>
-                </select>
+                </Select>
               </label>
 
               {form.mpesa_method === 'PAYBILL' ? (

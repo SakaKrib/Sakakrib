@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Edit3, Loader2, Wallet, X } from 'lucide-react';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
 
+import Select from '@/components/ui/Select';
 type Unit = {
   unit_id: string;
   listing_id: string;
@@ -79,9 +80,9 @@ function PaidThroughModal({ unit, onClose, onSaved }: { unit: Unit; onClose: () 
 
         <fieldset disabled={!enabled} className="mt-5 disabled:opacity-50">
           <label className="text-sm font-semibold text-gray-800 dark:text-gray-200">Paid through</label>
-          <select value={through} onChange={(e) => setThrough(e.target.value)} className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-brand-700 dark:bg-brand-900 dark:text-white">
+          <Select value={through} onChange={(e) => setThrough(e.target.value)} className="mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm dark:border-brand-700 dark:bg-brand-900 dark:text-white">
             {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+          </Select>
         </fieldset>
 
         <div className="mt-5">

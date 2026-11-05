@@ -55,6 +55,7 @@ import {
   getPlatformSettings
 } from '@/lib/utils';
 
+import Select from '@/components/ui/Select';
 /*
 |--------------------------------------------------------------------------
 | PAYMENT CHANNELS
@@ -2265,7 +2266,7 @@ function SelectField({
         )}
       </label>
 
-      <select
+      <Select
         value={value}
         onChange={(event) =>
           onChange(event.target.value)
@@ -2287,7 +2288,7 @@ function SelectField({
             {option.label}
           </option>
         ))}
-      </select>
+      </Select>
 
     </div>
   );

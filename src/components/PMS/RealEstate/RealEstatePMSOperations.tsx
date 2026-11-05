@@ -16,6 +16,7 @@ import {
   type RealEstatePMSLease,
 } from '@/lib/RealEstateTs/RealEstatePMSLeaseService';
 
+import Select from '@/components/ui/Select';
 interface Props {
   listings: Array<{ id: string; title: string }>;
   maxUnitsPerListing: number | null | undefined;
@@ -178,7 +179,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
         <div className="flex items-center gap-2"><Plus className="h-5 w-5 text-brand-600" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">Add unit</h2></div>
         <div className="mt-4 grid gap-3 md:grid-cols-[1.4fr_1fr_1fr_auto]">
-          <select value={listingId} onChange={(event) => setListingId(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select listing</option>{listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}</select>
+          <Select value={listingId} onChange={(event) => setListingId(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select listing</option>{listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}</Select>
           <input value={unitNumber} onChange={(event) => setUnitNumber(event.target.value)} placeholder="Unit number" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={rent} onChange={(event) => setRent(event.target.value)} type="number" min="1" placeholder="Monthly rent" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <button type="button" onClick={() => void addUnit()} disabled={saving || !listingId || !unitNumber.trim() || !rent} className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Add</button>
@@ -189,7 +190,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
         <div className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600" /><div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Leases & rent</h2><p className="text-sm text-gray-500 dark:text-gray-400">A lease is the source of tenancy terms; monthly rent invoices are generated from the active lease.</p></div></div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <select value={leaseUnitId} onChange={(event) => { const next = units.find((unit) => unit.unit_id === event.target.value); setLeaseUnitId(event.target.value); setLeaseRent(next?.rent ? String(next.rent) : ''); setLeaseDeposit(next?.deposit_amount ? String(next.deposit_amount) : ''); setLeaseDueDay(next?.rent_due_day ? String(next.rent_due_day) : '1'); }} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select occupied unit</option>{units.filter((unit) => unit.renter_assoc_id).map((unit) => <option key={unit.unit_id} value={unit.unit_id}>{unit.listing_title} · Unit {unit.unit_number} · {unit.renter_name ?? 'Renter'}</option>)}</select>
+          <Select value={leaseUnitId} onChange={(event) => { const next = units.find((unit) => unit.unit_id === event.target.value); setLeaseUnitId(event.target.value); setLeaseRent(next?.rent ? String(next.rent) : ''); setLeaseDeposit(next?.deposit_amount ? String(next.deposit_amount) : ''); setLeaseDueDay(next?.rent_due_day ? String(next.rent_due_day) : '1'); }} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select occupied unit</option>{units.filter((unit) => unit.renter_assoc_id).map((unit) => <option key={unit.unit_id} value={unit.unit_id}>{unit.listing_title} · Unit {unit.unit_number} · {unit.renter_name ?? 'Renter'}</option>)}</Select>
           <input value={leaseStart} onChange={(event) => setLeaseStart(event.target.value)} type="date" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={leaseEnd} onChange={(event) => setLeaseEnd(event.target.value)} type="date" placeholder="End date (optional)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={leaseRent} onChange={(event) => setLeaseRent(event.target.value)} type="number" min="1" placeholder="Monthly rent (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />

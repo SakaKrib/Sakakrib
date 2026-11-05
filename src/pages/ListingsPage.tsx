@@ -6,6 +6,7 @@ import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
 import type { Listing, ListingMedia } from '@/types/domain';
 
+import Select from '@/components/ui/Select';
 interface ListingListResponse {
   count: number;
   limit: number;
@@ -120,18 +121,18 @@ export default function ListingsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">City</label>
-              <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="input-field text-sm">
+              <Select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="input-field text-sm">
                 <option value="">All Cities</option>
                 {KENYAN_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
-              <select value={filterType} onChange={(e) => setFilterType(e.target.value as 'all' | 'rent' | 'sale')} className="input-field text-sm">
+              <Select value={filterType} onChange={(e) => setFilterType(e.target.value as 'all' | 'rent' | 'sale')} className="input-field text-sm">
                 <option value="all">All Types</option>
                 <option value="rent">For Rent</option>
                 <option value="sale">For Sale</option>
-              </select>
+              </Select>
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Min Price (KES)</label>

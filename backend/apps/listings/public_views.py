@@ -18,6 +18,7 @@ class FeaturedListingsView(APIView):
         queryset = Listing.objects.filter(
             approval_status='approved',
             is_published=True,
+            is_draft=False,
         )
 
         city = str(request.query_params.get('city') or '').strip()

@@ -10,6 +10,7 @@ import {
   type RealEstatePMSMember,
 } from '@/lib/RealEstateTs/RealEstatePMSTeamService';
 
+import Select from '@/components/ui/Select';
 export default function RealEstatePMSListingAssignments() {
   const [members, setMembers] = useState<RealEstatePMSMember[]>([]);
   const [listings, setListings] = useState<Array<{ id: string; title: string }>>([]);
@@ -93,14 +94,14 @@ export default function RealEstatePMSListingAssignments() {
       ) : (
         <div className="space-y-5 p-6">
           <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <select value={selectedListing} onChange={(event) => setSelectedListing(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950 dark:text-white">
+            <Select value={selectedListing} onChange={(event) => setSelectedListing(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950 dark:text-white">
               <option value="">Select listing</option>
               {listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}
-            </select>
-            <select value={selectedAgent} onChange={(event) => setSelectedAgent(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950 dark:text-white">
+            </Select>
+            <Select value={selectedAgent} onChange={(event) => setSelectedAgent(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950 dark:text-white">
               <option value="">Select agent</option>
               {members.map((member) => <option key={member.user_id} value={member.user_id}>{member.full_name || member.email || member.user_id} — {member.role === 'TEAM_MANAGER' ? 'Team Manager' : 'Agent'}</option>)}
-            </select>
+            </Select>
             <button type="button" onClick={() => void handleAssign()} disabled={saving || !selectedListing || !selectedAgent} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
               {saving ? 'Assigning…' : 'Assign'}
             </button>

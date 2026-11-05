@@ -1,5 +1,5 @@
 from django.urls import path
-from .homepage_views import HomepageStatsView
+from .homepage_views import HomepageStatsView, RealEstateDirectoryView
 from .moving_tracking_views import ActiveMovingLocationView, MoverReviewAfterDeliveryView, MovingJourneyStartView, MovingTrackingView
 from .moving_journey_phase_views import MovingJourneyPhaseView
 from .moving_views import BookingEventView, BookingView, MoverCustomerView, MoverScheduleEventView, MoverView, MoverPayoutView, MovingCancellationEventView, MovingDisputeView, MovingInvoiceView, MovingPaymentView, MovingTrackingPointView
@@ -30,6 +30,7 @@ from .rent_advance_views import LandlordMarkRentPaidThroughView, LandlordRentPay
 
 urlpatterns = [
     path("homepage-stats/", HomepageStatsView.as_view(), name="homepage-stats"),
+    path("real-estates/", RealEstateDirectoryView.as_view(), name="homepage-real-estates"),
     path("bookings/", BookingView.as_view(), name="booking-list"), path("bookings/<uuid:object_id>/", BookingView.as_view(), name="booking-detail"),
     path("booking-events/", BookingEventView.as_view(), name="booking-event-list"), path("booking-events/<uuid:object_id>/", BookingEventView.as_view(), name="booking-event-detail"),
     path("movers/", MoverView.as_view(), name="mover-list"), path("movers/<uuid:object_id>/", MoverView.as_view(), name="mover-detail"),

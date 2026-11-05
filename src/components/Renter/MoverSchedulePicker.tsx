@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
+import Select from '@/components/ui/Select';
 export interface MoverBlockedInterval {
   id?: string;
   starts_at: string;
@@ -505,7 +506,7 @@ export default function MoverSchedulePicker({
                 <span className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-300">
                   Start time
                 </span>
-                <select
+                <Select
                   value={selectedStart}
                   onChange={(event) => {
                     setSelectedStart(event.target.value);
@@ -523,14 +524,14 @@ export default function MoverSchedulePicker({
                       </option>
                     ))
                   )}
-                </select>
+                </Select>
               </label>
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-300">
                   End time
                 </span>
-                <select
+                <Select
                   value={selectedEnd}
                   onChange={(event) => setSelectedEnd(event.target.value)}
                   disabled={disabled || endOptions.length === 0}
@@ -545,7 +546,7 @@ export default function MoverSchedulePicker({
                       </option>
                     ))
                   )}
-                </select>
+                </Select>
               </label>
             </div>
 

@@ -4,7 +4,8 @@ import { useNav } from '@/context/NavContext';
 import { moverApi, type MoverTrackingPoint, type MoverTrackingResponse } from '@/lib/Movers/moverApi';
 import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import { cn } from '@/lib/utils';
-import { isLocationSupported, requestPosition } from '@/lib/location';
+import { Capacitor } from '@capacitor/core';
+import { checkLocationPermission, isLocationSupported, requestPosition } from '@/lib/location';
 
 type SocketState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'closed';
 type GpsState = 'idle' | 'checking' | 'requesting' | 'received' | 'denied' | 'unavailable' | 'timeout';
@@ -94,6 +95,15 @@ export default function MoverLiveTracking() {
 
   useEffect(() => {
     let disposed = false;
+    // In the Android app the browser Permissions API can disagree with the native permission,
+    // so ask the native plugin through the shared helper.
+    if (Capacitor.isNativePlatform()) {
+      setGpsPermission('checking');
+      checkLocationPermission()
+        .then((state) => { if (!disposed) setGpsPermission(state); })
+        .catch(() => { if (!disposed) setGpsPermission('not reported by browser'); });
+      return () => { disposed = true; if (gpsTimeoutRef.current !== null) window.clearTimeout(gpsTimeoutRef.current); };
+    }
     if (!('geolocation' in navigator)) { setGpsPermission('unsupported'); return; }
     setGpsPermission('checking');
     const permissions = navigator.permissions;

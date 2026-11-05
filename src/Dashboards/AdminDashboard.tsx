@@ -26,6 +26,7 @@ import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPatch } from '@/lib/djangoApi';
 import { cn } from '@/lib/utils';
 
+import Select from '@/components/ui/Select';
 type UserRole = 'landlord' | 'real_estate' | 'mover' | 'renter' | 'admin';
 type VerificationFilter = 'all' | 'pending' | 'approved' | 'rejected';
 type ApplicationStatus = 'pending' | 'approved' | 'rejected';
@@ -510,7 +511,7 @@ export default function AdminDashboard() {
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users..." className="input-field w-full pl-9 sm:w-64" /></div>
                     {(section === 'landlord_verification' || section === 'real_estate_verification' || section === 'mover_verification') && (
-                      <select value={verificationFilter} onChange={(event) => setVerificationFilter(event.target.value as VerificationFilter)} className="input-field sm:w-40"><option value="all">All Statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+                      <Select value={verificationFilter} onChange={(event) => setVerificationFilter(event.target.value as VerificationFilter)} className="input-field sm:w-40"><option value="all">All Statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></Select>
                     )}
                   </div>
                 </div>
@@ -573,5 +574,5 @@ function Input({ label, value, onChange }: { label: string; value: string; onCha
 }
 
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
-  return <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="input-field mt-1">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>;
+  return <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">{label}<Select value={value} onChange={(event) => onChange(event.target.value)} className="input-field mt-1">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</Select></label>;
 }

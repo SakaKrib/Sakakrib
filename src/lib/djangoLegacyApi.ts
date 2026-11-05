@@ -208,7 +208,15 @@ const requestLegacy = async <T>(path: string, init: RequestInit = {}): Promise<T
         }
       }
 
-      if (order === 'created_at.desc') params.set('ordering', '-created_at');
+      if (order === 'created_at.desc') params.set('ordering', 'newest');
+
+      // Price / rating filters and server-side sorting added with the movers filter rework.
+      for (const key of ['min_rate', 'max_rate', 'min_rating', 'search']) {
+        const value = query.get(key);
+        if (value && !params.has(key)) params.set(key, value);
+      }
+      const ordering = query.get('ordering');
+      if (ordering) params.set('ordering', ordering);
 
       return djangoGet<T>(`/api/core/movers/${params.toString() ? `?${params}` : ''}`);
     }

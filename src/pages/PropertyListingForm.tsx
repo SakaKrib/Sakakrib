@@ -25,6 +25,8 @@ import {
 
 import TermsGate from '@/components/TermsGate';
 
+import Select from '@/components/ui/Select';
+import SecureImage from '@/components/SecureImage';
 type UnitAvailability =
   | 'available'
   | 'occupied'
@@ -577,7 +579,7 @@ export default function PropertyListingForm({
                         City
                       </label>
 
-                      <select
+                      <Select
                         value={city}
                         onChange={(e) =>
                           setCity(e.target.value)
@@ -602,7 +604,7 @@ export default function PropertyListingForm({
                         <option value="custom">
                           Other (custom)...
                         </option>
-                      </select>
+                      </Select>
                     </div>
 
                     {/* Custom City */}
@@ -634,7 +636,7 @@ export default function PropertyListingForm({
                         County
                       </label>
 
-                      <select
+                      <Select
                         value={county}
                         onChange={(e) =>
                           setCounty(
@@ -657,7 +659,7 @@ export default function PropertyListingForm({
                             </option>
                           )
                         )}
-                      </select>
+                      </Select>
                     </div>
 
                     {/* Location Search */}
@@ -811,7 +813,7 @@ export default function PropertyListingForm({
                             Property Type
                           </label>
 
-                          <select
+                          <Select
                             value={propertyType}
                             onChange={(e) =>
                               setPropertyType(
@@ -847,7 +849,7 @@ export default function PropertyListingForm({
                             <option value="other">
                               Other
                             </option>
-                          </select>
+                          </Select>
                         </div>
 
                       </div>
@@ -1007,7 +1009,7 @@ export default function PropertyListingForm({
                                     Unit Type
                                   </label>
 
-                                  <select
+                                  <Select
                                     value={
                                       unit.unitType
                                     }
@@ -1055,7 +1057,7 @@ export default function PropertyListingForm({
                                     <option value="other">
                                       Other
                                     </option>
-                                  </select>
+                                  </Select>
                                 </div>
 
                                 {/* Rent */}
@@ -1115,7 +1117,7 @@ export default function PropertyListingForm({
                                     Availability
                                   </label>
 
-                                  <select
+                                  <Select
                                     value={
                                       unit.availability
                                     }
@@ -1140,7 +1142,7 @@ export default function PropertyListingForm({
                                     <option value="reserved">
                                       Reserved
                                     </option>
-                                  </select>
+                                  </Select>
                                 </div>
 
                                 {/* Size */}
@@ -1173,7 +1175,7 @@ export default function PropertyListingForm({
                                     Bedrooms
                                   </label>
 
-                                  <select
+                                  <Select
                                     value={
                                       unit.beds
                                     }
@@ -1200,7 +1202,7 @@ export default function PropertyListingForm({
                                         </option>
                                       )
                                     )}
-                                  </select>
+                                  </Select>
                                 </div>
 
                                 {/* Baths */}
@@ -1210,7 +1212,7 @@ export default function PropertyListingForm({
                                     Bathrooms
                                   </label>
 
-                                  <select
+                                  <Select
                                     value={
                                       unit.baths
                                     }
@@ -1235,7 +1237,7 @@ export default function PropertyListingForm({
                                         </option>
                                       )
                                     )}
-                                  </select>
+                                  </Select>
                                 </div>
 
                               </div>
@@ -1305,7 +1307,7 @@ export default function PropertyListingForm({
                                         className="group relative"
                                       >
 
-                                        <img
+                                        <SecureImage
                                           src={
                                             photo.url
                                           }
@@ -1999,7 +2001,7 @@ export default function PropertyListingForm({
                               className="flex flex-col gap-2 sm:flex-row"
                             >
 
-                              <select
+                              <Select
                                 value={
                                   link.platform
                                 }
@@ -2027,7 +2029,7 @@ export default function PropertyListingForm({
                                   )
                                 )}
 
-                              </select>
+                              </Select>
 
                               <input
                                 type="url"
@@ -2116,7 +2118,7 @@ export default function PropertyListingForm({
                               className="group relative"
                             >
 
-                              <img
+                              <SecureImage
                                 src={
                                   photo.url
                                 }
@@ -2355,7 +2357,7 @@ export default function PropertyListingForm({
                         House Size
                       </label>
 
-                      <select
+                      <Select
                         value={size}
                         onChange={(e) =>
                           setSize(
@@ -2380,7 +2382,7 @@ export default function PropertyListingForm({
                           )
                         )}
 
-                      </select>
+                      </Select>
 
                       {size ===
                         'Custom Size' && (
@@ -2412,7 +2414,7 @@ export default function PropertyListingForm({
                           Bedrooms
                         </label>
 
-                        <select
+                        <Select
                           value={beds}
                           onChange={(e) =>
                             setBeds(
@@ -2438,7 +2440,7 @@ export default function PropertyListingForm({
                             )
                           )}
 
-                        </select>
+                        </Select>
 
                       </div>
 
@@ -2448,7 +2450,7 @@ export default function PropertyListingForm({
                           Bathrooms
                         </label>
 
-                        <select
+                        <Select
                           value={baths}
                           onChange={(e) =>
                             setBaths(
@@ -2472,7 +2474,7 @@ export default function PropertyListingForm({
                             )
                           )}
 
-                        </select>
+                        </Select>
 
                       </div>
 

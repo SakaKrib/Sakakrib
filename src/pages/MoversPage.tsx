@@ -7,6 +7,10 @@ import {
   Star,
   Filter,
   X,
+  ArrowRight,
+  Clock,
+  ShieldCheck,
+  Route,
 } from 'lucide-react';
 
 import { useNav } from '@/context/NavContext';
@@ -19,16 +23,41 @@ import {
 } from '@/lib/utils';
 
 import { protectedGet } from '@/lib/djangoLegacyApi';
+import { protectedGet as djangoGet, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 
 import type { Mover } from '@/types/domain';
 
-interface MoverRating {
-  avg: number;
-  count: number;
-}
+import Select from '@/components/ui/Select';
+/** Mover as returned by /api/core/movers/ (rating is aggregated server-side). */
+type MoverRow = Mover & { rating_avg?: number | null; rating_count?: number; business_name?: string | null };
 
-type RatingsMap = Record<string, MoverRating>;
+type SortOrder = 'newest' | 'price_asc' | 'price_desc' | 'rating';
+
+const SORT_OPTIONS: Array<{ value: SortOrder; label: string }> = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'price_asc', label: 'Price: low to high' },
+  { value: 'price_desc', label: 'Price: high to low' },
+  { value: 'rating', label: 'Top rated' },
+];
+
+const RATING_OPTIONS = [
+  { value: '', label: 'Any rating' },
+  { value: '3', label: '3.0 & up' },
+  { value: '4', label: '4.0 & up' },
+  { value: '4.5', label: '4.5 & up' },
+];
+
+const formatTime = (value?: string | null): string => (value ? String(value).slice(0, 5) : '');
+
+function MoverAvatar({ photo, name }: { photo?: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = resolveDjangoMediaUrl(photo);
+  if (src && !failed) {
+    return <img src={src} alt={name} loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />;
+  }
+  return <Truck className="h-9 w-9 text-brand-600 dark:text-brand-300" aria-hidden="true" />;
+}
 
 const vehicleLabel = (type?: string | null): string => {
   if (!type) return 'Vehicle';
@@ -39,13 +68,18 @@ export default function MoversPage() {
   const { navigate } = useNav();
   const { event: marketplaceEvent } = useMarketplaceEvents();
   const [liveRefreshKey, setLiveRefreshKey] = useState(0);
-  const [movers, setMovers] = useState<Mover[]>([]);
-  const [ratingsMap, setRatingsMap] = useState<RatingsMap>({});
+  const [movers, setMovers] = useState<MoverRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [filterVehicle, setFilterVehicle] = useState('');
+  const [minRate, setMinRate] = useState('');
+  const [maxRate, setMaxRate] = useState('');
+  const [minRating, setMinRating] = useState('');
+  const [sort, setSort] = useState<SortOrder>('newest');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [debouncedRates, setDebouncedRates] = useState({ min: '', max: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [commissionRate, setCommissionRate] = useState<number | null>(null);
 
@@ -56,6 +90,15 @@ export default function MoversPage() {
     ) setLiveRefreshKey((key) => key + 1);
   }, [marketplaceEvent]);
 
+  // Typing in the search / price boxes should not fire a request per keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setDebouncedRates({ min: minRate.trim(), max: maxRate.trim() });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [search, minRate, maxRate]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -64,34 +107,25 @@ export default function MoversPage() {
       setError(null);
 
       try {
+        // Filtering, rating aggregation and sorting all happen on the server.
         const params = new URLSearchParams();
-        params.set('is_available', 'eq.true');
-        params.set('order', 'created_at.desc');
-
-        if (filterCity) params.set('operating_city', `eq.${filterCity}`);
-        if (filterVehicle) params.set('vehicle_type', `eq.${filterVehicle}`);
-
-        const trimmedSearch = search.trim();
-        if (trimmedSearch) {
-          params.set(
-            'or',
-            `(` +
-              `driver_full_name.ilike.*${trimmedSearch}*,` +
-              `operating_city.ilike.*${trimmedSearch}*` +
-              `)`
-          );
-        }
+        params.set('is_available', 'true');
+        params.set('ordering', sort);
+        if (filterCity) params.set('operating_city', filterCity);
+        if (filterVehicle) params.set('vehicle_type', filterVehicle);
+        if (debouncedSearch) params.set('search', debouncedSearch);
+        if (debouncedRates.min) params.set('min_rate', debouncedRates.min);
+        if (debouncedRates.max) params.set('max_rate', debouncedRates.max);
+        if (minRating) params.set('min_rating', minRating);
 
         const [moverData, platformSettings] = await Promise.all([
-          protectedGet<Mover[]>(`/rest/v1/movers?${params.toString()}`),
-          protectedGet<{ mover_commission_rate?: number | string }>('/rest/v1/platform_settings'),
+          djangoGet<MoverRow[]>(`/api/core/movers/?${params.toString()}`),
+          protectedGet<{ mover_commission_rate?: number | string }>('/rest/v1/platform_settings').catch(() => null),
         ]);
 
         if (cancelled) return;
 
-        const loadedMovers = Array.isArray(moverData) ? moverData : [];
-        setMovers(loadedMovers);
-        setRatingsMap({});
+        setMovers(Array.isArray(moverData) ? moverData : []);
 
         const configuredCommission = Number(platformSettings?.mover_commission_rate);
         setCommissionRate(
@@ -99,62 +133,31 @@ export default function MoversPage() {
             ? configuredCommission
             : null
         );
-
-        if (loadedMovers.length === 0) return;
-
-        const moverIds = loadedMovers.map((mover) => mover.id);
-        const reviewParams = new URLSearchParams();
-        reviewParams.set('select', 'mover_id,rating');
-        reviewParams.set('review_type', 'eq.mover');
-        reviewParams.set('mover_id', `in.(${moverIds.join(',')})`);
-
-        const reviews = await protectedGet<Array<{ mover_id: string; rating: number }>>(
-          `/rest/v1/reviews?${reviewParams.toString()}`
-        );
-
-        if (cancelled) return;
-
-        const map: RatingsMap = {};
-        if (Array.isArray(reviews)) {
-          for (const review of reviews) {
-            if (!review.mover_id || typeof review.rating !== 'number') continue;
-            if (!map[review.mover_id]) map[review.mover_id] = { avg: 0, count: 0 };
-            map[review.mover_id].avg += review.rating;
-            map[review.mover_id].count += 1;
-          }
-        }
-
-        for (const id of Object.keys(map)) {
-          if (map[id].count > 0) map[id].avg /= map[id].count;
-        }
-
-        setRatingsMap(map);
       } catch (requestError) {
         if (cancelled) return;
 
         console.error('Failed to load movers:', requestError);
         setMovers([]);
-        setRatingsMap({});
-
-        if (requestError instanceof Error) {
-          setError(requestError.message);
-        } else {
-          setError('Unable to load movers. Please try again.');
-        }
+        setError(requestError instanceof Error ? requestError.message : 'Unable to load movers. Please try again.');
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
 
-    fetchMovers();
+    void fetchMovers();
     return () => {
       cancelled = true;
     };
-  }, [search, filterCity, filterVehicle, liveRefreshKey]);
+  }, [debouncedSearch, debouncedRates, filterCity, filterVehicle, minRating, sort, liveRefreshKey]);
+
+  const activeFilterCount = [filterCity, filterVehicle, minRate, maxRate, minRating].filter(Boolean).length;
 
   const clearFilters = () => {
     setFilterCity('');
     setFilterVehicle('');
+    setMinRate('');
+    setMaxRate('');
+    setMinRating('');
   };
 
   return (
@@ -169,45 +172,58 @@ export default function MoversPage() {
         </p>
       </div>
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by name or city..."
+            placeholder="Search by name, business or city..."
             className="input-field pl-10"
             aria-label="Search movers"
           />
+        </div>
+
+        <div className="sm:w-56">
+          <Select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as SortOrder)}
+            className="input-field text-sm"
+            aria-label="Sort movers"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </Select>
         </div>
 
         <button
           type="button"
           onClick={() => setShowFilters((current) => !current)}
           className={cn(
-            'btn-secondary',
-            showFilters && 'border-brand-500 text-brand-600 dark:text-brand-400'
+            'btn-secondary relative',
+            (showFilters || activeFilterCount > 0) && 'border-brand-500 text-brand-600 dark:text-brand-400'
           )}
           aria-expanded={showFilters}
           aria-controls="mover-filters"
         >
           <Filter className="h-4 w-4" />
           Filters
+          {activeFilterCount > 0 && (
+            <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-[11px] font-bold text-white">
+              {activeFilterCount}
+            </span>
+          )}
         </button>
       </div>
 
       {showFilters && (
         <div id="mover-filters" className="card animate-slide-down mb-6 p-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label
-                htmlFor="mover-city-filter"
-                className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400"
-              >
-                City
-              </label>
-              <select
+              <label htmlFor="mover-city-filter" className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">City</label>
+              <Select
                 id="mover-city-filter"
                 value={filterCity}
                 onChange={(event) => setFilterCity(event.target.value)}
@@ -217,17 +233,12 @@ export default function MoversPage() {
                 {KENYAN_CITIES.map((city) => (
                   <option key={city} value={city}>{city}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
-              <label
-                htmlFor="mover-vehicle-filter"
-                className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400"
-              >
-                Vehicle Type
-              </label>
-              <select
+              <label htmlFor="mover-vehicle-filter" className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Vehicle Type</label>
+              <Select
                 id="mover-vehicle-filter"
                 value={filterVehicle}
                 onChange={(event) => setFilterVehicle(event.target.value)}
@@ -237,11 +248,52 @@ export default function MoversPage() {
                 {VEHICLE_TYPES.map((vehicle) => (
                   <option key={vehicle.value} value={vehicle.value}>{vehicle.label}</option>
                 ))}
-              </select>
+              </Select>
+            </div>
+
+            <div>
+              <label htmlFor="mover-rating-filter" className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Minimum Rating</label>
+              <Select
+                id="mover-rating-filter"
+                value={minRating}
+                onChange={(event) => setMinRating(event.target.value)}
+                className="input-field text-sm"
+              >
+                {RATING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400">Base Rate (KES)</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={minRate}
+                  onChange={(event) => setMinRate(event.target.value)}
+                  placeholder="Min"
+                  aria-label="Minimum base rate"
+                  className="input-field text-sm"
+                />
+                <span className="text-gray-400">–</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={maxRate}
+                  onChange={(event) => setMaxRate(event.target.value)}
+                  placeholder="Max"
+                  aria-label="Maximum base rate"
+                  className="input-field text-sm"
+                />
+              </div>
             </div>
           </div>
 
-          {(filterCity || filterVehicle) && (
+          {activeFilterCount > 0 && (
             <button
               type="button"
               onClick={clearFilters}
@@ -260,13 +312,19 @@ export default function MoversPage() {
             <p>{error}</p>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => setLiveRefreshKey((key) => key + 1)}
               className="shrink-0 font-medium underline"
             >
               Retry
             </button>
           </div>
         </div>
+      )}
+
+      {!loading && !error && movers.length > 0 && (
+        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+          {movers.length} {movers.length === 1 ? 'mover' : 'movers'} available
+        </p>
       )}
 
       {loading ? (
@@ -279,7 +337,7 @@ export default function MoversPage() {
           <p className="mt-4 text-gray-500 dark:text-gray-400">
             No movers found. Try adjusting your filters.
           </p>
-          {(search || filterCity || filterVehicle) && (
+          {(search || activeFilterCount > 0) && (
             <button
               type="button"
               onClick={() => {
@@ -288,85 +346,116 @@ export default function MoversPage() {
               }}
               className="btn-secondary mt-5"
             >
-              Clear Search
+              Clear Search & Filters
             </button>
           )}
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {movers.map((mover) => {
-            const rating = ratingsMap[mover.id];
             const baseRate = Number(mover.base_rate_kes);
             const ratePerKm = Number(mover.rate_per_km_kes);
             const hasBaseRate = Number.isFinite(baseRate) && baseRate > 0;
             const hasRatePerKm = Number.isFinite(ratePerKm) && ratePerKm > 0;
+            const ratingAvg = typeof mover.rating_avg === 'number' ? mover.rating_avg : null;
+            const ratingCount = mover.rating_count ?? 0;
+            const displayName = (mover.business_name || '').trim() || mover.driver_full_name || 'Mover';
+            const showDriver = Boolean((mover.business_name || '').trim() && mover.driver_full_name);
+            const hours = mover.start_time && mover.end_time ? `${formatTime(mover.start_time)} – ${formatTime(mover.end_time)}` : '';
+            const available = mover.is_available !== false;
 
             return (
               <button
                 key={mover.id}
                 type="button"
                 onClick={() => navigate('mover-detail', mover.id)}
-                className="card group overflow-hidden text-left transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-brand-950"
+                className="card group flex flex-col overflow-hidden text-left transition-all hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-brand-950"
               >
-                <div className="flex items-start gap-4 p-5">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent-400 to-accent-600 text-white shadow-md">
-                    <Truck className="h-8 w-8" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-base font-semibold text-gray-900 dark:text-white">
-                      {mover.driver_full_name}
-                    </h3>
-                    <p className="mt-1 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">
-                        {mover.operating_city}
-                        {mover.operating_county ? `, ${mover.operating_county}` : ''}
-                      </span>
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="badge bg-accent-50 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400">
-                        {vehicleLabel(mover.vehicle_type)}
-                      </span>
-                      {mover.number_plate && (
-                        <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">
-                          {mover.number_plate}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                <div className="relative h-20 bg-gradient-to-r from-brand-600 via-brand-500 to-btnblue-500">
+                  <span
+                    className={cn(
+                      'absolute right-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm',
+                      available ? 'bg-white/95 text-success-700' : 'bg-white/95 text-gray-500'
+                    )}
+                  >
+                    <span className={cn('h-1.5 w-1.5 rounded-full', available ? 'bg-success-500' : 'bg-gray-400')} />
+                    {available ? 'Available' : 'Unavailable'}
+                  </span>
                 </div>
 
-                <div className="border-t border-gray-200 px-5 py-3 dark:border-brand-800">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1 text-sm">
-                      {hasBaseRate ? (
-                        <div className="font-semibold text-brand-600 dark:text-brand-400">
-                          Base rate: {formatKES(baseRate)}
-                        </div>
-                      ) : (
-                        <div className="text-gray-400">Base rate on request</div>
-                      )}
+                <div className="relative px-5 pb-4">
+                  <div className="-mt-9 flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-brand-50 shadow-md dark:border-brand-900 dark:bg-brand-800">
+                    <MoverAvatar photo={mover.profile_photo_url} name={displayName} />
+                  </div>
 
-                      {hasRatePerKm ? (
-                        <div className="text-gray-600 dark:text-gray-300">
-                          Rate per km: {formatKES(ratePerKm)}
-                        </div>
-                      ) : (
-                        <div className="text-gray-400">Rate per km on request</div>
+                  <div className="mt-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="flex items-center gap-1.5 truncate text-base font-bold text-gray-900 dark:text-white">
+                        <span className="truncate">{displayName}</span>
+                        <ShieldCheck className="h-4 w-4 shrink-0 text-btnblue-500" aria-label="Verified mover" />
+                      </h3>
+                      {showDriver && (
+                        <p className="truncate text-xs text-gray-500 dark:text-gray-400">Driver: {mover.driver_full_name}</p>
                       )}
                     </div>
 
-                    {rating && rating.count > 0 && (
-                      <span className="flex shrink-0 items-center gap-1 text-sm">
-                        <Star className="h-4 w-4 fill-warning-500 text-warning-500" />
-                        <span className="font-semibold text-gray-900 dark:text-white">
-                          {rating.avg.toFixed(1)}
-                        </span>
-                        <span className="text-gray-400">({rating.count})</span>
+                    <span className="flex shrink-0 items-center gap-1 rounded-lg bg-warning-50 px-2 py-1 text-xs dark:bg-warning-700/20">
+                      <Star className={cn('h-3.5 w-3.5', ratingAvg !== null ? 'fill-warning-500 text-warning-500' : 'text-gray-300')} />
+                      {ratingAvg !== null ? (
+                        <>
+                          <span className="font-bold text-gray-900 dark:text-white">{ratingAvg.toFixed(1)}</span>
+                          <span className="text-gray-400">({ratingCount})</span>
+                        </>
+                      ) : (
+                        <span className="font-medium text-gray-500 dark:text-gray-400">New</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {mover.operating_city}
+                      {mover.operating_county ? `, ${mover.operating_county}` : ''}
+                    </span>
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
+                      <Truck className="mr-1 h-3 w-3" />
+                      {vehicleLabel(mover.vehicle_type)}
+                    </span>
+                    {hours && (
+                      <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">
+                        <Clock className="mr-1 h-3 w-3" />
+                        {hours}
                       </span>
                     )}
                   </div>
+                </div>
+
+                <div className="mt-auto flex items-end justify-between gap-3 border-t border-gray-200 bg-gray-50 px-5 py-3.5 dark:border-brand-800 dark:bg-brand-950/40">
+                  <div>
+                    {hasBaseRate ? (
+                      <>
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Starting from</p>
+                        <p className="text-lg font-bold leading-tight text-brand-600 dark:text-brand-400">{formatKES(baseRate)}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm font-medium text-gray-400">Rate on request</p>
+                    )}
+                    {hasRatePerKm && (
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                        <Route className="h-3 w-3" />
+                        + {formatKES(ratePerKm)} / km
+                      </p>
+                    )}
+                  </div>
+
+                  <span className="flex items-center gap-1 rounded-full bg-btnblue-500 px-3.5 py-2 text-sm font-semibold text-white transition-colors group-hover:bg-btnblue-600">
+                    View & Book
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
                 </div>
               </button>
             );

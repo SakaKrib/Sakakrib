@@ -30,10 +30,18 @@ ALLOWED_VIDEO_TYPES = {'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quickt
 ALLOWED_VIDEO_EXTENSIONS = {'.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime'}
 
 
+def _media_is_public(media):
+    """Photos of an approved, published, non-draft listing are public (the homepage shows them to anyone)."""
+    return Listing.objects.filter(id=media.listing_id, approval_status='approved', is_published=True, is_draft=False).exists()
+
+
 def _media_is_visible(request, media):
-    if is_admin(request.user) or str(media.user_id) == str(request.user.pk):
+    if _media_is_public(media):
         return True
-    return Listing.objects.filter(id=media.listing_id, approval_status='approved', is_published=True).exists()
+    user = request.user
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    return is_admin(user) or str(media.user_id) == str(user.pk)
 
 
 def _media_storage_path(media):
@@ -64,7 +72,7 @@ class ListingMediaView(APIView):
         if listing_id:
             queryset = queryset.filter(listing_id=listing_id)
         if not is_admin(request.user):
-            queryset = queryset.filter(Q(user_id=request.user.pk) | Q(listing_id__in=Listing.objects.filter(approval_status='approved', is_published=True).values_list('id', flat=True)))
+            queryset = queryset.filter(Q(user_id=request.user.pk) | Q(listing_id__in=Listing.objects.filter(approval_status='approved', is_published=True, is_draft=False).values_list('id', flat=True)))
         queryset = queryset.order_by('position', 'created_at')
         return Response(ListingMediaSerializer(queryset, many=True, context={'request': request}).data)
 
@@ -142,7 +150,7 @@ class ListingMediaDetailView(APIView):
         file_obj = default_storage.open(storage_path, 'rb')
         extension = storage_path.rsplit('.', 1)[-1].lower() if '.' in storage_path else ''
         content_type = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp', 'mp4': 'video/mp4', 'webm': 'video/webm', 'mov': 'video/quicktime'}.get(extension, 'application/octet-stream')
-        response = FileResponse(file_obj, content_type=content_type); response['Content-Disposition'] = 'inline'; response['Cache-Control'] = 'private, max-age=300'; return response
+        response = FileResponse(file_obj, content_type=content_type); response['Content-Disposition'] = 'inline'; response['Cache-Control'] = 'public, max-age=3600' if _media_is_public(media) else 'private, max-age=300'; return response
 
     def delete(self, request, media_id):
         media = ListingMedia.objects.filter(pk=media_id).first()
@@ -192,7 +200,12 @@ class ListingListView(APIView):
         if requested_user_id:
             if not is_admin(user) and str(requested_user_id) != str(user.pk): return Response({'error': 'You may only query your own listings.'}, status=status.HTTP_403_FORBIDDEN)
             queryset = queryset.filter(user_id=requested_user_id)
-        elif not is_admin(user): queryset = queryset.filter(Q(user_id=user.pk) | Q(approval_status='approved', is_published=True))
+        elif not is_admin(user):
+            # The public feed ("View all") shows approved, published, non-draft listings only. A landlord's own
+            # drafts and pending listings are reached with ?user_id=<own id> (dashboard / drafts).
+            queryset = queryset.filter(approval_status='approved', is_published=True, is_draft=False)
+        else:
+            queryset = queryset.filter(is_draft=False)
         queryset = self._apply_filters(queryset, request.query_params); total = queryset.count()
         try: limit = min(max(int(request.query_params.get('limit', 50)), 1), 100)
         except (TypeError, ValueError): return Response({'error': 'limit must be an integer.'}, status=400)

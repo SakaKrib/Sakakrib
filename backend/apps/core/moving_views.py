@@ -1,4 +1,6 @@
-from django.db.models import Q
+from decimal import Decimal, InvalidOperation
+
+from django.db.models import Avg, Count, Q
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -27,6 +29,7 @@ from .domain_bookings import (
     MoverScheduleEvent,
 )
 from .domain_platform import Mover
+from .domain_property import Review
 
 
 class ScopedListDetailView(APIView):
@@ -136,10 +139,16 @@ class MoverView(ScopedListDetailView):
                 return Response({"detail": "Not found."}, status=404)
             return Response(self.serialize(obj))
 
-        search = request.query_params.get("search", "").strip()
-        city = request.query_params.get("operating_city", "").strip()
-        vehicle_type = request.query_params.get("vehicle_type", "").strip()
-        is_available = request.query_params.get("is_available")
+        params = request.query_params
+        search = params.get("search", "").strip()
+        city = params.get("operating_city", "").strip()
+        vehicle_type = params.get("vehicle_type", "").strip()
+        is_available = params.get("is_available")
+
+        # The renter-facing list only shows approved movers. A mover still reaches their own
+        # profile through the detail endpoint; admins see everyone.
+        if not is_admin(request.user):
+            queryset = queryset.filter(approval_status="approved")
 
         if city:
             queryset = queryset.filter(operating_city__iexact=city)
@@ -153,13 +162,62 @@ class MoverView(ScopedListDetailView):
         if search:
             queryset = queryset.filter(
                 Q(driver_full_name__icontains=search)
+                | Q(business_name__icontains=search)
                 | Q(operating_city__icontains=search)
+                | Q(operating_county__icontains=search)
             )
 
-        return Response([
-            self.serialize(obj)
-            for obj in queryset.order_by("-created_at", "-id")
-        ])
+        # Price filters apply to the base rate (what the renter sees as "From KES ...").
+        for key, lookup in (("min_rate", "gte"), ("max_rate", "lte")):
+            raw = params.get(key, "").strip()
+            if not raw:
+                continue
+            try:
+                queryset = queryset.filter(**{f"base_rate_kes__{lookup}": Decimal(raw)})
+            except (InvalidOperation, ValueError):
+                return Response({"detail": f"{key} must be a number."}, status=400)
+
+        movers = list(queryset)
+
+        # One aggregate query for every mover's rating instead of one request per mover.
+        ratings = {
+            row["mover_id"]: row
+            for row in Review.objects.filter(
+                review_type="mover", mover_id__in=[mover.id for mover in movers],
+            ).values("mover_id").annotate(avg=Avg("rating"), count=Count("id"))
+        }
+
+        rows = []
+        for mover in movers:
+            data = self.serialize(mover)
+            rating = ratings.get(mover.id)
+            data["rating_avg"] = round(float(rating["avg"]), 2) if rating and rating["avg"] is not None else None
+            data["rating_count"] = int(rating["count"]) if rating else 0
+            rows.append(data)
+
+        min_rating = params.get("min_rating", "").strip()
+        if min_rating:
+            try:
+                floor = float(min_rating)
+            except ValueError:
+                return Response({"detail": "min_rating must be a number."}, status=400)
+            rows = [row for row in rows if (row["rating_avg"] or 0) >= floor]
+
+        def price(row):
+            value = row.get("base_rate_kes")
+            return float(value) if value not in (None, "") and float(value) > 0 else float("inf")
+
+        ordering = params.get("ordering", "newest")
+        if ordering == "price_asc":
+            rows.sort(key=price)
+        elif ordering == "price_desc":
+            rows.sort(key=lambda row: (price(row) == float("inf"), -price(row) if price(row) != float("inf") else 0))
+        elif ordering == "rating":
+            rows.sort(key=lambda row: (-(row["rating_avg"] or 0), -row["rating_count"]))
+        else:
+            rows.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+
+        return Response(rows)
 
 
 class MovingInvoiceView(ScopedListDetailView):

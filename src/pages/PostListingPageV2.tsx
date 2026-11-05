@@ -1,9 +1,10 @@
 import { isLocationSupported, requestPosition } from '@/lib/location';
 import { useEffect, useRef, useState } from 'react';
-import { FileText, CheckCircle2, Loader2, X } from 'lucide-react';
+import { FileText, CheckCircle2, Loader2, X, CreditCard, Building2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import PropertyListingForm from './PropertyListingForm';
+import ListingDraftsPanel from '@/components/listings/ListingDraftsPanel';
 import ListingPaymentModal from '@/modals/Listingpaymentmodal';
 import PMSPlanSelector, { type PMSBillingCycle, type PMSPlanName } from '@/components/PMS/PMSPlanSelector';
 import { protectedGet, protectedPost, protectedUpload } from '@/lib/djangoApi';
@@ -56,6 +57,16 @@ const isSupportedPhoto = async (file: File): Promise<boolean> => {
     return false;
   }
 };
+const localDraftKey = (userId: string) => `saka-krib-listing-draft:${userId}`;
+const readLocalDraft = (userId: string): { draftId: string | null; savedAt: number; data: Record<string, unknown> } | null => {
+  try {
+    const raw = localStorage.getItem(localDraftKey(userId));
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    if (!value || typeof value.savedAt !== 'number' || Date.now() - value.savedAt > 7 * 24 * 60 * 60 * 1000 || typeof value.data !== 'object') return null;
+    return value;
+  } catch { return null; }
+};
 const SOCIAL_PLATFORMS = ['WhatsApp', 'Instagram', 'Facebook', 'Website', 'TikTok'];
 
 export default function PostListingPageV2() {
@@ -82,6 +93,8 @@ export default function PostListingPageV2() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [step, setStep] = useState(0);
+  const [limitGateDismissed, setLimitGateDismissed] = useState(false);
+  const paymentPromptedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -241,6 +254,21 @@ export default function PostListingPageV2() {
     let cancelled = false;
     const loadDraft = async () => {
       if (!selectedPostListingDraftId || !profile?.id || !listingRole) {
+        const local = profile?.id ? readLocalDraft(profile.id) : null;
+        if (local && !local.draftId && !selectedPostListingDraftId) {
+          // An earlier session typed into a new listing but never reached the server: restore it.
+          const d = local.data;
+          setTitle(String(d.title || '')); setDescription(String(d.description || ''));
+          setCity(String(d.city || '')); setCounty(String(d.county || '')); setLocationSearch(String(d.location_search || ''));
+          setLatitude(d.latitude == null ? null : Number(d.latitude)); setLongitude(d.longitude == null ? null : Number(d.longitude));
+          setPropertyName(String(d.property_name || '')); setPropertyType(String(d.property_type || ''));
+          setPrice(d.price_kes == null ? '' : String(d.price_kes)); setListingType(d.listing_type === 'sale' ? 'sale' : 'rent');
+          setDepositRequired(Boolean(d.deposit_required)); setDepositAmount(d.deposit_amount == null ? '' : String(d.deposit_amount));
+          setSize(String(d.size || '')); setBeds(d.beds == null ? '1' : String(d.beds)); setBaths(d.baths == null ? '1' : String(d.baths));
+          setPhone(String(d.contact_phone || profile?.phone || '')); setEmail(String(d.contact_email || profile?.email || ''));
+          const ui = d.draft_ui as Record<string, unknown> | undefined;
+          if (ui) { setCustomCity(String(ui.customCity || '')); setCustomSize(String(ui.customSize || '')); if (Array.isArray(ui.units)) setUnits(ui.units as PropertyUnit[]); if (typeof ui.pmsMode === 'boolean') setPmsMode(Boolean(ui.pmsMode)); }
+        }
         draftHydrated.current = true;
         setDraftLoading(false);
         return;
@@ -312,6 +340,11 @@ export default function PostListingPageV2() {
   useEffect(() => {
     if (!profile?.id || !listingRole || !draftHydrated.current || draftLoading || success) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    // Do not create an empty draft just because the page was opened.
+    const hasContent = Boolean(title.trim() || propertyName.trim() || description.trim() || city || customCity.trim() || county.trim() || locationSearch.trim() || price || photos.length || video || units.length);
+    if (!draftIdRef.current && !hasContent) return;
+    // Local safety copy: survives a reload or a failed network save (cleared once published).
+    try { localStorage.setItem(localDraftKey(profile.id), JSON.stringify({ draftId: draftIdRef.current, savedAt: Date.now(), data: draftPayload() })); } catch { /* storage unavailable */ }
     saveTimer.current = setTimeout(async () => {
       try { await saveDraftNow(); } catch (err) { console.warn('Draft auto-save failed:', err); }
     }, 800);
@@ -328,6 +361,12 @@ export default function PostListingPageV2() {
       setPaymentCompleted(false);
     }
   }, [paymentRequired, pmsMode]);
+
+  // Reaching the Payment step opens the pay-or-subscribe window once, instead of leaving the user to find it.
+  useEffect(() => {
+    if (!paymentRequired || step !== paymentStepIndex) { paymentPromptedRef.current = false; return; }
+    if (!paymentCompleted && !paymentPromptedRef.current) { paymentPromptedRef.current = true; setPaymentModalOpen(true); }
+  }, [paymentRequired, step, paymentStepIndex, paymentCompleted]);
 
   const createUnit = (): PropertyUnit => ({ id: crypto.randomUUID(), unitNumber: '', unitType: '', rent: '', depositAmount: '', size: '', beds: '1', baths: '1', availability: 'available', description: '', photos: [] });
   const addUnit = () => setUnits((current) => [...current, createUnit()]);
@@ -532,6 +571,7 @@ export default function PostListingPageV2() {
     const result = await protectedPost<{ success?: boolean; listing_created?: boolean; listing_id?: string; detail?: string }>(`/api/listings/drafts/${encodeURIComponent(id)}/`, { payment_intent_id: paymentIntentId || undefined });
     if (!result?.success || !result.listing_id) throw new Error(result?.detail || 'The listing could not be finalized.');
     try { const response = await protectedPost<{ caption?: string }>(`/api/listings/${encodeURIComponent(result.listing_id)}/ai-caption/`, {}); if (response?.caption) setAiCaption(response.caption.trim()); } catch (aiError) { console.warn('AI caption generation failed:', aiError); }
+    try { if (profile?.id) localStorage.removeItem(localDraftKey(profile.id)); } catch { /* ignore */ }
     setSuccess(true);
   };
 
@@ -622,7 +662,40 @@ export default function PostListingPageV2() {
     }
     if (success) return <div className="mx-auto max-w-2xl px-2 py-12"><div className="card p-8 text-center animate-scale-in"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success-100 dark:bg-success-900/30"><CheckCircle2 className="h-10 w-10 text-success-600 dark:text-success-400" /></div><h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Listing Submitted for Review</h2><p className="mt-2 text-gray-500 dark:text-gray-400">Your property has been successfully submitted and is now awaiting approval. Once approved, it will be published and made visible to renters and buyers.</p><div className="mt-4 rounded-lg bg-success-50 px-2 py-3 dark:bg-success-900/20"><p className="text-sm font-medium text-success-700 dark:text-success-400">Your listing has been submitted successfully.</p></div><div className="mt-3 rounded-lg bg-brand-50 px-2 py-3 dark:bg-brand-900/20"><p className="text-sm font-medium text-brand-700 dark:text-brand-400">Approval Status: Pending Review</p></div>{aiCaption && <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-left dark:border-brand-700 dark:bg-brand-800/30"><p className="mb-2 text-xs font-semibold text-brand-600 dark:text-brand-400">AI-Generated Community Caption</p><p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{aiCaption}</p></div>}<div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center"><button onClick={() => navigate('listings')} className="btn-primary">View My Listings</button><button onClick={() => navigate('community')} className="btn-secondary">See Community</button></div></div></div>;
 
+    const formHasContent = Boolean(title.trim() || propertyName.trim() || description.trim() || city || customCity.trim() || county.trim() || locationSearch.trim() || price || photos.length || video || units.length);
+    const resumeDraft = (id: string) => navigate('post-listing', id);
+    const forgetLocalDraft = (id: string) => { try { if (profile?.id && readLocalDraft(profile.id)?.draftId === id) localStorage.removeItem(localDraftKey(profile.id)); } catch { /* ignore */ } };
+
+    // All free listings are used: tell the landlord up front and offer pay-per-listing or a subscription.
+    if (paymentRequired && !draftId && !formHasContent && !limitGateDismissed) {
+      return <>
+        <ListingDraftsPanel onContinue={resumeDraft} onDeleted={forgetLocalDraft} />
+        <div className="mx-auto w-full max-w-3xl px-2 py-8 sm:px-6">
+          <div className="card p-6 text-center sm:p-8">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-warning-100 dark:bg-warning-900/30"><CreditCard className="h-7 w-7 text-warning-600" /></div>
+            <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">You have used your {FREE_LISTING_LIMIT} free listings</h2>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">To post another property, choose how you would like to continue.</p>
+            <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 p-4 dark:border-brand-700">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Pay for this listing</p>
+                <p className="mt-1 text-2xl font-bold text-brand-600 dark:text-brand-400">{formatKES(LISTING_FEE_KES)}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">One listing. Fill in the details and pay by M-Pesa or PayPal at the last step. Your draft and photos are saved as you go.</p>
+                <button type="button" onClick={() => setLimitGateDismissed(true)} className="btn-primary mt-4 w-full">Continue and pay {formatKES(LISTING_FEE_KES)}</button>
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4 dark:border-brand-700">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white"><Building2 className="h-4 w-4" />Subscribe</p>
+                <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">Post many listings and unlock property management tools.</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Pick a monthly or annual plan. You can come back here and continue any saved draft.</p>
+                <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary mt-4 w-full">View subscription plans</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>;
+    }
+
     return <>
+      {!draftId && !formHasContent && <ListingDraftsPanel onContinue={resumeDraft} onDeleted={forgetLocalDraft} />}
       {pmsMode && <div className="mx-auto w-full max-w-5xl px-2 pt-6 sm:px-6 lg:px-8"><div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-700 dark:bg-brand-900/30"><div><p className="text-sm font-semibold text-brand-800 dark:text-brand-300">Property Management listing selected</p><p className="text-xs text-brand-700 dark:text-brand-300">{listingEntitlement?.subscriptionStatus === 'grace_period' ? 'Your PMS subscription is in a read-only grace period. Renew before adding a new property.' : listingEntitlement?.subscriptionStatus === 'active' && Number(listingEntitlement.subscriptionListingsRemaining ?? 0) <= 0 ? 'Your active PMS subscription has reached its listing capacity. Upgrade before adding another property.' : listingEntitlement?.pmsAccess && listingEntitlement.subscriptionStatus === 'active' ? 'This listing will use your active PMS subscription capacity.' : 'Complete the property, units, media and review steps, then choose your subscription.'}</p></div><button type="button" onClick={removePmsMode} className="inline-flex items-center gap-1 rounded-lg border border-brand-300 px-3 py-2 text-xs font-semibold text-brand-800 dark:border-brand-700 dark:text-brand-300"><X className="h-4 w-4" />Use standard listing</button></div></div>}
     <PropertyListingForm
       step={step} STEPS={STEPS} error={error} submitting={submitting} setStep={setStep} canProceed={canProceed} handleSubmit={handleSubmit}

@@ -7,11 +7,23 @@ import type { Listing } from '@/types/domain';
 import { djangoRequest, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 
+import Select from '@/components/ui/Select';
 interface HomepageStats {
   listings: number;
   landlords: number;
+  real_estates: number;
   movers: number;
   reviews: number;
+}
+
+interface RealEstateAgency {
+  id: string;
+  name: string;
+  city: string | null;
+  county: string | null;
+  is_agency: boolean;
+  listings_count: number;
+  cover_image_url: string | null;
 }
 
 interface FeaturedListingsResponse {
@@ -20,7 +32,7 @@ interface FeaturedListingsResponse {
 }
 
 interface ListingWithMedia extends Listing {
-  media?: Array<{ id?: string; url: string; media_type?: string; position?: number }>;
+  media?: Array<{ id?: string; url: string; media_type?: string; position?: number; unit_id?: string | null }>;
 }
 
 export default function HomePage() {
@@ -30,7 +42,8 @@ export default function HomePage() {
   const [searchType, setSearchType] = useState<'rent' | 'sale'>('rent');
   const [featured, setFeatured] = useState<ListingWithMedia[]>([]);
   const [mediaMap, setMediaMap] = useState<Record<string, string>>({});
-  const [stats, setStats] = useState<HomepageStats>({ listings: 0, landlords: 0, movers: 0, reviews: 0 });
+  const [stats, setStats] = useState<HomepageStats>({ listings: 0, landlords: 0, real_estates: 0, movers: 0, reviews: 0 });
+  const [agencies, setAgencies] = useState<RealEstateAgency[]>([]);
   const [error, setError] = useState("");
   const [liveRefreshKey, setLiveRefreshKey] = useState(0);
   const { event: marketplaceEvent } = useMarketplaceEvents();
@@ -55,6 +68,7 @@ export default function HomePage() {
         setStats({
           listings: homepageStats?.listings ?? 0,
           landlords: homepageStats?.landlords ?? 0,
+          real_estates: homepageStats?.real_estates ?? 0,
           movers: homepageStats?.movers ?? 0,
           reviews: homepageStats?.reviews ?? 0,
         });
@@ -63,6 +77,23 @@ export default function HomePage() {
       }
     };
     void fetchHomepageData();
+    return () => { mounted = false; };
+  }, [liveRefreshKey]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchAgencies = async () => {
+      try {
+        const response = await djangoRequest<{ results: RealEstateAgency[] }>('/api/core/real-estates/');
+        if (mounted) setAgencies(Array.isArray(response?.results) ? response.results : []);
+      } catch (err) {
+        if (mounted) {
+          console.error('Real estate agencies:', err);
+          setAgencies([]);
+        }
+      }
+    };
+    void fetchAgencies();
     return () => { mounted = false; };
   }, [liveRefreshKey]);
 
@@ -82,7 +113,7 @@ export default function HomePage() {
         const map: Record<string, string> = {};
         listings.forEach((listing) => {
           const firstPhoto = (listing.media || [])
-            .filter((item) => !item.media_type || item.media_type === 'photo')
+            .filter((item) => (!item.media_type || item.media_type === 'photo') && !item.unit_id)
             .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
           if (firstPhoto?.url) map[listing.id] = firstPhoto.url;
         });
@@ -114,7 +145,7 @@ export default function HomePage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><h1 className="text-lg font-bold text-gray-900 dark:text-white sm:text-xl">Saka Krib <span className="font-normal text-gray-400">|</span> <span className="font-normal text-gray-500 dark:text-gray-400">Find Your Next Home, Effortlessly</span></h1></div>
             <div className="flex flex-row gap-2 sm:items-center">
-              <div className="relative"><MapPin className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><select value={searchCity} onChange={(e) => setSearchCity(e.target.value)} className="h-9 rounded-full border border-gray-300 bg-gray-50 pl-8 pr-3 text-sm text-gray-700 dark:border-brand-700 dark:bg-brand-800 dark:text-gray-200"><option value="">All Cities</option>{KENYAN_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+              <div className="relative"><MapPin className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><Select value={searchCity} onChange={(e) => setSearchCity(e.target.value)} className="h-9 rounded-full border border-gray-300 bg-gray-50 pl-8 pr-3 text-sm text-gray-700 dark:border-brand-700 dark:bg-brand-800 dark:text-gray-200"><option value="">All Cities</option>{KENYAN_CITIES.map((c) => <option key={c} value={c}>{c}</option>)}</Select></div>
               <div className="flex gap-1">{(['rent', 'sale'] as const).map((t) => <button key={t} onClick={() => setSearchType(t)} className={cn('h-9 rounded-full border px-3 text-sm font-semibold transition-colors', searchType === t ? 'border-btnblue-500 bg-btnblue-500 text-white' : 'border-gray-300 bg-white text-gray-600 dark:border-brand-700 dark:bg-brand-800 dark:text-gray-400')}>{t === 'rent' ? 'Rent' : 'Buy'}</button>)}</div>
               <button onClick={handleSearch} className="btn-primary h-9 text-sm"><Search className="h-4 w-4" /> Search</button>
             </div>
@@ -126,7 +157,41 @@ export default function HomePage() {
         <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-bold text-gray-900 dark:text-white">Featured Listings</h2><button onClick={() => navigate('listings', undefined, { city: searchCity, listingType: searchType })} className="flex items-center gap-1 text-sm font-medium text-brand-600 dark:text-brand-400">View All<ArrowRight className="h-3.5 w-3.5" /></button></div>
         {visibleFeatured.length === 0 ? <div className="py-12 text-center"><Home className="mx-auto h-10 w-10 text-gray-300" /><p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{featured.length === 0 ? 'No listings yet. Be the first to post!' : 'No featured listings match these filters. Select Search to view all matching properties.'}</p></div> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{visibleFeatured.map((listing) => <button key={listing.id} onClick={() => navigate('listing-detail', listing.id)} className="card group overflow-hidden text-left transition-all hover:shadow-md"><div className="relative h-40 overflow-hidden bg-gray-200 dark:bg-brand-800">{mediaMap[listing.id] ? <img src={resolveDjangoMediaUrl(mediaMap[listing.id])} alt={listing.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" /> : <div className="flex h-full items-center justify-center"><Home className="h-10 w-10 text-gray-400" /></div>}<div className="absolute right-2 top-2 rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white">{listing.listing_type === 'rent' ? 'Rent' : 'Sale'}</div></div><div className="p-3"><h3 className="truncate text-sm font-semibold text-gray-900 dark:text-white">{listing.title}</h3><p className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3 w-3" />{listing.city}, {listing.county}</p><p className="mt-1.5 text-base font-bold text-brand-600 dark:text-brand-400">{formatKES(listing.price_kes)}{listing.listing_type === 'rent' && <span className="text-xs font-normal text-gray-400">/mo</span>}</p><div className="mt-1.5 flex gap-2 text-xs text-gray-500 dark:text-gray-400"><span>{listing.beds} bed</span><span>{listing.baths} bath</span><span className="truncate">{listing.size}</span></div></div></button>)}</div>}
       </section>
-      <section className="border-y border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-900"><div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8"><div className="grid grid-cols-2 gap-4 py-6 sm:grid-cols-4">{[{ icon: Building2, label: 'Vendor Listings', value: stats.listings.toLocaleString() }, { icon: ShieldCheck, label: 'Verified Landlords', value: stats.landlords.toLocaleString() }, { icon: Truck, label: 'Professional Movers', value: stats.movers.toLocaleString() }, { icon: Star, label: 'User Reviews', value: stats.reviews.toLocaleString() }].map((stat, i) => <div key={i} className="text-center"><div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-800/50"><stat.icon className="h-5 w-5 text-brand-600 dark:text-brand-400" /></div><p className="mt-1.5 text-xl font-bold text-gray-900 dark:text-white">{stat.value}</p><p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p></div>)}</div></div></section>
+      {agencies.length > 0 && (
+        <section className="mx-auto max-w-7xl px-2 pb-6 sm:px-6 lg:px-8">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">Real Estate Agencies</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Verified agencies and agents with listings on Saka Krib</p>
+            </div>
+            <button onClick={() => navigate('listings')} className="flex items-center gap-1 text-sm font-medium text-brand-600 dark:text-brand-400">Browse listings<ArrowRight className="h-3.5 w-3.5" /></button>
+          </div>
+          <div className="-mx-2 flex snap-x gap-4 overflow-x-auto px-2 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3 xl:grid-cols-4">
+            {agencies.map((agency) => (
+              <button
+                key={agency.id}
+                type="button"
+                onClick={() => navigate('listings')}
+                className="card group w-64 shrink-0 snap-start overflow-hidden text-left transition-all hover:shadow-lg sm:w-auto"
+              >
+                <div className="relative h-28 overflow-hidden bg-gradient-to-br from-brand-600 to-brand-800">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-30"><Building2 className="h-12 w-12 text-white" /></div>
+                  {agency.cover_image_url ? (
+                    <img src={resolveDjangoMediaUrl(agency.cover_image_url)} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105" />
+                  ) : null}
+                  <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-brand-700 shadow-sm dark:bg-brand-950/80 dark:text-brand-300"><ShieldCheck className="h-3 w-3" />Verified</span>
+                </div>
+                <div className="p-3">
+                  <h3 className="truncate text-sm font-semibold text-gray-900 dark:text-white">{agency.name}</h3>
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3 w-3 shrink-0" />{[agency.city, agency.county].filter(Boolean).join(', ') || 'Kenya'}</p>
+                  <p className="mt-2 text-xs font-medium text-brand-600 dark:text-brand-400">{agency.listings_count} {agency.listings_count === 1 ? 'listing' : 'listings'}{agency.is_agency ? ' · Agency' : ''}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      <section className="border-y border-gray-200 bg-white dark:border-brand-800 dark:bg-brand-900"><div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8"><div className="grid grid-cols-2 gap-4 py-6 sm:grid-cols-3 lg:grid-cols-5">{[{ icon: Building2, label: 'Vendor Listings', value: stats.listings.toLocaleString() }, { icon: ShieldCheck, label: 'Verified Landlords', value: stats.landlords.toLocaleString() }, { icon: Building2, label: 'Verified Real Estates', value: stats.real_estates.toLocaleString() }, { icon: Truck, label: 'Professional Movers', value: stats.movers.toLocaleString() }, { icon: Star, label: 'User Reviews', value: stats.reviews.toLocaleString() }].map((stat, i) => <div key={i} className="text-center"><div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-800/50"><stat.icon className="h-5 w-5 text-brand-600 dark:text-brand-400" /></div><p className="mt-1.5 text-xl font-bold text-gray-900 dark:text-white">{stat.value}</p><p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p></div>)}</div></div></section>
       {!isAdmin && <section className="mx-auto max-w-7xl px-2 py-8 lg:px-8"><h2 className="text-center text-xl font-bold text-gray-900 dark:text-white">How Saka Krib Works For You</h2><div className="mt-6 grid gap-4 sm:grid-cols-3">{[{ icon: Home, title: 'For Renters', desc: 'Browse verified homes, contact landlords, and book movers.', color: 'from-brand-500 to-brand-700', action: 'Browse Homes', view: 'listings' as const }, { icon: Building2, title: 'For Landlords', desc: 'Post your property and reach thousands of renters.', color: 'from-success-500 to-success-700', action: 'Post a Listing', view: 'post-listing' as const }, { icon: Truck, title: 'For Movers', desc: 'Register your vehicle and accept moving jobs nationwide.', color: 'from-accent-500 to-accent-700', action: 'Become a Mover', view: 'register-mover' as const }].map((card, i) => <div key={i} className="card group p-5 transition-all hover:shadow-lg"><div className={cn('flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md', card.color)}><card.icon className="h-6 w-6" /></div><h3 className="mt-3 text-base font-bold text-gray-900 dark:text-white">{card.title}</h3><p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{card.desc}</p><button onClick={() => { if (loading) return; if (!session || !profile) { setAuthModalOpen(true); return; } if (card.view === 'listings') { navigate('listings'); return; } if (card.view === 'register-mover' && profile.role === 'mover') { setError('You are already registered as a mover.'); return; } if (card.view === 'register-mover' && profile.role === 'landlord') { setError('Landlords cannot register as movers. Please select a different role to find movers.'); return; } if (card.view === 'register-mover' && profile.role === 'renter') { setRoleModalOpen(true); return; } if (card.view === 'post-listing' && profile.role === 'renter') { setRoleModalOpen(true); return; } if (card.view === 'post-listing' && (profile.role === 'landlord' || profile.role === 'real_estate')) { navigate('post-listing'); return; } if (card.view === 'post-listing' && profile.role === 'mover') { setError('Movers cannot post listings. Please select a different role to post a listing.'); return; } setRoleModalOpen(true); navigate('kyc-verify'); }} className="mt-3 flex items-center gap-1 text-sm font-semibold text-brand-600 transition-colors hover:text-brand-700 dark:text-brand-400">{card.action} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></button></div>)}</div></section>}
       {!isAdmin && <section className="mx-auto max-w-7xl px-2 pb-8 sm:px-6 lg:px-8"><div className="grid gap-4 sm:grid-cols-3">{[{ icon: ShieldCheck, title: 'Verified & Secure', desc: 'All landlords and movers undergo KYC verification.' }, { icon: TrendingUp, title: 'Free to Start', desc: '3 free listings for landlords. Browse free for renters.' }, { icon: Users, title: 'Community Feed', desc: 'LinkedIn-style feed with AI-generated captions.' }].map((item, i) => <div key={i} className="card p-5"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-800/50"><item.icon className="h-5 w-5 text-brand-600 dark:text-brand-400" /></div><h3 className="mt-3 text-base font-bold text-gray-900 dark:text-white">{item.title}</h3><p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{item.desc}</p></div>)}</div></section>}
     </div>
