@@ -63,5 +63,7 @@ urlpatterns = [
     path('paypal/approve/', PayPalSubscriptionApproveView.as_view(), name='paypal-subscription-approve'),
     path('paypal/upgrade/confirm/', PayPalSubscriptionUpgradeConfirmView.as_view(), name='paypal-subscription-upgrade-confirm'),
     path('callbacks/mpesa/', MpesaSubscriptionCallbackView.as_view(), name='mpesa-subscription-callback'),
+    # Keep the documented legacy callback URL working as well as the canonical URL.
+    path('callbacks/paypal/', PayPalSubscriptionWebhookView.as_view(), name='paypal-subscription-webhook-legacy'),
     path('paypal/webhook/', PayPalSubscriptionWebhookView.as_view(), name='paypal-subscription-webhook'),
 ]
