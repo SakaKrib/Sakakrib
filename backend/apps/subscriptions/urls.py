@@ -23,6 +23,7 @@ from .views import (
     MySubscriptionView,
     PMSListingMembershipView,
     PayPalSubscriptionApproveView,
+    PayPalSubscriptionUpgradeConfirmView,
     PayPalSubscriptionReturnStatusView,
     PayPalSubscriptionWebhookView,
     SubscriptionCheckoutView,
@@ -60,6 +61,7 @@ urlpatterns = [
     path('upgrade/', SubscriptionUpgradeView.as_view(), name='subscription-upgrade'),
     path('paypal/return-status/', PayPalSubscriptionReturnStatusView.as_view(), name='paypal-subscription-return-status'),
     path('paypal/approve/', PayPalSubscriptionApproveView.as_view(), name='paypal-subscription-approve'),
+    path('paypal/upgrade/confirm/', PayPalSubscriptionUpgradeConfirmView.as_view(), name='paypal-subscription-upgrade-confirm'),
     path('callbacks/mpesa/', MpesaSubscriptionCallbackView.as_view(), name='mpesa-subscription-callback'),
     path('paypal/webhook/', PayPalSubscriptionWebhookView.as_view(), name='paypal-subscription-webhook'),
 ]
