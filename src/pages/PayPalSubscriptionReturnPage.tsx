@@ -5,7 +5,6 @@ import { useNav } from '@/context/NavContext';
 import { usePaymentStatusSocket, type PaymentSocketStatus } from '@/lib/usePaymentStatusSocket';
 
 interface InvoiceStatusResponse { id?: string; invoice_id?: string; status: string; result_description?: string | null; listing_id?: string | null; }
-interface UpgradeConfirmResponse { success?: boolean; status?: string; detail?: string; target_plan_name?: string; }
 
 export default function PayPalSubscriptionReturnPage() {
   const { navigate } = useNav();
@@ -15,25 +14,29 @@ export default function PayPalSubscriptionReturnPage() {
   const returnStateToken = params.get('state');
   const [state, setState] = useState<'waiting' | 'success' | 'failed'>('waiting');
   const [message, setMessage] = useState('We are securely confirming your PayPal payment. Please keep this page open.');
-  const { event, connected, connectionError } = usePaymentStatusSocket(invoiceId);
+  // Signed PayPal return URLs are deliberately polled over HTTP. Do not open
+  // an authenticated WebSocket from the external-browser handoff: that browser
+  // may not share the app's HttpOnly API cookies and would be rejected at once.
+  const { event, connected, connectionError } = usePaymentStatusSocket(returnStateToken ? null : invoiceId);
 
   // PayPal may reopen the app through its HTTPS return URL instead of
   // invoking the SDK's in-WebView onApprove callback. Bind the returned
   // subscription ID to the invoice in that case; the webhook remains the
   // only authority that marks the invoice PAID.
   useEffect(() => {
-    if (!invoiceId || !paypalSubscriptionId) return;
+    if (!invoiceId || !paypalSubscriptionId || !returnStateToken) return;
     let cancelled = false;
     void protectedPost('/api/subscriptions/paypal/approve/', {
       invoice_id: invoiceId,
       paypal_subscription_id: paypalSubscriptionId,
+      state: returnStateToken,
     }).catch((error) => {
       if (!cancelled) {
         console.warn('Unable to register PayPal return approval:', error);
       }
     });
     return () => { cancelled = true; };
-  }, [invoiceId, paypalSubscriptionId]);
+  }, [invoiceId, paypalSubscriptionId, returnStateToken]);
 
   useEffect(() => {
     if (!event || event.type !== 'payment_status') return;
@@ -57,17 +60,6 @@ export default function PayPalSubscriptionReturnPage() {
     }
     let cancelled = false;
     const checkStatus = async () => {
-      try {
-        const upgrade = await protectedPost<UpgradeConfirmResponse>('/api/subscriptions/upgrade/', { provider: 'paypal', action: 'confirm', invoice_id: invoiceId });
-        if (cancelled) return;
-        if (upgrade?.success && upgrade.status === 'UPGRADED') {
-          setState('success');
-          setMessage(upgrade.target_plan_name ? `Your PayPal subscription has been upgraded to ${upgrade.target_plan_name}. The new recurring price applies from the next billing cycle.` : 'Your PayPal subscription plan has been upgraded successfully.');
-          return;
-        }
-      } catch {
-        // Normal PayPal subscription creation invoices are not upgrade invoices.
-      }
       try {
         const invoice = returnStateToken
           ? await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/paypal/return-status/?state=${encodeURIComponent(returnStateToken)}`)
@@ -103,7 +95,7 @@ export default function PayPalSubscriptionReturnPage() {
         {state === 'failed' && <XCircle className="mx-auto h-14 w-14 text-error-600" />}
         <h1 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">{state === 'waiting' ? 'Confirming your payment' : state === 'success' ? 'Payment successful' : 'Payment unsuccessful'}</h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
-        {state === 'waiting' && <div className="mx-auto mt-6 max-w-sm rounded-xl bg-gray-50 p-4 text-left text-xs text-gray-600 dark:bg-gray-800/70 dark:text-gray-300"><p className="font-semibold text-gray-800 dark:text-white">Secure confirmation in progress</p><p className="mt-1">PayPal is sending the payment result to SakaKrib. We will update this page automatically.</p><p className="mt-2">Live connection: {connected ? 'connected' : 'reconnecting…'}</p>{connectionError && <p className="mt-1 text-amber-600 dark:text-amber-400">{connectionError}</p>}</div>}
+        {state === 'waiting' && <div className="mx-auto mt-6 max-w-sm rounded-xl bg-gray-50 p-4 text-left text-xs text-gray-600 dark:bg-gray-800/70 dark:text-gray-300"><p className="font-semibold text-gray-800 dark:text-white">Secure confirmation in progress</p><p className="mt-1">PayPal is sending the payment result to SakaKrib. We will update this page automatically.</p><p className="mt-2">Live connection: {returnStateToken ? 'secure signed status polling active' : connected ? 'connected' : 'reconnecting…'}</p>{!returnStateToken && connectionError && <p className="mt-1 text-amber-600 dark:text-amber-400">{connectionError}</p>}</div>}
         {state === 'success' && <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">Go to PMS Management Dashboard</button>}
         {state === 'failed' && (
           <button
