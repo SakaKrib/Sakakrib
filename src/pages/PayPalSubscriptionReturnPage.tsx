@@ -122,11 +122,11 @@ export default function PayPalSubscriptionReturnPage() {
         {state === 'failed' && (
           <button
             type="button"
-            onClick={() => listingId ? navigate('post-listing', listingId) : navigate('subscription-plans')}
+            onClick={() => navigate('subscription-plans')}
             className="btn-primary mt-7 inline-flex items-center gap-2"
           >
             <RefreshCw className="h-4 w-4" />
-            {listingId ? 'Continue Editing Listing' : 'Back to Plans'}
+            Back to Plans
           </button>
         )}
       </div>
