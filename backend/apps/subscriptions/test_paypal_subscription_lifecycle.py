@@ -148,6 +148,36 @@ class PayPalSubscriptionLifecycleTests(TestCase):
         self.assertEqual(invoice.provider_transaction_id, "SALE-PENDING")
         self.assertEqual(subscription.status, "ACTIVE")
 
+    def test_preapproval_cancellation_closes_pending_invoice_and_publishes_status(self):
+        profile = self.make_profile()
+        plan = self.make_plan()
+        subscription = self.make_subscription(
+            profile,
+            plan,
+            status="PENDING_PAYMENT",
+            paypal_status="APPROVAL_PENDING",
+            auto_renew=False,
+        )
+        invoice = self.make_invoice(subscription)
+        payload = {
+            "id": "PAYPAL-EVENT-CANCEL-PENDING",
+            "event_type": "BILLING.SUBSCRIPTION.CANCELLED",
+            "summary": "Buyer cancelled checkout",
+            "resource": {"id": subscription.paypal_subscription_id},
+        }
+
+        with patch("apps.subscriptions.paypal_subscription_services.publish_payment_status") as publish:
+            with self.captureOnCommitCallbacks(execute=True):
+                result = process_paypal_subscription_webhook(payload)
+
+        invoice.refresh_from_db()
+        subscription.refresh_from_db()
+        self.assertEqual(result["status"], "CANCELLED")
+        self.assertEqual(invoice.status, "CANCELLED")
+        self.assertEqual(invoice.webhook_event_id, "PAYPAL-EVENT-CANCEL-PENDING")
+        self.assertEqual(subscription.status, "CANCELLED")
+        publish.assert_called_once()
+
     def test_same_paypal_webhook_event_is_idempotent(self):
         profile = self.make_profile()
         plan = self.make_plan()
