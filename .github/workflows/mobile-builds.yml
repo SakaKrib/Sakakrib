@@ -175,7 +175,7 @@ jobs:
 
           signing = """
               sakakrib {
-                  storeFile file("$GITHUB_WORKSPACE/android/keystores/sakakrib-upload.jks")
+                  storeFile file(System.getenv("GITHUB_WORKSPACE") + "/android/keystores/sakakrib-upload.jks")
                   storePassword System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
                   keyAlias System.getenv("ANDROID_SIGNING_KEY_ALIAS")
                   keyPassword System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
