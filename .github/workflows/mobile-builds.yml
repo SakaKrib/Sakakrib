@@ -155,6 +155,7 @@ jobs:
           ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
           ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
+          echo "ANDROID_STABLE_SIGNING_CONFIGURED=false" >> "$GITHUB_ENV"
           if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ] || [ -z "$ANDROID_SIGNING_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_SIGNING_KEY_ALIAS" ] || [ -z "$ANDROID_SIGNING_KEY_PASSWORD" ]; then
             echo "::warning::Stable Android signing is not configured. This build will use the temporary GitHub runner debug certificate; its fingerprint must NOT be used for permanent App Links verification."
             exit 0
@@ -201,6 +202,7 @@ jobs:
           gradle_file.write_text(content, encoding="utf-8")
           PY
 
+          echo "ANDROID_STABLE_SIGNING_CONFIGURED=true" >> "$GITHUB_ENV"
           echo "Stable Android signing configuration installed."
 
       - name: Declare Android location permissions
@@ -291,8 +293,10 @@ jobs:
           fi
           printf '%s\n' "$FINGERPRINT" > "$RUNNER_TEMP/android-app-sha256-fingerprint.txt"
           echo "APK SHA-256 fingerprint: $FINGERPRINT"
-          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ]; then
+          if [ "$ANDROID_STABLE_SIGNING_CONFIGURED" != "true" ]; then
             echo "::warning::This is an ephemeral debug fingerprint. Do not publish it in assetlinks.json."
+          else
+            echo "Stable signing certificate fingerprint recorded."
           fi
 
       - name: Upload Android APK
