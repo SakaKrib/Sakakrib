@@ -1,7 +1,9 @@
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
+
+from .payment_services import _paypal_frontend_urls
 
 from .constants import FREE_LISTING_LIMIT, INDIVIDUAL_LISTING_PRICE_KES, LANDLORD_PLANS, REAL_ESTATE_PLANS
 from .services import get_pms_access, get_subscription_access
@@ -43,3 +45,40 @@ class SubscriptionAccessLogicTests(SimpleTestCase):
         result = get_subscription_access(self.make_profile())
         self.assertTrue(result['authorized'])
         self.assertTrue(result['can_start_listing'])
+
+class PayPalFrontendUrlTests(SimpleTestCase):
+    @override_settings(
+        SAKAKRIB_PUBLIC_FRONTEND_URL='https://nonvalued-alberta-overexpectantly.ngrok-free.dev',
+        CORS_ALLOWED_ORIGINS=['https://localhost'],
+    )
+    def test_public_frontend_overrides_capacitor_request_origin(self):
+        return_url, cancel_url = _paypal_frontend_urls(
+            'https://localhost', 'invoice-123'
+        )
+
+        expected_origin = 'https://nonvalued-alberta-overexpectantly.ngrok-free.dev'
+        self.assertEqual(
+            return_url,
+            f'{expected_origin}/paypal/subscription/return?invoice_id=invoice-123',
+        )
+        self.assertEqual(
+            cancel_url,
+            f'{expected_origin}/paypal/subscription/cancel?invoice_id=invoice-123',
+        )
+
+    @override_settings(SAKAKRIB_PUBLIC_FRONTEND_URL='http://example.test')
+    def test_public_frontend_rejects_non_https_url(self):
+        with self.assertRaisesMessage(ValueError, 'must be an HTTPS origin'):
+            _paypal_frontend_urls('https://localhost', 'invoice-123')
+
+    @override_settings(
+        SAKAKRIB_PUBLIC_FRONTEND_URL='',
+        CORS_ALLOWED_ORIGINS=['https://localhost'],
+    )
+    def test_allowed_request_origin_remains_fallback_without_public_url(self):
+        return_url, cancel_url = _paypal_frontend_urls(
+            'https://localhost', 'invoice-123'
+        )
+
+        self.assertTrue(return_url.startswith('https://localhost/'))
+        self.assertTrue(cancel_url.startswith('https://localhost/'))
