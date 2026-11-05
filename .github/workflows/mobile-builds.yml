@@ -42,10 +42,20 @@ jobs:
         env:
           VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
           VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || '' }}
+          VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
+          VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
           VITE_FIREBASE_PUSH_ENABLED: 'false'
         run: |
           test -n "$VITE_DJANGO_API_URL"
+          if [ -z "$VITE_PAYPAL_CLIENT_ID" ]; then
+            echo "::error::VITE_PAYPAL_CLIENT_ID is missing. Add it as a GitHub Actions variable or secret before building mobile apps."
+            exit 1
+          fi
           npm run build
+          if ! grep -R -F -- "$VITE_PAYPAL_CLIENT_ID" dist/assets/ >/dev/null; then
+            echo "::error::The PayPal client ID was not embedded in the Vite build."
+            exit 1
+          fi
           if ! grep -R -F "$VITE_DJANGO_API_URL" dist/assets/; then
             echo "::error::The primary Django API URL was not embedded in the Vite build."
             exit 1
@@ -164,8 +174,19 @@ jobs:
         env:
           VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
           VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || '' }}
+          VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
+          VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
           VITE_FIREBASE_PUSH_ENABLED: 'false'
-        run: npm run build
+        run: |
+          if [ -z "$VITE_PAYPAL_CLIENT_ID" ]; then
+            echo "::error::VITE_PAYPAL_CLIENT_ID is missing. Add it as a GitHub Actions variable or secret before building mobile apps."
+            exit 1
+          fi
+          npm run build
+          if ! grep -R -F -- "$VITE_PAYPAL_CLIENT_ID" dist/assets/ >/dev/null; then
+            echo "::error::The PayPal client ID was not embedded in the Vite build."
+            exit 1
+          fi
 
       - name: Ensure iOS project exists
         run: |
