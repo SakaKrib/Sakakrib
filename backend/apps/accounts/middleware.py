@@ -46,5 +46,8 @@ class CapacitorCookiePolicyMiddleware:
                 if cookie is not None:
                     cookie["secure"] = True
                     cookie["samesite"] = "None"
+                    if name in {settings.JWT_ACCESS_COOKIE, settings.JWT_REFRESH_COOKIE}:
+                        cookie["httponly"] = True
+                    # Do not set Domain: cookies remain scoped to the API host.
 
         return response
