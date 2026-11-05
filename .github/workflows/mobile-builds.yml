@@ -170,27 +170,34 @@ jobs:
 
           gradle_file = Path("android/app/build.gradle")
           content = gradle_file.read_text(encoding="utf-8")
-          if "signingConfigs {" not in content or "buildTypes {" not in content:
-              raise SystemExit("Unexpected Capacitor Gradle template; refusing to patch signing configuration.")
+          if "buildTypes {" not in content:
+              raise SystemExit("Unexpected Capacitor Gradle template: buildTypes block not found.")
 
           signing = """
               sakakrib {
-                  storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                  storeFile file("$GITHUB_WORKSPACE/android/keystores/sakakrib-upload.jks")
                   storePassword System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
                   keyAlias System.getenv("ANDROID_SIGNING_KEY_ALIAS")
                   keyPassword System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
               }
           """
-          content = content.replace(
-              "signingConfigs {",
-              "signingConfigs {\n" + signing,
-              1,
-          )
-          content = content.replace(
-              "buildTypes {",
-              'buildTypes {\n        debug { signingConfig signingConfigs.sakakrib }',
-              1,
-          )
+          if "signingConfigs {" in content:
+              content = content.replace("signingConfigs {", "signingConfigs {\n" + signing, 1)
+          else:
+              content = content.replace("buildTypes {", "signingConfigs {\n" + signing + "\n        }\n\n        buildTypes {", 1)
+
+          if "debug {" in content:
+              content = content.replace(
+                  "debug {",
+                  "debug { signingConfig signingConfigs.sakakrib",
+                  1,
+              )
+          else:
+              content = content.replace(
+                  "buildTypes {",
+                  "buildTypes {\n        debug { signingConfig signingConfigs.sakakrib }",
+                  1,
+              )
           gradle_file.write_text(content, encoding="utf-8")
           PY
 
@@ -252,6 +259,10 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
+        env:
+          ANDROID_SIGNING_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
@@ -267,6 +278,8 @@ jobs:
 
       - name: Record Android APK signing certificate fingerprint
         working-directory: android
+        env:
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
         run: |
           AAPT="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$AAPT"
