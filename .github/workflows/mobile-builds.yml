@@ -40,8 +40,8 @@ jobs:
 
       - name: Build React app
         env:
-          VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://nonvalued-alberta-overexpectantly.ngrok-free.dev' }}
-          VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || '' }}
           VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
           VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
           VITE_FIREBASE_PUSH_ENABLED: 'false'
@@ -172,8 +172,8 @@ jobs:
 
       - name: Build React app
         env:
-          VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://nonvalued-alberta-overexpectantly.ngrok-free.dev' }}
-          VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_DJANGO_API_URL: ${{ vars.VITE_DJANGO_API_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_DJANGO_API_FALLBACK_URL: ${{ vars.VITE_DJANGO_API_FALLBACK_URL || '' }}
           VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
           VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
           VITE_FIREBASE_PUSH_ENABLED: 'false'
