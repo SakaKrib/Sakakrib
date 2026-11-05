@@ -14,6 +14,7 @@ export default function PayPalSubscriptionReturnPage() {
   const returnStateToken = params.get('state');
   const [state, setState] = useState<'waiting' | 'success' | 'failed'>('waiting');
   const [message, setMessage] = useState('We are securely confirming your PayPal payment. Please keep this page open.');
+  const [listingId, setListingId] = useState<string | null>(null);
   // Signed PayPal return URLs are deliberately polled over HTTP. Do not open
   // an authenticated WebSocket from the external-browser handoff: that browser
   // may not share the app's HttpOnly API cookies and would be rejected at once.
@@ -40,12 +41,9 @@ export default function PayPalSubscriptionReturnPage() {
 
   useEffect(() => {
     if (!event || event.type !== 'payment_status') return;
-    if (event.status === 'PAID') {
+    if (event.status === 'PAID' || event.status === 'UPGRADED') {
       setState('success');
       setMessage(event.message || 'Your payment has been confirmed and your subscription is active.');
-    } else if (event.status === 'UPGRADED') {
-      setState('success');
-      setMessage(event.message || 'Your PayPal subscription plan has been upgraded successfully.');
     } else if (event.status === 'FAILED' || event.status === 'CANCELLED' || event.status === 'REFUNDED') {
       setState('failed');
       setMessage(event.message || 'We could not confirm your PayPal payment.');
@@ -65,6 +63,7 @@ export default function PayPalSubscriptionReturnPage() {
           ? await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/paypal/return-status/?state=${encodeURIComponent(returnStateToken)}`)
           : await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
         if (cancelled) return;
+        setListingId(invoice.listing_id || null);
         if (invoice.upgrade && returnStateToken && invoice.status.toUpperCase() === 'PENDING') {
           try {
             const upgrade = await protectedPost<{
@@ -107,9 +106,12 @@ export default function PayPalSubscriptionReturnPage() {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [invoiceId, returnStateToken]);
 
-  const continueAfterSuccess = () => {
-    // RoleDashboardRouter resolves this to the landlord or real-estate PMS.
-    navigate('pms-dashboard');
+  // Keep navigation inside the current runtime: browser checkouts remain in
+  // their browser tab, while verified native app links return to the installed
+  // app and use the same in-app hash router. No forced redirect to Chrome.
+  const continueToPms = () => navigate('pms-dashboard');
+  const continueToListing = () => {
+    if (listingId) navigate('post-listing', listingId);
   };
 
   return (
@@ -121,15 +123,15 @@ export default function PayPalSubscriptionReturnPage() {
         <h1 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">{state === 'waiting' ? 'Confirming your payment' : state === 'success' ? 'Payment successful' : 'Payment unsuccessful'}</h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
         {state === 'waiting' && <div className="mx-auto mt-6 max-w-sm rounded-xl bg-gray-50 p-4 text-left text-xs text-gray-600 dark:bg-gray-800/70 dark:text-gray-300"><p className="font-semibold text-gray-800 dark:text-white">Secure confirmation in progress</p><p className="mt-1">PayPal is sending the payment result to SakaKrib. We will update this page automatically.</p><p className="mt-2">Live connection: {returnStateToken ? 'secure signed status polling active' : connected ? 'connected' : 'reconnecting…'}</p>{!returnStateToken && connectionError && <p className="mt-1 text-amber-600 dark:text-amber-400">{connectionError}</p>}</div>}
-        {state === 'success' && <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">Go to PMS Management Dashboard</button>}
+        {state === 'success' && (
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+            <button type="button" onClick={continueToPms} className="btn-primary inline-flex items-center justify-center gap-2">Go to PMS Management Dashboard</button>
+            {listingId && <button type="button" onClick={continueToListing} className="btn-secondary inline-flex items-center justify-center gap-2">Continue to Listing</button>}
+          </div>
+        )}
         {state === 'failed' && (
-          <button
-            type="button"
-            onClick={() => navigate('subscription-plans')}
-            className="btn-primary mt-7 inline-flex items-center gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Back to Plans
+          <button type="button" onClick={() => navigate('subscription-plans')} className="btn-primary mt-7 inline-flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />Back to Plans
           </button>
         )}
       </div>
