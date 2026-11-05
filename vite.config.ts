@@ -18,6 +18,11 @@ export default defineConfig({
         target: apiProxyTarget,
         changeOrigin: true,
       },
+      // Android App Links verification is served by Django at the same public origin.
+      '/.well-known': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
       // Django serves uploaded property media from MEDIA_URL.
       '/media': {
         target: apiProxyTarget,
