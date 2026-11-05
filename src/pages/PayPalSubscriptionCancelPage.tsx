@@ -1,62 +1,119 @@
 import { useEffect, useState } from 'react';
-import { Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
 
 interface SubscriptionInvoiceResponse {
   id: string;
+  status: string;
+  result_description?: string | null;
   listing_id?: string | null;
 }
+
+type PaymentState = 'checking' | 'success' | 'failed' | 'unconfirmed';
 
 export default function PayPalSubscriptionCancelPage() {
   const { navigate } = useNav();
   const params = new URLSearchParams(window.location.search);
   const invoiceId = params.get('invoice_id');
+  const [state, setState] = useState<PaymentState>('checking');
+  const [message, setMessage] = useState('We are checking PayPal’s final payment status. Please keep SakaKrib open.');
   const [listingId, setListingId] = useState<string | null>(params.get('listing_id'));
-  const [checkingInvoice, setCheckingInvoice] = useState(false);
 
   useEffect(() => {
-    if (listingId || !invoiceId) return;
+    if (!invoiceId) {
+      setState('unconfirmed');
+      setMessage('We could not find the payment reference, so we cannot confirm whether the payment completed.');
+      return;
+    }
 
-    let cancelled = false;
-    setCheckingInvoice(true);
-    void protectedGet<SubscriptionInvoiceResponse>(
-      `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
-    ).then((invoice) => {
-      if (!cancelled && invoice?.listing_id) setListingId(invoice.listing_id);
-    }).catch(() => {
-      // A cancelled checkout can still return without an accessible invoice.
-      // In that case, do not expose a listing action with an unknown ID.
-    }).finally(() => {
-      if (!cancelled) setCheckingInvoice(false);
-    });
+    let disposed = false;
+    let attempts = 0;
 
-    return () => { cancelled = true; };
-  }, [invoiceId, listingId]);
+    const checkPayment = async () => {
+      attempts += 1;
+      try {
+        const invoice = await protectedGet<SubscriptionInvoiceResponse>(
+          `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
+        );
+        if (disposed) return;
+
+        if (invoice.listing_id) setListingId(invoice.listing_id);
+        const status = String(invoice.status || '').toUpperCase();
+
+        if (status === 'PAID') {
+          setState('success');
+          setMessage('PayPal confirmed your payment. Your subscription is active.');
+          return;
+        }
+
+        if (['FAILED', 'CANCELLED', 'REFUNDED'].includes(status)) {
+          setState('failed');
+          setMessage(invoice.result_description || 'PayPal did not complete this payment. No new subscription has been activated.');
+          return;
+        }
+
+        // PayPal can open its cancel URL before its payment webhook reaches
+        // Django. Never label a transaction cancelled while its invoice is
+        // still pending; keep checking for the authoritative provider result.
+        if (attempts >= 12) {
+          setState('unconfirmed');
+          setMessage('PayPal has not sent a final result yet. If you approved the payment, do not pay again; check your subscription status in SakaKrib shortly.');
+        } else {
+          setState('checking');
+          setMessage('We are still waiting for PayPal to confirm the transaction. Your payment is not marked as cancelled.');
+        }
+      } catch {
+        if (disposed) return;
+        setState('unconfirmed');
+        setMessage('We could not verify the payment from this session. Please reopen SakaKrib and check your subscription before trying another payment.');
+      }
+    };
+
+    void checkPayment();
+    const timer = window.setInterval(() => {
+      if (attempts < 12 || state === 'unconfirmed') void checkPayment();
+    }, 5000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  // The polling loop intentionally runs for the lifetime of this return page.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceId]);
+
+  const continueAfterSuccess = () => {
+    if (listingId) navigate('post-listing', listingId);
+    else navigate('pms-dashboard');
+  };
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-xl items-center justify-center px-4 py-12">
       <div className="w-full rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
-        <XCircle className="mx-auto h-14 w-14 text-gray-400" />
-        <h1 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">Payment cancelled</h1>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">
-          Your PayPal checkout was cancelled. No subscription has been activated. Your saved listing draft is still available.
-        </p>
-        {checkingInvoice && !listingId && (
-          <p className="mt-4 inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Checking for your saved listing…
-          </p>
-        )}
-        <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-          {listingId && (
-            <button type="button" onClick={() => navigate('post-listing', listingId)} className="btn-primary">
-              Continue Editing Listing
-            </button>
-          )}
-          <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary">
-            Back to Plans
+        {state === 'checking' && <Loader2 className="mx-auto h-14 w-14 animate-spin text-brand-600" />}
+        {state === 'success' && <CheckCircle2 className="mx-auto h-14 w-14 text-success-600" />}
+        {(state === 'failed' || state === 'unconfirmed') && <XCircle className="mx-auto h-14 w-14 text-error-600" />}
+        <h1 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">
+          {state === 'checking' ? 'Confirming your payment' : state === 'success' ? 'Payment successful' : state === 'failed' ? 'Payment unsuccessful' : 'Payment not yet confirmed'}
+        </h1>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
+        {state === 'success' && (
+          <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">
+            {listingId ? 'Continue to Listing' : 'Go to PMS Management Dashboard'}
           </button>
-        </div>
+        )}
+        {state === 'failed' && (
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+            {listingId && <button type="button" onClick={() => navigate('post-listing', listingId)} className="btn-primary">Continue Editing Listing</button>}
+            <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary">Back to Plans</button>
+          </div>
+        )}
+        {state === 'unconfirmed' && (
+          <button type="button" onClick={() => window.location.reload()} className="btn-secondary mt-7 inline-flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" /> Check Payment Again
+          </button>
+        )}
       </div>
     </div>
   );
