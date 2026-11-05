@@ -296,7 +296,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
           for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            if [ -z "\${!name}" ]; then
+            if [ -z "${!name}" ]; then
               echo "::error::Required stable signing secret $name is missing. Refusing to build a release with a debug key."
               exit 1
             fi
