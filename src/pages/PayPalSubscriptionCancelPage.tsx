@@ -4,7 +4,8 @@ import { protectedGet } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
 
 interface SubscriptionInvoiceResponse {
-  id: string;
+  id?: string;
+  invoice_id?: string;
   status: string;
   result_description?: string | null;
   listing_id?: string | null;
@@ -16,6 +17,7 @@ export default function PayPalSubscriptionCancelPage() {
   const { navigate } = useNav();
   const params = new URLSearchParams(window.location.search);
   const invoiceId = params.get('invoice_id');
+  const returnStateToken = params.get('state');
   const [state, setState] = useState<PaymentState>('checking');
   const [message, setMessage] = useState('We are checking PayPal’s final payment status. Please keep SakaKrib open.');
   const [listingId, setListingId] = useState<string | null>(params.get('listing_id'));
@@ -33,12 +35,25 @@ export default function PayPalSubscriptionCancelPage() {
     const checkPayment = async () => {
       attempts += 1;
       try {
-        const invoice = await protectedGet<SubscriptionInvoiceResponse>(
-          `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
-        );
+        const invoice = returnStateToken
+          ? await protectedGet<SubscriptionInvoiceResponse>(
+              `/api/subscriptions/paypal/return-status/?state=${encodeURIComponent(returnStateToken)}`,
+            )
+          : await protectedGet<SubscriptionInvoiceResponse>(
+              `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
+            );
         if (disposed) return;
 
         if (invoice.listing_id) setListingId(invoice.listing_id);
+        else if (returnStateToken) {
+          // The public return endpoint intentionally exposes no listing data.
+          // Fetch the draft association only if the app session is authenticated.
+          void protectedGet<SubscriptionInvoiceResponse>(
+            `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
+          ).then((details) => {
+            if (!disposed && details.listing_id) setListingId(details.listing_id);
+          }).catch(() => {});
+        }
         const status = String(invoice.status || '').toUpperCase();
 
         if (status === 'PAID') {
