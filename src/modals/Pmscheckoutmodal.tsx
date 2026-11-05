@@ -17,10 +17,10 @@ interface PayPalUpgradeResponse { success?: boolean; detail?: string; message?: 
 
 function formatKES(value: number) { return new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(value); }
 function normalizePhone(value: string) {
-  const normalized = value.replace(/\\s+/g, '').trim();
-  if (/^0[17]\\d{8}$/.test(normalized)) return `254${normalized.slice(1)}`;
-  if (/^\\+254[17]\\d{8}$/.test(normalized)) return normalized.slice(1);
-  if (/^[17]\\d{8}$/.test(normalized)) return `254${normalized}`;
+  const normalized = value.replace(/\s+/g, '').trim();
+  if (/^0[17]\d{8}$/.test(normalized)) return `254${normalized.slice(1)}`;
+  if (/^\+254[17]\d{8}$/.test(normalized)) return normalized.slice(1);
+  if (/^[17]\d{8}$/.test(normalized)) return `254${normalized}`;
   return normalized;
 }
 
@@ -92,7 +92,7 @@ export default function PMSCheckoutModal({ open, onClose, role, plan, listingId,
 
   const startMpesa = async () => {
     const phone = normalizePhone(phoneNumber);
-    if (!/^254(?:7|1)\\d{8}$/.test(phone)) {
+    if (!/^254(?:7|1)\d{8}$/.test(phone)) {
       setError('Enter a valid Kenyan M-Pesa number, for example 07XXXXXXXX, 01XXXXXXXX, or 2547XXXXXXXX.');
       return;
     }
