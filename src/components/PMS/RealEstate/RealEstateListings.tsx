@@ -9,12 +9,15 @@ import {
   Plus,
   WalletCards,
   XCircle,
+  Search,
+  ArrowLeft,
 } from 'lucide-react';
 
 import {
   loadRealEstateDashboardData,
 } from '@/lib/RealEstateTs/Realestateservice';
 import type { RealEstateListingSummary } from '@/lib/RealEstateTs/Realestatepmsaccess';
+import SecureImage from '@/components/SecureImage';
 
 interface RealEstateListingsProps {
   listings?: RealEstateListingSummary[];
@@ -69,12 +72,7 @@ function ListingCard({
       >
         <div className="aspect-[16/10] overflow-hidden bg-gray-100 dark:bg-brand-800">
           {listing.cover_photo_url ? (
-            <img
-              src={listing.cover_photo_url}
-              alt={listing.title}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              loading="lazy"
-            />
+            <SecureImage src={listing.cover_photo_url} alt={listing.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" fallback={<div className="flex h-full w-full items-center justify-center"><Building2 className="h-12 w-12 text-gray-300 dark:text-brand-600" /></div>} />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <Building2 className="h-12 w-12 text-gray-300 dark:text-brand-600" />
@@ -137,6 +135,9 @@ export default function RealEstateListings({
   const [loadedListings, setLoadedListings] = useState<RealEstateListingSummary[]>([]);
   const [loading, setLoading] = useState(suppliedListings === undefined);
   const [error, setError] = useState<string | null>(null);
+  const [showAllListings, setShowAllListings] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     if (suppliedListings !== undefined) {
@@ -168,6 +169,13 @@ export default function RealEstateListings({
   }, [suppliedListings]);
 
   const listings = suppliedListings ?? loadedListings;
+  const filteredListings = listings.filter((listing) => {
+    const term = search.trim().toLowerCase();
+    const searchable = [listing.title, listing.city, listing.county, listing.description].filter(Boolean).join(' ').toLowerCase();
+    const approval = (listing.approval_status ?? '').toLowerCase();
+    const status = listing.is_approved || approval === 'approved' ? 'approved' : approval === 'rejected' || approval === 'declined' ? 'rejected' : 'pending';
+    return (!term || searchable.includes(term)) && (statusFilter === 'all' || status === statusFilter);
+  });
 
   if (loading) {
     return (
@@ -184,6 +192,19 @@ export default function RealEstateListings({
     return (
       <section className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
         Unable to load your listings: {error}
+      </section>
+    );
+  }
+
+  if (showAllListings) {
+    return (
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><button type="button" onClick={() => setShowAllListings(false)} className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300"><ArrowLeft className="h-4 w-4" />Back to PMS</button><h2 className="text-xl font-bold text-gray-900 dark:text-white">All PMS Listings</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{filteredListings.length} of {listings.length} properties</p></div>
+          {onCreateListing && <button type="button" onClick={onCreateListing} className="btn-primary inline-flex items-center gap-2"><Plus className="h-4 w-4" />Add listing</button>}
+        </div>
+        <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_190px]"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by title or location" className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white" /></div><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white"><option value="all">All statuses</option><option value="approved">Approved</option><option value="pending">Pending approval</option><option value="rejected">Rejected</option></select></div>
+        {filteredListings.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{filteredListings.map((listing) => <ListingCard key={listing.id} listing={listing} onOpenListing={onOpenListing} />)}</div> : <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-brand-700 dark:text-gray-400">No listings match your search or filter.</div>}
       </section>
     );
   }
@@ -219,16 +240,17 @@ export default function RealEstateListings({
             {listings.length} {listings.length === 1 ? 'property' : 'properties'} in your account
           </p>
         </div>
+        <div className="flex items-center gap-3">{listings.length > 0 && <button type="button" onClick={() => setShowAllListings(true)} className="text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300">View All</button>}
         {onCreateListing && (
           <button type="button" onClick={onCreateListing} className="btn-primary inline-flex shrink-0 items-center gap-2">
             <Plus className="h-4 w-4" />
             Add listing
           </button>
-        )}
+        )}</div>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex snap-x snap-mandatory gap-5 overflow-x-auto pb-3">
         {listings.map((listing) => (
-          <ListingCard key={listing.id} listing={listing} onOpenListing={onOpenListing} />
+          <div className="w-[300px] shrink-0 snap-start"><ListingCard listing={listing} onOpenListing={onOpenListing} /></div>
         ))}
       </div>
     </section>
