@@ -1,4 +1,6 @@
 from django.core import signing
+from unittest.mock import patch
+
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -53,3 +55,62 @@ class PayPalReturnStatusTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_signed_return_state_authorizes_paypal_approval_without_session(self):
+        pending = SubscriptionInvoice.objects.create(
+            amount_kes=1500,
+            status='PENDING',
+            created_at=timezone.now(),
+            payment_provider='PAYPAL',
+            payment_method='PAYPAL',
+            currency='USD',
+            amount_usd='11.25',
+        )
+        token = signing.dumps(
+            {'invoice_id': str(pending.id)},
+            salt='sakakrib.paypal-subscription-return',
+            compress=True,
+        )
+
+        with patch(
+            'apps.subscriptions.views.record_paypal_subscription_approval',
+            return_value={'success': True, 'status': 'PENDING_PAYMENT'},
+        ) as approve:
+            response = self.client.post(
+                '/api/subscriptions/paypal/approve/',
+                {
+                    'invoice_id': str(pending.id),
+                    'paypal_subscription_id': 'I-APPROVED',
+                    'state': token,
+                },
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['success'])
+        approve.assert_called_once_with(pending.id, 'I-APPROVED')
+
+    def test_signed_return_state_cannot_authorize_a_different_invoice(self):
+        pending = SubscriptionInvoice.objects.create(
+            amount_kes=1500,
+            status='PENDING',
+            created_at=timezone.now(),
+            payment_provider='PAYPAL',
+            payment_method='PAYPAL',
+            currency='USD',
+            amount_usd='11.25',
+        )
+
+        with patch('apps.subscriptions.views.record_paypal_subscription_approval') as approve:
+            response = self.client.post(
+                '/api/subscriptions/paypal/approve/',
+                {
+                    'invoice_id': str(pending.id),
+                    'paypal_subscription_id': 'I-APPROVED',
+                    'state': self.token,
+                },
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, 400)
+        approve.assert_not_called()
