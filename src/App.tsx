@@ -64,15 +64,17 @@ function AppContent() {
   const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
   const { profile, loading: authLoading } = useAuth();
 
-  // Verified HTTPS App Links / Universal Links reopen the native app after PayPal.
-  // Keep the WebView on its local origin and route only known payment-return paths.
+  // Handle HTTPS App Links / Universal Links when the OS opens Saka Krib from a payment return.
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
     let disposed = false;
+    let didRoute = false;
     let removeListener: (() => void) | undefined;
 
-    void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+    const handleIncomingUrl = (url: string) => {
+      if (didRoute) return;
+
       try {
         const incoming = new URL(url);
         const configuredApiOrigin = new URL(getDjangoApiBaseUrl()).origin;
@@ -90,12 +92,17 @@ function AppContent() {
           return;
         }
 
+        didRoute = true;
         window.location.assign(
           `${window.location.origin}${incoming.pathname}${incoming.search}`,
         );
       } catch (error) {
         console.warn('Unable to handle native payment return link:', error);
       }
+    };
+
+    void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+      handleIncomingUrl(url);
     }).then((listener) => {
       if (disposed) {
         void listener.remove();
@@ -104,6 +111,13 @@ function AppContent() {
       }
     }).catch((error) => {
       console.warn('Unable to register native app-link listener:', error);
+    });
+
+    // Also handle a payment link that launched the app from a fully closed state.
+    void CapacitorApp.getLaunchUrl().then((launch) => {
+      if (launch?.url) handleIncomingUrl(launch.url);
+    }).catch((error) => {
+      console.warn('Unable to read the native app launch URL:', error);
     });
 
     return () => {
