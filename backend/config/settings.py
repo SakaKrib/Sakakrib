@@ -85,9 +85,13 @@ JWT_ACCESS_LIFETIME_SECONDS = int(os.getenv('JWT_ACCESS_LIFETIME_SECONDS','300')
 JWT_REFRESH_LIFETIME_SECONDS = int(os.getenv('JWT_REFRESH_LIFETIME_SECONDS','604800'))
 JWT_ACCESS_COOKIE = os.getenv('JWT_ACCESS_COOKIE','sakakrib_access')
 JWT_REFRESH_COOKIE = os.getenv('JWT_REFRESH_COOKIE','sakakrib_refresh')
-JWT_COOKIE_SECURE = os.getenv('JWT_COOKIE_SECURE','false').lower() == 'true'
-JWT_COOKIE_SAMESITE = os.getenv('JWT_COOKIE_SAMESITE','Lax')
-JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
+# Cross-origin Capacitor requests require secure, SameSite=None cookies.
+# JWT_COOKIE_DOMAIN is intentionally disabled: auth cookies are host-only on
+# the API hostname (including the configured Tailscale hostname).
+JWT_COOKIE_SECURE = True
+JWT_COOKIE_SAMESITE = 'None'
+LEGACY_JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
+JWT_COOKIE_DOMAIN = None
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON', '')
 FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE', '')
