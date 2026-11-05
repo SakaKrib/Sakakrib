@@ -83,7 +83,12 @@ export const ensureDjangoApiBaseUrl = async (): Promise<string> => {
           credentials: 'include',
           cache: 'no-store',
           signal: controller.signal,
-          headers: { Accept: 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            // Force a real CORS preflight so a host is selected only when it
+            // supports the credentialed requests used by the APK.
+            'X-CSRFToken': 'api-host-connectivity-check',
+          },
         });
         if (!response.ok) continue;
         const body = await response.json() as { csrfToken?: string };
