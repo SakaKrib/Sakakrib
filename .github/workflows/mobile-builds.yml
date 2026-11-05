@@ -534,7 +534,7 @@ jobs:
           test -f ios/App/App.xcodeproj/project.pbxproj
 
       - name: Generate and install iOS icons
-        run: npm run generate:icons -- --sync --patch-manifest
+        run: npm run generate:icons -- --sync
 
       - name: Sync Capacitor iOS
         run: npx cap sync ios
