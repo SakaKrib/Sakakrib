@@ -23,6 +23,13 @@ SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_CANCEL_U
 SAKAKRIB_IOS_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_RETURN_URL', '').strip()
 SAKAKRIB_IOS_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_CANCEL_URL', '').strip()
 
+# Comma-separated SHA-256 signing-certificate fingerprints for Android App Links.
+ANDROID_APP_SHA256_CERT_FINGERPRINTS = [
+    value.strip().upper()
+    for value in os.getenv('ANDROID_APP_SHA256_CERT_FINGERPRINTS', '').split(',')
+    if value.strip()
+]
+
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 _public_host = urlsplit(SAKAKRIB_PUBLIC_BASE_URL).hostname if SAKAKRIB_PUBLIC_BASE_URL else None
 ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, *([_public_host] if _public_host else []), 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
