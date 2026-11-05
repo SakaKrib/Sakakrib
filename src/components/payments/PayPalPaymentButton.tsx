@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import {
   PayPalProvider,
   PayPalOneTimePaymentButton,
@@ -49,6 +50,7 @@ interface SubscriptionCheckoutResponse {
   message?: string;
   paypal_subscription_id?: string;
   invoice_id?: string;
+  approval_url?: string;
 }
 interface SubscriptionApproveResponse {
   success?: boolean;
@@ -234,7 +236,7 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
     }
   };
 
-  const createSubscription = async () => {
+  const requestSubscriptionCheckout = async () => {
     setError(null);
     if (!planId || !billingCycle) throw new Error('A subscription plan and billing cycle are required.');
     setWorking(true);
@@ -252,7 +254,35 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
       throw new Error(errorMessage(response, 'Unable to start PayPal subscription checkout.'));
     }
     subscriptionInvoiceIdRef.current = response.invoice_id;
-    return { subscriptionId: response.paypal_subscription_id };
+    return response;
+  };
+
+  const createSubscription = async () => {
+    const response = await requestSubscriptionCheckout();
+    return { subscriptionId: response.paypal_subscription_id! };
+  };
+
+  const openNativeSubscriptionApproval = async () => {
+    try {
+      const response = await requestSubscriptionCheckout();
+      if (!response.approval_url) {
+        throw new Error('PayPal did not return an approval link. Please try again.');
+      }
+
+      const approvalUrl = new URL(response.approval_url);
+      if (
+        approvalUrl.protocol !== 'https:' ||
+        !(approvalUrl.hostname === 'paypal.com' || approvalUrl.hostname.endsWith('.paypal.com'))
+      ) {
+        throw new Error('PayPal returned an invalid approval link.');
+      }
+
+      // Android Custom Tabs runs outside the app WebView, allowing verified
+      // HTTPS App Links to reopen SakaKrib after PayPal approval.
+      await Browser.open({ url: approvalUrl.toString(), toolbarColor: '#ffffff' });
+    } catch (checkoutError) {
+      fail(checkoutError instanceof Error ? checkoutError.message : 'Unable to open PayPal approval.');
+    }
   };
 
   const approveSubscription = async ({ subscriptionId }: OnApproveDataSubscriptions) => {
@@ -299,17 +329,26 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
             </PayPalCardFieldsProvider>
           </>
         ) : (
-          <PayPalSubscriptionButton
-            createSubscription={createSubscription}
-            onApprove={approveSubscription}
-            onCancel={() => setWorking(false)}
-            onError={(sdkError) => fail(sdkError.message || 'PayPal subscription checkout failed.')}
-            // PayPal recommends modal presentation for embedded WebViews.
-            // Keep native subscription approval inside the Capacitor app.
-            presentationMode={Capacitor.isNativePlatform() ? 'modal' : 'auto'}
-            disabled={disabled || working}
-            type="subscribe"
-          />
+          Capacitor.getPlatform() === 'android' ? (
+            <button
+              type="button"
+              onClick={() => void openNativeSubscriptionApproval()}
+              disabled={disabled || working}
+              className="w-full rounded-xl bg-[#0070ba] px-4 py-3 font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {working ? 'Opening PayPal…' : 'Subscribe with PayPal'}
+            </button>
+          ) : (
+            <PayPalSubscriptionButton
+              createSubscription={createSubscription}
+              onApprove={approveSubscription}
+              onCancel={() => setWorking(false)}
+              onError={(sdkError) => fail(sdkError.message || 'PayPal subscription checkout failed.')}
+              presentationMode={Capacitor.isNativePlatform() ? 'modal' : 'auto'}
+              disabled={disabled || working}
+              type="subscribe"
+            />
+          )
         )}
       </PayPalProvider>
       {error && <div className="mt-3 rounded-lg bg-error-50 px-3 py-2 text-sm text-error-700 dark:bg-error-900/20 dark:text-error-400" role="alert">{error}</div>}
