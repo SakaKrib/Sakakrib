@@ -193,6 +193,26 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
   const [error, setError] = useState<string | null>(null);
   const subscriptionInvoiceIdRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+
+    let disposed = false;
+    let removeListener: (() => void) | undefined;
+    void Browser.addListener('browserFinished', () => {
+      setWorking(false);
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else removeListener = () => { void listener.remove(); };
+    }).catch((listenerError) => {
+      console.warn('Unable to observe PayPal Custom Tab closure:', listenerError);
+    });
+
+    return () => {
+      disposed = true;
+      removeListener?.();
+    };
+  }, []);
+
   if (!clientId) return <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300">PayPal is not currently configured for this environment.</div>;
 
   const fail = (message: string) => {
