@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Clock3, FileText, RefreshCw, XCircle } from 'lucide-react';
+import { protectedGet } from '@/lib/djangoApi';
 import { useSubscriptionInvoiceSocket } from '@/lib/useSubscriptionInvoiceSocket';
 
 interface SubscriptionInvoice {
@@ -85,30 +86,10 @@ export default function PMSInvoiceHistory() {
   const loadInvoices = useCallback(async () => {
     try {
       setError(null);
-      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-      const response = await fetch(`${baseUrl}/api/subscriptions/invoices/`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      });
-
-      const text = await response.text();
-      let body: SubscriptionInvoice[] | { detail?: string; error?: string; message?: string } | null = null;
-      if (text) {
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = null;
-        }
-      }
-
-      if (!response.ok) {
-        const message = body && typeof body === 'object'
-          ? ('detail' in body ? body.detail : 'error' in body ? body.error : 'message' in body ? body.message : undefined)
-          : undefined;
-        throw new Error(message || `Django API request failed (${response.status}).`);
-      }
-
+      // Use the same selected Django host and HttpOnly-cookie refresh flow as
+      // the rest of the app. window.location.origin is https://localhost in
+      // the Capacitor WebView, not the remote Django API origin.
+      const body = await protectedGet<SubscriptionInvoice[]>('/api/subscriptions/invoices/');
       setInvoices(Array.isArray(body) ? body : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load subscription payment history.');
