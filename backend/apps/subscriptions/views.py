@@ -274,7 +274,7 @@ class PayPalSubscriptionReturnStatusView(APIView):
         invoice = SubscriptionInvoice.objects.filter(
             pk=invoice_id,
             payment_provider='PAYPAL',
-        ).only('id', 'status', 'result_description').first()
+        ).only('id', 'status', 'result_description', 'upgrade_plan_id').first()
         if not invoice:
             return Response({'detail': 'PayPal invoice not found.'}, status=404)
 
