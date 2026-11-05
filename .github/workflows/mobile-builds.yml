@@ -75,6 +75,127 @@ jobs:
           fi
           test -f "$MANIFEST"
 
+      - name: Configure verified Android App Links
+        env:
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import xml.etree.ElementTree as ET
+          from urllib.parse import urlsplit
+          from pathlib import Path
+
+          base_url = os.environ["SAKAKRIB_PUBLIC_BASE_URL"].strip()
+          parsed = urlsplit(base_url)
+          if parsed.scheme != "https" or not parsed.hostname:
+              raise SystemExit("SAKAKRIB_PUBLIC_BASE_URL must be a valid HTTPS URL")
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text(encoding="utf-8")
+          android_ns = "http://schemas.android.com/apk/res/android"
+          ET.register_namespace("android", android_ns)
+          root = ET.fromstring(content)
+          activity = next(
+              (node for node in root.iter("activity")
+               if node.get(f"{{{android_ns}}}name", "").endswith("MainActivity")),
+              None,
+          )
+          if activity is None:
+              raise SystemExit("Could not find the Capacitor MainActivity in AndroidManifest.xml")
+
+          paths = (
+              "/paypal/subscription/return",
+              "/paypal/subscription/cancel",
+              "/listing/payment/return",
+          )
+          for path in paths:
+              exists = any(
+                  intent.get(f"{{{android_ns}}}autoVerify") == "true"
+                  and any(
+                      data.get(f"{{{android_ns}}}host") == parsed.hostname
+                      and data.get(f"{{{android_ns}}}path") == path
+                      for data in intent.findall("data")
+                  )
+                  for intent in activity.findall("intent-filter")
+              )
+              if exists:
+                  continue
+              intent = ET.SubElement(activity, "intent-filter", {
+                  f"{{{android_ns}}}autoVerify": "true"
+              })
+              ET.SubElement(intent, "action", {
+                  f"{{{android_ns}}}name": "android.intent.action.VIEW"
+              })
+              ET.SubElement(intent, "category", {
+                  f"{{{android_ns}}}name": "android.intent.category.DEFAULT"
+              })
+              ET.SubElement(intent, "category", {
+                  f"{{{android_ns}}}name": "android.intent.category.BROWSABLE"
+              })
+              ET.SubElement(intent, "data", {
+                  f"{{{android_ns}}}scheme": "https",
+                  f"{{{android_ns}}}host": parsed.hostname,
+                  f"{{{android_ns}}}path": path,
+              })
+
+          ET.indent(root, space="    ")
+          manifest.write_text(
+              '<?xml version="1.0" encoding="utf-8"?>\n'
+              + ET.tostring(root, encoding="unicode") + "\n",
+              encoding="utf-8",
+          )
+          print(f"Android App Links configured for {parsed.hostname}")
+          PY
+
+      - name: Configure stable Android signing when repository secrets are available
+        env:
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ] || [ -z "$ANDROID_SIGNING_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_SIGNING_KEY_ALIAS" ] || [ -z "$ANDROID_SIGNING_KEY_PASSWORD" ]; then
+            echo "::warning::Stable Android signing is not configured. This build will use the temporary GitHub runner debug certificate; its fingerprint must NOT be used for permanent App Links verification."
+            exit 0
+          fi
+
+          mkdir -p android/keystores
+          echo "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > android/keystores/sakakrib-upload.jks
+          chmod 600 android/keystores/sakakrib-upload.jks
+          export ANDROID_KEYSTORE_PATH="$GITHUB_WORKSPACE/android/keystores/sakakrib-upload.jks"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle_file = Path("android/app/build.gradle")
+          content = gradle_file.read_text(encoding="utf-8")
+          if "signingConfigs {" not in content or "buildTypes {" not in content:
+              raise SystemExit("Unexpected Capacitor Gradle template; refusing to patch signing configuration.")
+
+          signing = """
+              sakakrib {
+                  storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                  storePassword System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
+                  keyAlias System.getenv("ANDROID_SIGNING_KEY_ALIAS")
+                  keyPassword System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
+              }
+          """
+          content = content.replace(
+              "signingConfigs {",
+              "signingConfigs {\n" + signing,
+              1,
+          )
+          content = content.replace(
+              "buildTypes {",
+              'buildTypes {\n        debug { signingConfig signingConfigs.sakakrib }',
+              1,
+          )
+          gradle_file.write_text(content, encoding="utf-8")
+          PY
+
+          echo "Stable Android signing configuration installed."
+
       - name: Declare Android location permissions
         run: |
           python3 - <<'PY'
@@ -144,11 +265,30 @@ jobs:
           grep -q "android.permission.ACCESS_COARSE_LOCATION" "$RUNNER_TEMP/apk-permissions.txt"
           grep -q "android.permission.ACCESS_FINE_LOCATION" "$RUNNER_TEMP/apk-permissions.txt"
 
+      - name: Record Android APK signing certificate fingerprint
+        working-directory: android
+        run: |
+          AAPT="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$AAPT"
+          "$AAPT" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee "$RUNNER_TEMP/android-signing-certificate.txt"
+          FINGERPRINT="$(sed -n 's/.*certificate SHA-256 digest: //p' "$RUNNER_TEMP/android-signing-certificate.txt" | head -n 1)"
+          if [ -z "$FINGERPRINT" ]; then
+            echo "::error::Could not extract the APK SHA-256 signing fingerprint."
+            exit 1
+          fi
+          printf '%s\n' "$FINGERPRINT" > "$RUNNER_TEMP/android-app-sha256-fingerprint.txt"
+          echo "APK SHA-256 fingerprint: $FINGERPRINT"
+          if [ -z "$ANDROID_SIGNING_KEYSTORE_BASE64" ]; then
+            echo "::warning::This is an ephemeral debug fingerprint. Do not publish it in assetlinks.json."
+          fi
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: SakaKrib-Android-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            ${{ runner.temp }}/android-app-sha256-fingerprint.txt
           if-no-files-found: error
           retention-days: 14
 
