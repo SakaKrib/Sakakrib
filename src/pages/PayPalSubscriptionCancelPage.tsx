@@ -20,7 +20,6 @@ export default function PayPalSubscriptionCancelPage() {
   const returnStateToken = params.get('state');
   const [state, setState] = useState<PaymentState>('checking');
   const [message, setMessage] = useState('We are checking PayPal’s final payment status. Please keep SakaKrib open.');
-  const [listingId, setListingId] = useState<string | null>(params.get('listing_id'));
 
   useEffect(() => {
     if (!invoiceId) {
@@ -44,16 +43,6 @@ export default function PayPalSubscriptionCancelPage() {
             );
         if (disposed) return;
 
-        if (invoice.listing_id) setListingId(invoice.listing_id);
-        else if (returnStateToken) {
-          // The public return endpoint intentionally exposes no listing data.
-          // Fetch the draft association only if the app session is authenticated.
-          void protectedGet<SubscriptionInvoiceResponse>(
-            `/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`,
-          ).then((details) => {
-            if (!disposed && details.listing_id) setListingId(details.listing_id);
-          }).catch(() => {});
-        }
         const status = String(invoice.status || '').toUpperCase();
 
         if (status === 'PAID') {
@@ -99,8 +88,8 @@ export default function PayPalSubscriptionCancelPage() {
   }, [invoiceId]);
 
   const continueAfterSuccess = () => {
-    if (listingId) navigate('post-listing', listingId);
-    else navigate('pms-dashboard');
+    // RoleDashboardRouter selects the landlord or real-estate PMS.
+    navigate('pms-dashboard');
   };
 
   return (
@@ -115,7 +104,7 @@ export default function PayPalSubscriptionCancelPage() {
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
         {state === 'success' && (
           <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">
-            {listingId ? 'Continue to Listing' : 'Go to PMS Management Dashboard'}
+            Go to PMS Management Dashboard
           </button>
         )}
         {(state === 'failed' || state === 'unconfirmed') && (
