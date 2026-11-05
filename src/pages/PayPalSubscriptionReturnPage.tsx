@@ -11,10 +11,29 @@ export default function PayPalSubscriptionReturnPage() {
   const { navigate } = useNav();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const invoiceId = params.get('invoice_id');
+  const paypalSubscriptionId = params.get('subscription_id');
   const [state, setState] = useState<'waiting' | 'success' | 'failed'>('waiting');
   const [message, setMessage] = useState('We are securely confirming your PayPal payment. Please keep this page open.');
   const [listingId, setListingId] = useState<string | null>(null);
   const { event, connected, connectionError } = usePaymentStatusSocket(invoiceId);
+
+  // PayPal may reopen the app through its HTTPS return URL instead of
+  // invoking the SDK's in-WebView onApprove callback. Bind the returned
+  // subscription ID to the invoice in that case; the webhook remains the
+  // only authority that marks the invoice PAID.
+  useEffect(() => {
+    if (!invoiceId || !paypalSubscriptionId) return;
+    let cancelled = false;
+    void protectedPost('/api/subscriptions/paypal/approve/', {
+      invoice_id: invoiceId,
+      paypal_subscription_id: paypalSubscriptionId,
+    }).catch((error) => {
+      if (!cancelled) {
+        console.warn('Unable to register PayPal return approval:', error);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [invoiceId, paypalSubscriptionId]);
 
   useEffect(() => {
     if (!event || event.type !== 'payment_status') return;
