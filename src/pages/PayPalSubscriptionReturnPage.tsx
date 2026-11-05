@@ -90,7 +90,16 @@ export default function PayPalSubscriptionReturnPage() {
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-600 dark:text-gray-300">{message}</p>
         {state === 'waiting' && <div className="mx-auto mt-6 max-w-sm rounded-xl bg-gray-50 p-4 text-left text-xs text-gray-600 dark:bg-gray-800/70 dark:text-gray-300"><p className="font-semibold text-gray-800 dark:text-white">Secure confirmation in progress</p><p className="mt-1">PayPal is sending the payment result to SakaKrib. We will update this page automatically.</p><p className="mt-2">Live connection: {connected ? 'connected' : 'reconnecting…'}</p>{connectionError && <p className="mt-1 text-amber-600 dark:text-amber-400">{connectionError}</p>}</div>}
         {state === 'success' && <button type="button" onClick={continueAfterSuccess} className="btn-primary mt-7 inline-flex items-center gap-2">{listingId ? 'Continue to Listing' : 'Go to PMS Management Dashboard'}</button>}
-        {state === 'failed' && <button type="button" onClick={() => navigate('post-listing', listingId || undefined)} className="btn-primary mt-7 inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />Try Again</button>}
+        {state === 'failed' && (
+          <button
+            type="button"
+            onClick={() => listingId ? navigate('post-listing', listingId) : navigate('subscription-plans')}
+            className="btn-primary mt-7 inline-flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            {listingId ? 'Continue Editing Listing' : 'Back to Plans'}
+          </button>
+        )}
       </div>
     </div>
   );
