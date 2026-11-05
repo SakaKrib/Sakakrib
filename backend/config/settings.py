@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlsplit
 from pathlib import Path
 from dotenv import load_dotenv
 from django.core.exceptions import ImproperlyConfigured
@@ -23,7 +24,8 @@ SAKAKRIB_IOS_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_RETURN_URL', '')
 SAKAKRIB_IOS_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_CANCEL_URL', '').strip()
 
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
-ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
+_public_host = urlsplit(SAKAKRIB_PUBLIC_BASE_URL).hostname if SAKAKRIB_PUBLIC_BASE_URL else None
+ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, *([_public_host] if _public_host else []), 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
 
 INSTALLED_APPS = ['daphne','django.contrib.admin','django.contrib.contenttypes','django.contrib.auth','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','django.contrib.postgres','corsheaders','rest_framework','channels','apps.core','apps.accounts','apps.listings','apps.subscriptions','apps.payments']
 MIDDLEWARE = ['apps.accounts.middleware.CapacitorCookiePolicyMiddleware','corsheaders.middleware.CorsMiddleware','django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware']
