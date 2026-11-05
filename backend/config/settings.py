@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
+SAKAKRIB_PUBLIC_FRONTEND_URL = os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
 
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
@@ -113,7 +114,6 @@ PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID','')
 PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET','')
 PAYPAL_BASE_URL = os.getenv('PAYPAL_BASE_URL','https://api-m.sandbox.paypal.com')
 PAYPAL_WEBHOOK_ID = os.getenv('PAYPAL_WEBHOOK_ID','')
-SAKAKRIB_PUBLIC_FRONTEND_URL = os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
 PAYPAL_LISTING_WEBHOOK_ID = os.getenv('PAYPAL_LISTING_WEBHOOK_ID','')
 PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5175/paypal/subscription/return')
 PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL', 'http://localhost:5175/paypal/subscription/cancel')
