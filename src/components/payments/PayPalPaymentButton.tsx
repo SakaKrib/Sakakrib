@@ -304,7 +304,9 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
             onApprove={approveSubscription}
             onCancel={() => setWorking(false)}
             onError={(sdkError) => fail(sdkError.message || 'PayPal subscription checkout failed.')}
-            presentationMode="auto"
+            // PayPal recommends modal presentation for embedded WebViews.
+            // Keep native subscription approval inside the Capacitor app.
+            presentationMode={Capacitor.isNativePlatform() ? 'modal' : 'auto'}
             disabled={disabled || working}
             type="subscribe"
           />
