@@ -65,7 +65,15 @@ def _listings(profile):
     media = ListingMedia.objects.filter(listing_id__in=[r.id for r in rows]).order_by('position')
     covers = {}
     for item in media:
-        covers.setdefault(str(item.listing_id), item.url)
+        # Django-managed files are stored with an internal django-media:// key.
+        # Return the authenticated media API path instead of leaking that storage
+        # scheme to the dashboard's image element.
+        cover_url = (
+            f'/api/listings/media/{item.id}/'
+            if str(item.url or '').startswith('django-media://')
+            else item.url
+        )
+        covers.setdefault(str(item.listing_id), cover_url)
     return [{
         'id': str(x.id), 'user_id': str(x.user_id), 'title': x.title, 'description': x.description,
         'city': x.city, 'county': x.county, 'location_search': x.location_search,
