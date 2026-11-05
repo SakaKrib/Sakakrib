@@ -243,8 +243,26 @@ def process_paypal_subscription_webhook(payload):
         subscription.cancel_at_period_end = True
         subscription.cancelled_at = now
         subscription.auto_renew = False
+        if subscription.status == 'PENDING_PAYMENT':
+            subscription.status = 'CANCELLED'
         subscription.updated_at = now
-        subscription.save(update_fields=['paypal_status', 'cancel_at_period_end', 'cancelled_at', 'auto_renew', 'updated_at'])
+        subscription.save(update_fields=['status', 'paypal_status', 'cancel_at_period_end', 'cancelled_at', 'auto_renew', 'updated_at'])
+
+        # A cancellation before the first successful sale must close the
+        # pending checkout invoice. Do not overwrite an already-paid invoice
+        # when a customer later cancels future renewals.
+        invoice = SubscriptionInvoice.objects.select_for_update().filter(
+            paypal_subscription_id=subscription_id,
+            status='PENDING',
+        ).order_by('-created_at').first()
+        if invoice:
+            invoice.status = 'CANCELLED'
+            invoice.result_description = 'PayPal subscription checkout was cancelled before payment completed.'
+            invoice.webhook_event_id = event_id
+            invoice.save(update_fields=['status', 'result_description', 'webhook_event_id'])
+            listing_id = invoice.listing_id
+            payment_status = 'CANCELLED'
+            message = invoice.result_description
 
     elif event_type == 'BILLING.SUBSCRIPTION.SUSPENDED':
         subscription.paypal_status = 'SUSPENDED'
