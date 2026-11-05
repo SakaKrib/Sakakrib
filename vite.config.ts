@@ -10,6 +10,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
+    // API requests use credentialed cookies. Let Django's CORS middleware
+    // answer proxied API preflights instead of Vite returning Access-Control-Allow-Origin: *.
+    cors: false,
     proxy: {
       '/api': {
         target: apiProxyTarget,
