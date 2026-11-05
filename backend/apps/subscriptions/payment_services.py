@@ -39,19 +39,43 @@ def _paypal_frontend_urls(frontend_origin, invoice_id, client_platform='web'):
         prefix = 'SAKAKRIB_ANDROID_PAYPAL' if platform == 'android' else 'SAKAKRIB_IOS_PAYPAL'
         app_return = str(getattr(settings, f'{prefix}_RETURN_URL', '') or '').strip()
         app_cancel = str(getattr(settings, f'{prefix}_CANCEL_URL', '') or '').strip()
-        if app_return and app_cancel:
-            urls = []
-            for value in (app_return, app_cancel):
-                parts = urlsplit(value)
-                if (
-                    parts.scheme.lower() != 'https'
-                    or not parts.netloc
-                    or parts.username
-                    or parts.password
-                ):
-                    raise ValueError(f'{prefix} return and cancel URLs must be valid HTTPS app-link URLs.')
-                urls.append(_paypal_return_url(value, invoice_id))
-            return tuple(urls)
+
+        # Native checkout must never silently fall back to website URLs: that
+        # sends app users out of the app after PayPal approval. Explicit
+        # platform URLs take priority; otherwise derive App Links from the
+        # canonical public HTTPS origin used by the native manifest filters.
+        if not (app_return and app_cancel):
+            public_base = str(getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
+            if not public_base:
+                raise ValueError(
+                    f'{prefix} return URLs are not configured and SAKAKRIB_PUBLIC_BASE_URL is missing.'
+                )
+            base_parts = urlsplit(public_base)
+            if (
+                base_parts.scheme.lower() != 'https'
+                or not base_parts.netloc
+                or base_parts.username
+                or base_parts.password
+                or base_parts.path not in ('', '/')
+                or base_parts.query
+                or base_parts.fragment
+            ):
+                raise ValueError('SAKAKRIB_PUBLIC_BASE_URL must be an HTTPS origin for native PayPal return links.')
+            app_return = f'{public_base}/paypal/subscription/return'
+            app_cancel = f'{public_base}/paypal/subscription/cancel'
+
+        urls = []
+        for value in (app_return, app_cancel):
+            parts = urlsplit(value)
+            if (
+                parts.scheme.lower() != 'https'
+                or not parts.netloc
+                or parts.username
+                or parts.password
+            ):
+                raise ValueError(f'{prefix} return and cancel URLs must be valid HTTPS app-link URLs.')
+            urls.append(_paypal_return_url(value, invoice_id))
+        return tuple(urls)
 
     # Existing web checkout behavior is intentionally unchanged.
     public_frontend = str(
