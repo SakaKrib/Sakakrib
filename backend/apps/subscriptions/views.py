@@ -186,6 +186,7 @@ class SubscriptionCheckoutView(APIView):
                 phone_number=phone_number,
                 listing_id=request.data.get('listing_id'),
                 frontend_origin=request.headers.get('Origin'),
+                client_platform=request.data.get('client_platform', 'web'),
             )
         except ValueError as exc:
             return Response({'success': False, 'detail': str(exc)}, status=400)
