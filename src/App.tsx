@@ -173,9 +173,11 @@ function AppContent() {
     }
   }, [view, authLoading, profile, authModalOpen, setAuthMode, setAuthModalOpen]);
 
-  if (window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
-  if (window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
-  if (window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
+  // Payment return paths are entry points only. Once a return-page action
+  // navigates to another app view, let the normal hash-based router take over.
+  if (view === 'home' && window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
+  if (view === 'home' && window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
+  if (view === 'home' && window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
 
   const renderView = () => {
     switch (view) {
