@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   PayPalProvider,
   PayPalOneTimePaymentButton,
@@ -242,6 +243,9 @@ export default function PayPalPaymentButton({ mode, paymentIntentId, planId, bil
       billing_cycle: billingCycle,
       provider: 'paypal',
       listing_id: listingId || undefined,
+      // The backend selects a native app-link return only for installed apps.
+      // Browser checkout continues to use the existing website return URL.
+      client_platform: Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web',
     });
     if (!response?.success || !response.paypal_subscription_id || !response.invoice_id) {
       setWorking(false);
