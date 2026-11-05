@@ -1,4 +1,7 @@
 import { useEffect } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import { getDjangoApiBaseUrl } from '@/lib/djangoApi';
 import { initializePushNotifications, installPushNotificationActionListener } from '@/lib/pushNotifications';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -60,6 +63,54 @@ import RenterNotificationsPage from '@/pages/Renters/RenterNotificationsPage';
 function AppContent() {
   const { view, selectedAdminUserId, authModalOpen, setAuthModalOpen, setAuthMode } = useNav();
   const { profile, loading: authLoading } = useAuth();
+
+  // Verified HTTPS App Links / Universal Links reopen the native app after PayPal.
+  // Keep the WebView on its local origin and route only known payment-return paths.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let disposed = false;
+    let removeListener: (() => void) | undefined;
+
+    void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+      try {
+        const incoming = new URL(url);
+        const configuredApiOrigin = new URL(getDjangoApiBaseUrl()).origin;
+        const allowedPaths = new Set([
+          '/paypal/subscription/return',
+          '/paypal/subscription/cancel',
+          '/listing/payment/return',
+        ]);
+
+        if (
+          incoming.protocol !== 'https:' ||
+          incoming.origin !== configuredApiOrigin ||
+          !allowedPaths.has(incoming.pathname)
+        ) {
+          return;
+        }
+
+        window.location.assign(
+          `${window.location.origin}${incoming.pathname}${incoming.search}`,
+        );
+      } catch (error) {
+        console.warn('Unable to handle native payment return link:', error);
+      }
+    }).then((listener) => {
+      if (disposed) {
+        void listener.remove();
+      } else {
+        removeListener = () => { void listener.remove(); };
+      }
+    }).catch((error) => {
+      console.warn('Unable to register native app-link listener:', error);
+    });
+
+    return () => {
+      disposed = true;
+      removeListener?.();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
