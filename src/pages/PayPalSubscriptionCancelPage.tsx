@@ -118,16 +118,15 @@ export default function PayPalSubscriptionCancelPage() {
             {listingId ? 'Continue to Listing' : 'Go to PMS Management Dashboard'}
           </button>
         )}
-        {state === 'failed' && (
+        {(state === 'failed' || state === 'unconfirmed') && (
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-            {listingId && <button type="button" onClick={() => navigate('post-listing', listingId)} className="btn-primary">Continue Editing Listing</button>}
             <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary">Back to Plans</button>
+            {state === 'unconfirmed' && (
+              <button type="button" onClick={() => window.location.reload()} className="btn-secondary inline-flex items-center justify-center gap-2">
+                <RefreshCw className="h-4 w-4" /> Check Payment Again
+              </button>
+            )}
           </div>
-        )}
-        {state === 'unconfirmed' && (
-          <button type="button" onClick={() => window.location.reload()} className="btn-secondary mt-7 inline-flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" /> Check Payment Again
-          </button>
         )}
       </div>
     </div>
