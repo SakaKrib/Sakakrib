@@ -7,6 +7,7 @@ from apps.accounts.models import Profile
 from .domain_bookings import Booking, MovingDispute, MoverPayout
 from .domain_journeys import MovingJourney
 from .domain_platform import Mover, UserNotification
+from .moving_proximity import delivery_radius_meters, evaluate_stop_proximity
 
 DISPUTE_REASONS = {
     "DAMAGED_BELONGINGS", "MISSING_BELONGINGS", "DELIVERY_PROBLEM",
@@ -76,6 +77,24 @@ def confirm_moving_delivery(*, user_id, booking_id):
 
     if not is_renter and not is_mover:
         raise ValidationError("Only the renter or assigned mover can confirm delivery")
+
+    # The mover can only end the job at the destination: pickup must be confirmed, and the
+    # latest GPS fix must be fresh and within the delivery radius of the drop-off point.
+    # (The renter's confirmation is unchanged, and repeating a confirmation stays harmless.)
+    if is_mover and not is_renter and not already_confirmed:
+        if journey.phase != MovingJourney.PHASE_IN_TRANSIT:
+            raise ValidationError("Confirm pickup first. Delivery can only be confirmed after the items are collected and you reach the destination.")
+        proximity = evaluate_stop_proximity(
+            last_latitude=booking.last_known_latitude,
+            last_longitude=booking.last_known_longitude,
+            last_at=booking.last_location_at,
+            target_latitude=booking.dropoff_latitude,
+            target_longitude=booking.dropoff_longitude,
+            radius_meters=delivery_radius_meters(),
+            label="destination",
+        )
+        if not proximity["ok"]:
+            raise ValidationError(proximity["message"])
 
     now = timezone.now()
     if is_renter:

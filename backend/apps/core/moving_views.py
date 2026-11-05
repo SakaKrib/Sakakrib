@@ -30,6 +30,7 @@ from .domain_bookings import (
 )
 from .domain_platform import Mover
 from .domain_property import Review
+from .moving_proximity import journey_rules, start_window
 
 
 class ScopedListDetailView(APIView):
@@ -118,6 +119,13 @@ class BookingView(ScopedListDetailView):
     model = Booking
     scope = staticmethod(bookings_for_user)
     fields = BOOKING_FIELDS
+
+    def serialize(self, obj):
+        data = super().serialize(obj)
+        # When the mover may start, plus the radii the apps mirror for pickup/delivery.
+        data.update(start_window(getattr(obj, "scheduled_start_at", None)))
+        data.update(journey_rules())
+        return data
 
 
 class BookingEventView(ScopedListDetailView):

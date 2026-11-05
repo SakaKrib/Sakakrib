@@ -15,7 +15,7 @@ from .notification_services import dispatch_user_notification
 from .moving_tracking_consumers import tracking_group_name
 from .moving_tracking_health import TRACKING_HEALTHY_AFTER_SECONDS, tracking_health
 from .domain_property import Review
-from .moving_proximity import notify_journey_proximity
+from .moving_proximity import early_start_minutes, format_local_datetime, journey_rules, notify_journey_proximity, start_window
 
 
 def _serialize_point(point):
@@ -79,6 +79,14 @@ def start_moving_journey(*, mover_user_id, booking_id, source=JOURNEY_START_SOUR
     existing = MovingJourney.objects.select_for_update().filter(booking_id=booking.id).first()
     if existing and existing.status in {MovingJourney.STATUS_ACTIVE, MovingJourney.STATUS_DELIVERY_PENDING, MovingJourney.STATUS_COMPLETED}:
         return {"booking_id": str(booking.id), "journey_id": str(existing.id), "tracking_number": existing.tracking_number, "started_at": existing.started_at, "status": "already_started", "source": existing.start_source}
+    # The journey can only be started once the scheduled time is near. Checked after the
+    # already-started returns above so repeating a start call stays harmless.
+    window = start_window(booking.scheduled_start_at)
+    if not window["can_start"]:
+        raise ValidationError(
+            f"You can start this journey from {format_local_datetime(window['can_start_at'])}. "
+            f"Starting opens {early_start_minutes()} minutes before the scheduled time."
+        )
     if booking.started_at is not None:
         if booking.tracking_number:
             raise ValidationError("Journey record is missing for an already-started booking")
@@ -148,7 +156,7 @@ class MovingTrackingView(APIView):
         if booking is None: return Response({"detail": "Booking not found or unauthorized."}, status=404)
         mover = Mover.objects.filter(pk=booking.mover_id).first(); points = MovingTrackingPoint.objects.filter(booking_id=booking.id).order_by("-recorded_at")[:50]
         now = timezone.now(); recent_cutoff = now - timezone.timedelta(seconds=TRACKING_HEALTHY_AFTER_SECONDS); recent_point_count = MovingTrackingPoint.objects.filter(booking_id=booking.id, recorded_at__gte=recent_cutoff).count()
-        return Response({"booking": {"id": str(booking.id), "status": booking.status, "tracking_number": booking.tracking_number, "started_at": booking.started_at, "completed_at": booking.completed_at, "last_known_latitude": booking.last_known_latitude, "last_known_longitude": booking.last_known_longitude, "last_location_at": booking.last_location_at, "tracking_health": tracking_health(booking.last_location_at, recent_point_count=recent_point_count, now=now)}, "mover": {"id": str(mover.id), "user_id": str(mover.user_id), "driver_full_name": mover.driver_full_name, "phone": mover.phone, "profile_photo_url": mover.profile_photo_url, "vehicle_type": mover.vehicle_type, "number_plate": mover.number_plate, "operating_city": mover.operating_city, "operating_county": mover.operating_county, "is_available": mover.is_available, "current_latitude": mover.current_latitude, "current_longitude": mover.current_longitude, "location_updated_at": mover.location_updated_at, "approval_status": mover.approval_status, "tracking_health": tracking_health(mover.location_updated_at, recent_point_count=recent_point_count, now=now)} if mover else None, "tracking_points": [_serialize_point(point) for point in points]})
+        return Response({"booking": {"id": str(booking.id), "status": booking.status, "tracking_number": booking.tracking_number, "started_at": booking.started_at, "completed_at": booking.completed_at, "last_known_latitude": booking.last_known_latitude, "last_known_longitude": booking.last_known_longitude, "last_location_at": booking.last_location_at, "tracking_health": tracking_health(booking.last_location_at, recent_point_count=recent_point_count, now=now), "scheduled_start_at": booking.scheduled_start_at, "pickup_latitude": booking.pickup_latitude, "pickup_longitude": booking.pickup_longitude, "dropoff_latitude": booking.dropoff_latitude, "dropoff_longitude": booking.dropoff_longitude, **start_window(booking.scheduled_start_at), **journey_rules()}, "mover": {"id": str(mover.id), "user_id": str(mover.user_id), "driver_full_name": mover.driver_full_name, "phone": mover.phone, "profile_photo_url": mover.profile_photo_url, "vehicle_type": mover.vehicle_type, "number_plate": mover.number_plate, "operating_city": mover.operating_city, "operating_county": mover.operating_county, "is_available": mover.is_available, "current_latitude": mover.current_latitude, "current_longitude": mover.current_longitude, "location_updated_at": mover.location_updated_at, "approval_status": mover.approval_status, "tracking_health": tracking_health(mover.location_updated_at, recent_point_count=recent_point_count, now=now)} if mover else None, "tracking_points": [_serialize_point(point) for point in points]})
     def post(self, request, booking_id):
         try:
             return Response(record_mover_location(mover_user_id=request.user.id, booking_id=booking_id, latitude=request.data.get("latitude"), longitude=request.data.get("longitude"), accuracy_meters=request.data.get("accuracy_meters"), speed_kph=request.data.get("speed_kph"), heading_degrees=request.data.get("heading_degrees")))

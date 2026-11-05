@@ -20,6 +20,7 @@ import { resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import SecureImage from '@/components/SecureImage';
 
 import Select from '@/components/ui/Select';
+import CountInput from '@/components/ui/CountInput';
 interface MediaItem {
   file?: File;
   url: string;
@@ -154,7 +155,7 @@ export default function EditingListingForm({
             <div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Listing Title</label><input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Spacious 2 Bedroom Apartment" className="input-field" /></div>
             <div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">House Size</label><Select value={size} onChange={e => setSize(e.target.value)} className="input-field"><option value="">Select house size...</option>{HOUSE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}<option value="Custom Size">Custom Size</option></Select></div>
             {size === 'Custom Size' && <div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Custom Size</label><input type="text" value={customSize} onChange={e => setCustomSize(e.target.value)} placeholder="e.g. 150 sqm" className="input-field" /></div>}
-            <div className="grid gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bedrooms</label><Select value={beds} onChange={e => setBeds(e.target.value)} className="input-field">{Array.from({length: 11}, (_, i) => <option key={i} value={i}>{i}</option>)}</Select></div><div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bathrooms</label><Select value={baths} onChange={e => setBaths(e.target.value)} className="input-field">{Array.from({length: 11}, (_, i) => <option key={i} value={i}>{i}</option>)}</Select></div></div>
+            <div className="grid gap-4 sm:grid-cols-2"><div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bedrooms</label><CountInput value={beds} onChange={(n) => setBeds(String(n))} min={0} max={20} presets={[0, 1, 2, 3, 4, 5]} labels={{ 0: 'Studio' }} unit="bedrooms" aria-label="Bedrooms" /></div><div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Bathrooms</label><CountInput value={baths} onChange={(n) => setBaths(String(n))} min={1} max={20} presets={[1, 2, 3, 4, 5]} unit="bathrooms" aria-label="Bathrooms" /></div></div>
             <div><label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label><textarea value={description} onChange={e => setDescription(e.target.value)} rows={6} className="input-field" placeholder="Describe the property..." /></div>
           </section>
 

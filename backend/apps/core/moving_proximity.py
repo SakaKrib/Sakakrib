@@ -15,6 +15,7 @@ stage, and dispatch_user_notification() ignores a key it has already stored.
 """
 import logging
 import math
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,52 @@ ARRIVED_METERS = 150
 # A GPS fix less accurate than this cannot prove the mover has arrived.
 MAX_ARRIVAL_ACCURACY_METERS = 100
 
+# ---- Journey rules (each can be overridden in Django settings) ----------------------------------
+# The mover may start the journey this many minutes before the scheduled start time.
+DEFAULT_EARLY_START_MINUTES = 30
+# Pickup / delivery can only be confirmed with a GPS fix at least this fresh...
+DEFAULT_LOCATION_MAX_AGE_SECONDS = 180
+# ...and this close to the stop. Pickup is generous because renters pin approximate addresses;
+# delivery is tighter because it ends the journey.
+DEFAULT_PICKUP_RADIUS_METERS = 500
+DEFAULT_DELIVERY_RADIUS_METERS = 200
+
+
+def _setting(name, default):
+    """Django setting `name` as an int, or `default` (also when Django is not configured)."""
+    try:
+        from django.conf import settings
+        value = getattr(settings, name, default)
+        return max(0, int(value))
+    except Exception:
+        return default
+
+
+def early_start_minutes():
+    return _setting("MOVING_EARLY_START_MINUTES", DEFAULT_EARLY_START_MINUTES)
+
+
+def location_max_age_seconds():
+    return _setting("MOVING_LOCATION_MAX_AGE_SECONDS", DEFAULT_LOCATION_MAX_AGE_SECONDS)
+
+
+def pickup_radius_meters():
+    return _setting("MOVING_PICKUP_RADIUS_METERS", DEFAULT_PICKUP_RADIUS_METERS)
+
+
+def delivery_radius_meters():
+    return _setting("MOVING_DELIVERY_RADIUS_METERS", DEFAULT_DELIVERY_RADIUS_METERS)
+
+
+def journey_rules():
+    """The thresholds the apps need to mirror these rules in the UI."""
+    return {
+        "early_start_minutes": early_start_minutes(),
+        "location_max_age_seconds": location_max_age_seconds(),
+        "pickup_radius_meters": pickup_radius_meters(),
+        "delivery_radius_meters": delivery_radius_meters(),
+    }
+
 
 def distance_meters(lat1, lon1, lat2, lon2):
     """Great-circle distance between two coordinates in metres (haversine)."""
@@ -37,6 +84,71 @@ def distance_meters(lat1, lon1, lat2, lon2):
     d_lambda = math.radians(lon2 - lon1)
     a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
     return 2 * radius * math.asin(math.sqrt(a))
+
+
+def format_distance(meters):
+    """'1.4 km' or '320 m'."""
+    meters = max(0.0, float(meters))
+    if meters >= 1000:
+        return f"{meters / 1000:.1f} km"
+    return f"{int(round(meters))} m"
+
+
+def format_local_datetime(value):
+    """'Thu 05 Nov 2026, 14:30' in the project's local time zone."""
+    try:
+        from django.utils import timezone as dj_timezone
+        local = dj_timezone.localtime(value) if dj_timezone.is_aware(value) else value
+    except Exception:
+        local = value
+    return local.strftime("%a %d %b %Y, %H:%M")
+
+
+def start_window(scheduled_start_at, *, now=None, early_minutes=None):
+    """When the mover may start: {'can_start_at', 'server_now', 'can_start'}.
+
+    The window opens `early_minutes` before the scheduled start and stays open afterwards (a
+    mover who is running late must still be able to start). No schedule means it cannot open.
+    """
+    now = now or datetime.now(dt_timezone.utc)
+    if scheduled_start_at is None:
+        return {"can_start_at": None, "server_now": now, "can_start": False}
+    early = early_start_minutes() if early_minutes is None else early_minutes
+    opens_at = scheduled_start_at - timedelta(minutes=early)
+    compare_now = now if scheduled_start_at.tzinfo is not None else now.replace(tzinfo=None)
+    return {"can_start_at": opens_at, "server_now": now, "can_start": compare_now >= opens_at}
+
+
+def evaluate_stop_proximity(*, last_latitude, last_longitude, last_at, target_latitude, target_longitude,
+                            radius_meters, label, now=None, max_age_seconds=None):
+    """Has the mover's latest GPS fix reached a stop?
+
+    Returns {'ok', 'reason', 'distance', 'message'}. `reason` is one of 'no_target_coordinates'
+    (cannot be verified, so allowed), 'no_location', 'stale', 'too_far' or 'at_stop'. `message`
+    is a sentence that can be shown to the mover as it is.
+    """
+    if target_latitude is None or target_longitude is None:
+        return {"ok": True, "reason": "no_target_coordinates", "distance": None, "message": ""}
+
+    if last_latitude is None or last_longitude is None or last_at is None:
+        return {"ok": False, "reason": "no_location", "distance": None,
+                "message": f"We have no GPS location from you yet, so we cannot confirm you are at the {label}. Keep the app open with Location on, then try again."}
+
+    now = now or datetime.now(dt_timezone.utc)
+    if last_at.tzinfo is None:
+        now = now.replace(tzinfo=None)
+    max_age = location_max_age_seconds() if max_age_seconds is None else max_age_seconds
+    age = (now - last_at).total_seconds()
+    if age > max_age:
+        minutes = max(1, int(round(age / 60)))
+        return {"ok": False, "reason": "stale", "distance": None,
+                "message": f"Your last GPS update was about {minutes} min ago. Keep the app open with Location on so we can confirm you are at the {label}, then try again."}
+
+    distance = distance_meters(float(last_latitude), float(last_longitude), float(target_latitude), float(target_longitude))
+    if distance > radius_meters:
+        return {"ok": False, "reason": "too_far", "distance": distance,
+                "message": f"You are {format_distance(distance)} from the {label}. Get within {format_distance(radius_meters)} to continue."}
+    return {"ok": True, "reason": "at_stop", "distance": distance, "message": ""}
 
 
 def next_stop(booking, phase):

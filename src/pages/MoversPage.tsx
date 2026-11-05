@@ -10,7 +10,6 @@ import {
   ArrowRight,
   Clock,
   ShieldCheck,
-  Route,
 } from 'lucide-react';
 
 import { useNav } from '@/context/NavContext';
@@ -54,9 +53,13 @@ function MoverAvatar({ photo, name }: { photo?: string | null; name: string }) {
   const [failed, setFailed] = useState(false);
   const src = resolveDjangoMediaUrl(photo);
   if (src && !failed) {
-    return <img src={src} alt={name} loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />;
+    return <img src={src} alt={name} loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover object-top transition-transform group-hover:scale-105" />;
   }
-  return <Truck className="h-9 w-9 text-brand-600 dark:text-brand-300" aria-hidden="true" />;
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Truck className="h-10 w-10 text-gray-400" aria-hidden="true" />
+    </div>
+  );
 }
 
 const vehicleLabel = (type?: string | null): string => {
@@ -369,90 +372,71 @@ export default function MoversPage() {
                 key={mover.id}
                 type="button"
                 onClick={() => navigate('mover-detail', mover.id)}
-                className="card group flex flex-col overflow-hidden text-left transition-all hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-brand-950"
+                className="card group flex flex-col overflow-hidden text-left transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-brand-950"
               >
-                <div className="relative h-20 bg-gradient-to-r from-brand-600 via-brand-500 to-btnblue-500">
+                {/* Photo area: same proportions as the listing cards */}
+                <div className="relative h-40 overflow-hidden bg-gray-200 dark:bg-brand-800">
+                  <MoverAvatar photo={mover.profile_photo_url} name={displayName} />
                   <span
                     className={cn(
-                      'absolute right-3 top-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold shadow-sm',
-                      available ? 'bg-white/95 text-success-700' : 'bg-white/95 text-gray-500'
+                      'absolute left-2 top-2 flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold text-white',
+                      available ? 'bg-success-600' : 'bg-gray-500'
                     )}
                   >
-                    <span className={cn('h-1.5 w-1.5 rounded-full', available ? 'bg-success-500' : 'bg-gray-400')} />
+                    <span className="h-1.5 w-1.5 rounded-full bg-white/90" />
                     {available ? 'Available' : 'Unavailable'}
+                  </span>
+                  <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-brand-600 px-2 py-0.5 text-xs font-semibold text-white">
+                    <Star className={cn('h-3 w-3', ratingAvg !== null ? 'fill-white' : '')} />
+                    {ratingAvg !== null ? `${ratingAvg.toFixed(1)} (${ratingCount})` : 'New'}
                   </span>
                 </div>
 
-                <div className="relative px-5 pb-4">
-                  <div className="-mt-9 flex h-[72px] w-[72px] items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-brand-50 shadow-md dark:border-brand-900 dark:bg-brand-800">
-                    <MoverAvatar photo={mover.profile_photo_url} name={displayName} />
-                  </div>
+                <div className="flex flex-1 flex-col p-3">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-white">
+                    <span className="truncate">{displayName}</span>
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-btnblue-500" aria-label="Verified mover" />
+                  </h3>
+                  {showDriver && (
+                    <p className="truncate text-xs text-gray-500 dark:text-gray-400">Driver: {mover.driver_full_name}</p>
+                  )}
 
-                  <div className="mt-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="flex items-center gap-1.5 truncate text-base font-bold text-gray-900 dark:text-white">
-                        <span className="truncate">{displayName}</span>
-                        <ShieldCheck className="h-4 w-4 shrink-0 text-btnblue-500" aria-label="Verified mover" />
-                      </h3>
-                      {showDriver && (
-                        <p className="truncate text-xs text-gray-500 dark:text-gray-400">Driver: {mover.driver_full_name}</p>
-                      )}
-                    </div>
-
-                    <span className="flex shrink-0 items-center gap-1 rounded-lg bg-warning-50 px-2 py-1 text-xs dark:bg-warning-700/20">
-                      <Star className={cn('h-3.5 w-3.5', ratingAvg !== null ? 'fill-warning-500 text-warning-500' : 'text-gray-300')} />
-                      {ratingAvg !== null ? (
-                        <>
-                          <span className="font-bold text-gray-900 dark:text-white">{ratingAvg.toFixed(1)}</span>
-                          <span className="text-gray-400">({ratingCount})</span>
-                        </>
-                      ) : (
-                        <span className="font-medium text-gray-500 dark:text-gray-400">New</span>
-                      )}
-                    </span>
-                  </div>
-
-                  <p className="mt-2 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                    <MapPin className="h-3 w-3 shrink-0" />
                     <span className="truncate">
                       {mover.operating_city}
                       {mover.operating_county ? `, ${mover.operating_county}` : ''}
                     </span>
                   </p>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">
-                      <Truck className="mr-1 h-3 w-3" />
+                  <p className="mt-1.5 text-base font-bold text-brand-600 dark:text-brand-400">
+                    {hasBaseRate ? (
+                      <>
+                        <span className="mr-1 text-xs font-normal text-gray-400">From</span>
+                        {formatKES(baseRate)}
+                      </>
+                    ) : (
+                      <span className="text-sm font-medium text-gray-400">Rate on request</span>
+                    )}
+                    {hasRatePerKm && (
+                      <span className="ml-1.5 text-xs font-normal text-gray-500 dark:text-gray-400">+ {formatKES(ratePerKm)}/km</span>
+                    )}
+                  </p>
+
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Truck className="h-3 w-3" />
                       {vehicleLabel(mover.vehicle_type)}
                     </span>
                     {hours && (
-                      <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">
-                        <Clock className="mr-1 h-3 w-3" />
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
                         {hours}
                       </span>
                     )}
                   </div>
-                </div>
 
-                <div className="mt-auto flex items-end justify-between gap-3 border-t border-gray-200 bg-gray-50 px-5 py-3.5 dark:border-brand-800 dark:bg-brand-950/40">
-                  <div>
-                    {hasBaseRate ? (
-                      <>
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Starting from</p>
-                        <p className="text-lg font-bold leading-tight text-brand-600 dark:text-brand-400">{formatKES(baseRate)}</p>
-                      </>
-                    ) : (
-                      <p className="text-sm font-medium text-gray-400">Rate on request</p>
-                    )}
-                    {hasRatePerKm && (
-                      <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                        <Route className="h-3 w-3" />
-                        + {formatKES(ratePerKm)} / km
-                      </p>
-                    )}
-                  </div>
-
-                  <span className="flex items-center gap-1 rounded-full bg-btnblue-500 px-3.5 py-2 text-sm font-semibold text-white transition-colors group-hover:bg-btnblue-600">
+                  <span className="btn-primary mt-3 w-full">
                     View & Book
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </span>

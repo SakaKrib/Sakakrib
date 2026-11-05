@@ -12,6 +12,7 @@ from .domain_bookings import Booking, ChatMessage
 from .domain_journeys import JOURNEY_PHASE_HEADING_TO_PICKUP, JOURNEY_PHASE_IN_TRANSIT, MovingJourney
 from .domain_platform import Mover
 from .moving_tracking_consumers import tracking_group_name
+from .moving_proximity import evaluate_stop_proximity, pickup_radius_meters
 from .notification_services import dispatch_user_notification
 
 
@@ -87,6 +88,19 @@ def confirm_mover_pickup(*, mover_user_id, booking_id):
 
     if journey.phase != JOURNEY_PHASE_HEADING_TO_PICKUP:
         raise ValidationError("Journey is not awaiting pickup confirmation")
+
+    # The mover must actually be at the pickup point (fresh GPS fix within the radius).
+    proximity = evaluate_stop_proximity(
+        last_latitude=booking.last_known_latitude,
+        last_longitude=booking.last_known_longitude,
+        last_at=booking.last_location_at,
+        target_latitude=booking.pickup_latitude,
+        target_longitude=booking.pickup_longitude,
+        radius_meters=pickup_radius_meters(),
+        label="pickup point",
+    )
+    if not proximity["ok"]:
+        raise ValidationError(proximity["message"])
 
     now = timezone.now()
     journey.phase = JOURNEY_PHASE_IN_TRANSIT

@@ -26,6 +26,7 @@ import {
 import TermsGate from '@/components/TermsGate';
 
 import Select from '@/components/ui/Select';
+import CountInput from '@/components/ui/CountInput';
 import SecureImage from '@/components/SecureImage';
 type UnitAvailability =
   | 'available'
@@ -1175,34 +1176,7 @@ export default function PropertyListingForm({
                                     Bedrooms
                                   </label>
 
-                                  <Select
-                                    value={
-                                      unit.beds
-                                    }
-                                    onChange={(e) =>
-                                      updateUnit(
-                                        unit.id,
-                                        'beds',
-                                        e.target.value
-                                      )
-                                    }
-                                    className="input-field"
-                                  >
-                                    {[0, 1, 2, 3, 4, 5, 6].map(
-                                      (n) => (
-                                        <option
-                                          key={n}
-                                          value={n}
-                                        >
-                                          {n === 0
-                                            ? 'Studio'
-                                            : n === 6
-                                            ? '6+'
-                                            : n}
-                                        </option>
-                                      )
-                                    )}
-                                  </Select>
+                                  <CountInput value={unit.beds} onChange={(n) => updateUnit(unit.id, 'beds', String(n))} min={0} max={20} presets={[0, 1, 2, 3, 4, 5]} labels={{ 0: 'Studio' }} unit="bedrooms" aria-label="Bedrooms" />
                                 </div>
 
                                 {/* Baths */}
@@ -1212,32 +1186,7 @@ export default function PropertyListingForm({
                                     Bathrooms
                                   </label>
 
-                                  <Select
-                                    value={
-                                      unit.baths
-                                    }
-                                    onChange={(e) =>
-                                      updateUnit(
-                                        unit.id,
-                                        'baths',
-                                        e.target.value
-                                      )
-                                    }
-                                    className="input-field"
-                                  >
-                                    {[1, 2, 3, 4, 5].map(
-                                      (n) => (
-                                        <option
-                                          key={n}
-                                          value={n}
-                                        >
-                                          {n === 5
-                                            ? '5+'
-                                            : n}
-                                        </option>
-                                      )
-                                    )}
-                                  </Select>
+                                  <CountInput value={unit.baths} onChange={(n) => updateUnit(unit.id, 'baths', String(n))} min={1} max={20} presets={[1, 2, 3, 4, 5]} unit="bathrooms" aria-label="Bathrooms" />
                                 </div>
 
                               </div>
@@ -2414,33 +2363,7 @@ export default function PropertyListingForm({
                           Bedrooms
                         </label>
 
-                        <Select
-                          value={beds}
-                          onChange={(e) =>
-                            setBeds(
-                              e.target.value
-                            )
-                          }
-                          className="input-field"
-                        >
-
-                          {[0, 1, 2, 3, 4, 5, 6].map(
-                            (n) => (
-
-                              <option
-                                key={n}
-                                value={n}
-                              >
-                                {n === 0
-                                  ? 'Studio'
-                                  : n === 6
-                                  ? '6+'
-                                  : n}
-                              </option>
-                            )
-                          )}
-
-                        </Select>
+                        <CountInput value={beds} onChange={(n) => setBeds(String(n))} min={0} max={20} presets={[0, 1, 2, 3, 4, 5]} labels={{ 0: 'Studio' }} unit="bedrooms" aria-label="Bedrooms" />
 
                       </div>
 
@@ -2450,31 +2373,7 @@ export default function PropertyListingForm({
                           Bathrooms
                         </label>
 
-                        <Select
-                          value={baths}
-                          onChange={(e) =>
-                            setBaths(
-                              e.target.value
-                            )
-                          }
-                          className="input-field"
-                        >
-
-                          {[1, 2, 3, 4, 5].map(
-                            (n) => (
-
-                              <option
-                                key={n}
-                                value={n}
-                              >
-                                {n === 5
-                                  ? '5+'
-                                  : n}
-                              </option>
-                            )
-                          )}
-
-                        </Select>
+                        <CountInput value={baths} onChange={(n) => setBaths(String(n))} min={1} max={20} presets={[1, 2, 3, 4, 5]} unit="bathrooms" aria-label="Bathrooms" />
 
                       </div>
 

@@ -25,6 +25,7 @@ export interface DevicePosition {
 export type LocationErrorCode =
   | 'permission_denied'
   | 'services_off'
+  | 'no_fix'
   | 'timeout'
   | 'unsupported'
   | 'insecure'
@@ -61,7 +62,9 @@ function locationMessage(code: LocationErrorCode): string {
         ? 'Location permission is off for Saka Krib. Open your phone Settings > Apps > Saka Krib > Permissions > Location, choose "Allow", then try again.'
         : 'Location permission is blocked for this site. Allow location in your browser\'s site settings, then try again.';
     case 'services_off':
-      return 'Your phone\'s Location (GPS) is switched off. Turn it on from the quick settings or Settings > Location, then try again.';
+      return 'Location is turned off on this phone. Switch it on (pull down the quick settings and tap Location), then tap Try again.';
+    case 'no_fix':
+      return 'Still looking for your location. Step outside or near a window and give it a few seconds, or tap Try again.';
     case 'timeout':
       return 'We could not get a GPS fix in time. Move to an open area, check that Location is on, and try again.';
     case 'unsupported':
@@ -82,17 +85,22 @@ export function describeLocationError(error: unknown): string {
 function normalizeError(error: unknown): LocationError {
   if (error instanceof LocationError) return error;
 
-  // Browser GeolocationPositionError: 1 denied, 2 unavailable, 3 timeout.
+  // Browser GeolocationPositionError: 1 denied, 2 unavailable (no fix yet), 3 timeout.
   const code = (error as { code?: unknown } | null)?.code;
   if (code === 1) return new LocationError('permission_denied');
-  if (code === 2) return new LocationError('services_off');
+  if (code === 2) return new LocationError('no_fix');
   if (code === 3) return new LocationError('timeout');
 
-  // Capacitor plugin errors are plain Errors with a descriptive message.
+  // Capacitor plugin errors are plain Errors with a descriptive message. Only say Location is
+  // switched off when the phone says so explicitly; "unavailable" usually just means no GPS
+  // fix yet (indoors, cold start) and must not be reported as GPS being off.
   const text = String((error as { message?: unknown } | null)?.message ?? error ?? '').toLowerCase();
-  if (/(denied|not granted|permission)/.test(text)) return new LocationError('permission_denied');
-  if (/(not enabled|disabled|services|unavailable|turn on)/.test(text)) return new LocationError('services_off');
+  if (/(permission|not granted|denied)/.test(text)) return new LocationError('permission_denied');
+  if (/(location services? (is |are )?(not enabled|disabled|off)|location (is )?(disabled|turned off|switched off)|gps (is )?(off|disabled|not enabled))/.test(text)) {
+    return new LocationError('services_off');
+  }
   if (/(timeout|timed out)/.test(text)) return new LocationError('timeout');
+  if (/(unavailable|no location|unable to (get|determine|read))/.test(text)) return new LocationError('no_fix');
   return new LocationError('unknown');
 }
 
@@ -134,7 +142,8 @@ export async function requestLocationPermission(): Promise<true> {
   if (Capacitor.isNativePlatform()) {
     let status = await Geolocation.checkPermissions();
     if (status.location !== 'granted' && status.coarseLocation !== 'granted') {
-      status = await Geolocation.requestPermissions({ permissions: ['location'] });
+      // No arguments: Android shows its own "Allow only while using the app" dialog.
+      status = await Geolocation.requestPermissions();
     }
     if (status.location !== 'granted' && status.coarseLocation !== 'granted') {
       throw new LocationError('permission_denied');
@@ -175,11 +184,21 @@ export async function getCurrentPosition(options: LocationOptions = {}): Promise
   try {
     if (Capacitor.isNativePlatform()) {
       await requestLocationPermission();
-      return fromNative(await Geolocation.getCurrentPosition(opts));
+      try {
+        return fromNative(await Geolocation.getCurrentPosition(opts));
+      } catch (error) {
+        if (normalizeError(error).code === 'permission_denied') throw error;
+        // No precise GPS fix in time: settle for a network/coarse fix rather than failing.
+        return fromNative(await Geolocation.getCurrentPosition({ enableHighAccuracy: false, maximumAge: 120000, timeout: 10000 }));
+      }
     }
     assertBrowserReady();
     return await new Promise<DevicePosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition((p) => resolve(fromBrowser(p)), reject, opts);
+      navigator.geolocation.getCurrentPosition((p) => resolve(fromBrowser(p)), (err) => {
+        if (err.code === 1) { reject(err); return; }
+        // Retry once with a coarse fix before giving up.
+        navigator.geolocation.getCurrentPosition((p) => resolve(fromBrowser(p)), reject, { enableHighAccuracy: false, maximumAge: 120000, timeout: 10000 });
+      }, opts);
     });
   } catch (error) {
     throw normalizeError(error);
@@ -197,21 +216,44 @@ export async function watchPosition(
   options: LocationOptions = {},
 ): Promise<() => void> {
   const opts = { ...DEFAULTS, ...options };
+  const startedAt = Date.now();
+  let gotFix = false;
+
+  const deliver = (position: DevicePosition) => {
+    gotFix = true;
+    onPosition(position);
+  };
+  // "No fix yet" and timeouts are normal while the GPS warms up. Stay quiet for the first
+  // 20 seconds; permission problems and "Location is off" are always reported straight away.
+  const report = (error: LocationError) => {
+    const transient = error.code === 'no_fix' || error.code === 'timeout';
+    if (transient && !gotFix && Date.now() - startedAt < 20000) return;
+    onError(error);
+  };
+
   try {
     if (Capacitor.isNativePlatform()) {
       await requestLocationPermission();
       const id = await Geolocation.watchPosition(opts, (position, error) => {
-        if (error) onError(normalizeError(error));
-        else if (position) onPosition(fromNative(position));
+        if (error) report(normalizeError(error));
+        else if (position) deliver(fromNative(position));
       });
+      // If precise GPS is slow, show a coarse network position meanwhile.
+      const fallback = window.setTimeout(() => {
+        if (gotFix) return;
+        Geolocation.getCurrentPosition({ enableHighAccuracy: false, maximumAge: 120000, timeout: 10000 })
+          .then((p) => { if (!gotFix) deliver(fromNative(p)); })
+          .catch(() => undefined);
+      }, 6000);
       return () => {
+        window.clearTimeout(fallback);
         void Geolocation.clearWatch({ id });
       };
     }
     assertBrowserReady();
     const id = navigator.geolocation.watchPosition(
-      (p) => onPosition(fromBrowser(p)),
-      (e) => onError(normalizeError(e)),
+      (p) => deliver(fromBrowser(p)),
+      (e) => report(normalizeError(e)),
       opts,
     );
     return () => navigator.geolocation.clearWatch(id);
