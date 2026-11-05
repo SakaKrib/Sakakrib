@@ -9,6 +9,10 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 SAKAKRIB_PUBLIC_FRONTEND_URL = os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
+SAKAKRIB_ANDROID_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_RETURN_URL', '').strip()
+SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL', '').strip()
+SAKAKRIB_IOS_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_RETURN_URL', '').strip()
+SAKAKRIB_IOS_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_CANCEL_URL', '').strip()
 
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
