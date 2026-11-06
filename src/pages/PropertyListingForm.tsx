@@ -27,6 +27,7 @@ import TermsGate from '@/components/TermsGate';
 
 import Select from '@/components/ui/Select';
 import CountInput from '@/components/ui/CountInput';
+import { ListingTypeToggle, SaleFields } from '@/components/ui/UnitPricingFields';
 import SecureImage from '@/components/SecureImage';
 type UnitAvailability =
   | 'available'
@@ -46,6 +47,12 @@ interface SocialLink {
 }
 
 interface PropertyUnit {
+  listingType?: 'rent' | 'sale';
+  salePrice?: string;
+  installmentDeposit?: string;
+  installmentAmount?: string;
+  installmentFrequency?: 'monthly' | 'quarterly' | 'yearly';
+  installmentPeriods?: string;
   id: string;
   unitNumber: string;
   unitType: string;
@@ -197,6 +204,7 @@ export default function PropertyListingForm({
 
   termsAccepted,
   setTermsAccepted,
+  maxUnits,
 }: any) {
 
   /*
@@ -878,14 +886,15 @@ export default function PropertyListingForm({
 
                           <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
                             Add the individual units available in this
-                            property. Each unit can have its own rent,
-                            availability and details.
+                            property. Each unit is either for rent or for sale
+                            and has its own price, availability and details.{maxUnits ? ` Your plan allows up to ${maxUnits} units per property (${units.length}/${maxUnits} added).` : ''}
                           </p>
                         </div>
 
                         <button
                           type="button"
                           onClick={addUnit}
+                          disabled={Boolean(maxUnits) && units.length >= maxUnits}
                           className="btn-primary w-full sm:w-auto sm:shrink-0"
                         >
                           <Plus className="h-4 w-4" />
@@ -1061,56 +1070,61 @@ export default function PropertyListingForm({
                                   </Select>
                                 </div>
 
-                                {/* Rent */}
-
-                                <div>
+                                {/* Rent or sale */}
+                                <div className="sm:col-span-2">
                                   <label className="mb-1.5 block text-sm font-medium">
-                                    Monthly Rent (KES)
+                                    This unit is
                                   </label>
-
-                                  <input
-                                    type="number"
-                                    value={
-                                      unit.rent
-                                    }
-                                    onChange={(e) =>
-                                      updateUnit(
-                                        unit.id,
-                                        'rent',
-                                        e.target.value
-                                      )
-                                    }
-                                    placeholder="e.g. 35000"
-                                    className="input-field"
-                                    min={0}
+                                  <ListingTypeToggle
+                                    value={unit.listingType ?? 'rent'}
+                                    onChange={(next) => updateUnit(unit.id, 'listingType', next)}
                                   />
                                 </div>
-
-                                {/* Deposit */}
-
-                                <div>
-                                  <label className="mb-1.5 block text-sm font-medium">
-                                    Deposit (KES)
-                                  </label>
-
-                                  <input
-                                    type="number"
-                                    value={
-                                      unit.depositAmount
-                                    }
-                                    onChange={(e) =>
-                                      updateUnit(
-                                        unit.id,
-                                        'depositAmount',
-                                        e.target.value
-                                      )
-                                    }
-                                    placeholder="e.g. 35000"
-                                    className="input-field"
-                                    min={0}
-                                  />
-                                </div>
-
+                                {(unit.listingType ?? 'rent') === 'rent' ? (
+                                  <>
+                                    <div>
+                                      <label className="mb-1.5 block text-sm font-medium">
+                                        Monthly Rent (KES)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        value={unit.rent}
+                                        onChange={(e) => updateUnit(unit.id, 'rent', e.target.value)}
+                                        placeholder="e.g. 35000"
+                                        className="input-field"
+                                        min={0}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1.5 block text-sm font-medium">
+                                        Deposit (KES)
+                                      </label>
+                                      <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        value={unit.depositAmount}
+                                        onChange={(e) => updateUnit(unit.id, 'depositAmount', e.target.value)}
+                                        placeholder="e.g. 35000"
+                                        className="input-field"
+                                        min={0}
+                                      />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="sm:col-span-2">
+                                    <SaleFields
+                                      values={{
+                                        salePrice: unit.salePrice ?? '',
+                                        installmentDeposit: unit.installmentDeposit ?? '',
+                                        installmentAmount: unit.installmentAmount ?? '',
+                                        installmentFrequency: unit.installmentFrequency ?? 'monthly',
+                                        installmentPeriods: unit.installmentPeriods ?? '',
+                                      }}
+                                      onChange={(patch) => Object.entries(patch).forEach(([key, value]) => updateUnit(unit.id, key as keyof PropertyUnit, value))}
+                                    />
+                                  </div>
+                                )}
                                 {/* Availability */}
 
                                 <div>
@@ -1146,7 +1160,9 @@ export default function PropertyListingForm({
                                   </Select>
                                 </div>
 
-                                {/* Size */}
+                                {!isPropertyManagementListing && (
+                    <>
+                    {/* Size */}
 
                                 <div>
                                   <label className="mb-1.5 block text-sm font-medium">
@@ -1761,17 +1777,19 @@ export default function PropertyListingForm({
 
                                   <div>
                                     <p className="text-xs text-gray-400">
-                                      Rent
+                                      {(unit.listingType ?? 'rent') === 'sale' ? 'For sale' : 'Rent'}
                                     </p>
 
                                     <p className="mt-1 font-semibold text-gray-900 dark:text-white">
-                                      {unit.rent
-                                        ? formatKES(
-                                            Number(
-                                              unit.rent
-                                            )
-                                          )
-                                        : 'Not set'}
+                                      {(unit.listingType ?? 'rent') === 'sale'
+                                        ? (unit.salePrice
+                                            ? formatKES(Number(unit.salePrice))
+                                            : unit.installmentAmount
+                                              ? `${formatKES(Number(unit.installmentAmount))} / ${unit.installmentFrequency === 'yearly' ? 'yr' : unit.installmentFrequency === 'quarterly' ? 'qtr' : 'mo'}`
+                                              : 'Not set')
+                                        : (unit.rent
+                                            ? formatKES(Number(unit.rent))
+                                            : 'Not set')}
                                     </p>
                                   </div>
 
@@ -2379,6 +2397,8 @@ export default function PropertyListingForm({
 
                     </div>
 
+                    </>
+                    )}
                     {/* Description */}
 
                     <div>
@@ -2397,8 +2417,8 @@ export default function PropertyListingForm({
                           )
                         }
                         rows={6}
-                        placeholder="Describe the property, amenities, neighborhood, nearby landmarks..."
-                        className="input-field resize-none p-10"
+                        placeholder={isPropertyManagementListing ? "Describe the property as a whole: the estate or building, shared amenities, security, neighborhood and nearby landmarks. Rent, bedrooms and bathrooms are set per unit." : "Describe the property, amenities, neighborhood, nearby landmarks..."}
+                        className="input-field resize-none rounded-2xl px-4 py-3"
                       />
 
                     </div>

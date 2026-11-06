@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.core.unit_pricing import pricing_payload
 from apps.accounts.models import Profile
 from apps.core.domain_property import LandlordPaymentMethod, ListingMedia, PropertyUnit, RenterUnitAssociation
 from apps.subscriptions.services import get_pms_access
@@ -115,6 +116,7 @@ class ListingSerializer(serializers.ModelSerializer):
                 'unit_number': unit.unit_number,
                 'unit_type': unit.unit_type,
                 'rent': unit.rent,
+                **pricing_payload(unit),
                 'deposit_amount': unit.deposit_amount,
                 'size': unit.size,
                 'beds': unit.beds,

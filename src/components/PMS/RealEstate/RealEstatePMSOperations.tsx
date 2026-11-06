@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileText, Home, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { FileText, Home, Loader2, Pencil, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { EMPTY_SALE_VALUES, ListingTypeToggle, SaleFields, type InstallmentFrequency, type UnitListingType, type UnitSaleValues } from '@/components/ui/UnitPricingFields';
 
 import {
   createRealEstatePMSUnit,
@@ -39,6 +40,9 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
   const [unitBaths, setUnitBaths] = useState(1);
   const [unitDeposit, setUnitDeposit] = useState('');
   const [unitType, setUnitType] = useState('');
+  const [unitListingType, setUnitListingType] = useState<UnitListingType>('rent');
+  const [unitSale, setUnitSale] = useState<UnitSaleValues>(EMPTY_SALE_VALUES);
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
   const [leaseUnitId, setLeaseUnitId] = useState('');
   const [leaseStart, setLeaseStart] = useState(today);
   const [leaseEnd, setLeaseEnd] = useState('');
@@ -73,21 +77,44 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
   const leaseUnit = units.find((unit) => unit.unit_id === leaseUnitId);
   const totalRent = units.reduce((sum, unit) => sum + Number(unit.rent || 0), 0);
 
+  const resetUnitForm = () => {
+    setEditingUnitId(null); setUnitNumber(''); setRent(''); setUnitDeposit(''); setUnitType(''); setUnitBeds(1); setUnitBaths(1);
+    setUnitListingType('rent'); setUnitSale(EMPTY_SALE_VALUES);
+  };
+
+  const startEdit = (unit: RealEstatePMSUnit) => {
+    const u = unit as RealEstatePMSUnit & Record<string, any>;
+    setEditingUnitId(unit.unit_id); setListingId(unit.listing_id); setUnitNumber(unit.unit_number); setUnitType(unit.unit_type || '');
+    setRent(unit.rent ? String(unit.rent) : ''); setUnitDeposit(unit.deposit_amount ? String(unit.deposit_amount) : ''); setUnitBeds(unit.beds ?? 1); setUnitBaths(unit.baths ?? 1);
+    setUnitListingType(u.listing_type === 'sale' ? 'sale' : 'rent');
+    setUnitSale({ salePrice: u.sale_price ? String(u.sale_price) : '', installmentDeposit: u.installment_deposit ? String(u.installment_deposit) : '', installmentAmount: u.installment_amount ? String(u.installment_amount) : '', installmentFrequency: (u.installment_frequency || 'monthly') as InstallmentFrequency, installmentPeriods: u.installment_periods ? String(u.installment_periods) : '' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const unitPriceReady = unitListingType === 'sale'
+    ? Number(unitSale.salePrice) > 0 || (Number(unitSale.installmentAmount) > 0 && Number(unitSale.installmentPeriods) > 0)
+    : Number(rent) > 0;
+  const listingUnitCount = units.filter((unit) => unit.listing_id === listingId).length;
+  const atUnitLimit = !editingUnitId && maxUnitsPerListing != null && listingUnitCount >= maxUnitsPerListing;
+
   const addUnit = async () => {
-    if (!listingId || !unitNumber.trim() || !rent) return;
+    if (!listingId || !unitNumber.trim() || !unitPriceReady || atUnitLimit) return;
     setSaving(true);
     setError(null);
     try {
-      const result = await createRealEstatePMSUnit({ listing_id: listingId, unit_number: unitNumber.trim(), rent: Number(rent), beds: unitBeds, baths: unitBaths, deposit_amount: Number(unitDeposit || 0), unit_type: unitType.trim() || 'unit' });
-      if (result.data) setUnits((current) => [...current, result.data as RealEstatePMSUnit]);
-      setUnitNumber('');
-      setRent('');
-      setUnitDeposit('');
-      setUnitType('');
-      setUnitBeds(1);
-      setUnitBaths(1);
+      const payload: Record<string, unknown> = { listing_id: listingId, unit_number: unitNumber.trim(), beds: unitBeds, baths: unitBaths, deposit_amount: Number(unitDeposit || 0), unit_type: unitType.trim() || 'unit', listing_type: unitListingType };
+      if (unitListingType === 'rent') payload.rent = Number(rent);
+      else Object.assign(payload, { sale_price: unitSale.salePrice ? Number(unitSale.salePrice) : null, installment_deposit: unitSale.installmentDeposit ? Number(unitSale.installmentDeposit) : null, installment_amount: unitSale.installmentAmount ? Number(unitSale.installmentAmount) : null, installment_frequency: unitSale.installmentAmount ? unitSale.installmentFrequency : null, installment_periods: unitSale.installmentPeriods ? Number(unitSale.installmentPeriods) : null });
+      if (editingUnitId) {
+        const result = await updateRealEstatePMSUnit(editingUnitId, payload);
+        if (result.data) setUnits((current) => current.map((item) => item.unit_id === editingUnitId ? result.data as RealEstatePMSUnit : item));
+      } else {
+        const result = await createRealEstatePMSUnit(payload);
+        if (result.data) setUnits((current) => [...current, result.data as RealEstatePMSUnit]);
+      }
+      resetUnitForm();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to add unit.');
+      setError(err instanceof Error ? err.message : 'Unable to save unit.');
     } finally {
       setSaving(false);
     }
@@ -186,18 +213,23 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
-        <div className="flex items-center gap-2"><Plus className="h-5 w-5 text-brand-600" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">Add unit</h2></div>
+        <div className="flex items-center gap-2"><Plus className="h-5 w-5 text-brand-600" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">{editingUnitId ? 'Edit unit' : 'Add unit'}</h2>{editingUnitId && <button type="button" onClick={resetUnitForm} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500"><X className="h-3.5 w-3.5" />Cancel edit</button>}</div>
+        <div className="mt-4"><ListingTypeToggle value={unitListingType} onChange={setUnitListingType} /></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="sm:col-span-2 lg:col-span-1"><Select value={listingId} onChange={(event) => setListingId(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select listing</option>{listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}</Select></div>
           <input value={unitNumber} onChange={(event) => setUnitNumber(event.target.value)} placeholder="Unit number (e.g. A01)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={unitType} onChange={(event) => setUnitType(event.target.value)} placeholder="Type (e.g. Apartment)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          {unitListingType === 'rent' && <>
           <input value={rent} onChange={(event) => setRent(event.target.value)} type="number" inputMode="numeric" min="1" placeholder="Monthly rent (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={unitDeposit} onChange={(event) => setUnitDeposit(event.target.value)} type="number" inputMode="numeric" min="0" placeholder="Deposit (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          </>}
           <div />
           <div><p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">Bedrooms</p><CountInput value={unitBeds} onChange={setUnitBeds} min={0} max={20} presets={[0, 1, 2, 3, 4, 5]} labels={{ 0: 'Studio' }} unit="bedrooms" aria-label="Bedrooms" /></div>
           <div><p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">Bathrooms</p><CountInput value={unitBaths} onChange={setUnitBaths} min={0} max={20} presets={[1, 2, 3, 4, 5]} unit="bathrooms" aria-label="Bathrooms" /></div>
-          <button type="button" onClick={() => void addUnit()} disabled={saving || !listingId || !unitNumber.trim() || !rent} className="sm:col-span-2 lg:col-span-1 self-end inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Add</button>
+          {unitListingType === 'sale' && <div className="sm:col-span-2 lg:col-span-3"><SaleFields values={unitSale} onChange={(patch) => setUnitSale((prev) => ({ ...prev, ...patch }))} /></div>}
+          <button type="button" onClick={() => void addUnit()} disabled={saving || !listingId || !unitNumber.trim() || !unitPriceReady || atUnitLimit} className="sm:col-span-2 lg:col-span-1 self-end inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{editingUnitId ? 'Save changes' : 'Add'}</button>
         </div>
+        {atUnitLimit && <p className="mt-2 text-xs font-semibold text-warning-700 dark:text-warning-300">This listing has reached the plan limit of {maxUnitsPerListing} units. Remove a unit or upgrade to add more.</p>}
         {maxUnitsPerListing != null && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Plan capacity: {maxUnitsPerListing} units per listing.</p>}
       </section>
 
@@ -222,7 +254,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
         {loading ? <div className="flex justify-center py-10 text-sm text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading units...</div> : grouped.map((listing) => (
           <section key={listing.id} className="rounded-2xl border bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
             <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-gray-900 dark:text-white">{listing.title}</h3><span className="text-xs font-semibold text-gray-500 dark:text-gray-400">{listing.units.length}{maxUnitsPerListing != null ? ` / ${maxUnitsPerListing}` : ''} units</span></div>
-            {listing.units.length === 0 ? <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No units recorded for this listing.</p> : <div className="mt-3 divide-y dark:divide-brand-800">{listing.units.map((unit) => <div key={unit.unit_id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">Unit {unit.unit_number}</p><p className="text-xs text-gray-500 dark:text-gray-400">KES {Number(unit.rent).toLocaleString('en-KE')} · {unit.renter_name ?? 'Vacant'}</p></div><div className="flex items-center gap-2"><button type="button" disabled={saving} onClick={() => void toggleAvailability(unit)} className="rounded-full border px-3 py-1 text-xs font-semibold dark:border-brand-700">{unit.availability}</button>{isAdmin && <button type="button" disabled={saving} onClick={() => void removeUnit(unit)} className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" aria-label={`Delete unit ${unit.unit_number}`}><Trash2 className="h-4 w-4" /></button>}</div></div>)}</div>}
+            {listing.units.length === 0 ? <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">No units recorded for this listing.</p> : <div className="mt-3 divide-y dark:divide-brand-800">{listing.units.map((unit) => <div key={unit.unit_id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-gray-900 dark:text-white">Unit {unit.unit_number}</p><p className="text-xs text-gray-500 dark:text-gray-400">{(unit as any).listing_type === 'sale' ? ((unit as any).sale_price ? `For sale · KES ${Number((unit as any).sale_price).toLocaleString('en-KE')}` : `For sale · KES ${Number((unit as any).installment_amount || 0).toLocaleString('en-KE')} installments`) : `KES ${Number(unit.rent).toLocaleString('en-KE')} / month`} · {unit.renter_name ?? 'Vacant'}</p></div><div className="flex items-center gap-2"><button type="button" disabled={saving} onClick={() => void toggleAvailability(unit)} className="rounded-full border px-3 py-1 text-xs font-semibold dark:border-brand-700">{unit.availability}</button><button type="button" disabled={saving} onClick={() => startEdit(unit)} className="rounded-lg p-2 text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/20" aria-label={`Edit unit ${unit.unit_number}`}><Pencil className="h-4 w-4" /></button>{isAdmin && <button type="button" disabled={saving} onClick={() => void removeUnit(unit)} className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" aria-label={`Delete unit ${unit.unit_number}`}><Trash2 className="h-4 w-4" /></button>}</div></div>)}</div>}
           </section>
         ))}
       </div>

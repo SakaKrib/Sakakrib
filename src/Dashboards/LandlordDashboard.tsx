@@ -1515,8 +1515,8 @@ const pmsBenefits = [
       emptyTitle: string,
       emptyDescription: string
     ) => (
-      <div className="card overflow-hidden mx-auto max-w-7xl px-2 py-8 sm:px-6 lg:px-8">
-        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-2 py-4 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
+      <div className="card overflow-hidden mx-auto max-w-7xl">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100 px-5 py-5 dark:border-brand-800 dark:from-brand-800/50 dark:to-brand-900/50">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <button

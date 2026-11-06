@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Profile
 from apps.core.domain_property import ListingMedia, PropertyUnit
+from apps.core.unit_pricing import normalize_unit_pricing, sync_listing_price
 from .models import Listing
 
 
@@ -31,20 +32,23 @@ def _sync_draft_units(owner, draft, data):
         incoming_ids.add(unit_id)
 
         try:
-            rent = raw.get('rent')
             beds = int(raw.get('beds') or 0)
             baths = int(raw.get('baths') or 0)
         except (TypeError, ValueError):
-            raise ValidationError('Property unit rent, beds, and baths must be valid numbers.')
+            raise ValidationError('Property unit beds and baths must be valid numbers.')
         if beds < 0 or baths < 0:
             raise ValidationError('Property unit beds and baths cannot be negative.')
+        try:
+            pricing = normalize_unit_pricing(raw)
+        except ValueError as exc:
+            raise ValidationError(f"Unit {str(raw.get('unitNumber') or position + 1)}: {exc}")
 
         defaults = {
             'listing_id': draft.id,
             'user_id': owner.id,
             'unit_number': str(raw.get('unitNumber') or '').strip(),
             'unit_type': str(raw.get('unitType') or '').strip(),
-            'rent': rent or 0,
+            **pricing,
             'deposit_amount': raw.get('depositAmount') or 0,
             'size': str(raw.get('size') or '').strip() or None,
             'beds': beds,
@@ -84,6 +88,8 @@ def _sync_draft_units(owner, draft, data):
             unit_id__in=stale_unit_ids,
         ).delete()
         PropertyUnit.objects.filter(id__in=stale_unit_ids, listing_id=draft.id, user_id=owner.id).delete()
+
+    sync_listing_price(draft.id)
 
     # The browser can remove an already-uploaded unit photo from its draft state.
     # Delete only media explicitly absent from that unit's persisted photo list.

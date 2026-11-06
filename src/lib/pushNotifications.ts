@@ -46,8 +46,12 @@ export async function installPushNotificationActionListener(): Promise<() => voi
       );
     },
   );
+  const received = await PushNotifications.addListener('pushNotificationReceived', () => {
+    window.dispatchEvent(new Event('sakakrib:push'));
+  });
   return () => {
     void listener.remove();
+    void received.remove();
   };
 }
 

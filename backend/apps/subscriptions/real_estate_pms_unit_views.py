@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.listings.models import Listing
+from apps.core.unit_pricing import normalize_unit_pricing, pricing_payload, sync_listing_price
 from apps.core.domain_property import PropertyUnit, RenterUnitAssociation
 from apps.core.domain_rent import RentInvoice
 
@@ -63,6 +64,7 @@ def _payload(unit):
         'position': unit.position,
         'payment_tracking_enabled': bool(unit.payment_tracking_enabled),
         'rent_due_day': unit.rent_due_day,
+        **pricing_payload(unit),
         'rent_paid_in_advance': bool(unit.rent_paid_in_advance),
         'rent_paid_through_month': unit.rent_paid_through_month.isoformat() if unit.rent_paid_through_month else None,
         'renter_name': association.renter_name if association else None,
@@ -139,7 +141,11 @@ class RealEstatePMSUnitView(APIView):
             rent_due_day = int(request.data.get('rent_due_day') or 1)
         except (InvalidOperation, TypeError, ValueError):
             return Response({'detail': 'Unit numeric fields are invalid.'}, status=400)
-        if rent <= 0 or deposit_amount < 0 or beds < 0 or baths < 0 or position < 0:
+        try:
+            pricing = normalize_unit_pricing(request.data)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        if deposit_amount < 0 or beds < 0 or baths < 0 or position < 0:
             return Response({'detail': 'Unit numeric values are invalid.'}, status=400)
         if rent_due_day not in range(1, 32):
             return Response({'detail': 'Rent due day must be between 1 and 31.'}, status=400)
@@ -149,8 +155,8 @@ class RealEstatePMSUnitView(APIView):
             user_id=context['owner_id'],
             unit_number=unit_number,
             unit_type=str(request.data.get('unit_type') or 'unit').strip(),
-            rent=rent,
             deposit_amount=deposit_amount,
+            **pricing,
             size=request.data.get('size'),
             beds=beds,
             baths=baths,
@@ -160,6 +166,7 @@ class RealEstatePMSUnitView(APIView):
             payment_tracking_enabled=bool(request.data.get('payment_tracking_enabled', True)),
             rent_due_day=rent_due_day,
         )
+        sync_listing_price(listing.id)
         return Response(_payload(unit), status=201)
 
     @transaction.atomic
@@ -192,7 +199,12 @@ class RealEstatePMSUnitView(APIView):
                 unit.rent_due_day = int(request.data['rent_due_day'])
         except (InvalidOperation, TypeError, ValueError):
             return Response({'detail': 'Unit numeric fields are invalid.'}, status=400)
-        if not str(unit.unit_number or '').strip() or unit.rent is None or unit.rent <= 0 or unit.deposit_amount is None or unit.deposit_amount < 0:
+        try:
+            for key, value in normalize_unit_pricing(request.data, current=unit).items():
+                setattr(unit, key, value)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        if not str(unit.unit_number or '').strip() or unit.deposit_amount is None or unit.deposit_amount < 0:
             return Response({'detail': 'Unit values are invalid.'}, status=400)
         if unit.beds < 0 or unit.baths < 0 or unit.position < 0 or unit.rent_due_day not in range(1, 32):
             return Response({'detail': 'Unit numeric values are invalid.'}, status=400)
@@ -208,6 +220,7 @@ class RealEstatePMSUnitView(APIView):
                 return Response({'detail': 'payment_tracking_enabled must be a boolean.'}, status=400)
         unit.updated_at = timezone.now()
         unit.save()
+        sync_listing_price(unit.listing_id)
         return Response(_payload(unit))
 
     @transaction.atomic

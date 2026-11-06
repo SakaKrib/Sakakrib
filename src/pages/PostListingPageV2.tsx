@@ -1,4 +1,5 @@
 import { isLocationSupported, requestPosition } from '@/lib/location';
+import { EMPTY_SALE_VALUES, type UnitListingType, type UnitSaleValues } from '@/components/ui/UnitPricingFields';
 import { useEffect, useRef, useState } from 'react';
 import { FileText, CheckCircle2, Loader2, X, CreditCard, Building2, Home, Layers, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -14,7 +15,7 @@ import { fetchListingEntitlement, createListingPaymentIntent, waitForListingPaym
 type ListingPaymentRequirement = 'not_required' | 'required';
 type UnitAvailability = 'available' | 'occupied' | 'reserved';
 interface MediaItem { file?: File; url: string; label: string; type: 'photo' | 'video'; id?: string; }
-interface PropertyUnit { id: string; unitNumber: string; unitType: string; rent: string; depositAmount: string; size: string; beds: string; baths: string; availability: UnitAvailability; description: string; photos: MediaItem[]; }
+interface PropertyUnit extends UnitSaleValues { id: string; listingType: UnitListingType; unitNumber: string; unitType: string; rent: string; depositAmount: string; size: string; beds: string; baths: string; availability: UnitAvailability; description: string; photos: MediaItem[]; }
 interface LocationSuggestion { display_name: string; lat: string; lon: string; place_id?: string | number; type?: string; address?: { city?: string; town?: string; village?: string; county?: string; state?: string; country?: string; }; }
 interface SocialLink { platform: string; url: string; }
 interface ExistingMedia { id: string; url: string; label: string | null; media_type: 'photo' | 'video'; position: number; unit_id?: string | null; }
@@ -369,8 +370,12 @@ export default function PostListingPageV2() {
     if (!paymentCompleted && !paymentPromptedRef.current) { paymentPromptedRef.current = true; setPaymentModalOpen(true); }
   }, [paymentRequired, step, paymentStepIndex, paymentCompleted]);
 
-  const createUnit = (): PropertyUnit => ({ id: crypto.randomUUID(), unitNumber: '', unitType: '', rent: '', depositAmount: '', size: '', beds: '1', baths: '1', availability: 'available', description: '', photos: [] });
-  const addUnit = () => setUnits((current) => [...current, createUnit()]);
+  const createUnit = (): PropertyUnit => ({ id: crypto.randomUUID(), listingType: 'rent', ...EMPTY_SALE_VALUES, unitNumber: '', unitType: '', rent: '', depositAmount: '', size: '', beds: '1', baths: '1', availability: 'available', description: '', photos: [] });
+  const maxUnits = listingEntitlement?.maxUnitsPerListing ?? null;
+  const addUnit = () => {
+    if (maxUnits !== null && units.length >= maxUnits) { setError(`Your plan allows up to ${maxUnits} units per property. Upgrade to add more.`); return; }
+    setUnits((current) => [...current, createUnit()]);
+  };
   const updateUnit = (id: string, field: keyof PropertyUnit, value: unknown) => setUnits((current) => current.map((unit) => unit.id === id ? { ...unit, [field]: value } : unit));
 
   const handleUnitPhotoUpload = async (unit: PropertyUnit, files: FileList | null) => {
@@ -433,8 +438,8 @@ export default function PostListingPageV2() {
     if (isPropertyManagementListing) {
       switch (step) {
         case 0: return locationSearch.trim() !== '' && propertyName.trim() !== '' && propertyType.trim() !== '' && finalCity !== '' && county.trim() !== '';
-        case 1: return units.length > 0 && units.every((u) => Number(u.rent) > 0 && u.unitNumber.trim() !== '' && u.unitType.trim() !== '' && Number.isInteger(Number(u.beds)) && Number(u.beds) >= 0 && Number.isInteger(Number(u.baths)) && Number(u.baths) >= 0 && u.photos.length >= 3 && u.photos.length <= 7);
-        case 2: return units.length > 0 && units.every((u) => Number(u.rent) > 0);
+        case 1: return units.length > 0 && units.every((u) => (u.listingType === 'sale' ? (Number(u.salePrice) > 0 || (Number(u.installmentAmount) > 0 && Number(u.installmentPeriods) > 0)) : Number(u.rent) > 0) && u.unitNumber.trim() !== '' && u.unitType.trim() !== '' && Number.isInteger(Number(u.beds)) && Number(u.beds) >= 0 && Number.isInteger(Number(u.baths)) && Number(u.baths) >= 0 && u.photos.length >= 3 && u.photos.length <= 7);
+        case 2: return units.length > 0 && units.every((u) => (u.listingType === 'sale' ? (Number(u.salePrice) > 0 || (Number(u.installmentAmount) > 0 && Number(u.installmentPeriods) > 0)) : Number(u.rent) > 0));
         case 3: return contactIsValid;
         case 4: return photos.length >= 3 && photos.length <= 7;
         case 5: return propertyName.trim() !== '' && description.trim() !== '';
@@ -737,7 +742,7 @@ export default function PostListingPageV2() {
     <PropertyListingForm
       step={step} STEPS={STEPS} error={error} submitting={submitting} setStep={setStep} canProceed={canProceed} handleSubmit={handleSubmit}
       reviewConfirmed={reviewConfirmed} setReviewConfirmed={setReviewConfirmed} selectedPaymentMethod={selectedPaymentMethod} setSelectedPaymentMethod={setSelectedPaymentMethod}
-      termsAccepted={termsAccepted} setTermsAccepted={setTermsAccepted} subscriptionStatus={subscriptionStatus} freeListingsRemaining={freeListingsRemaining} isPropertyManagementListing={isPropertyManagementListing}
+      termsAccepted={termsAccepted} setTermsAccepted={setTermsAccepted} subscriptionStatus={subscriptionStatus} maxUnits={maxUnits} freeListingsRemaining={freeListingsRemaining} isPropertyManagementListing={isPropertyManagementListing}
       listingPaymentRequirement={listingPaymentRequirement} paymentLoading={paymentLoading} paymentRequired={paymentRequired} handleListingPayment={handleListingPayment} paymentDescription={paymentDescription} LISTING_FEE_KES={LISTING_FEE_KES} FREE_LISTING_LIMIT={FREE_LISTING_LIMIT} paymentCompleted={paymentCompleted} setPaymentCompleted={setPaymentCompleted} onOpenPaymentModal={() => setPaymentModalOpen(true)} formatKES={formatKES}
       city={city} setCity={setCity} customCity={customCity} setCustomCity={setCustomCity} county={county} setCounty={setCounty} locationSearch={locationSearch} setLocationSearch={setLocationSearch} locationSuggestions={locationSuggestions} setLocationSuggestions={setLocationSuggestions} latitude={latitude} setLatitude={setLatitude} longitude={longitude} setLongitude={setLongitude} usingGPS={usingGPS} setUsingGPS={setUsingGPS} handleUseCurrentLocation={handleUseCurrentLocation} KENYAN_CITIES={KENYAN_CITIES} KENYAN_COUNTIES={KENYAN_COUNTIES}
       propertyName={propertyName} setPropertyName={setPropertyName} propertyType={propertyType} setPropertyType={setPropertyType} bookingEnabled={bookingEnabled} setBookingEnabled={setBookingEnabled} paymentEnabled={paymentEnabled} setPaymentEnabled={setPaymentEnabled}

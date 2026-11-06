@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Clock3, Loader2, RefreshCw, UserRound, XCircle } from 'lucide-react';
-import { protectedGet, protectedPatch } from '@/lib/djangoApi';
+import { protectedGet, protectedPost } from '@/lib/djangoApi';
 
 type RequestRow = {
   id: string;
   unit_id: string;
-  renter_user_id: string;
+  unit_number?: string | null;
+  listing_title?: string;
   renter_name: string;
   renter_email: string | null;
   renter_phone: string | null;
@@ -23,26 +24,42 @@ export default function LandlordPMSRentalRequests() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
+  const [replies, setReplies] = useState<Record<string, string>>({});
+
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError(null);
     try {
-      setRows(await protectedGet<RequestRow[]>('/api/core/property-rental/requests/'));
+      setRows(await protectedGet<RequestRow[]>('/api/core/pms/requests/'));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to load rental requests.');
+      if (!silent) setError(e instanceof Error ? e.message : 'Unable to load rental requests.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  // Near real-time: poll while visible, refresh on focus and whenever a push arrives.
+  useEffect(() => {
+    void load();
+    const refresh = () => { if (document.visibilityState === 'visible') void load(true); };
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('sakakrib:push', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('sakakrib:push', refresh);
+    };
+  }, []);
 
-  const respond = async (row: RequestRow, action: 'accept' | 'reject') => {
+  const respond = async (row: RequestRow, action: 'accept' | 'decline') => {
     setBusy(`${action}-${row.id}`);
     setError(null);
     setNotice(null);
     try {
-      await protectedPatch(`/api/core/property-rental/requests/${row.id}/`, { action });
+      await protectedPost(`/api/core/pms/requests/${row.id}/respond/`, { action, message: replies[row.id] || '' });
       setNotice(action === 'accept' ? 'Rental request accepted and the unit is now occupied.' : 'Rental request declined.');
       await load();
     } catch (e) {
@@ -58,7 +75,7 @@ export default function LandlordPMSRentalRequests() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-600">Rental requests</p>
           <h3 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Renter requests for vacant units</h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Review requests created from Listing Details before attaching the renter to the unit.</p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">New requests appear here automatically and you are notified by push. Accept or decline, with an optional reply to the renter.</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="rounded-xl border border-gray-200 p-2 text-gray-500 hover:bg-gray-50 disabled:opacity-50 dark:border-brand-800 dark:hover:bg-brand-900" aria-label="Refresh rental requests">
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -81,17 +98,20 @@ export default function LandlordPMSRentalRequests() {
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white">{row.renter_name}</p>
                   <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">{row.renter_email || 'No email'}{row.renter_phone ? ` · ${row.renter_phone}` : ''}</p>
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Unit request · {money(row.rent_amount)} / month</p>
+                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{row.listing_title ? `${row.listing_title} · ` : ''}Unit {row.unit_number || '—'} · {money(row.rent_amount)} / month</p>
                   <p className="mt-1 text-xs text-gray-400">Requested {new Intl.DateTimeFormat('en-KE', { dateStyle: 'medium' }).format(new Date(row.created_at))}</p>
                 </div>
               </div>
-              <div className="flex gap-2 lg:shrink-0">
+              <div className="flex flex-col gap-2 lg:w-72 lg:shrink-0">
+                <input value={replies[row.id] || ''} onChange={(e) => setReplies({ ...replies, [row.id]: e.target.value })} maxLength={500} placeholder="Optional reply to the renter" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white" />
+                <div className="flex gap-2">
                 <button type="button" disabled={busy !== null} onClick={() => void respond(row, 'accept')} className="btn-primary inline-flex items-center gap-2 px-3 py-2 text-xs disabled:opacity-50">
                   {busy === `accept-${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Accept
                 </button>
-                <button type="button" disabled={busy !== null} onClick={() => void respond(row, 'reject')} className="btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs text-error-600 disabled:opacity-50">
-                  {busy === `reject-${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Decline
+                <button type="button" disabled={busy !== null} onClick={() => void respond(row, 'decline')} className="btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs text-error-600 disabled:opacity-50">
+                  {busy === `decline-${row.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Decline
                 </button>
+                </div>
               </div>
             </div>
           ))}

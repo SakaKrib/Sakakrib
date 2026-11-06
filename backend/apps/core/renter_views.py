@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from apps.accounts.models import Profile
 from apps.listings.models import Listing
 
+from .unit_pricing import pricing_payload
 from .domain_bookings import Booking, MoverScheduleEvent
 from .domain_platform import Mover
 from .domain_property import ListingMedia, PropertyUnit, RenterUnitAssociation, LandlordPaymentMethod
@@ -92,7 +93,7 @@ class RenterDashboardView(APIView):
         if unit:
             unit_payload = {
                 "id": str(unit.id), "listing_id": str(unit.listing_id), "unit_number": unit.unit_number,
-                "unit_type": unit.unit_type, "rent": unit.rent, "deposit_amount": unit.deposit_amount,
+                "unit_type": unit.unit_type, "rent": unit.rent, **pricing_payload(unit), "deposit_amount": unit.deposit_amount,
                 "size": unit.size, "beds": unit.beds, "baths": unit.baths, "availability": unit.availability,
                 "description": unit.description, "rent_due_day": unit.rent_due_day,
                 "rent_paid_in_advance": unit.rent_paid_in_advance, "rent_paid_through_month": unit.rent_paid_through_month,

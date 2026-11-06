@@ -10,6 +10,7 @@ from apps.accounts.authorization import can_manage_listings, is_admin, pms_acces
 from apps.listings.models import Listing
 from apps.subscriptions.services import get_current_subscription, get_subscription_plan
 
+from .unit_pricing import normalize_unit_pricing, pricing_payload, sync_listing_price
 from .domain_property import PropertyUnit, RenterUnitAssociation
 from .domain_rent import RentInvoice
 
@@ -41,6 +42,7 @@ def _unit_payload(unit):
         "description": unit.description, "position": unit.position,
         "payment_tracking_enabled": bool(unit.payment_tracking_enabled),
         "rent_due_day": unit.rent_due_day,
+        **pricing_payload(unit),
         "rent_paid_in_advance": bool(unit.rent_paid_in_advance),
         "rent_paid_through_month": unit.rent_paid_through_month.isoformat() if unit.rent_paid_through_month else None,
         "renter_name": association.renter_name if association else None,
@@ -122,8 +124,10 @@ class LandlordPMSUnitView(APIView):
         except (InvalidOperation, TypeError, ValueError):
             return Response({"detail": "Unit numeric fields are invalid."}, status=400)
 
-        if rent <= 0:
-            return Response({"detail": "Unit rent must be greater than zero."}, status=400)
+        try:
+            pricing = normalize_unit_pricing(request.data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
         if deposit_amount < 0:
             return Response({"detail": "Deposit amount cannot be negative."}, status=400)
         if beds < 0 or baths < 0 or position < 0:
@@ -135,13 +139,14 @@ class LandlordPMSUnitView(APIView):
             listing_id=listing.id, user_id=request.user.id,
             unit_number=unit_number,
             unit_type=str(request.data.get("unit_type") or "unit").strip(),
-            rent=rent, deposit_amount=deposit_amount,
+            deposit_amount=deposit_amount, **pricing,
             size=request.data.get("size"), beds=beds, baths=baths,
             availability=str(request.data.get("availability") or "available").strip(),
             description=request.data.get("description"), position=position,
             payment_tracking_enabled=bool(request.data.get("payment_tracking_enabled", True)),
             rent_due_day=rent_due_day,
         )
+        sync_listing_price(listing.id)
         return Response(_unit_payload(unit), status=201)
 
     @transaction.atomic
@@ -174,8 +179,11 @@ class LandlordPMSUnitView(APIView):
 
         if not str(unit.unit_number or "").strip():
             return Response({"detail": "Unit number is required."}, status=400)
-        if unit.rent is None or unit.rent <= 0:
-            return Response({"detail": "Unit rent must be greater than zero."}, status=400)
+        try:
+            for key, value in normalize_unit_pricing(request.data, current=unit).items():
+                setattr(unit, key, value)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
         if unit.deposit_amount is None or unit.deposit_amount < 0:
             return Response({"detail": "Deposit amount cannot be negative."}, status=400)
         if unit.beds < 0 or unit.baths < 0:
@@ -195,6 +203,7 @@ class LandlordPMSUnitView(APIView):
                 return Response({"detail": "payment_tracking_enabled must be a boolean."}, status=400)
         unit.updated_at = timezone.now()
         unit.save()
+        sync_listing_price(unit.listing_id)
         return Response(_unit_payload(unit))
 
     @transaction.atomic

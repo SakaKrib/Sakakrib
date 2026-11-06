@@ -204,10 +204,11 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
                 payload=payload,
             )
         else:
+            from .email_templates import notification_generic
             email = NotificationEmail.objects.create(
                 recipient=profile.email,
                 subject=str(title),
-                html_body=f"<p>{escape(str(message))}</p>",
+                html_body=notification_generic({**payload, "title": str(title), "message": str(message)}),
                 template_type=template_type,
                 status="pending",
             )

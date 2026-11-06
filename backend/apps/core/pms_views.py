@@ -15,6 +15,7 @@ from apps.core.models import (
     RentPaymentSubmission,
     UserNotification,
 )
+from apps.core.unit_pricing import pricing_payload
 from apps.listings.models import Listing
 from apps.listings.services import get_listing_entitlement
 from apps.payments.models import ListingPayment
@@ -128,6 +129,8 @@ def _units(profile, listing_id=None):
         'unit_id': str(x.id), 'listing_id': str(x.listing_id), 'listing_title': titles.get(str(x.listing_id), ''),
         'unit_number': x.unit_number, 'unit_type': x.unit_type, 'rent': _decimal(x.rent),
         'beds': x.beds, 'baths': x.baths, 'availability': x.availability,
+        'size': x.size, 'rent_due_day': x.rent_due_day, 'deposit_amount': _decimal(x.deposit_amount), 'description': x.description,
+        **pricing_payload(x),
         'renter_name': assoc.get(str(x.id)).renter_name if assoc.get(str(x.id)) else None,
         'renter_assoc_id': str(assoc.get(str(x.id)).id) if assoc.get(str(x.id)) else None,
         'renter_phone': assoc.get(str(x.id)).renter_phone if assoc.get(str(x.id)) else None,
