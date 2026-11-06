@@ -627,6 +627,22 @@ jobs:
           APK_FP_NORMALIZED="$(printf '%s' "$APK_FP" | tr -d ':')"
           if [ -z "$APK_FP_NORMALIZED" ] || [ "$APK_FP_NORMALIZED" != "$KEY_FP" ]; then echo "::error::APK signing fingerprint differs from configured keystore"; exit 1; fi
           printf '%s\n' "$APK_FP" > "$RUNNER_TEMP/android-release-sha256-fingerprint.txt"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          fingerprint = Path(__import__('os').environ['RUNNER_TEMP'], 'android-release-sha256-fingerprint.txt').read_text().strip().replace(':', '').upper()
+          associations = json.loads(Path('public/.well-known/assetlinks.json').read_text())
+          declared = {
+              value.replace(':', '').upper()
+              for entry in associations
+              for value in entry.get('target', {}).get('sha256_cert_fingerprints', [])
+              if entry.get('target', {}).get('package_name') == 'com.sakakrib.app'
+          }
+          if fingerprint not in declared:
+              raise SystemExit('Stable APK certificate fingerprint is not present in public/.well-known/assetlinks.json')
+          print(f'Android App Links fingerprint matches stable APK: {fingerprint}')
+          PY
           echo "Verified release APK stable signing fingerprint: $APK_FP"
       - name: Upload stable-signed Android release APK
         uses: actions/upload-artifact@v4
