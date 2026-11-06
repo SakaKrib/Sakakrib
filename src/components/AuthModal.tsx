@@ -640,6 +640,29 @@ export default function AuthModal() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    if (loading) return;
+
+    setError(null);
+    setInfo(null);
+    setLoading(true);
+
+    try {
+      await signInWithGoogle();
+      clearAuthFields();
+      setAuthModalOpen(false);
+    } catch (err) {
+      console.error('Google sign-in failed:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'We couldn’t sign you in with Google. Please try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /*
    * ==========================================================
    * SWITCH AUTH MODE
@@ -791,9 +814,7 @@ export default function AuthModal() {
               <button
                 type="button"
                 onClick={() => {
-                  if (!loading) {
-                    void signInWithGoogle();
-                  }
+                  void handleGoogleSignIn();
                 }}
                 disabled={loading}
                 className="btn-secondary w-full disabled:cursor-not-allowed disabled:opacity-50"
@@ -821,7 +842,7 @@ export default function AuthModal() {
                   />
                 </svg>
 
-                Continue with Google
+                {loading ? 'Connecting to Google…' : 'Continue with Google'}
               </button>
 
               <div className="my-4 flex items-center gap-3">
