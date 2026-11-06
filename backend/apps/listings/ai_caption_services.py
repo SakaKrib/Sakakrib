@@ -256,7 +256,6 @@ def _fallback_caption(listing, rows=None):
     facts = _multi_unit_facts(listing, rows) if rows else _single_listing_facts(listing)
     narrative = _fallback_narrative(listing, rows)
     city_tag = "".join(char for char in str(listing.city or "Kenya").title() if char.isalnum()) or "Kenya"
-    kinds = {row["listing_type"] for row in rows}
     if rows:
         property_tag = "PropertyUnits"
     else:
@@ -275,7 +274,6 @@ def _gemini_caption(listing, rows=None):
         return None
     facts = _multi_unit_facts(listing, rows) if rows else _single_listing_facts(listing)
     city_tag = "".join(char for char in str(listing.city or "Kenya").title() if char.isalnum()) or "Kenya"
-    kinds = {row["listing_type"] for row in rows}
     property_tag = (
         "PropertyUnits" if rows else
         ("PropertyForSale" if str(listing.listing_type or "rent").lower() == "sale" else "PropertyForRent")
