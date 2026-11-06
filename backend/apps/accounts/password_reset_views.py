@@ -18,12 +18,15 @@ from .models import Profile
 
 
 def _frontend_url(request, redirect_to=None):
-    configured = str(getattr(settings, 'FRONTEND_URL', '') or '').rstrip('/')
-    fallback = configured or request.build_absolute_uri('/').rstrip('/')
-    candidate = str(redirect_to or fallback).strip()
-    if candidate.startswith(fallback):
-        return candidate.rstrip('/')
-    return fallback
+    # Password-reset links must open the configured public frontend, not the
+    # API host that received the request. Ignore caller-supplied redirect
+    # origins so reset tokens cannot be sent to an arbitrary external site.
+    configured = str(
+        getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '')
+        or getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '')
+        or ''
+    ).strip().rstrip('/')
+    return configured or request.build_absolute_uri('/').rstrip('/')
 
 
 def _reset_email(user, reset_url):
