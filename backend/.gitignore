@@ -9,3 +9,7 @@ __pycache__/
 htmlcov/
 staticfiles/
 media/
+
+# Firebase Admin private credentials (never commit service-account keys)
+secrets/
+firebase-service-account*.json
