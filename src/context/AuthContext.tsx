@@ -203,15 +203,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
 
   useEffect(() => {
-    // Show the Apple option on the website and iOS even before credentials
-    // are configured. signInWithApple() checks live backend readiness and
-    // displays a clear setup message instead of attempting an incomplete flow.
-    // Android remains excluded until its native callback/deep-link flow exists.
-    const supportedPlatform =
-      !Capacitor.isNativePlatform() ||
-      Capacitor.getPlatform() === 'ios';
+    let mounted = true;
+    const platform = Capacitor.getPlatform();
 
-    setAppleSignInAvailable(supportedPlatform);
+    // Keep the website and native iOS option visible while setup is pending.
+    // Android is exposed only after Django confirms that the Services ID,
+    // HTTPS callback, Team ID, Key ID, and private key are ready.
+    if (!Capacitor.isNativePlatform() || platform === 'ios') {
+      setAppleSignInAvailable(true);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    if (platform === 'android') {
+      void gatewayAppleConfig()
+        .then((config) => {
+          if (mounted) {
+            setAppleSignInAvailable(
+              Boolean(config.enabled && config.clientId && config.redirectUrl),
+            );
+          }
+        })
+        .catch((error) => {
+          console.warn('Unable to check Android Apple sign-in readiness:', error);
+          if (mounted) setAppleSignInAvailable(false);
+        });
+    }
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const clearAuthState = () => {
@@ -702,13 +724,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const nonce = await createAppleNonce();
     const state = crypto.randomUUID();
 
+    const platform = Capacitor.getPlatform();
+    const androidState = `sakakrib_android:${nonce}`;
+
     if (!nativeAppleInitialization) {
       nativeAppleInitialization = SocialLogin.initialize({
         apple: {
-          clientId: config.clientId,
-          redirectUrl: config.redirectUrl,
-          useProperTokenExchange: true,
-          useBroadcastChannel: true,
+          // iOS uses the native App ID and native authorization sheet.
+          // Android uses the Services ID and Django's HTTPS callback.
+          clientId: platform === 'ios' ? config.bundleId : config.clientId,
+          ...(platform === 'android' ? { redirectUrl: config.redirectUrl } : {}),
+          useProperTokenExchange: platform === 'android',
+          useBroadcastChannel: platform === 'android',
         },
       }).catch((error: unknown) => {
         nativeAppleInitialization = null;
@@ -722,8 +749,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         scopes: ['email', 'name'],
         nonce,
-        state,
-        useBroadcastChannel: true,
+        state: platform === 'android' ? androidState : state,
+        ...(platform === 'android' ? { useBroadcastChannel: true } : {}),
       },
     }) as { result?: Record<string, any> };
 
