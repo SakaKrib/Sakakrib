@@ -247,3 +247,50 @@ def process_due_rent_reminders(self, batch_size: int = 200):
         "failed": failed,
         "processed_at": timezone.now().isoformat(),
     }
+
+
+LEASE_EXPIRY_MILESTONES = (60, 30, 14, 7, 1, 0)
+
+
+@shared_task(bind=True, autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
+def send_lease_expiry_reminders(self):
+    """Daily: tell the landlord (or real-estate owner) and the renter that a lease is about to end.
+
+    Milestones are 60/30/14/7/1 days and the expiry day. Each milestone is sent once per lease
+    (event_key), by push, in-app and email.
+    """
+    from .notification_services import dispatch_user_notification
+
+    today = timezone.localdate()
+    sent = 0
+    for days in LEASE_EXPIRY_MILESTONES:
+        target = today + timedelta(days=days)
+        associations = RenterUnitAssociation.objects.filter(status__iexact="ACTIVE", lease_end=target)
+        for assoc in associations:
+            unit = PropertyUnit.objects.filter(pk=assoc.unit_id).first()
+            listing = Listing.objects.filter(pk=unit.listing_id).first() if unit else None
+            place = f"{(listing.property_name or listing.title) if listing else 'the property'}, unit {unit.unit_number if unit else ''}".strip(", ")
+            when = "today" if days == 0 else ("tomorrow" if days == 1 else f"in {days} days")
+            data = {
+                "association_id": str(assoc.id), "unit_id": str(assoc.unit_id), "lease_end": target.isoformat(),
+                "days_remaining": days, "action_type": "LEASE_EXPIRY",
+            }
+            key = f"lease-expiry:{assoc.id}:{target.isoformat()}:{days}"
+            try:
+                dispatch_user_notification(
+                    user_id=assoc.landlord_id, notification_type="LEASE_EXPIRING",
+                    title="Lease ending soon" if days else "Lease ends today",
+                    message=f"{assoc.renter_name}'s lease for {place} ends {when} ({target:%d %b %Y}). Renew it or plan the vacancy.",
+                    data={**data, "deep_link": "pms-dashboard"}, event_key=f"{key}:owner",
+                )
+                if assoc.renter_user_id:
+                    dispatch_user_notification(
+                        user_id=assoc.renter_user_id, notification_type="LEASE_EXPIRING",
+                        title="Your lease is ending soon" if days else "Your lease ends today",
+                        message=f"Your lease for {place} ends {when} ({target:%d %b %Y}). Speak to your landlord about renewing.",
+                        data={**data, "deep_link": "renter-notifications"}, event_key=f"{key}:renter",
+                    )
+                sent += 1
+            except Exception:  # one bad row must not stop the others
+                continue
+    return {"sent": sent}

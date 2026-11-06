@@ -30,21 +30,44 @@ def _error(exc):
 
 
 def _require_active_landlord(request):
-    if is_admin(request.user):
-        return None
-    access = pms_access(request.user)
-    if not access.get("allowed") or access.get("role") != "landlord":
-        return Response({"detail": "Landlord PMS access is required.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
-    if access.get("read_only"):
-        return Response({"detail": "PMS is read-only during the subscription grace period.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
-    return None
+    """Backwards-compatible gate; prefer _pms_actor() which also resolves the owner account."""
+    return _pms_actor(request)[1]
+
+
+def _pms_actor(request):
+    """Resolve who may act on rent records and on whose behalf.
+
+    Returns (owner_id, error_response). Landlords act for themselves. A real-estate owner, or a
+    team member whose PMS role is ADMIN or TEAM_MANAGER, acts for the real-estate account.
+    Agents are read-only. Read-only grace periods block every change.
+    """
+    user = request.user
+    if is_admin(user):
+        return user.id, None
+    role = str(getattr(user, "role", "") or "").lower()
+    if role == "landlord":
+        access = pms_access(user)
+        if not access.get("allowed"):
+            return None, Response({"detail": "Landlord PMS access is required.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
+        if access.get("read_only"):
+            return None, Response({"detail": "PMS is read-only during the subscription grace period.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
+        return user.id, None
+    from apps.subscriptions.services import get_real_estate_pms_context
+    context = get_real_estate_pms_context(user)
+    if not context:
+        return None, Response({"detail": "PMS access is required."}, status=status.HTTP_403_FORBIDDEN)
+    if getattr(context.get("subscription"), "status", "") == "GRACE_PERIOD":
+        return None, Response({"detail": "PMS is read-only during the subscription grace period."}, status=status.HTTP_403_FORBIDDEN)
+    if context.get("pms_role") not in ("ADMIN", "TEAM_MANAGER"):
+        return None, Response({"detail": "Your PMS role cannot manage invoices or confirm payments."}, status=status.HTTP_403_FORBIDDEN)
+    return context["owner_id"], None
 
 
 class LandlordRentInvoiceCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        denied = _require_active_landlord(request)
+        owner_id, denied = _pms_actor(request)
         if denied:
             return denied
         try:
@@ -55,7 +78,7 @@ class LandlordRentInvoiceCreateView(APIView):
                 billing_start = _date(billing_start, "billing_period_start")
                 periods = [{"period_year": billing_start.year, "period_month": billing_start.month}]
             result = create_landlord_rent_invoice(
-                landlord_id=request.user.id,
+                landlord_id=owner_id,
                 unit_id=request.data.get("unit_id"),
                 renter_assoc_id=request.data.get("renter_assoc_id"),
                 periods=periods,
@@ -63,6 +86,9 @@ class LandlordRentInvoiceCreateView(APIView):
                 payment_method_id=request.data.get("payment_method_id"),
                 billing_period_start=_date(billing_start, "billing_period_start") if billing_start else None,
                 billing_period_end=_date(billing_end, "billing_period_end") if billing_end else None,
+                transaction_reference=request.data.get("transaction_reference"),
+                payment_method=request.data.get("payment_method"),
+                payment_date=_date(request.data.get("payment_date"), "payment_date") if request.data.get("payment_date") else None,
             )
             return Response(result, status=status.HTTP_201_CREATED)
         except (ValidationError, TypeError, ValueError) as exc:
@@ -108,11 +134,11 @@ class LandlordRentPaymentConfirmView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, submission_id):
-        denied = _require_active_landlord(request)
+        owner_id, denied = _pms_actor(request)
         if denied:
             return denied
         try:
-            result = confirm_rent_payment(landlord_id=request.user.id, submission_id=submission_id)
+            result = confirm_rent_payment(landlord_id=owner_id, submission_id=submission_id)
             return Response(result, status=status.HTTP_200_OK)
         except (ValidationError, TypeError, ValueError) as exc:
             return _error(exc)
@@ -122,12 +148,12 @@ class LandlordRentPaymentRejectView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, submission_id):
-        denied = _require_active_landlord(request)
+        owner_id, denied = _pms_actor(request)
         if denied:
             return denied
         try:
             result = reject_rent_payment(
-                landlord_id=request.user.id,
+                landlord_id=owner_id,
                 submission_id=submission_id,
                 rejection_reason=request.data.get("rejection_reason", ""),
             )

@@ -52,6 +52,7 @@ class RealEstatePMSFinanceView(APIView):
             'due_date': row.due_date, 'payment_method': row.payment_method,
             'transaction_reference': row.transaction_reference, 'payment_date': row.payment_date,
             'paid_at': row.paid_at, 'created_at': row.created_at,
+            'generated_by': 'landlord' if row.payment_destination_snapshot else 'renter',
         } for row in invoices]
         submission_rows = [{
             'id': str(row.id), 'invoice_id': str(row.invoice_id), 'unit_id': str(row.unit_id),
@@ -82,40 +83,32 @@ class RealEstatePMSFinanceView(APIView):
         if context.get('pms_role') not in ('ADMIN', 'TEAM_MANAGER'):
             return Response({'detail': 'You are not authorized to create invoices.'}, status=403)
 
-        unit = PropertyUnit.objects.filter(pk=request.data.get('unit_id'), user_id=context['owner_id']).first()
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from apps.core.rent_services import create_landlord_rent_invoice
+
+        unit = _unit_scope(request.user, context).filter(pk=request.data.get('unit_id')).first()
         if not unit:
             return Response({'detail': 'Unit not found.'}, status=404)
-        association = RenterUnitAssociation.objects.filter(
-            unit_id=unit.id, landlord_id=context['owner_id'], status__iexact='ACTIVE'
-        ).order_by('-created_at').first()
-        if not association:
-            return Response({'detail': 'An active renter association is required to create an invoice.'}, status=409)
-        if not association.renter_user_id:
-            return Response({'detail': 'The renter must have a claimed SakaKrib account before an invoice can be generated.'}, status=409)
-
         try:
-            amount = Decimal(str(request.data.get('amount_kes') or association.rent_amount or unit.rent))
             due_date = date.fromisoformat(str(request.data.get('due_date')))
             start = date.fromisoformat(str(request.data.get('billing_period_start')))
-            end = date.fromisoformat(str(request.data.get('billing_period_end')))
-        except (InvalidOperation, TypeError, ValueError):
-            return Response({'detail': 'Invoice amount and dates are invalid.'}, status=400)
-        if amount <= 0 or end < start:
-            return Response({'detail': 'Invoice amount and billing period are invalid.'}, status=400)
-        if RentInvoicePeriod.objects.filter(
-            renter_assoc_id=association.id, unit_id=unit.id,
-            period_year=start.year, period_month=start.month,
-        ).exists():
-            return Response({'detail': 'An invoice already exists for this rental period.'}, status=409)
-
-        invoice = RentInvoice.objects.create(
-            invoice_number=_next_invoice_number(), landlord_id=context['owner_id'],
-            renter_user_id=association.renter_user_id, renter_assoc_id=association.id,
-            listing_id=unit.listing_id, unit_id=unit.id, billing_period_start=start,
-            billing_period_end=end, due_date=due_date, amount_kes=amount, currency='KES', status='DUE',
-        )
-        RentInvoicePeriod.objects.create(
-            invoice_id=invoice.id, renter_assoc_id=association.id, unit_id=unit.id,
-            period_year=start.year, period_month=start.month, amount_kes=amount,
-        )
-        return Response({'id': str(invoice.id), 'invoice_number': invoice.invoice_number, 'status': invoice.status}, status=201)
+            end = date.fromisoformat(str(request.data.get('billing_period_end') or request.data.get('billing_period_start')))
+            paid_on = date.fromisoformat(str(request.data['payment_date'])) if request.data.get('payment_date') else None
+        except (TypeError, ValueError):
+            return Response({'detail': 'Invoice dates are invalid.'}, status=400)
+        if end < start:
+            return Response({'detail': 'The billing period end is before its start.'}, status=400)
+        periods, year, month = [], start.year, start.month
+        while (year, month) <= (end.year, end.month) and len(periods) < 24:
+            periods.append({'period_year': year, 'period_month': month})
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+        try:
+            payload = create_landlord_rent_invoice(
+                landlord_id=context['owner_id'], unit_id=unit.id, periods=periods, due_date=due_date,
+                payment_method_id=request.data.get('payment_method_id'),
+                transaction_reference=request.data.get('transaction_reference'),
+                payment_method=request.data.get('payment_method'), payment_date=paid_on,
+            )
+        except DjangoValidationError as exc:
+            return Response({'detail': getattr(exc, 'message', None) or str(exc)}, status=409)
+        return Response({'id': payload['id'], 'invoice_number': payload['invoice_number'], 'status': payload['status']}, status=201)

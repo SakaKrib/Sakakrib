@@ -165,7 +165,7 @@ def _rent_data(profile):
             'billing_period_start': x.billing_period_start, 'billing_period_end': x.billing_period_end,
             'due_date': x.due_date, 'amount_kes': _decimal(x.amount_kes), 'currency': x.currency,
             'status': x.status, 'payment_method_id': str(x.payment_method_id) if x.payment_method_id else None,
-            'payment_destination_snapshot': x.payment_destination_snapshot, 'paid_at': x.paid_at,
+            'payment_destination_snapshot': x.payment_destination_snapshot, 'generated_by': 'landlord' if x.payment_destination_snapshot else 'renter', 'paid_at': x.paid_at,
             'confirmed_by': str(x.confirmed_by) if x.confirmed_by else None, 'confirmed_at': x.confirmed_at,
             'created_at': x.created_at, 'updated_at': x.updated_at,
         } for x in invoices],

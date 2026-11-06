@@ -29,6 +29,7 @@ import {
 
 import { protectedGet } from '@/lib/djangoApi';
 import SecureImage from '@/components/SecureImage';
+import { pickCoverPhoto } from '@/lib/RealEstateTs/Realestateservice';
 
 import {
   fetchListingEntitlement,
@@ -161,7 +162,7 @@ export default function RealEstateDashboard() {
             county: listing.county,
             price_kes:
               listing.price_kes === null ? null : Number(listing.price_kes),
-            cover_photo_url: listing.media?.[0]?.url ?? null,
+            cover_photo_url: pickCoverPhoto(listing.media as never),
             is_approved: Boolean(listing.is_approved),
             approval_status: listing.approval_status?.trim().toLowerCase() || null,
             is_published: Boolean(listing.is_published),

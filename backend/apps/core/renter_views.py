@@ -34,7 +34,7 @@ def _invoice_payload(row):
         "billing_period_start": row.billing_period_start, "billing_period_end": row.billing_period_end,
         "due_date": row.due_date, "amount_kes": row.amount_kes, "currency": row.currency,
         "status": row.status, "payment_method_id": str(row.payment_method_id) if row.payment_method_id else None,
-        "payment_destination_snapshot": row.payment_destination_snapshot, "paid_at": row.paid_at,
+        "payment_destination_snapshot": row.payment_destination_snapshot, "generated_by": "landlord" if row.payment_destination_snapshot else "renter", "paid_at": row.paid_at,
         "confirmed_by": str(row.confirmed_by) if row.confirmed_by else None, "confirmed_at": row.confirmed_at,
         "created_at": row.created_at, "updated_at": row.updated_at,
     }

@@ -73,7 +73,7 @@ interface DashboardResponse {
     is_paid: boolean | null;
     pms_managed?: boolean;
     created_at: string;
-    media?: Array<{ url?: string | null }>;
+    media?: Array<{ url?: string | null; media_type?: string | null; unit_id?: string | null; position?: number | null }>;
   }>;
   team_context?: {
     pms_owner_id: string;
@@ -85,6 +85,14 @@ interface DashboardResponse {
   can_manage_payment_settings?: boolean;
   read_only?: boolean;
   pms_role?: string | null;
+}
+
+/** First usable still photo: property photos before unit photos, never a video. */
+export function pickCoverPhoto(media: Array<{ url?: string | null; media_type?: string | null; unit_id?: string | null; position?: number | null }> | null | undefined): string | null {
+  const photos = (media ?? []).filter((item) => item?.url && String(item.media_type ?? 'photo').toLowerCase() !== 'video' && !/\.(mp4|mov|webm|m4v)(\?|$)/i.test(String(item.url)));
+  if (photos.length === 0) return null;
+  const rank = (item: { unit_id?: string | null; position?: number | null }) => (item.unit_id ? 1000 : 0) + Number(item.position ?? 0);
+  return [...photos].sort((a, b) => rank(a) - rank(b))[0].url ?? null;
 }
 
 function mapListing(listing: NonNullable<DashboardResponse['listings']>[number]): RealEstateListingSummary {
@@ -103,7 +111,7 @@ function mapListing(listing: NonNullable<DashboardResponse['listings']>[number])
     is_paid: Boolean(listing.is_paid),
     pms_managed: Boolean(listing.pms_managed),
     created_at: listing.created_at,
-    cover_photo_url: listing.media?.[0]?.url ?? null,
+    cover_photo_url: pickCoverPhoto(listing.media),
     media: listing.media ?? [],
   };
 }

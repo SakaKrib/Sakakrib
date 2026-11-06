@@ -61,8 +61,11 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BEAT_MAX_LOOP_INTERVAL = 5.0
+from celery.schedules import crontab  # noqa: E402
+
 CELERY_BEAT_SCHEDULE = {
     'generate-recurring-rent-reminders-daily': {'task': 'apps.core.tasks.generate_recurring_rent_reminders', 'schedule': 86400.0},
+    'send-lease-expiry-reminders-daily': {'task': 'apps.core.tasks.send_lease_expiry_reminders', 'schedule': crontab(hour=5, minute=0)},
     'process-due-rent-reminders-every-minute': {'task': 'apps.core.tasks.process_due_rent_reminders', 'schedule': 60.0},
     'process-notification-email-queue-every-five-seconds': {'task': 'apps.core.email_tasks.process_notification_email_queue', 'schedule': 5.0},
     'process-subscription-expiry-every-five-minutes': {'task': 'apps.subscriptions.tasks.process_subscription_expiry_task', 'schedule': 300.0},

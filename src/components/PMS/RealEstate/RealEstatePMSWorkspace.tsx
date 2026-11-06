@@ -8,6 +8,7 @@ import { useLiveEvents } from '@/lib/useLiveEvents';
 import RealEstatePMSAnalytics from './RealEstatePMSAnalytics';
 import RealEstatePMSCalendar from './RealEstatePMSCalendar';
 import RealEstatePMSFinance from './RealEstatePMSFinance';
+import PMSExportMenu from '@/components/PMS/PMSExportMenu';
 import RealEstatePMSFinancialReport from './RealEstatePMSFinancialReport';
 import RealEstatePMSNotifications from './RealEstatePMSNotifications';
 import RealEstatePMSOperations from './RealEstatePMSOperations';
@@ -58,7 +59,7 @@ export default function RealEstatePMSWorkspace() {
     </>}
     {tab === 'listings' && <div className="space-y-6"><RealEstatePMS onCreateListing={() => navigate('post-listing')} onOpenListing={(listingId) => navigate('listing-detail', listingId)} /></div>}
     {tab === 'operations' && <div className="space-y-6"><RealEstatePMSCalendar listings={stats.listings} subscription={data.subscription} /><RealEstatePMSOperations listings={stats.listings.map((listing) => ({ id: String(listing.id), title: listing.title }))} maxUnitsPerListing={data.subscription?.max_units_per_listing} isAdmin={ownerIsAdmin} /></div>}
-    {tab === 'finance' && <div className="space-y-6"><RealEstatePMSFinance canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} /><RealEstatePMSFinancialReport /></div>}
+    {tab === 'finance' && <div className="space-y-6"><PMSExportMenu /><RealEstatePMSFinance canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} /><RealEstatePMSFinancialReport /></div>}
     {tab === 'reports' && <div className="space-y-6"><RealEstatePMSAnalytics /><RealEstatePMSFinancialReport /></div>}
     {tab === 'subscription' && <div className="space-y-6"><RealEstatePMSSubscriptionManagement data={data} isAdmin={ownerIsAdmin} /></div>}
     {tab === 'notifications' && <div className="space-y-6"><RealEstatePMSNotifications /></div>}

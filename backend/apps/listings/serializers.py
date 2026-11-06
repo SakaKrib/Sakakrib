@@ -138,6 +138,23 @@ class ListingSerializer(serializers.ModelSerializer):
         if role not in {'landlord', 'real_estate'}:
             return []
 
+        # Payment accounts are private: only the owner, admins and renters who are
+        # attached to a unit in this property may see where to pay rent.
+        request = self.context.get('request')
+        viewer = getattr(request, 'user', None)
+        viewer_id = getattr(viewer, 'id', None)
+        if not viewer_id:
+            return []
+        is_owner = str(viewer_id) == str(obj.user_id)
+        is_admin_user = bool(getattr(viewer, 'is_staff', False) or getattr(viewer, 'is_superuser', False) or str(getattr(viewer, 'role', '')).lower() == 'admin')
+        if not (is_owner or is_admin_user):
+            attached = RenterUnitAssociation.objects.filter(
+                renter_user_id=viewer_id, status__iexact='ACTIVE',
+                unit_id__in=PropertyUnit.objects.filter(listing_id=obj.id).values('id'),
+            ).exists()
+            if not attached:
+                return []
+
         # Use the same complete PMS access gate as the management system.
         # Listing Details only displays configured payment details; it never
         # creates invoices, payment transactions, or STK pushes.
