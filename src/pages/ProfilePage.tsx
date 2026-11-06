@@ -77,6 +77,8 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-2xl px-2 py-8 sm:px-6">
       <div className="mb-6"><h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white"><User className="h-6 w-6 text-brand-600" />My Profile</h1><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your personal information and preferences.</p></div>
+      <button type="button" onClick={() => navigate('account-security')} className="btn-secondary mb-6 flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Account Security</button>
+
       <div className={cn('card mb-6 flex items-center gap-3 p-4', isRoleVerified && 'border-success-300 dark:border-success-700')}>
         <div className={cn('flex h-10 w-10 items-center justify-center rounded-full', isRoleVerified ? 'bg-success-100 dark:bg-success-900/30' : 'bg-warning-100 dark:bg-warning-900/30')}><ShieldCheck className={cn('h-5 w-5', isRoleVerified ? 'text-success-600' : 'text-warning-600')} /></div>
         <div className="flex-1"><p className="text-sm font-semibold text-gray-900 dark:text-white">{verificationLabel}{isRoleVerified && <span className="ml-1 text-success-600">✓</span>}</p><p className="text-xs text-gray-500 dark:text-gray-400">{verificationDescription}</p></div>
