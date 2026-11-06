@@ -1,6 +1,7 @@
 package com.sakakrib.app;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.CookieManager;
@@ -54,6 +55,26 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
 
             ((SocialLoginPlugin) plugin).handleGoogleLoginIntent(requestCode, data);
         }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        Uri data = intent.getData();
+        if (Intent.ACTION_VIEW.equals(intent.getAction())
+                && data != null
+                && "com.sakakrib.app".equals(data.getScheme())
+                && "apple-login".equals(data.getHost())) {
+            PluginHandle pluginHandle = getBridge().getPlugin("SocialLogin");
+            if (pluginHandle != null) {
+                Plugin plugin = pluginHandle.getInstance();
+                if (plugin instanceof SocialLoginPlugin) {
+                    ((SocialLoginPlugin) plugin).handleAppleLoginIntent(intent);
+                    return;
+                }
+            }
+        }
+
+        super.onNewIntent(intent);
     }
 
     @Override
