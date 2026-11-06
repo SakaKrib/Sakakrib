@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
+import NotificationBell from '@/components/NotificationBell';
 import { cn } from '@/lib/utils';
 
 export default function Header() {
@@ -40,6 +41,7 @@ export default function Header() {
             </div></>)}
           </nav>
           <div className="flex items-center gap-2">
+            {profile && <NotificationBell />}
             <button onClick={toggleTheme} className="rounded-full border border-gray-300 p-2 text-gray-600 hover:border-btnblue-400 hover:text-btnblue-600 dark:border-brand-700 dark:text-gray-300" aria-label="Toggle theme">{theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}</button>
             {profile ? <div className="hidden items-center gap-2 md:flex"><button onClick={() => navigate('profile')} className="flex items-center gap-2 rounded-full border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 dark:border-brand-700 dark:text-gray-200"><div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700 dark:bg-brand-800 dark:text-brand-200">{profile.full_name?.charAt(0).toUpperCase() || 'U'}</div><span className="max-w-[100px] truncate">{profile.full_name || 'User'}</span></button><button onClick={() => navigate('dashboard')} className="rounded-full border border-gray-300 p-2 text-gray-600 dark:border-brand-700 dark:text-gray-300" aria-label="Dashboard"><LayoutDashboard className="h-5 w-5" /></button><button onClick={signOut} className="rounded-full border border-gray-300 p-2 text-gray-600 dark:border-brand-700 dark:text-gray-300" aria-label="Sign out"><LogOut className="h-5 w-5" /></button></div> : <div className="hidden items-center gap-2 md:flex"><button onClick={() => {setAuthMode('signin'); setAuthModalOpen(true)}} className="btn-ghost">Sign In</button><button onClick={() => {setAuthMode('signup'); setAuthModalOpen(true);}} className="btn-primary">Get Started</button></div>}
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="rounded-full border border-gray-300 p-2 text-gray-600 dark:border-brand-700 dark:text-gray-300 md:hidden" aria-label="Menu"><Menu className="h-5 w-5" /></button>

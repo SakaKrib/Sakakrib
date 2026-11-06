@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import Profile
 from apps.core.domain_platform import Mover
-from apps.core.domain_property import ListingMedia, Review
+from apps.core.domain_property import CommunityPost, ListingMedia, Review
 from apps.listings.models import Listing
 
 
@@ -38,6 +38,7 @@ class HomepageStatsView(APIView):
                 is_available=True,
             ).count(),
             'reviews': Review.objects.count(),
+            'community': CommunityPost.objects.count(),
         })
 
 

@@ -11,6 +11,7 @@ from .models import (
     RealEstatePMSMember,
     RealEstateSubscription,
     SubscriptionInvoice,
+    SubscriptionListing,
 )
 
 
@@ -195,3 +196,60 @@ def notify_subscription_payment_received(sender, instance, **kwargs):
         event_key=f'subscription-paid:{instance.id}',
         send_email=False,
     ))
+
+
+def _restore_pms_links(subscription, *, owner_id, link_field):
+    """Re-attach managed properties that were deactivated when a subscription lapsed.
+
+    Nothing is deleted on expiry (units, renters, invoices stay in the database); only the
+    SubscriptionListing links are switched to INACTIVE. On renewal we switch them back, up to
+    the plan's listing capacity, so the owner resumes exactly where they left off.
+    """
+    from django.utils import timezone
+    from apps.listings.models import Listing
+    from .services import get_subscription_plan
+
+    plan = get_subscription_plan(subscription)
+    capacity = getattr(plan, "max_listings", None)
+    owned_ids = list(Listing.objects.filter(user_id=owner_id, is_property_management=True).values_list("id", flat=True))
+    if not owned_ids:
+        return
+    active_ids = set(SubscriptionListing.objects.filter(**{link_field: subscription.id}, status="ACTIVE", listing_id__in=owned_ids).values_list("listing_id", flat=True))
+    remaining = None if capacity is None else max(0, capacity - len(active_ids))
+    # Only links that went inactive because a subscription lapsed; a listing the owner detached by
+    # hand (while the subscription was still live) stays detached.
+    lapsed_ids = list(type(subscription).objects.filter(**{("landlord_id" if link_field == "subscription_id" else "real_estate_id"): owner_id}).exclude(status__in=["ACTIVE", "GRACE_PERIOD", "PENDING_PAYMENT"]).values_list("id", flat=True)) + [subscription.id]
+    stale = SubscriptionListing.objects.filter(status="INACTIVE", listing_id__in=owned_ids, **{f"{link_field}__in": lapsed_ids}).exclude(listing_id__in=active_ids).order_by("activated_at")
+    now = timezone.now()
+    seen = set()
+    for link in stale:
+        if remaining is not None and remaining <= 0:
+            break
+        if link.listing_id in seen:
+            continue
+        seen.add(link.listing_id)
+        existing = SubscriptionListing.objects.filter(**{link_field: subscription.id, "listing_id": link.listing_id}).first()
+        if existing:
+            existing.status = "ACTIVE"
+            existing.deactivated_at = None
+            existing.save(update_fields=["status", "deactivated_at"])
+        else:
+            setattr(link, link_field, subscription.id)
+            link.status = "ACTIVE"
+            link.deactivated_at = None
+            link.activated_at = now
+            link.save()
+        if remaining is not None:
+            remaining -= 1
+
+
+@receiver(post_save, sender=LandlordSubscription)
+def restore_landlord_pms_after_renewal(sender, instance, **kwargs):
+    if instance.status == "ACTIVE":
+        _restore_pms_links(instance, owner_id=instance.landlord_id, link_field="subscription_id")
+
+
+@receiver(post_save, sender=RealEstateSubscription)
+def restore_real_estate_pms_after_renewal(sender, instance, **kwargs):
+    if instance.status == "ACTIVE":
+        _restore_pms_links(instance, owner_id=instance.real_estate_id, link_field="real_estate_subscription_id")
