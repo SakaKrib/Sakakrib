@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.domain_platform import NotificationEmail
+from apps.core.email_templates import APP_LINK_BASE_URL
 
 from .models import Profile, RefreshToken
 
@@ -22,9 +23,7 @@ def _frontend_url(request, redirect_to=None):
     # API host that received the request. Ignore caller-supplied redirect
     # origins so reset tokens cannot be sent to an arbitrary external site.
     configured = str(
-        getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '')
-        or getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '')
-        or ''
+        APP_LINK_BASE_URL
     ).strip().rstrip('/')
     return configured or request.build_absolute_uri('/').rstrip('/')
 
@@ -54,7 +53,7 @@ class PasswordResetRequestView(APIView):
             uid = urlsafe_base64_encode(str(user.pk).encode())
             token = default_token_generator.make_token(user)
             base = _frontend_url(request)
-            reset_url = f"{base}/reset-password?uid={quote(uid)}&token={quote(token)}"
+            reset_url = f"{base}/app/reset-password?uid={quote(uid)}&token={quote(token)}"
             _reset_email(user, reset_url)
 
         return Response({'success': True, 'message': 'If an account exists for that email, a password reset link has been sent.'}, status=202)
