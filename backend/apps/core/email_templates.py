@@ -2,8 +2,14 @@ from datetime import datetime
 from html import escape
 from typing import Any
 
+from django.conf import settings
 
-SITE_URL = "https://sakakrib.com"
+
+SITE_URL = str(
+    getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '')
+    or getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '')
+    or 'https://sakakrib.com'
+).strip().rstrip('/')
 SUPPORT_EMAIL = "support@sakakrib.com"
 
 
@@ -92,7 +98,7 @@ def application_review(application: dict) -> str:
 
 
 def listing_approved(notification: dict) -> str:
-    first = _first_name(notification); title = _text(notification.get("listing_title"), "Your property listing"); listing_id = notification.get("listing_id") or notification.get("id"); city = _text(notification.get("city")); county = _text(notification.get("county")); location = ", ".join(part for part in (city, county) if part); listing_url = notification.get("listing_url") or (f"{SITE_URL}/listing/{listing_id}" if listing_id else SITE_URL)
+    first = _first_name(notification); title = _text(notification.get("listing_title"), "Your property listing"); listing_id = notification.get("listing_id") or notification.get("id"); city = _text(notification.get("city")); county = _text(notification.get("county")); location = ", ".join(part for part in (city, county) if part); listing_url = notification.get("listing_url") or (f"{SITE_URL}/#listing-detail/{listing_id}" if listing_id else f"{SITE_URL}/#listings")
     body = _status_panel("Listing Approved", "Your property listing has been approved and is now live.", "#e8f5e9", "#c8e6c9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#c8e6c9", icon_color="#1b5e20")
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#444444;">Your listing <strong>{escape(title)}</strong> has been reviewed and approved by the Saka Krib administration team.</p>{_details([('Listing', title), ('Location', location), ('Listing ID', listing_id), ('Status', 'Approved and Published')])}{_button(listing_url, 'View Listing')}'''
     return _layout("Listing Approved", body + _body(content))
@@ -134,21 +140,21 @@ def otp_verification(application: dict) -> str:
 
 
 def sign_in_notification(user: dict) -> str:
-    email = _text(user.get("email")); sign_in_time = _text(user.get("sign_in_time")); device = _text(user.get("device")); location = _text(user.get("location")); security_url = user.get("security_url") or SITE_URL
+    email = _text(user.get("email")); sign_in_time = _text(user.get("sign_in_time")); device = _text(user.get("device")); location = _text(user.get("location")); security_url = user.get("security_url") or f"{SITE_URL}/#account-security"
     body = _status_panel("Successful Sign In", "Your Saka Krib account was successfully accessed.", "#eef6ff", "#eef6ff", heading_color="#1e4f7a", message_color="#4b6073", icon="🔐", icon_background="#dbeafe", icon_color="#1e4f7a", icon_size=28)
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(_first_name(user))},</p><p style="margin:0 0 20px;color:#444444;font-size:15px;line-height:1.7;">We detected a successful sign in to your Saka Krib account.</p>{_details([('Account', email), ('Date & Time', sign_in_time), ('Device', device), ('Location', location)], heading="SIGN-IN DETAILS")}<div style="margin:25px 0;padding:18px;background:#fff8e6;border:1px solid #f1e3bd;border-radius:10px;color:#735f35;font-size:13px;line-height:1.6;"><strong>Wasn't you?</strong><br><br>If you did not sign in to your account, please review your account security and contact Saka Krib support if you notice anything suspicious.</div>{_button(security_url, 'Review Account Security', '14px 30px')}<p style="margin:0;color:#777777;font-size:13px;line-height:1.6;">If you recognize this sign-in, no action is required. This notification was sent to help keep your Saka Krib account secure.</p>'''
     return _layout("New Sign In to Your Saka Krib Account", body + _body(content), "Account Security Notification")
 
 
 def sign_up_welcome(user: dict) -> str:
-    full_name = _text(user.get("full_name")); email = _text(user.get("email")); dashboard_url = user.get("dashboard_url") or SITE_URL
+    full_name = _text(user.get("full_name")); email = _text(user.get("email")); dashboard_url = user.get("dashboard_url") or f"{SITE_URL}/#dashboard"
     body = _status_panel("Welcome to Saka Krib", "Your account has been successfully created.", "#e8f5e9", "#d7ead9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#255d3a", icon_color="#ffffff", icon_size=28)
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#333333;">Hello {escape(_first_name(user))},</p><p style="margin:0 0 18px;color:#444444;font-size:15px;line-height:1.7;">Welcome to Saka Krib. Your account has been successfully created and you can now start using the platform.</p>{_details([('Name', full_name), ('Email', email)], heading="ACCOUNT DETAILS")}<div style="margin:25px 0;padding:20px;border:1px solid #e5e7eb;border-radius:12px;"><h3 style="margin:0 0 12px;color:#222222;font-size:16px;">You're ready to get started</h3><p style="margin:0;color:#555555;font-size:14px;line-height:1.7;">Sign in to your Saka Krib account to manage your profile and access the services available to you.</p></div>{_button(dashboard_url, 'Open Saka Krib', '14px 30px')}<p style="margin:0;color:#777777;font-size:13px;line-height:1.6;">If you did not create this account, please contact Saka Krib support immediately.</p>'''
     return _layout("Welcome to Saka Krib", body + _body(content))
 
 
 def moving_started(data: dict) -> str:
-    first_name = _first_name(data); tracking_number = _text(data.get("tracking_number"), "N/A"); booking_id = _text(data.get("booking_id"), "N/A"); started_at = _text(data.get("started_at"), "N/A"); tracking_url = data.get("tracking_url") or SITE_URL
+    first_name = _first_name(data); tracking_number = _text(data.get("tracking_number"), "N/A"); booking_id = _text(data.get("booking_id"), "N/A"); started_at = _text(data.get("started_at"), "N/A"); tracking_url = data.get("tracking_url") or (f"{SITE_URL}/#mover-tracking/{booking_id}" if booking_id != 'N/A' else f"{SITE_URL}/#dashboard")
     body = _status_panel("Your move has started", "Your assigned mover has started the journey. You can now follow the move using your tracking number.", "#e8f5e9", "#c8e6c9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#c8e6c9", icon_color="#1b5e20")
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first_name)},</p><p style="margin:0 0 18px;color:#444444;font-size:15px;line-height:1.7;">Your mover has started the journey. Saka Krib is now recording the active moving journey so you can follow its progress.</p>{_details([('Booking', booking_id), ('Tracking number', tracking_number), ('Journey started', started_at)], heading="JOURNEY DETAILS")}{_button(tracking_url, 'Open Saka Krib', '14px 30px')}<p style="margin:0;color:#777777;font-size:13px;line-height:1.6;">Keep your tracking number for reference. If you have questions about this move, use your Saka Krib conversation with the mover or contact support.</p>'''
     return _layout("Your move has started", body + _body(content))
