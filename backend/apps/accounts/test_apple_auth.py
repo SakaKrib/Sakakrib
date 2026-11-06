@@ -132,7 +132,7 @@ class AppleAuthenticationTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 302, response.data)
+        self.assertEqual(response.status_code, 302, response.content)
         callback = urlsplit(response["Location"])
         self.assertEqual(callback.scheme, "com.sakakrib.app")
         self.assertEqual(callback.netloc, "apple-login")
