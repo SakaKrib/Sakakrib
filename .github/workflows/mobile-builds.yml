@@ -1074,42 +1074,32 @@ jobs:
           removed = []
           source_app_dir = File.expand_path('ios/App/App')
 
-          # Match the resolved filesystem path rather than the PBXFileReference's
-          # literal path. Xcodeproj can represent this folder with a relative
-          # path such as "." under its parent group, so basename(path) misses it.
-          # Only remove a build-phase file reference that resolves to the App
-          # source directory itself; retain the PBXGroup and all Swift source files.
+          # Print the actual Xcodeproj references before modifying anything.
+          # Capacitor 8/Xcode 26 may represent the copied directory through a
+          # synchronized group or a PBXFileReference whose resolved path differs
+          # from the apparent project-relative path.
           target.build_phases.each do |phase|
-            phase.files.dup.each do |build_file|
+            phase.files.each do |build_file|
               reference = build_file.file_ref
-              next unless reference && reference.isa == 'PBXFileReference'
+              next unless reference
 
-              resolved_path = File.expand_path(reference.real_path.to_s)
-              next unless resolved_path == source_app_dir
-              next unless File.directory?(resolved_path)
-
-              removed << {
+              puts({
                 phase: phase.isa,
-                reference_path: reference.path.to_s,
-                resolved_path: resolved_path,
-                type: reference.respond_to?(:last_known_file_type) ? reference.last_known_file_type : nil
-              }
-              build_file.remove_from_project
+                reference_isa: reference.isa,
+                path: reference.respond_to?(:path) ? reference.path : nil,
+                real_path: reference.respond_to?(:real_path) ? reference.real_path.to_s : nil,
+                source_tree: reference.respond_to?(:source_tree) ? reference.source_tree : nil,
+                file_type: reference.respond_to?(:last_known_file_type) ? reference.last_known_file_type : nil,
+                explicit_type: reference.respond_to?(:explicit_file_type) ? reference.explicit_file_type : nil
+              }.inspect)
             end
           end
 
+          # The follow-up build-phase cleanup will use the exact reference
+          # representation printed above rather than guessing its PBX path.
+          puts "iOS App source directory: #{source_app_dir}"
+          puts "iOS target build phases inspected: #{target.build_phases.map(&:isa).join(', ')}"
           project.save
-
-          remaining = target.build_phases.flat_map do |phase|
-            phase.files.filter_map(&:file_ref)
-          end.select do |reference|
-            reference.isa == 'PBXFileReference' &&
-              File.expand_path(reference.real_path.to_s) == source_app_dir
-          end
-          abort "Duplicate App source-folder reference remains in a build phase: #{remaining.map(&:path).join(', ')}" unless remaining.empty?
-
-          puts "Removed duplicate iOS App folder build entries: #{removed.inspect}"
-          puts 'Verified no build phase copies the App source directory over the app executable.'
           RUBY
 
       - name: Build iOS Simulator app
