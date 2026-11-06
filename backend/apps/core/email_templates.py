@@ -11,6 +11,7 @@ SITE_URL = str(
     or 'https://sakakrib.com'
 ).strip().rstrip('/')
 SUPPORT_EMAIL = "support@sakakrib.com"
+APP_LINK_BASE_URL = str(getattr(settings, 'SAKAKRIB_APP_LINK_BASE_URL', '') or SITE_URL).strip().rstrip('/')
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -174,7 +175,7 @@ def renter_unit_request(data: dict) -> str:
     expires_at = _text(data.get("expires_at"), "7 days after submission")
     renter_email = _text(data.get("renter_email"), "Not provided")
     renter_phone = _text(data.get("renter_phone"), "Not provided")
-    request_url = data.get("request_url") or f"{SITE_URL}/app/pms-dashboard"
+    request_url = data.get("request_url") or f"{APP_LINK_BASE_URL}/app/pms-dashboard"
 
     status = _status_panel(
         "New rental request",
