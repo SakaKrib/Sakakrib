@@ -178,6 +178,27 @@ const loadGoogleIdentityScript = async (): Promise<void> => {
   });
 };
 
+const loadAppleIdentityScript = async (): Promise<void> => {
+  if ((window as any).AppleID?.auth) return;
+  const existing = document.querySelector('script[data-sakakrib-apple-auth]');
+  if (existing) {
+    await new Promise<void>((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Unable to load Apple sign-in.')), { once: true });
+    });
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+    script.async = true;
+    script.dataset.sakakribAppleAuth = 'true';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load Apple sign-in.'));
+    document.head.appendChild(script);
+  });
+};
+
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
@@ -682,42 +703,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
     }
 
+    // Apple expects a SHA-256 nonce in the authorization request. The backend
+    // verifies the same value inside the signed Apple identity token.
     const nonce = await createAppleNonce();
+    let identityToken = '';
+    let authorizationCode = '';
+    let fullName = '';
 
-    if (!nativeAppleInitialization) {
-      nativeAppleInitialization = SocialLogin.initialize({
-        apple: {
-          clientId: config.clientId,
-          redirectUrl: config.redirectUrl,
-          useProperTokenExchange: true,
+    if (Capacitor.isNativePlatform()) {
+      if (!nativeAppleInitialization) {
+        nativeAppleInitialization = SocialLogin.initialize({
+          apple: {
+            clientId: config.clientId,
+            redirectUrl: config.redirectUrl,
+            useProperTokenExchange: true,
+            useBroadcastChannel: true,
+          },
+        }).catch((error: unknown) => {
+          nativeAppleInitialization = null;
+          throw error;
+        });
+      }
+      await nativeAppleInitialization;
+
+      const appleResponse = await SocialLogin.login({
+        provider: 'apple',
+        options: {
+          scopes: ['email', 'name'],
+          nonce,
           useBroadcastChannel: true,
         },
-      }).catch((error: unknown) => {
-        nativeAppleInitialization = null;
-        throw error;
-      });
-    }
-    await nativeAppleInitialization;
+      }) as { result?: Record<string, any> };
 
-    const appleResponse = await SocialLogin.login({
-      provider: 'apple',
-      options: {
-        scopes: ['email', 'name'],
+      const result = appleResponse.result ?? {};
+      identityToken = result.idToken || result.identityToken || result.identity_token || '';
+      authorizationCode = result.authorizationCode || result.authorization_code || result.code || '';
+      const profileData = result.profile ?? result.user ?? {};
+      fullName = [
+        profileData.givenName ?? profileData.firstName ?? result.givenName,
+        profileData.familyName ?? profileData.lastName ?? result.familyName,
+      ].filter((part) => typeof part === 'string' && part.trim()).join(' ').trim();
+    } else {
+      // Browser sign-in uses Apple's official JS SDK popup. The private key
+      // and client-secret JWT remain exclusively on the Django server.
+      await loadAppleIdentityScript();
+      const apple = (window as any).AppleID;
+      if (!apple?.auth) {
+        throw new Error('Apple sign-in is unavailable. Please try again.');
+      }
+      apple.auth.init({
+        clientId: config.clientId,
+        scope: 'name email',
+        redirectURI: config.redirectUrl,
+        state: crypto.randomUUID(),
         nonce,
-        useBroadcastChannel: true,
-      },
-    }) as { result?: Record<string, any> };
-
-    const result = appleResponse.result ?? {};
-    const identityToken =
-      result.idToken || result.identityToken || result.identity_token;
-    const authorizationCode =
-      result.authorizationCode || result.authorization_code || result.code;
-    const profileData = result.profile ?? result.user ?? {};
-    const fullName = [
-      profileData.givenName ?? profileData.firstName ?? result.givenName,
-      profileData.familyName ?? profileData.lastName ?? result.familyName,
-    ].filter((part) => typeof part === 'string' && part.trim()).join(' ').trim();
+        usePopup: true,
+      });
+      const response = await apple.auth.signIn();
+      identityToken = response?.authorization?.id_token || '';
+      authorizationCode = response?.authorization?.code || '';
+      const name = response?.user?.name;
+      fullName = [name?.firstName, name?.lastName]
+        .filter((part) => typeof part === 'string' && part.trim())
+        .join(' ')
+        .trim();
+    }
 
     if (!identityToken && !authorizationCode) {
       throw new Error('Apple did not return an identity token or authorization code.');
