@@ -756,6 +756,47 @@ jobs:
           print(f'Android App Links fingerprint matches stable APK: {fingerprint}')
           PY
           echo "Verified release APK stable signing fingerprint: $APK_FP"
+      - name: Check published Android App Links association
+        env:
+          SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          base = urlsplit(os.environ["SAKAKRIB_APP_LINK_BASE_URL"].strip())
+          if base.scheme != "https" or not base.hostname:
+              raise SystemExit("SAKAKRIB_APP_LINK_BASE_URL must be a valid HTTPS URL")
+          url = f"https://{base.hostname}/.well-known/assetlinks.json"
+          expected = Path(os.environ["RUNNER_TEMP"], "android-release-sha256-fingerprint.txt").read_text().strip().replace(":", "").upper()
+
+          try:
+              request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "SakaKrib-AppLinks-Check"})
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  if response.status != 200 or response.geturl() != url:
+                      raise ValueError(f"Expected direct HTTP 200 from {url}; received {response.status} at {response.geturl()}")
+                  if "application/json" not in response.headers.get("Content-Type", "").lower():
+                      raise ValueError("assetlinks.json is not served as application/json")
+                  statements = json.loads(response.read().decode("utf-8"))
+              matches = any(
+                  item.get("target", {}).get("namespace") == "android_app"
+                  and item.get("target", {}).get("package_name") == "com.sakakrib.app"
+                  and expected in {
+                      value.replace(":", "").upper()
+                      for value in item.get("target", {}).get("sha256_cert_fingerprints", [])
+                  }
+                  and "delegate_permission/common.handle_all_urls" in item.get("relation", [])
+                  for item in statements
+              )
+              if not matches:
+                  raise ValueError("Published assetlinks.json does not associate com.sakakrib.app with this release APK signing fingerprint")
+              print(f"Published Android App Links association verified for {base.hostname}.")
+          except Exception as error:
+              print(f"::warning::Android App Links are not yet verified on the public domain: {error}")
+          PY
       - name: Upload stable-signed Android release APK
         uses: actions/upload-artifact@v4
         with:
