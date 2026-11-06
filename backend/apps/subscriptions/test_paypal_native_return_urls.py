@@ -18,7 +18,7 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
                 query['state'][0],
                 salt='sakakrib.paypal-subscription-return',
             ),
-            {'invoice_id': 'invoice-123'},
+            {'invoice_id': 'invoice-123', 'client_platform': 'android'},
         )
 
     @override_settings(
