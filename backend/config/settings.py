@@ -15,6 +15,11 @@ SAKAKRIB_PUBLIC_FRONTEND_URL = (
     SAKAKRIB_PUBLIC_BASE_URL
     or os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
 )
+SAKAKRIB_APP_LINK_BASE_URL = (
+    os.getenv('SAKAKRIB_APP_LINK_BASE_URL', '').strip().rstrip('/')
+    or SAKAKRIB_PUBLIC_FRONTEND_URL
+    or 'https://sakakrib.com'
+)
 
 def _sakakrib_public_url(path):
     return f'{SAKAKRIB_PUBLIC_BASE_URL}{path}' if SAKAKRIB_PUBLIC_BASE_URL else ''
