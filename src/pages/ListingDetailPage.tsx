@@ -12,6 +12,7 @@ import { formatKES, timeAgo, cn } from '@/lib/utils';
 import SecureImage from '@/components/SecureImage';
 import ListingMap from '@/components/ListingMap';
 import PropertyUnitsSection, { type PublicPropertyUnit } from '@/components/PropertyUnitsSection';
+import { getPropertyUnitSummary } from '@/lib/listingDisplay';
 import type { Listing, ListingMedia, Review, Profile } from '@/types/domain';
 
 type ListingPaymentMethod = {
@@ -102,6 +103,7 @@ export default function ListingDetailPage() {
   const bookingAvailable = isPropertyManagement && Boolean(listing.booking_enabled);
   const paymentAvailable = isPropertyManagement && Boolean(listing.payment_enabled);
   const units = isPropertyManagement ? (listing.units ?? []) : [];
+  const propertyUnitSummary = getPropertyUnitSummary(listing);
   const paymentMethods = paymentAvailable ? (listing.payment_methods ?? []) : [];
   const isRealEstate = landlord?.role === 'real_estate';
   const ownerLabel = isRealEstate ? 'Real Estate' : 'Landlord';
@@ -140,18 +142,14 @@ export default function ListingDetailPage() {
           <div className="card p-6">
             <div className="flex items-start justify-between gap-4">
               <div><h1 className="text-2xl font-bold text-gray-900 dark:text-white">{listing.title}</h1><p className="mt-1 flex items-center gap-1 text-gray-500 dark:text-gray-400"><MapPin className="h-4 w-4" /> {listing.city}, {listing.county}</p></div>
-              <div className="text-right"><p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{formatKES(Number(listing.price_kes ?? 0))}</p>{listing.listing_type === 'rent' && <p className="text-sm text-gray-400">per month</p>}</div>
+              {!propertyUnitSummary && <div className="text-right"><p className="text-2xl font-bold text-brand-600 dark:text-brand-400">{formatKES(Number(listing.price_kes ?? 0))}</p>{listing.listing_type === 'rent' && <p className="text-sm text-gray-400">per month</p>}</div>}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200">{listing.listing_type === 'rent' ? 'For Rent' : 'For Sale'}</span>
               {landlord?.verification_status === 'verified' && <span className="badge bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-400"><ShieldCheck className="h-3 w-3" /> {verifiedLabel}</span>}
               <span className="badge bg-gray-100 text-gray-600 dark:bg-brand-800 dark:text-gray-300">{listingTimeLabel}</span>
             </div>
-            <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6 dark:border-brand-800">
-              <div className="text-center"><BedDouble className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.beds === 0 ? 'Studio' : listing.beds}</p><p className="text-xs text-gray-400">Bedrooms</p></div>
-              <div className="text-center"><Bath className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.baths}</p><p className="text-xs text-gray-400">Bathrooms</p></div>
-              <div className="text-center"><Maximize className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.size}</p><p className="text-xs text-gray-400">Size</p></div>
-            </div>
+            {propertyUnitSummary ? <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-5 dark:border-brand-800"><span className="inline-flex items-center gap-2 rounded-full bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-700 dark:bg-brand-800/70 dark:text-brand-200"><Home className="h-4 w-4" />Multi-unit property</span><span className="text-sm text-gray-500 dark:text-gray-400">{propertyUnitSummary.total} {propertyUnitSummary.total === 1 ? 'unit' : 'units'} · {propertyUnitSummary.available} available</span></div> : <div className="mt-6 grid grid-cols-3 gap-4 border-t border-gray-200 pt-6 dark:border-brand-800"><div className="text-center"><BedDouble className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.beds === 0 ? 'Studio' : listing.beds}</p><p className="text-xs text-gray-400">Bedrooms</p></div><div className="text-center"><Bath className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.baths}</p><p className="text-xs text-gray-400">Bathrooms</p></div><div className="text-center"><Maximize className="mx-auto h-6 w-6 text-gray-400" /><p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{listing.size}</p><p className="text-xs text-gray-400">Size</p></div></div>}
           </div>
 
           {isPropertyManagement && <PropertyUnitsSection units={units} bookingEnabled={bookingAvailable} onBookUnit={handleBookUnit} />}
