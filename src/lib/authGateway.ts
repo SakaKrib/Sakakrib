@@ -30,6 +30,7 @@ type AuthGatewayAction =
   | 'signup'
   | 'login'
   | 'google'
+  | 'apple'
   | 'session'
   | 'refresh'
   | 'verify_otp'
@@ -43,6 +44,7 @@ const actionPath: Record<Exclude<AuthGatewayAction, 'session'>, string> = {
   signup: '/api/accounts/signup/',
   login: '/api/accounts/login/',
   google: '/api/accounts/google/',
+  apple: '/api/accounts/apple/',
   refresh: '/api/accounts/refresh/',
   verify_otp: '/api/accounts/verify-otp/',
   resend_otp: '/api/accounts/resend-otp/',
@@ -134,6 +136,23 @@ export const gatewayLogin = (email: string, password: string) =>
 
 export const gatewayGoogleLogin = (credential: string) =>
   authGateway('google', { credential });
+
+export interface AppleAuthConfig {
+  enabled: boolean;
+  clientId: string;
+  redirectUrl: string;
+  bundleId: string;
+}
+
+export const gatewayAppleConfig = () =>
+  djangoRequest<AppleAuthConfig>('/api/accounts/apple/config/');
+
+export const gatewayAppleLogin = (payload: {
+  id_token?: string;
+  code?: string;
+  nonce: string;
+  full_name?: string;
+}) => authGateway('apple', payload);
 
 export const gatewayVerifyOtp = (email: string, otp: string) =>
   authGateway('verify_otp', { email, otp });
