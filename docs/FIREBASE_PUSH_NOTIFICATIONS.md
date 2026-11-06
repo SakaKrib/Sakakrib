@@ -15,7 +15,7 @@ The application code now registers native Capacitor devices, stores their FCM re
 
 The frontend creates the `sakakrib_notifications` channel and registers only after the signed-in user grants notification permission.
 
-FCM registration is disabled by default to prevent native crashes when Firebase is not configured. Set `VITE_FIREBASE_PUSH_ENABLED=true` only for builds where the platform's Firebase configuration is installed and initialized. The repository's standard mobile CI builds deliberately set this flag to `false` because they generate platform projects without Firebase credentials/configuration. Django-backed in-app notifications continue to work while FCM registration is disabled.
+FCM registration is enabled in CI only when `FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_BASE64` is supplied. The stable-signed Android release job now requires this secret and fails closed if it is missing. Debug builds may still be produced without Firebase, but their APKs have native push disabled. Django-backed in-app notifications continue to work while FCM registration is disabled.
 
 ## Django Firebase credentials
 
@@ -28,7 +28,7 @@ FIREBASE_PROJECT_ID=your-firebase-project-id
 FIREBASE_SERVICE_ACCOUNT_FILE=/secure/path/to/firebase-service-account.json
 ```
 
-Alternatively, set `FIREBASE_SERVICE_ACCOUNT_JSON` to the full service-account JSON value in the deployment secret manager. Never add service-account credentials to Git.
+Alternatively, set `FIREBASE_SERVICE_ACCOUNT_JSON` to the full service-account JSON value in the deployment secret manager. Never add service-account credentials to Git. The Admin service account must belong to the same Firebase project as the Android `google-services.json`.
 
 The backend sends a notification when a `UserNotification` or `RenterNotification` record is committed. Push delivery is best-effort: a Firebase outage does not roll back or prevent the in-app notification from being saved.
 
@@ -48,8 +48,18 @@ pip install -r backend/requirements.txt
 python backend/manage.py migrate
 ```
 
-Then rebuild and install the Android app. The native Android platform folder and Firebase configuration are intentionally not generated or committed by this change; those are project-specific build assets.
+Then rebuild and install the Android app. The native Android platform folder and Firebase configuration are intentionally not committed; the mobile workflow installs the Firebase client configuration from the GitHub Actions secret during the build.
 
 ## iOS
 
 iOS also requires the app's APNs key/certificate to be configured in Firebase, the Push Notifications capability, and the native Capacitor iOS Firebase setup. The repository currently has no committed `ios/` platform project, so iOS native provisioning must be completed in that project before iOS closed-app delivery can be verified.
+
+## Android App Links association
+
+The repository serves `public/.well-known/assetlinks.json` as a static Vite public asset. It currently declares Android package `com.sakakrib.app` and the stable release certificate SHA-256 fingerprint:
+
+```text
+119597D31F53ED770837790A270258EE2BCB3EDD79BC43C2F045CB8ADFD4D7C6
+```
+
+Deploy the frontend to the configured public app-link host (`https://sakakrib.com`) and verify that `https://sakakrib.com/.well-known/assetlinks.json` returns this JSON directly with HTTP 200 and no redirect or authentication. If the release keystore is ever rotated, update this file with the new signing fingerprint before distributing the new APK.
