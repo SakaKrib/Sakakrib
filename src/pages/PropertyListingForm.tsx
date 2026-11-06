@@ -1206,6 +1206,8 @@ export default function PropertyListingForm({
                                 </div>
 
                               </div>
+                              </>
+                              )}
 
                               {/* Unit Description */}
 
