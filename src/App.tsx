@@ -96,9 +96,19 @@ function AppContent() {
           const allowedAppLinkViews = new Set([
             'pms-dashboard', 'dashboard', 'listing-detail',
             'subscription-plans', 'mover-tracking', 'mover-booking-detail',
+            'account-security', 'reset-password',
           ]);
           if (!allowedAppLinkViews.has(view)) return;
           didRoute = true;
+          if (view === 'reset-password') {
+            // Keep uid/token in the query string because ResetPasswordPage reads
+            // window.location.search; never put reset credentials in the hash.
+            void Browser.close().catch(() => {});
+            window.location.assign(
+              `${window.location.origin}/reset-password${incoming.search}`,
+            );
+            return;
+          }
           window.location.hash = route;
           return;
         }
@@ -201,9 +211,16 @@ function AppContent() {
     if (!window.location.pathname.startsWith('/app/')) return;
     const route = window.location.pathname.slice('/app/'.length).replace(/^\/+|\/+$/g, '');
     const viewName = route.split('/')[0];
+    if (viewName === 'reset-password') {
+      // Preserve the one-time reset credentials while translating the app link
+      // into the standalone reset page route for browsers without the APK.
+      window.location.replace(`${window.location.origin}/reset-password${window.location.search}`);
+      return;
+    }
     if (viewName === 'pms-dashboard' || viewName === 'dashboard' ||
         viewName === 'listing-detail' || viewName === 'subscription-plans' ||
-        viewName === 'mover-tracking' || viewName === 'mover-booking-detail') {
+        viewName === 'mover-tracking' || viewName === 'mover-booking-detail' ||
+        viewName === 'account-security') {
       window.location.replace(`${window.location.origin}#${route}`);
     }
   }, []);
