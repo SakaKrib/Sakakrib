@@ -203,25 +203,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
 
   useEffect(() => {
-    let mounted = true;
-    const supportedPlatform = !Capacitor.isNativePlatform() || Capacitor.getPlatform() === 'ios';
-    if (!supportedPlatform) {
-      setAppleSignInAvailable(false);
-      return () => {
-        mounted = false;
-      };
-    }
-    void gatewayAppleConfig()
-      .then((config) => {
-        if (mounted) setAppleSignInAvailable(Boolean(config.enabled));
-      })
-      .catch((error) => {
-        console.info('Apple sign-in is not currently available:', error);
-        if (mounted) setAppleSignInAvailable(false);
-      });
-    return () => {
-      mounted = false;
-    };
+    // Show the Apple option on the website and iOS even before credentials
+    // are configured. signInWithApple() checks live backend readiness and
+    // displays a clear setup message instead of attempting an incomplete flow.
+    // Android remains excluded until its native callback/deep-link flow exists.
+    const supportedPlatform =
+      !Capacitor.isNativePlatform() ||
+      Capacitor.getPlatform() === 'ios';
+
+    setAppleSignInAvailable(supportedPlatform);
   }, []);
 
   const clearAuthState = () => {
