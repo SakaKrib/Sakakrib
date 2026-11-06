@@ -521,6 +521,12 @@ export default function RenterInvoicesPage() {
                             'Rent Invoice'}
                         </h3>
 
+                        {invoice.generated_by && (
+                          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 dark:bg-brand-800 dark:text-gray-300">
+                            {invoice.generated_by === 'landlord' ? 'Issued by landlord' : 'Created by you'}
+                          </span>
+                        )}
+
                         <span
                           className={cn(
                             'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
