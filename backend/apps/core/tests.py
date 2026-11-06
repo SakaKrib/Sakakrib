@@ -194,6 +194,7 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
                 ('listing_approved', {'listing_id': 'listing-42'}, 'https://links.example/app/listing-detail/listing-42'),
                 ('moving_started', {'booking_id': 'booking-42'}, 'https://links.example/app/mover-tracking/booking-42'),
                 ('renter_unit_request', {}, 'https://links.example/app/pms-dashboard'),
+                ('notification_generic', {}, 'https://links.example/app/dashboard'),
             ]
             for template_name, payload, expected_url in cases:
                 with self.subTest(template=template_name):
