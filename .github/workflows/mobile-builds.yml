@@ -488,7 +488,12 @@ jobs:
             for activity in root.iter("activity") for intent in activity.findall("intent-filter")
           )
           if not app_prefix_found: raise SystemExit("Generated manifest missing /app/ App Link prefix")
-          print(f"Verified App Link manifest for {host}: {sorted(found)} plus /app/")
+          paypal_scheme_found = any(
+            any(data.get(ns+"scheme")=="com.sakakrib.app" and data.get(ns+"host")=="paypal-return" for data in intent.findall("data"))
+            for activity in root.iter("activity") for intent in activity.findall("intent-filter")
+          )
+          if not paypal_scheme_found: raise SystemExit("Generated manifest missing com.sakakrib.app://paypal-return deep link")
+          print(f"Verified App Link manifest for {host}: {sorted(found)} plus /app/ and PayPal native return scheme")
           PY
 
       - name: Verify Android location permissions before packaging
@@ -869,7 +874,9 @@ jobs:
             for activity in root.iter('activity') for intent in activity.findall('intent-filter')
           )
           if not app_prefix_found: raise SystemExit('Missing /app/ App Link prefix')
-          print(f'Validated release manifest App Links: {sorted(found)} plus /app/')
+          paypal_scheme_found=any(any(d.get(a+'scheme')=='com.sakakrib.app' and d.get(a+'host')=='paypal-return' for d in intent.findall('data')) for activity in root.iter('activity') for intent in activity.findall('intent-filter'))
+          if not paypal_scheme_found: raise SystemExit('Missing com.sakakrib.app://paypal-return deep link')
+          print(f'Validated release manifest App Links: {sorted(found)} plus /app/ and PayPal native return scheme')
           PY
 
       - name: Install stable keystore and configure release signing
