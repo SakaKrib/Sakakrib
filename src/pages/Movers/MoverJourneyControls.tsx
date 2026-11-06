@@ -1,5 +1,7 @@
 import { CheckCircle2, Loader2, MapPin, Navigation, PackageCheck, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useStartGate, formatCountdown, formatDistance, distanceMeters, PICKUP_RADIUS_METERS } from '@/lib/journeyRules';
+import { watchPosition, type DevicePosition } from '@/lib/location';
 import { moverApi, type MoverBooking, type MoverJourneyPhaseResponse } from '@/lib/Movers';
 
 interface Props { booking: MoverBooking; onChanged: () => Promise<void> | void; onTracking: () => void; }
@@ -12,6 +14,18 @@ export default function MoverJourneyControls({ booking, onChanged, onTracking }:
   const [phase, setPhase] = useState<MoverJourneyPhaseResponse['phase']>(null);
   const [error, setError] = useState<string | null>(null);
   const status = normalize(booking.status);
+  const gate = useStartGate(booking as unknown as { scheduled_start_at?: string | null; server_now?: string | null; early_start_minutes?: number | null });
+  const [here, setHere] = useState<DevicePosition | null>(null);
+  const needsPosition = status === 'in_progress' && phase === 'HEADING_TO_PICKUP';
+  useEffect(() => {
+    if (!needsPosition) return;
+    let stop: (() => void) | null = null; let cancelled = false;
+    void watchPosition((p) => setHere(p), () => undefined, { enableHighAccuracy: true }).then((s) => { if (cancelled) s(); else stop = s; }).catch(() => undefined);
+    return () => { cancelled = true; stop?.(); };
+  }, [needsPosition]);
+  const pickupDistance = here && booking.pickup_latitude != null && booking.pickup_longitude != null
+    ? distanceMeters(here.latitude, here.longitude, Number(booking.pickup_latitude), Number(booking.pickup_longitude)) : null;
+  const atPickup = pickupDistance !== null && pickupDistance <= PICKUP_RADIUS_METERS;
   const paymentPaid = normalize(booking.payment_status) === 'paid';
 
   useEffect(() => {
@@ -73,7 +87,7 @@ export default function MoverJourneyControls({ booking, onChanged, onTracking }:
       {!phaseLoading && phase === 'HEADING_TO_PICKUP' && <div className="rounded-xl border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-800 dark:bg-gray-900/40">
         {!confirmingPickup ? <>
           <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" /><div><p className="font-semibold text-gray-900 dark:text-white">Have you collected the renter's items?</p><p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Only confirm after the items have actually been handed over to you. This changes the renter's tracking status to <strong>Items collected</strong>.</p></div></div>
-          <button type="button" onClick={() => setConfirmingPickup(true)} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700"> <PackageCheck className="h-4 w-4" />Confirm pickup</button>
+          <button type="button" onClick={() => setConfirmingPickup(true)} disabled={!atPickup} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-700"> <PackageCheck className="h-4 w-4" />Confirm pickup</button>{!atPickup && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{pickupDistance === null ? 'Waiting for your location to confirm you are at the pickup point…' : `You are ${formatDistance(pickupDistance)} from the pickup point. Get within ${formatDistance(PICKUP_RADIUS_METERS)} to confirm collection.`}</p>}
         </> : <>
           <p className="font-semibold text-gray-900 dark:text-white">Confirm that the renter's items are now with you.</p>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">This is an official journey update and will be visible to the renter.</p>
@@ -86,5 +100,5 @@ export default function MoverJourneyControls({ booking, onChanged, onTracking }:
   </div>;
 
   if (status !== 'confirmed' || !paymentPaid) return null;
-  return <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-800 dark:bg-blue-900/20"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><Navigation className="mt-0.5 h-5 w-5 text-blue-600 dark:text-blue-400" /><div><p className="font-semibold text-blue-800 dark:text-blue-300">Ready to head to pickup</p><p className="mt-1 text-sm text-blue-700 dark:text-blue-400">Start the journey when you are ready to travel to the pickup location. Your live GPS will be shared with the renter.</p></div></div><button type="button" onClick={() => void start()} disabled={loading} className="btn-primary inline-flex items-center justify-center gap-2 text-sm">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}Start journey to pickup</button></div>{error && <p className="mt-3 text-sm text-error-600 dark:text-error-400">{error}</p>}</div>;
+  return <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-800 dark:bg-blue-900/20"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><Navigation className="mt-0.5 h-5 w-5 text-blue-600 dark:text-blue-400" /><div><p className="font-semibold text-blue-800 dark:text-blue-300">Ready to head to pickup</p><p className="mt-1 text-sm text-blue-700 dark:text-blue-400">You can start shortly before the scheduled time. Once started, your live GPS is shared with the renter.</p></div></div><div className="flex flex-col items-stretch gap-1.5 sm:items-end"><button type="button" onClick={() => void start()} disabled={loading || !gate.open} className="btn-primary inline-flex items-center justify-center gap-2 text-sm">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />}Start journey to pickup</button>{!gate.hasSchedule && <p className="text-xs text-blue-700 dark:text-blue-300">Set the moving time before starting.</p>}{gate.hasSchedule && !gate.open && gate.opensAt && gate.scheduledAt && <p className="text-xs text-blue-700 dark:text-blue-300">Opens in {formatCountdown(gate.msUntilOpen)} · move is scheduled for {gate.scheduledAt.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>}</div></div>{error && <p className="mt-3 text-sm text-error-600 dark:text-error-400">{error}</p>}</div>;
 }

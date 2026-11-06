@@ -14,6 +14,7 @@ import SecurityBanner from '@/components/SecurityBanner';
 import AuthModal from '@/components/AuthModal';
 import SplashScreen from '@/components/SplashScreen';
 import BackButtonHandler from '@/components/BackButtonHandler';
+import LiveJourneyNotification from '@/components/LiveJourneyNotification';
 import NotificationPermissionPrompt from '@/components/NotificationPermissionPrompt';
 import RoleSelectionModal from '@/components/RoleSelectionModal';
 import MovingGpsTracker from '@/components/MovingGpsTracker';
@@ -246,6 +247,7 @@ function AppContent() {
     <MovingGpsTracker />
     <RenterBookingChatRedirector />
     <BackButtonHandler />
+    <LiveJourneyNotification />
     <NotificationPermissionPrompt />
   </div>;
 }
