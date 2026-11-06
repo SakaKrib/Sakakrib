@@ -90,6 +90,10 @@ jobs:
             echo "::error::GOOGLE_CLIENT_ID is required for Google sign-in. Add it as a GitHub Actions variable or secret."
             exit 1
           fi
+          if [ -z "$VITE_GOOGLE_IOS_CLIENT_ID" ]; then
+            echo "::error::GOOGLE_IOS_CLIENT_ID is required for native Google sign-in on iOS."
+            exit 1
+          fi
           if [ -z "$VITE_PAYPAL_CLIENT_ID" ]; then
             echo "::error::VITE_PAYPAL_CLIENT_ID is missing. Add it as a GitHub Actions variable or secret before building mobile apps."
             exit 1
@@ -718,6 +722,7 @@ jobs:
           FIREBASE_IOS_CONFIG_BASE64: ${{ secrets.FIREBASE_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
           IOS_APP_TEAM_ID: ${{ vars.IOS_APP_TEAM_ID || secrets.IOS_APP_TEAM_ID || '' }}
           SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
+          GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID || vars.GOOGLE_IOS_CLIENT_IOS || secrets.GOOGLE_IOS_CLIENT_ID || secrets.GOOGLE_IOS_CLIENT_IOS || '' }}
         run: |
           python3 - <<'PY'
           import base64, os, plistlib
@@ -735,6 +740,21 @@ jobs:
               print("Firebase iOS client configuration decoded and validated.")
           else:
               print("::warning::Firebase iOS client plist is not supplied; native push stays disabled in the iOS build.")
+
+          google_ios_client_id = os.environ.get("GOOGLE_IOS_CLIENT_ID", "").strip()
+          if not google_ios_client_id:
+              raise SystemExit("GOOGLE_IOS_CLIENT_ID is required for native Google sign-in on iOS.")
+          suffix = ".apps.googleusercontent.com"
+          if not google_ios_client_id.endswith(suffix):
+              raise SystemExit("GOOGLE_IOS_CLIENT_ID is not a valid Google OAuth client ID.")
+          reversed_client_id = "com.googleusercontent.apps." + google_ios_client_id[:-len(suffix)]
+          info_path = Path("ios/App/App/Info.plist")
+          info = plistlib.loads(info_path.read_bytes())
+          url_types = info.setdefault("CFBundleURLTypes", [])
+          if not any(reversed_client_id in item.get("CFBundleURLSchemes", []) for item in url_types):
+              url_types.append({"CFBundleURLName": "Google Sign-In", "CFBundleURLSchemes": [reversed_client_id]})
+          info_path.write_bytes(plistlib.dumps(info))
+          print("Google Sign-In iOS URL scheme configured.")
 
           team = os.environ.get("IOS_APP_TEAM_ID", "").strip()
           if team:
