@@ -90,7 +90,7 @@ jobs:
 
       - name: Build React app
         env:
-          VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
           VITE_DJANGO_API_FALLBACK_URL: ''
           VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID || '' }}
           VITE_GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID || vars.GOOGLE_IOS_CLIENT_IOS || secrets.GOOGLE_IOS_CLIENT_ID || secrets.GOOGLE_IOS_CLIENT_IOS || '' }}
@@ -528,7 +528,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Build React app for Android release
         env:
-          VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
           VITE_DJANGO_API_FALLBACK_URL: ''
           VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID || '' }}
           VITE_GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID || vars.GOOGLE_IOS_CLIENT_IOS || secrets.GOOGLE_IOS_CLIENT_ID || secrets.GOOGLE_IOS_CLIENT_IOS || '' }}
