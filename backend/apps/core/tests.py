@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -156,7 +157,12 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
         self.assertIn('B-12', html)
         self.assertIn('Amina Renter', html)
         self.assertIn('Review rental request', html)
-        self.assertIn('https://sakakrib.com/app/pms-dashboard', html)
+        with patch('apps.core.email_templates.APP_LINK_BASE_URL', 'https://links.example'):
+            html = self.render('renter_unit_request', {
+                'full_name': 'Property Manager',
+                'property_title': 'Green View Apartments',
+            })
+        self.assertIn('https://links.example/app/pms-dashboard', html)
         self.assertEqual(
             EMAIL_SUBJECTS['renter_unit_request'],
             'New rental request for your property - Saka Krib',
@@ -171,6 +177,13 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
             ),
             'pms-dashboard',
         )
+
+    def test_app_link_origin_follows_the_single_canonical_public_origin(self):
+        if settings.SAKAKRIB_PUBLIC_BASE_URL:
+            self.assertEqual(
+                settings.SAKAKRIB_APP_LINK_BASE_URL,
+                settings.SAKAKRIB_PUBLIC_BASE_URL,
+            )
 
     def test_customer_email_buttons_use_central_app_links(self):
         with patch('apps.core.email_templates.APP_LINK_BASE_URL', 'https://links.example'):
