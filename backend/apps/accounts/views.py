@@ -139,11 +139,6 @@ class LoginView(APIView):
                     'sign_in_time': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
                     'device': request.META.get('HTTP_USER_AGENT', 'Unknown device')[:255],
                     'location': request.META.get('REMOTE_ADDR', 'Unknown location'),
-                    'security_url': (
-                        f"{(settings.SAKAKRIB_PUBLIC_FRONTEND_URL or settings.SAKAKRIB_PUBLIC_BASE_URL).rstrip('/')}/#account-security"
-                        if (settings.SAKAKRIB_PUBLIC_FRONTEND_URL or settings.SAKAKRIB_PUBLIC_BASE_URL)
-                        else f"{request.build_absolute_uri('/').rstrip('/')}/#account-security"
-                    ),
                 },
             )
         except Exception:
