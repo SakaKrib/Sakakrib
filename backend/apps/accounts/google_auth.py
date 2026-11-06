@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
-
 import jwt
+from django.conf import settings
 from django.db import transaction
 from rest_framework import exceptions
 
@@ -13,7 +12,7 @@ GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs'
 
 
 def verify_google_credential(credential: str) -> dict:
-    client_id = os.getenv('GOOGLE_CLIENT_ID', '')
+    client_id = settings.GOOGLE_CLIENT_ID
     if not credential or not client_id:
         raise exceptions.AuthenticationFailed('Google authentication is not configured.')
 
