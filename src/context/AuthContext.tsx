@@ -713,6 +713,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Apple expects a SHA-256 nonce in the authorization request. The backend
     // verifies the same value inside the signed Apple identity token.
     const nonce = await createAppleNonce();
+    const state = crypto.randomUUID();
     let identityToken = '';
     let authorizationCode = '';
     let fullName = '';
@@ -738,6 +739,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: {
           scopes: ['email', 'name'],
           nonce,
+          state,
           useBroadcastChannel: true,
         },
       }) as { result?: Record<string, any> };
@@ -745,6 +747,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = appleResponse.result ?? {};
       identityToken = result.idToken || result.identityToken || result.identity_token || '';
       authorizationCode = result.authorizationCode || result.authorization_code || result.code || '';
+      if (result.state && result.state !== state) {
+        throw new Error('Apple sign-in state validation failed. Please try again.');
+      }
       const profileData = result.profile ?? result.user ?? {};
       fullName = [
         profileData.givenName ?? profileData.firstName ?? result.givenName,
@@ -762,11 +767,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clientId: config.clientId,
         scope: 'name email',
         redirectURI: config.redirectUrl,
-        state: crypto.randomUUID(),
+        state,
         nonce,
         usePopup: true,
       });
       const response = await apple.auth.signIn();
+      if (response?.authorization?.state && response.authorization.state !== state) {
+        throw new Error('Apple sign-in state validation failed. Please try again.');
+      }
       identityToken = response?.authorization?.id_token || '';
       authorizationCode = response?.authorization?.code || '';
       const name = response?.user?.name;
