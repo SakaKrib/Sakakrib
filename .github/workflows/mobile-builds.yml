@@ -715,6 +715,59 @@ jobs:
           print("Verified com.sakakrib.app://apple-login callback intent filter.")
           PY
 
+      - name: Configure PayPal Custom Tab return deep link
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          android_ns = "http://schemas.android.com/apk/res/android"
+          android = "{" + android_ns + "}"
+          ET.register_namespace("android", android_ns)
+          tree = ET.parse(manifest)
+          root = tree.getroot()
+          activity = next(
+              (node for node in root.iter("activity")
+               if node.get(android + "name", "").endswith("MainActivity")),
+              None,
+          )
+          if activity is None:
+              raise SystemExit("Could not find MainActivity for PayPal return deep link")
+
+          def matches(intent):
+              return any(
+                  data.get(android + "scheme") == "com.sakakrib.app"
+                  and data.get(android + "host") == "paypal-return"
+                  for data in intent.findall("data")
+              )
+
+          if not any(matches(intent) for intent in activity.findall("intent-filter")):
+              intent = ET.SubElement(activity, "intent-filter")
+              ET.SubElement(intent, "action", {
+                  android + "name": "android.intent.action.VIEW"
+              })
+              ET.SubElement(intent, "category", {
+                  android + "name": "android.intent.category.DEFAULT"
+              })
+              ET.SubElement(intent, "category", {
+                  android + "name": "android.intent.category.BROWSABLE"
+              })
+              ET.SubElement(intent, "data", {
+                  android + "scheme": "com.sakakrib.app",
+                  android + "host": "paypal-return",
+              })
+
+          ET.indent(tree, space="    ")
+          tree.write(manifest, encoding="utf-8", xml_declaration=True)
+          final = ET.parse(manifest).getroot()
+          if not any(matches(intent) for node in final.iter("activity")
+                     if node.get(android + "name", "").endswith("MainActivity")
+                     for intent in node.findall("intent-filter")):
+              raise SystemExit("PayPal Custom Tab return deep link was not installed")
+          print("Verified com.sakakrib.app://paypal-return Android intent filter.")
+          PY
+
       - name: Declare Android location permissions for release
         run: |
           python3 - <<'PY'
