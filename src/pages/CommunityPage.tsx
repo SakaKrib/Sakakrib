@@ -42,6 +42,39 @@ function roleLabel(role?: string | null) {
   return String(role || '').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function moneyLabel(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? formatKES(amount) : null;
+}
+
+function unitPriceLabel(unit: NonNullable<Post['listing']>['units'][number]) {
+  const sale = String(unit.listing_type || 'rent').toLowerCase() === 'sale';
+  if (!sale) {
+    const rent = moneyLabel(unit.rent);
+    return rent ? `${rent}/month` : 'Rent on request';
+  }
+
+  const asking = moneyLabel(unit.sale_price) || moneyLabel(unit.installment_total_price);
+  const installment = moneyLabel(unit.installment_amount);
+  const frequency = String(unit.installment_frequency || 'monthly');
+  const periods = unit.installment_periods;
+  const parts = [asking ? `${asking} total` : null];
+  if (installment) {
+    parts.push(`${installment}/${frequency}${periods ? ` × ${periods}` : ''}`);
+  }
+  return parts.filter(Boolean).join(' · ') || 'Price on request';
+}
+
+function listingOfferLabel(listing: NonNullable<Post['listing']>) {
+  const units = Array.isArray(listing.units) ? listing.units : [];
+  const kinds = new Set(units.map((unit) => String(unit.listing_type || 'rent').toLowerCase()));
+  if (kinds.has('rent') && kinds.has('sale')) return 'RENT & SALE';
+  return String(kinds.values().next().value || listing.listing_type || 'rent').toLowerCase() === 'sale'
+    ? 'FOR SALE'
+    : 'FOR RENT';
+}
+
 function communityTime(post: Post) {
   const candidates = [post.created_at, post.listing?.created_at];
   for (const value of candidates) {
@@ -289,7 +322,61 @@ export default function CommunityPage() {
                         <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/35 px-2 py-1">{media.map((item, index) => <span key={item.id || index} className={`h-1.5 w-1.5 rounded-full ${index === currentSlide ? 'bg-white' : 'bg-white/50'}`} />)}</div>
                       </div>}
                     </div>}
-                    <div className="space-y-1 p-3"><b className="block text-base text-brand-900 dark:text-white">{post.listing.title}</b><p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3 w-3 text-brand-500" />{post.listing.city}, {post.listing.county}</p>{(() => { const unitSummary = getPropertyUnitSummary(post.listing!); return unitSummary ? <span className="inline-flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold text-brand-700 dark:text-brand-300"><span className="rounded-full bg-brand-100 px-2.5 py-1 dark:bg-brand-900/60">Multi-unit property</span><span>{unitSummary.total} {unitSummary.total === 1 ? 'unit' : 'units'} · {unitSummary.available} available</span></span> : <b className="text-brand-600 dark:text-brand-300">{formatKES(post.listing!.price_kes)}</b>; })()}</div>
+                    <div className="space-y-3 p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-brand-100 px-2.5 py-1 text-[11px] font-bold tracking-wide text-brand-700 dark:bg-brand-900/60 dark:text-brand-200">
+                          {listingOfferLabel(post.listing)}
+                        </span>
+                        {post.listing.is_property_management && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:bg-brand-800 dark:text-gray-300">Property management</span>}
+                      </div>
+                      <div>
+                        <b className="block text-base text-brand-900 dark:text-white">{post.listing.property_name || post.listing.title}</b>
+                        {post.listing.property_name && post.listing.title && post.listing.property_name !== post.listing.title && <p className="text-xs text-gray-500 dark:text-gray-400">{post.listing.title}</p>}
+                        <p className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3 w-3 text-brand-500" />{[post.listing.city, post.listing.county].filter(Boolean).join(', ') || post.listing.location_search || 'Location not provided'}</p>
+                      </div>
+                      {(() => {
+                        const units = Array.isArray(post.listing.units) ? post.listing.units : [];
+                        const unitSummary = getPropertyUnitSummary(post.listing);
+                        if (unitSummary && units.length > 0) {
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-brand-700 dark:text-brand-300">
+                                <span className="rounded-full bg-brand-100 px-2.5 py-1 dark:bg-brand-900/60">Multi-unit property</span>
+                                <span>{unitSummary.total} {unitSummary.total === 1 ? 'unit' : 'units'} · {unitSummary.available} available</span>
+                              </div>
+                              <div className="divide-y divide-brand-100 overflow-hidden rounded-xl border border-brand-100 bg-white/70 dark:divide-brand-800 dark:border-brand-800 dark:bg-brand-950/30">
+                                {units.map((unit) => (
+                                  <div key={unit.id} className="flex flex-col gap-1.5 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-sm font-semibold text-gray-900 dark:text-white">Unit {unit.unit_number || '—'}</span>
+                                        <span className="text-xs capitalize text-gray-500 dark:text-gray-400">{String(unit.unit_type || 'unit').replace(/_/g, ' ')}</span>
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${String(unit.status).toLowerCase() === 'occupied' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' : 'bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-300'}`}>{String(unit.status || 'available').toUpperCase()}</span>
+                                      </div>
+                                      <p className="text-[11px] text-gray-500 dark:text-gray-400">{[unit.size, unit.beds != null ? `${unit.beds} bed` : null, unit.baths != null ? `${unit.baths} bath` : null].filter(Boolean).join(' · ') || 'Details not provided'}</p>
+                                    </div>
+                                    <div className="text-left sm:text-right">
+                                      <b className="text-sm text-brand-700 dark:text-brand-300">{unitPriceLabel(unit)}</b>
+                                      {String(unit.listing_type || 'rent').toLowerCase() === 'rent' && moneyLabel(unit.deposit_amount) && <p className="text-[11px] text-gray-500 dark:text-gray-400">Deposit {moneyLabel(unit.deposit_amount)}</p>}
+                                      {String(unit.listing_type || 'rent').toLowerCase() === 'sale' && moneyLabel(unit.installment_deposit) && <p className="text-[11px] text-gray-500 dark:text-gray-400">Initial deposit {moneyLabel(unit.installment_deposit)}</p>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        const sale = String(post.listing.listing_type || 'rent').toLowerCase() === 'sale';
+                        const price = moneyLabel(post.listing.price_kes);
+                        return (
+                          <div className="space-y-1">
+                            <b className="text-lg text-brand-700 dark:text-brand-300">{sale ? (price ? `Asking price: ${price}` : 'Asking price: Contact for price') : (price ? `Rent: ${price}/month` : 'Rent: Contact for price')}</b>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{[post.listing.size, post.listing.beds != null ? `${post.listing.beds} bed` : null, post.listing.baths != null ? `${post.listing.baths} bath` : null].filter(Boolean).join(' · ') || 'Property details available on request'}</p>
+                            {!sale && post.listing.deposit_required && <p className="text-xs text-gray-500 dark:text-gray-400">{moneyLabel(post.listing.deposit_amount) ? `Deposit: ${moneyLabel(post.listing.deposit_amount)}` : 'Deposit required'}</p>}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </button>
                 </div>}
 
