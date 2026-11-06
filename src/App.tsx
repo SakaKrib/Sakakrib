@@ -91,7 +91,7 @@ function AppContent() {
         // Verified HTTPS App Links / Universal Links use /app/<view> so the
         // operating system can open the installed app before falling back to web.
         if (incoming.pathname.startsWith('/app/')) {
-          const route = incoming.pathname.slice('/app/'.length).replace(/^\\/+|\\/+$/g, '');
+          const route = incoming.pathname.slice('/app/'.length).replace(/^\/+|\/+$/g, '');
           const view = route.split('/')[0];
           const allowedAppLinkViews = new Set([
             'pms-dashboard', 'dashboard', 'listing-detail',
@@ -199,7 +199,7 @@ function AppContent() {
   useEffect(() => {
     if (Capacitor.isNativePlatform() || window.location.hash) return;
     if (!window.location.pathname.startsWith('/app/')) return;
-    const route = window.location.pathname.slice('/app/'.length).replace(/^\\/+|\\/+$/g, '');
+    const route = window.location.pathname.slice('/app/'.length).replace(/^\/+|\/+$/g, '');
     const viewName = route.split('/')[0];
     if (viewName === 'pms-dashboard' || viewName === 'dashboard' ||
         viewName === 'listing-detail' || viewName === 'subscription-plans' ||
