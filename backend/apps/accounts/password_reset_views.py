@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 
 from apps.core.domain_platform import NotificationEmail
 
-from .models import Profile
+from .models import Profile, RefreshToken
 
 
 def _frontend_url(request, redirect_to=None):
@@ -47,14 +47,13 @@ class PasswordResetRequestView(APIView):
 
     def post(self, request):
         email = str(request.data.get('email') or '').strip().lower()
-        redirect_to = request.data.get('redirect_to')
         user = Profile.objects.filter(email__iexact=email, is_active=True).first() if email else None
 
         # Always return the same response so account existence is not disclosed.
         if user:
             uid = urlsafe_base64_encode(str(user.pk).encode())
             token = default_token_generator.make_token(user)
-            base = _frontend_url(request, redirect_to)
+            base = _frontend_url(request)
             reset_url = f"{base}/reset-password?uid={quote(uid)}&token={quote(token)}"
             _reset_email(user, reset_url)
 
@@ -85,4 +84,9 @@ class PasswordResetConfirmView(APIView):
         user.set_password(password)
         user.updated_at = timezone.now()
         user.save(update_fields=['password', 'updated_at'])
+        # A password reset is a security event: revoke every refresh session
+        # so previously authenticated devices must sign in again.
+        RefreshToken.objects.filter(user=user, revoked_at__isnull=True).update(
+            revoked_at=timezone.now()
+        )
         return Response({'success': True, 'message': 'Your password has been reset. You can now sign in.'})
