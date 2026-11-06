@@ -4,6 +4,8 @@ from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES
+from .booking_email_templates import mover_booking_request
+from .subscription_email_templates import SUBSCRIPTION_EMAIL_TEMPLATES
 from .push_notifications import notification_deep_link
 from .real_estate_pms_views import RealEstatePMSActionView, RealEstatePMSDashboardView
 
@@ -169,6 +171,37 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
             ),
             'pms-dashboard',
         )
+
+    def test_customer_email_buttons_use_central_app_links(self):
+        with patch('apps.core.email_templates.APP_LINK_BASE_URL', 'https://links.example'):
+            cases = [
+                ('sign_in_notification', {'email': 'person@example.com'}, 'https://links.example/app/account-security'),
+                ('sign_up_welcome', {'email': 'person@example.com'}, 'https://links.example/app/dashboard'),
+                ('application_approved', {'application_type': 'landlord'}, 'https://links.example/app/dashboard'),
+                ('listing_approved', {'listing_id': 'listing-42'}, 'https://links.example/app/listing-detail/listing-42'),
+                ('moving_journey_started', {'booking_id': 'booking-42'}, 'https://links.example/app/mover-tracking/booking-42'),
+                ('renter_unit_request', {}, 'https://links.example/app/pms-dashboard'),
+            ]
+            for template_name, payload, expected_url in cases:
+                with self.subTest(template=template_name):
+                    html = self.render(template_name, payload)
+                    self.assertIn(expected_url, html)
+
+            booking_html = mover_booking_request({'booking_id': 'booking-42'})
+            self.assertIn('https://links.example/app/mover-booking-detail/booking-42', booking_html)
+
+            for template_name, template in SUBSCRIPTION_EMAIL_TEMPLATES.items():
+                with self.subTest(subscription_template=template_name):
+                    html = template({})
+                    self.assertIn('https://links.example/app/', html)
+                    self.assertNotIn('https://sakakrib.com/#', html)
+
+    def test_admin_application_buttons_use_backend_admin_origin(self):
+        with patch('apps.core.email_templates.ADMIN_BASE_URL', 'https://api.example'):
+            for template_name in ('landlord_admin_notification', 'mover_admin_notification'):
+                with self.subTest(template=template_name):
+                    html = self.render(template_name, {'applicant_name': 'Applicant'})
+                    self.assertIn('https://api.example/admin/', html)
 
     def test_dynamic_values_are_html_escaped(self):
         html = self.render(
