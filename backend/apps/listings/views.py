@@ -231,7 +231,41 @@ class ListingListView(APIView):
         if query:
             term = query.strip()
             if term: queryset = queryset.filter(Q(title__icontains=term) | Q(description__icontains=term) | Q(city__icontains=term) | Q(county__icontains=term) | Q(location_search__icontains=term) | Q(property_name__icontains=term) | Q(property_type__icontains=term))
-        queryset = ListingListView._decimal_filter(queryset, params, 'min_price', 'price_kes', 'gte'); queryset = ListingListView._decimal_filter(queryset, params, 'max_price', 'price_kes', 'lte'); queryset = ListingListView._int_filter(queryset, params, 'min_beds', 'beds', 'gte'); queryset = ListingListView._int_filter(queryset, params, 'min_baths', 'baths', 'gte'); return queryset
+        queryset = ListingListView._apply_price_filters(queryset, params); queryset = ListingListView._int_filter(queryset, params, 'min_beds', 'beds', 'gte'); queryset = ListingListView._int_filter(queryset, params, 'min_baths', 'baths', 'gte'); return queryset
+    @staticmethod
+    def _apply_price_filters(queryset, params):
+        """Filter standalone listings by their price and multi-unit properties by unit rent."""
+        min_raw, max_raw = params.get('min_price'), params.get('max_price')
+        if not min_raw and not max_raw:
+            return queryset
+        try:
+            minimum = Decimal(min_raw) if min_raw else None
+            maximum = Decimal(max_raw) if max_raw else None
+        except (InvalidOperation, TypeError, ValueError):
+            return queryset.none()
+        if minimum is not None and maximum is not None and minimum > maximum:
+            return queryset.none()
+
+        all_unit_listing_ids = PropertyUnit.objects.values('listing_id')
+        parent_price_listings = queryset.exclude(
+            Q(is_property_management=True) & Q(id__in=all_unit_listing_ids)
+        )
+        if minimum is not None:
+            parent_price_listings = parent_price_listings.filter(price_kes__gte=minimum)
+        if maximum is not None:
+            parent_price_listings = parent_price_listings.filter(price_kes__lte=maximum)
+
+        matching_units = PropertyUnit.objects.all()
+        if minimum is not None:
+            matching_units = matching_units.filter(rent__gte=minimum)
+        if maximum is not None:
+            matching_units = matching_units.filter(rent__lte=maximum)
+        matching_unit_listing_ids = matching_units.values('listing_id')
+
+        return queryset.filter(
+            Q(id__in=parent_price_listings.values('id'))
+            | Q(is_property_management=True, id__in=matching_unit_listing_ids)
+        )
     @staticmethod
     def _decimal_filter(queryset, params, parameter, field, lookup):
         value = params.get(parameter)
