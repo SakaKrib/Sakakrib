@@ -3,7 +3,8 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from .email_templates import EMAIL_TEMPLATES
+from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES
+from .push_notifications import notification_deep_link
 from .real_estate_pms_views import RealEstatePMSActionView, RealEstatePMSDashboardView
 
 
@@ -129,6 +130,45 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
             self.assertIn('Review Application', html)
             self.assertIn('background:#f8faf9', html)
             self.assertIn('border-left:4px solid #255d3a', html)
+
+
+    def test_renter_unit_request_email_is_styled_and_routes_to_pms_app_link(self):
+        html = self.render(
+            'renter_unit_request',
+            {
+                'full_name': 'Property Manager',
+                'renter_name': 'Amina Renter',
+                'renter_email': 'amina@example.com',
+                'renter_phone': '+254700000000',
+                'property_title': 'Green View Apartments',
+                'property_city': 'Nairobi',
+                'unit_number': 'B-12',
+                'unit_type': 'Two bedroom',
+                'rent_amount': 'KES 25,000.00',
+                'request_url': 'https://sakakrib.com/app/pms-dashboard',
+            },
+        )
+        self.assert_common_shell(html, 'Your property, managed with clarity.')
+        self.assertIn('New rental request', html)
+        self.assertIn('Green View Apartments', html)
+        self.assertIn('B-12', html)
+        self.assertIn('Amina Renter', html)
+        self.assertIn('Review rental request', html)
+        self.assertIn('https://sakakrib.com/app/pms-dashboard', html)
+        self.assertEqual(
+            EMAIL_SUBJECTS['renter_unit_request'],
+            'New rental request for your property - Saka Krib',
+        )
+
+    def test_renter_unit_request_push_targets_the_owner_pms_dashboard(self):
+        self.assertEqual(
+            notification_deep_link(
+                'RENTER_UNIT_REQUESTED',
+                {'listing_id': 'listing-1', 'association_id': 'association-1'},
+                'real_estate',
+            ),
+            'pms-dashboard',
+        )
 
     def test_dynamic_values_are_html_escaped(self):
         html = self.render(
