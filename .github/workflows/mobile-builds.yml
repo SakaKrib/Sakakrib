@@ -24,6 +24,20 @@ jobs:
     name: Backend email and push-routing tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sakakrib
+          POSTGRES_PASSWORD: sakakrib_ci
+          POSTGRES_DB: sakakrib_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sakakrib -d sakakrib_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Check out SakaKrib
         uses: actions/checkout@v4
@@ -44,7 +58,7 @@ jobs:
           DJANGO_DEBUG: 'true'
           DB_NAME: sakakrib_test
           DB_USER: sakakrib
-          DB_PASSWORD: ''
+          DB_PASSWORD: sakakrib_ci
           DB_HOST: 127.0.0.1
           DB_PORT: '5432'
         run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests apps.accounts.test_apple_auth --noinput --verbosity 2
@@ -1004,7 +1018,7 @@ jobs:
             next unless reference
 
             path = reference.path.to_s
-            file_type = reference.last_known_file_type || reference.explicit_file_type
+            file_type = reference.respond_to?(:last_known_file_type) ? reference.last_known_file_type : nil
             next unless File.basename(path) == 'App'
             next unless file_type == 'folder' || reference.isa == 'PBXFileReference'
 
@@ -1015,8 +1029,9 @@ jobs:
           project.save
 
           remaining = target.resources_build_phase.files.filter_map(&:file_ref).select do |reference|
-            File.basename(reference.path.to_s) == 'App' &&
-              (reference.last_known_file_type == 'folder' || reference.explicit_file_type == 'folder')
+            reference.respond_to?(:last_known_file_type) &&
+              File.basename(reference.path.to_s) == 'App' &&
+              reference.last_known_file_type == 'folder'
           end
           abort "Duplicate App folder is still in the iOS Resources phase: #{remaining.map(&:path).join(', ')}" unless remaining.empty?
 
