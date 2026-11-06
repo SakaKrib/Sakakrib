@@ -19,6 +19,15 @@ const config: CapacitorConfig = {
       : {}),
   },
   plugins: {
+    SocialLogin: {
+      providers: {
+        google: true,
+        apple: false,
+        facebook: false,
+        twitter: false,
+      },
+      logLevel: 1,
+    },
     // Status bar icon colour is set from the app theme at runtime (src/lib/systemBars.ts).
     // 'css' keeps Android insets handled by Capacitor; this is also the default.
     SystemBars: {
