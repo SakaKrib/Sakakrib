@@ -16,8 +16,8 @@ const date = (value: unknown) => value
 
 const status = (value: unknown) => String(value || '').trim().toUpperCase();
 
-function Stat({ label, value, detail, icon: Icon, tone = 'default' }: {
-  label: string; value: string | number; detail?: string;
+function Stat({ label, value, detail, icon: Icon, tone = 'default', onClick }: {
+  label: string; value: string | number; detail?: string; onClick?: () => void;
   icon: typeof Home; tone?: 'default' | 'success' | 'warning' | 'danger';
 }) {
   const toneClass = tone === 'success'
@@ -27,8 +27,9 @@ function Stat({ label, value, detail, icon: Icon, tone = 'default' }: {
       : tone === 'danger'
         ? 'bg-error-50 text-error-700 dark:bg-error-900/20 dark:text-error-300'
         : 'bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300';
+  const Wrapper: any = onClick ? 'button' : 'div';
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+    <Wrapper {...(onClick ? { type: 'button', onClick } : {})} className={`block w-full rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm dark:border-brand-800 dark:bg-brand-950 ${onClick ? 'transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</p>
@@ -37,7 +38,8 @@ function Stat({ label, value, detail, icon: Icon, tone = 'default' }: {
         </div>
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneClass}`}><Icon className="h-5 w-5" /></span>
       </div>
-    </div>
+      {onClick && <p className="mt-2 text-xs font-semibold text-brand-600 dark:text-brand-300">View details →</p>}
+    </Wrapper>
   );
 }
 
@@ -45,7 +47,7 @@ function Mini({ label, value }: { label: string; value: string | number }) {
   return <div className="rounded-xl bg-gray-50 p-3 dark:bg-brand-900/50"><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{value}</p></div>;
 }
 
-export default function LandlordPMSOverview() {
+export default function LandlordPMSOverview({ onNavigate }: { onNavigate?: (tab: 'management' | 'rent' | 'finance') => void } = {}) {
   const [data, setData] = useState<RecordValue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,18 +97,18 @@ export default function LandlordPMSOverview() {
 
       {!error && data && <>
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-          <Stat label="Properties" value={stats.listings.length} icon={Home} />
-          <Stat label="Total units" value={stats.units.length} icon={Building2} />
-          <Stat label="Occupied" value={stats.occupied.length} detail={`${stats.occupancy}% occupancy`} icon={Users} tone="success" />
-          <Stat label="Available" value={stats.available.length} icon={Home} tone="warning" />
-          <Stat label="Pending invoices" value={stats.submitted.length + stats.overdue.length} detail={`${stats.submitted.length} awaiting confirmation`} icon={FileText} tone={stats.submitted.length ? 'warning' : 'default'} />
-          <Stat label="Collected" value={money(stats.collected)} detail={`${stats.collectionRate}% collection`} icon={Wallet} tone="success" />
+          <Stat label="Properties" value={stats.listings.length} icon={Home} onClick={onNavigate ? () => onNavigate('management') : undefined} />
+          <Stat label="Total units" value={stats.units.length} icon={Building2} onClick={onNavigate ? () => onNavigate('management') : undefined} />
+          <Stat label="Occupied" value={stats.occupied.length} detail={`${stats.occupancy}% occupancy`} icon={Users} tone="success" onClick={onNavigate ? () => onNavigate('management') : undefined} />
+          <Stat label="Available" value={stats.available.length} icon={Home} tone="warning" onClick={onNavigate ? () => onNavigate('management') : undefined} />
+          <Stat label="Pending invoices" value={stats.submitted.length + stats.overdue.length} detail={`${stats.submitted.length} awaiting confirmation`} icon={FileText} tone={stats.submitted.length ? 'warning' : 'default'} onClick={onNavigate ? () => onNavigate('finance') : undefined} />
+          <Stat label="Collected" value={money(stats.collected)} detail={`${stats.collectionRate}% collection`} icon={Wallet} tone="success" onClick={onNavigate ? () => onNavigate('finance') : undefined} />
         </section>
 
         <section className="grid gap-5 lg:grid-cols-3">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Calendar statistics</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Rent schedule</h2></div><CalendarDays className="h-5 w-5 text-brand-600" /></div><div className="mt-5 grid grid-cols-2 gap-3"><Mini label="Due this month" value={stats.dueThisMonth.length} /><Mini label="Overdue" value={stats.overdue.length} /><Mini label="Paid this month" value={stats.paidThisMonth.length} /><Mini label="Submitted" value={stats.submitted.length} /></div></div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Financial statistics</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Rent collection</h2></div><TrendingUp className="h-5 w-5 text-brand-600" /></div><div className="mt-5 grid grid-cols-2 gap-3"><Mini label="Invoiced" value={money(stats.invoiced)} /><Mini label="Collected" value={money(stats.collected)} /><Mini label="Outstanding" value={money(Math.max(0, stats.invoiced - stats.collected))} /><Mini label="Collection rate" value={`${stats.collectionRate}%`} /></div></div>
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Action centre</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Needs attention</h2></div><Clock3 className="h-5 w-5 text-warning-600" /></div><div className="mt-5 grid grid-cols-2 gap-3"><Mini label="Payment reviews" value={Number(data.rentSummary?.pending_submission_count || stats.submitted.length)} /><Mini label="Overdue" value={stats.overdue.length} /><Mini label="Notifications" value={stats.notifications.filter((n: RecordValue) => !n.read).length} /><Mini label="Paid invoices" value={stats.paid.length} /></div></div>
+          <div role="button" tabIndex={0} onClick={() => onNavigate?.('rent')} className="cursor-pointer transition hover:border-brand-300 hover:shadow-md rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Calendar statistics</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Rent schedule</h2></div><CalendarDays className="h-5 w-5 text-brand-600" /></div><div className="mt-5 grid grid-cols-2 gap-3"><Mini label="Due this month" value={stats.dueThisMonth.length} /><Mini label="Overdue" value={stats.overdue.length} /><Mini label="Paid this month" value={stats.paidThisMonth.length} /><Mini label="Submitted" value={stats.submitted.length} /></div></div>
+          <div role="button" tabIndex={0} onClick={() => onNavigate?.('finance')} className="cursor-pointer transition hover:border-brand-300 hover:shadow-md rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Financial statistics</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Rent collection</h2></div><TrendingUp className="h-5 w-5 text-brand-600" /></div><div className="mt-5 grid grid-cols-2 gap-3"><Mini label="Invoiced" value={money(stats.invoiced)} /><Mini label="Collected" value={money(stats.collected)} /><Mini label="Outstanding" value={money(Math.max(0, stats.invoiced - stats.collected))} /><Mini label="Collection rate" value={`${stats.collectionRate}%`} /></div></div>
+          <div role="button" tabIndex={0} onClick={() => onNavigate?.('finance')} className="cursor-pointer transition hover:border-brand-300 hover:shadow-md rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Action centre</p><h2 className="mt-1 text-lg font-bold text-gray-900 dark:text-white">Needs attention</h2></div><Clock3 className="h-5 w-5 text-warning-600" /></div><div className="mt-5 grid grid-cols-2 gap-3"><Mini label="Payment reviews" value={Number(data.rentSummary?.pending_submission_count || stats.submitted.length)} /><Mini label="Overdue" value={stats.overdue.length} /><Mini label="Notifications" value={stats.notifications.filter((n: RecordValue) => !n.read).length} /><Mini label="Paid invoices" value={stats.paid.length} /></div></div>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-3">

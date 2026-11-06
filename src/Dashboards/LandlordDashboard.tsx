@@ -663,8 +663,9 @@ export default function LandlordDashboard({
           loadedProfile
         );
 
+        // Managed properties (with units) live in the PMS; this dashboard shows single listings only.
         setListings(
-          loadedListings
+          (loadedListings as Array<{ is_property_management?: boolean }>).filter((item) => !item.is_property_management) as typeof loadedListings
         );
 
         setListingMedia(

@@ -50,6 +50,9 @@ export interface RealEstateListingSummary {
   /** True when the listing consumes real-estate subscription capacity. */
   pms_managed: boolean;
 
+  /** True for managed-property listings (with units); single listings are false. */
+  is_property_management?: boolean;
+
   payment_verified?: boolean | null;
   payment_status?: string | null;
   created_at?: string | null;

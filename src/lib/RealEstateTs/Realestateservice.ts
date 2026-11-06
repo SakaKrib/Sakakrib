@@ -72,6 +72,7 @@ interface DashboardResponse {
     is_published: boolean | null;
     is_paid: boolean | null;
     pms_managed?: boolean;
+    is_property_management?: boolean;
     created_at: string;
     media?: Array<{ url?: string | null; media_type?: string | null; unit_id?: string | null; position?: number | null }>;
   }>;
@@ -110,6 +111,7 @@ function mapListing(listing: NonNullable<DashboardResponse['listings']>[number])
     is_published: Boolean(listing.is_published),
     is_paid: Boolean(listing.is_paid),
     pms_managed: Boolean(listing.pms_managed),
+    is_property_management: Boolean(listing.is_property_management),
     created_at: listing.created_at,
     cover_photo_url: pickCoverPhoto(listing.media),
     media: listing.media ?? [],

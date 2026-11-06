@@ -23,6 +23,9 @@ interface RealEstateListingsProps {
   listings?: RealEstateListingSummary[];
   onOpenListing?: (listingId: string) => void;
   onCreateListing?: () => void;
+  /** Open directly in the full searchable grid (used by the PMS Listings tab). */
+  startExpanded?: boolean;
+  heading?: string;
 }
 
 function formatKES(amount: number | null | undefined): string {
@@ -131,11 +134,13 @@ export default function RealEstateListings({
   listings: suppliedListings,
   onOpenListing,
   onCreateListing,
+  startExpanded = false,
+  heading,
 }: RealEstateListingsProps) {
   const [loadedListings, setLoadedListings] = useState<RealEstateListingSummary[]>([]);
   const [loading, setLoading] = useState(suppliedListings === undefined);
   const [error, setError] = useState<string | null>(null);
-  const [showAllListings, setShowAllListings] = useState(false);
+  const [showAllListings, setShowAllListings] = useState(startExpanded);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -200,7 +205,7 @@ export default function RealEstateListings({
     return (
       <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><button type="button" onClick={() => setShowAllListings(false)} className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300"><ArrowLeft className="h-4 w-4" />Back to PMS</button><h2 className="text-xl font-bold text-gray-900 dark:text-white">All PMS Listings</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{filteredListings.length} of {listings.length} properties</p></div>
+          <div>{!startExpanded && <button type="button" onClick={() => setShowAllListings(false)} className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300"><ArrowLeft className="h-4 w-4" />Back to PMS</button>}<h2 className="text-xl font-bold text-gray-900 dark:text-white">{heading ?? 'All PMS Listings'}</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{filteredListings.length} of {listings.length} properties</p></div>
           {onCreateListing && <button type="button" onClick={onCreateListing} className="btn-primary inline-flex items-center gap-2"><Plus className="h-4 w-4" />Add listing</button>}
         </div>
         <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_190px]"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by title or location" className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white" /></div><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-brand-500 dark:border-brand-700 dark:bg-brand-950 dark:text-white"><option value="all">All statuses</option><option value="approved">Approved</option><option value="pending">Pending approval</option><option value="rejected">Rejected</option></select></div>

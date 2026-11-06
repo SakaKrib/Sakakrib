@@ -152,7 +152,7 @@ export default function RealEstateDashboard() {
           ]);
 
         const listings: RealEstateListingSummary[] =
-          (listingsResponse.results ?? []).map((listing) => ({
+          (listingsResponse.results ?? []).filter((listing) => !(listing as { is_property_management?: boolean }).is_property_management).map((listing) => ({
             id: listing.id,
             user_id: listing.user_id,
             title: listing.title,
