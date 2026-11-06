@@ -1071,35 +1071,37 @@ jobs:
           target = project.targets.find { |candidate| candidate.name == 'App' }
           abort 'Capacitor App target was not found' unless target
 
-          removed = []
+          resources = target.resources_build_phase
           source_app_dir = File.expand_path('ios/App/App')
+          removed = []
 
-          # Print the actual Xcodeproj references before modifying anything.
-          # Capacitor 8/Xcode 26 may represent the copied directory through a
-          # synchronized group or a PBXFileReference whose resolved path differs
-          # from the apparent project-relative path.
-          target.build_phases.each do |phase|
-            phase.files.each do |build_file|
-              reference = build_file.file_ref
-              next unless reference
+          # A directory-level PBXGroup/PBXVariantGroup pointing at the
+          # application source folder gets copied as App.app/App, colliding
+          # with the executable that Xcode creates at the same path.
+          # Capacitor resources (public/, Assets.xcassets, plist files, etc.)
+          # remain separate entries and must stay in Copy Bundle Resources.
+          resources.files_references.dup.each do |reference|
+            next unless reference
+            next unless %w[PBXGroup PBXVariantGroup].include?(reference.isa)
 
-              puts({
-                phase: phase.isa,
-                reference_isa: reference.isa,
-                path: reference.respond_to?(:path) ? reference.path : nil,
-                real_path: reference.respond_to?(:real_path) ? reference.real_path.to_s : nil,
-                source_tree: reference.respond_to?(:source_tree) ? reference.source_tree : nil,
-                file_type: reference.respond_to?(:last_known_file_type) ? reference.last_known_file_type : nil,
-                explicit_type: reference.respond_to?(:explicit_file_type) ? reference.explicit_file_type : nil
-              }.inspect)
-            end
+            real_path = File.expand_path(reference.real_path.to_s)
+            next unless real_path == source_app_dir
+
+            puts "Removing duplicate iOS bundle directory resource: #{reference.isa} -> #{real_path}"
+            resources.remove_file_reference(reference)
+            removed << reference.isa
           end
 
-          # The follow-up build-phase cleanup will use the exact reference
-          # representation printed above rather than guessing its PBX path.
-          puts "iOS App source directory: #{source_app_dir}"
-          puts "iOS target build phases inspected: #{target.build_phases.map(&:isa).join(', ')}"
+          remaining = resources.files_references.compact.select do |reference|
+            %w[PBXGroup PBXVariantGroup].include?(reference.isa) &&
+              File.expand_path(reference.real_path.to_s) == source_app_dir
+          end
+
+          abort "Duplicate iOS App folder resource still exists in Copy Bundle Resources" unless remaining.empty?
+          abort "Expected the duplicate App folder resource but found none; inspect generated Xcode project" if removed.empty?
+
           project.save
+          puts "Removed #{removed.length} duplicate iOS App folder resource reference(s)."
           RUBY
 
       - name: Build iOS Simulator app
