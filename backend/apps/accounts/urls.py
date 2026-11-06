@@ -4,7 +4,7 @@ from .admin_application_notification_views import AdminApplicationNotificationVi
 from .admin_application_status_views import AdminApplicationStatusView
 from .admin_user_views import AdminDashboardDataView, AdminUserDetailView, AdminUserMoverApplicationView
 from .google_auth_views import GoogleLoginView
-from .apple_auth_views import AppleAuthConfigView, AppleLoginView
+from .apple_auth_views import AppleAuthConfigView, AppleLoginCallbackView, AppleLoginStartView, AppleLoginView
 from .kyc_views import KycDocumentUploadView, KycDocumentVerifyView, KycSubmitView
 from .kyc_storage_views import KycDocumentSignView
 from .landlord_application_views import LandlordApplicationSubmitView
@@ -21,6 +21,8 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('google/', GoogleLoginView.as_view(), name='google-login'),
     path('apple/config/', AppleAuthConfigView.as_view(), name='apple-auth-config'),
+    path('apple/start/', AppleLoginStartView.as_view(), name='apple-login-start'),
+    path('apple/callback/', AppleLoginCallbackView.as_view(), name='apple-login-callback'),
     path('apple/', AppleLoginView.as_view(), name='apple-login'),
     path('verify-otp/', VerifyOtpView.as_view(), name='verify-otp'),
     path('resend-otp/', ResendOtpView.as_view(), name='resend-otp'),
