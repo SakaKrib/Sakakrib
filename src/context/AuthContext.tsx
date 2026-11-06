@@ -7,6 +7,8 @@ import type { Profile, UserRole } from '@/types/domain';
 import {
   authGateway,
   gatewayGoogleLogin,
+  gatewayAppleConfig,
+  gatewayAppleLogin,
   gatewayLogin,
   gatewayLogout,
   gatewayResendOtp,
@@ -47,6 +49,8 @@ interface AuthContextValue {
   resendSignupOtp: (email: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: () => Promise<void>;
+  appleSignInAvailable: boolean;
   signOut: () => Promise<void>;
   setRole: (role: UserRole) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
@@ -178,16 +182,40 @@ const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 let nativeGoogleInitialization: Promise<void> | null = null;
+let nativeAppleInitialization: Promise<void> | null = null;
+
+const createAppleNonce = async (): Promise<string> => {
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const rawNonce = Array.from(random, (value) => value.toString(16).padStart(2, '0')).join('');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawNonce));
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [appleSignInAvailable, setAppleSignInAvailable] = useState(false);
   const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
   const [pendingVerificationEmail, setPendingVerificationEmail] =
     useState<string | null>(null);
 
   const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
+
+  useEffect(() => {
+    let mounted = true;
+    void gatewayAppleConfig()
+      .then((config) => {
+        if (mounted) setAppleSignInAvailable(Boolean(config.enabled));
+      })
+      .catch((error) => {
+        console.info('Apple sign-in is not currently available:', error);
+        if (mounted) setAppleSignInAvailable(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const clearAuthState = () => {
     setSession(null);
@@ -644,6 +672,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
+
+  const signInWithApple = async (): Promise<void> => {
+    const config = await gatewayAppleConfig();
+    if (!config.enabled || !config.clientId || !config.redirectUrl) {
+      setAppleSignInAvailable(false);
+      throw new Error(
+        'Apple sign-in is not configured yet. Please use Google or email and password.',
+      );
+    }
+
+    const nonce = await createAppleNonce();
+
+    if (!nativeAppleInitialization) {
+      nativeAppleInitialization = SocialLogin.initialize({
+        apple: {
+          clientId: config.clientId,
+          redirectUrl: config.redirectUrl,
+          useProperTokenExchange: true,
+          useBroadcastChannel: true,
+        },
+      }).catch((error: unknown) => {
+        nativeAppleInitialization = null;
+        throw error;
+      });
+    }
+    await nativeAppleInitialization;
+
+    const appleResponse = await SocialLogin.login({
+      provider: 'apple',
+      options: {
+        scopes: ['email', 'name'],
+        nonce,
+        useBroadcastChannel: true,
+      },
+    }) as { result?: Record<string, any> };
+
+    const result = appleResponse.result ?? {};
+    const identityToken =
+      result.idToken || result.identityToken || result.identity_token;
+    const authorizationCode =
+      result.authorizationCode || result.authorization_code || result.code;
+    const profileData = result.profile ?? result.user ?? {};
+    const fullName = [
+      profileData.givenName ?? profileData.firstName ?? result.givenName,
+      profileData.familyName ?? profileData.lastName ?? result.familyName,
+    ].filter((part) => typeof part === 'string' && part.trim()).join(' ').trim();
+
+    if (!identityToken && !authorizationCode) {
+      throw new Error('Apple did not return an identity token or authorization code.');
+    }
+
+    const authResult = await gatewayAppleLogin({
+      ...(identityToken ? { id_token: identityToken } : { code: authorizationCode }),
+      nonce,
+      ...(fullName ? { full_name: fullName } : {}),
+    });
+
+    if (!authResult.authenticated || !authResult.user || !authResult.profile) {
+      throw new Error(
+        toClientAuthError(
+          authResult.error,
+          'We couldn’t sign you in with Apple. Please try again.',
+        ),
+      );
+    }
+
+    if (!applyGatewayAuth(authResult)) {
+      throw new Error(
+        'Apple sign-in completed, but your Saka Krib account could not be initialized. Please try again.',
+      );
+    }
+  };
+
   const signOut = async (): Promise<void> => {
     try {
       await unregisterPushDevicesForCurrentUser();
@@ -787,6 +888,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resendSignupOtp,
         signIn,
         signInWithGoogle,
+        signInWithApple,
+        appleSignInAvailable,
         signOut,
         setRole,
         refreshProfile,
