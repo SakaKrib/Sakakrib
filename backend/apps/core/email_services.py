@@ -10,7 +10,7 @@ from apps.accounts.models import Profile
 from .booking_email_templates import mover_booking_request
 from .domain_bookings import Booking
 from .domain_platform import Mover, NotificationEmail
-from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES, SITE_URL
+from .email_templates import EMAIL_SUBJECTS, EMAIL_TEMPLATES, _app_link
 from .real_estate_email_templates import (
     real_estate_admin_notification,
     real_estate_application_submitted,
@@ -130,7 +130,7 @@ def _styled_mover_request_email(email: NotificationEmail) -> str | None:
         "requested_at": booking.requested_at,
         "response_expires_at": booking.request_expires_at,
         "booking_id": booking.id,
-        "booking_url": f"{SITE_URL}/#mover-booking-detail/{booking.id}",
+        "booking_url": _app_link(f"mover-booking-detail/{booking.id}"),
     }
     return mover_booking_request(payload)
 
