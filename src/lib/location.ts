@@ -68,7 +68,9 @@ function locationMessage(code: LocationErrorCode): string {
         ? 'Saka Krib needs precise location to show your live position. Tap Enable location to request access. If Android no longer displays the permission prompt, you may need to re-enable location access in app permissions.'
         : 'Location permission was not granted. Allow location for this site in your browser, then tap Try again.';
     case 'services_off':
-      return Capacitor.isNativePlatform()\n        ? 'Location is still off. Tap Enable location to open the Android prompt and turn it on.'\n        : 'Location is turned off on this device. Turn on Location, then tap Try again.';
+      return Capacitor.isNativePlatform()
+        ? 'Location is still off. Tap Enable location to open the Android prompt and turn it on.'
+        : 'Location is turned off on this device. Turn on Location, then tap Try again.';
     case 'no_fix':
       return 'Still looking for your location. Step outside or near a window and give it a few seconds, or tap Try again.';
     case 'timeout':
