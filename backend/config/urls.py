@@ -7,7 +7,7 @@ from django.conf.urls.static import static
 from apps.core.property_rental_views import RenterPropertyUnitRequestView
 from apps.core.property_rental_owner_views import PropertyRentalOwnerRequestView
 from apps.core.moving_paypal_capture_views import MovingPaypalCaptureView
-from apps.core.well_known_views import android_assetlinks
+from apps.core.well_known_views import android_assetlinks, apple_app_site_association
 
 
 def health(_request):
@@ -18,6 +18,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('health/', health, name='health'),
     path('.well-known/assetlinks.json', android_assetlinks, name='android-assetlinks'),
+    path('.well-known/apple-app-site-association', apple_app_site_association, name='apple-app-site-association'),
     path('api/accounts/', include('apps.accounts.urls')),
     path('api/listings/', include('apps.listings.urls')),
     path('api/subscriptions/', include('apps.subscriptions.urls')),
