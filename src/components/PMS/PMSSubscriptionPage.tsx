@@ -71,6 +71,25 @@ function normalizePlanName(value: unknown): PMSPlanName | null {
 function normalizeBillingCycle(value: unknown): PMSBillingCycle {
   return String(value ?? "").trim().toUpperCase() === "ANNUAL" ? "ANNUAL" : "MONTHLY";
 }
+
+interface PayPalReturnPlanContext {
+  planName: PMSPlanName;
+  billingCycle: PMSBillingCycle;
+}
+
+function consumePayPalReturnPlanContext(): PayPalReturnPlanContext | null {
+  try {
+    const raw = sessionStorage.getItem("sakakrib.paypal.subscription.return.context");
+    if (!raw) return null;
+    sessionStorage.removeItem("sakakrib.paypal.subscription.return.context");
+    const parsed = JSON.parse(raw) as { plan_name?: unknown; billing_cycle?: unknown };
+    const planName = normalizePlanName(parsed.plan_name);
+    if (!planName) return null;
+    return { planName, billingCycle: normalizeBillingCycle(parsed.billing_cycle) };
+  } catch {
+    return null;
+  }
+}
 function normalizeStatus(value: unknown): PMSSubscriptionStatus {
   const status = String(value ?? "").trim().toUpperCase();
   switch (status) {
@@ -122,13 +141,26 @@ function formatKES(value: number | null | undefined): string {
 export default function PMSSubscriptionPage() {
   const [role, setRole] = useState<PMSRole | null>(null);
   const [subscription, setSubscription] = useState<PMSSubscription | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<PMSPlanName | null>(null);
-  const [selectedBillingCycle, setSelectedBillingCycle] = useState<PMSBillingCycle>("MONTHLY");
+  const [returnPlanContext, setReturnPlanContext] = useState<PayPalReturnPlanContext | null>(() => consumePayPalReturnPlanContext());
+  const [selectedPlan, setSelectedPlan] = useState<PMSPlanName | null>(() => returnPlanContext?.planName ?? null);
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<PMSBillingCycle>(() => returnPlanContext?.billingCycle ?? "MONTHLY");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { navigate } = useNav();
   const { event: liveEvent } = useLiveEvents(true);
+
+  useEffect(() => {
+    const applyPayPalReturnContext = () => {
+      const context = consumePayPalReturnPlanContext();
+      if (!context) return;
+      setReturnPlanContext(context);
+      setSelectedPlan(context.planName);
+      setSelectedBillingCycle(context.billingCycle);
+    };
+    window.addEventListener("sakakrib:paypal-return-context", applyPayPalReturnContext);
+    return () => window.removeEventListener("sakakrib:paypal-return-context", applyPayPalReturnContext);
+  }, []);
 
   const loadProfile = useCallback(async () => {
     const { data: authData, error: userError } = await djangoPmsGateway.auth.getUser();
@@ -155,8 +187,8 @@ export default function PMSSubscriptionPage() {
       const raw = firstRow(result.data);
       const normalized = raw ? normalizeSubscription(raw) : null;
       setSubscription(normalized);
-      setSelectedBillingCycle(normalized?.billing_cycle ?? "MONTHLY");
-      setSelectedPlan(normalizePlanName(normalized?.plan_name));
+      setSelectedBillingCycle(returnPlanContext?.billingCycle ?? normalized?.billing_cycle ?? "MONTHLY");
+      setSelectedPlan(returnPlanContext?.planName ?? normalizePlanName(normalized?.plan_name));
     } catch (err) {
       setSubscription(null);
       setSelectedPlan(null);
@@ -165,7 +197,7 @@ export default function PMSSubscriptionPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [loadProfile]);
+  }, [loadProfile, returnPlanContext]);
 
   useEffect(() => { void loadSubscription(); }, [loadSubscription]);
   useEffect(() => {
