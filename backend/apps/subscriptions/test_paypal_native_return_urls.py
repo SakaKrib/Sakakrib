@@ -7,7 +7,7 @@ from .payment_services import _paypal_frontend_urls
 
 
 class PayPalNativeReturnUrlTests(SimpleTestCase):
-    def assert_signed_return_url(self, url, expected_path):
+    def assert_signed_return_url(self, url, expected_path, expected_platform='android'):
         parts = urlsplit(url)
         query = parse_qs(parts.query)
         self.assertEqual(parts.path, expected_path)
@@ -18,7 +18,7 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
                 query['state'][0],
                 salt='sakakrib.paypal-subscription-return',
             ),
-            {'invoice_id': 'invoice-123', 'client_platform': 'android'},
+            {'invoice_id': 'invoice-123', 'client_platform': expected_platform},
         )
 
     @override_settings(
@@ -33,9 +33,9 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
         )
 
         self.assertEqual(urlsplit(return_url).netloc, 'app.example.test')
-        self.assert_signed_return_url(return_url, '/paypal/subscription/return')
+        self.assert_signed_return_url(return_url, '/paypal/subscription/return', 'web')
         self.assertEqual(urlsplit(cancel_url).netloc, 'app.example.test')
-        self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel')
+        self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel', 'web')
 
     @override_settings(
         SAKAKRIB_PUBLIC_BASE_URL='',
