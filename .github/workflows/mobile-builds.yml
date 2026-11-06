@@ -632,7 +632,7 @@ jobs:
           from pathlib import Path
 
           fingerprint = Path(__import__('os').environ['RUNNER_TEMP'], 'android-release-sha256-fingerprint.txt').read_text().strip().replace(':', '').upper()
-          associations = json.loads(Path('public/.well-known/assetlinks.json').read_text())
+          associations = json.loads(Path('../public/.well-known/assetlinks.json').read_text())
           declared = {
               value.replace(':', '').upper()
               for entry in associations
