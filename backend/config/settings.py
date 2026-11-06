@@ -98,6 +98,14 @@ JWT_COOKIE_SAMESITE = 'None'
 LEGACY_JWT_COOKIE_DOMAIN = os.getenv('JWT_COOKIE_DOMAIN') or None
 JWT_COOKIE_DOMAIN = None
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+# Sign in with Apple: the Services ID is the web/authorization-code audience;
+# the bundle ID is the native iOS audience. Private-key material stays backend-only.
+APPLE_CLIENT_ID = os.getenv('APPLE_CLIENT_ID', '').strip()
+APPLE_BUNDLE_ID = os.getenv('APPLE_BUNDLE_ID', IOS_APP_BUNDLE_ID).strip() or IOS_APP_BUNDLE_ID
+APPLE_TEAM_ID = os.getenv('APPLE_TEAM_ID', '').strip()
+APPLE_KEY_ID = os.getenv('APPLE_KEY_ID', '').strip()
+APPLE_PRIVATE_KEY_PATH = os.getenv('APPLE_PRIVATE_KEY_PATH', '').strip()
+APPLE_REDIRECT_URI = os.getenv('APPLE_REDIRECT_URI', '').strip()
 FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON', '')
 FIREBASE_SERVICE_ACCOUNT_FILE = os.getenv('FIREBASE_SERVICE_ACCOUNT_FILE', '')
 FIREBASE_PROJECT_ID = os.getenv('FIREBASE_PROJECT_ID', '')
