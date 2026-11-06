@@ -11,6 +11,7 @@ import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { formatKES, timeAgo, cn } from '@/lib/utils';
 import SecureImage from '@/components/SecureImage';
 import ListingMap from '@/components/ListingMap';
+import { describeLocationError, prepareLiveMapLocation } from '@/lib/location';
 import PropertyUnitsSection, { type PublicPropertyUnit } from '@/components/PropertyUnitsSection';
 import { getPropertyUnitSummary } from '@/lib/listingDisplay';
 import type { Listing, ListingMedia, Review, Profile } from '@/types/domain';
@@ -46,6 +47,9 @@ export default function ListingDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [showContact, setShowContact] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [mapLocationRequestKey, setMapLocationRequestKey] = useState(0);
+  const [mapLocationError, setMapLocationError] = useState<string | null>(null);
+  const [requestingMapLocation, setRequestingMapLocation] = useState(false);
   const [showPaymentInfo, setShowPaymentInfo] = useState(false);
   const [selectedUnit, setSelectedUnit] = useState<PublicPropertyUnit | null>(null);
   const [liveRefreshKey, setLiveRefreshKey] = useState(0);
@@ -95,6 +99,30 @@ export default function ListingDetailPage() {
   const handleShowContact = () => {
     if (!profile) { navigate('home'); return; }
     setShowContact(true);
+  };
+
+  const requestLiveMapLocation = async () => {
+    setMapLocationError(null);
+    setRequestingMapLocation(true);
+    try {
+      await prepareLiveMapLocation();
+      setMapLocationRequestKey((key) => key + 1);
+    } catch (error) {
+      setMapLocationError(describeLocationError(error));
+    } finally {
+      setRequestingMapLocation(false);
+    }
+  };
+
+  const handleToggleLiveMap = () => {
+    if (showMap) {
+      setShowMap(false);
+      return;
+    }
+    setShowMap(true);
+    // This call starts directly from the user's tap, so Android can show its
+    // native permission and "Turn on Location" prompts before GPS tracking begins.
+    void requestLiveMapLocation();
   };
   const photos = media.filter((m) => m.media_type === 'photo' && !m.unit_id);
   const video = media.find((m) => m.media_type === 'video' && !m.unit_id);
@@ -156,7 +184,7 @@ export default function ListingDetailPage() {
 
           {selectedUnit && bookingAvailable && <div className="card border-brand-200 p-6 dark:border-brand-700"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Selected Unit</p><h2 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">Unit {selectedUnit.unit_number}</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{formatKES(Number(selectedUnit.rent))} per month · {selectedUnit.unit_type}</p></div><button type="button" onClick={() => setSelectedUnit(null)} className="text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button></div><p className="mt-3 text-sm text-gray-500 dark:text-gray-400">Your request for this vacant unit has been submitted to the property manager. You will be notified when it is accepted or declined.</p></div>}
 
-          {hasCoordinates && <div className="card p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><MapPin className="h-5 w-5 text-brand-600" /> Location</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">View the property and follow it from your current location.</p></div><button type="button" onClick={() => setShowMap((value) => !value)} className="btn-secondary flex items-center gap-2"><Navigation className="h-4 w-4" /> {showMap ? 'Hide Map' : 'Show on Map'}</button></div>{showMap && <div className="mt-4"><ListingMap latitude={Number(listing.latitude)} longitude={Number(listing.longitude)} title={listing.title} /></div>}</div>}
+          {hasCoordinates && <div className="card p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><MapPin className="h-5 w-5 text-brand-600" /> Location</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">View the property and follow it from your current location.</p></div><button type="button" onClick={handleToggleLiveMap} className="btn-secondary flex items-center gap-2" disabled={requestingMapLocation && !showMap}><Navigation className="h-4 w-4" /> {showMap ? 'Hide Map' : 'Show Live Map'}</button></div>{showMap && <div className="mt-4 space-y-3">{mapLocationError && <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200" role="alert"><p>{mapLocationError}</p><button type="button" onClick={() => { void requestLiveMapLocation(); }} disabled={requestingMapLocation} className="inline-flex w-fit items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60">{requestingMapLocation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />} {requestingMapLocation ? 'Enabling location...' : 'Enable location'}</button></div>}{requestingMapLocation && !mapLocationError && <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Requesting location access...</p>}<ListingMap latitude={Number(listing.latitude)} longitude={Number(listing.longitude)} title={listing.title} locationRequestKey={mapLocationRequestKey} /></div>}</div>}
 
           <div className="card p-6"><h2 className="text-lg font-semibold text-gray-900 dark:text-white">Description</h2><p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-gray-600 dark:text-gray-400">{listing.description}</p></div>
           {listing.deposit_required && <div className="card p-6"><h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white"><DollarSign className="h-5 w-5 text-brand-600" /> Deposit Details</h2><div className="mt-3 space-y-2"><div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Deposit Amount</span><span className="font-semibold text-gray-900 dark:text-white">{formatKES(Number(listing.deposit_amount ?? 0))}</span></div><div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Payment Structure</span><span className="font-semibold capitalize text-gray-900 dark:text-white">{listing.deposit_structure}</span></div></div></div>}
