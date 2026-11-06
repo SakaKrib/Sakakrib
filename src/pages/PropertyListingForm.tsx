@@ -1205,9 +1205,10 @@ export default function PropertyListingForm({
                                   <CountInput value={unit.baths} onChange={(n) => updateUnit(unit.id, 'baths', String(n))} min={1} max={20} presets={[1, 2, 3, 4, 5]} unit="bathrooms" aria-label="Bathrooms" />
                                 </div>
 
-                              </div>
                               </>
                               )}
+
+                              </div>
 
                               {/* Unit Description */}
 
