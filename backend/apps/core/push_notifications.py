@@ -74,6 +74,9 @@ def notification_deep_link(notification_type, data=None, recipient_role=''):
     listing_id = str(payload.get('listing_id') or '').strip()
     mover_id = str(payload.get('mover_id') or '').strip()
 
+    if 'RENTER_UNIT_REQUESTED' in kind:
+        return 'pms-dashboard'
+
     if booking_id and any(term in kind for term in ('TRACK', 'MAP', 'LOCATION', 'MOVING_STARTED')):
         return f'live-mover-map/{booking_id}'
 
@@ -144,7 +147,7 @@ def _fcm_data(notification_id, notification_type, data, deep_link):
         'deep_link': deep_link,
     }
     source = data if isinstance(data, dict) else {}
-    for key in ('booking_id', 'listing_id', 'mover_id', 'mover_user_id', 'renter_user_id', 'renter_id', 'sender_id', 'conversation_id'):
+    for key in ('booking_id', 'listing_id', 'mover_id', 'mover_user_id', 'renter_user_id', 'renter_id', 'sender_id', 'conversation_id', 'association_id', 'unit_id'):
         value = source.get(key)
         if value is not None and str(value).strip():
             payload[key] = str(value)
