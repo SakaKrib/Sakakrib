@@ -1,6 +1,7 @@
 from datetime import datetime
 from html import escape
 from typing import Any
+from urllib.parse import quote
 
 from django.conf import settings
 
@@ -12,6 +13,17 @@ SITE_URL = str(
 ).strip().rstrip('/')
 SUPPORT_EMAIL = "support@sakakrib.com"
 APP_LINK_BASE_URL = str(getattr(settings, 'SAKAKRIB_APP_LINK_BASE_URL', '') or SITE_URL).strip().rstrip('/')
+ADMIN_BASE_URL = str(getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '') or SITE_URL).strip().rstrip('/')
+
+
+def _app_link(path: str) -> str:
+    """Build a verified HTTPS App Link; Android opens the installed app when available."""
+    segments = [quote(part, safe='-._~') for part in str(path or '').strip('/').split('/') if part]
+    return f"{APP_LINK_BASE_URL}/app/{'/'.join(segments)}"
+
+
+def _admin_link(path: str = 'admin/') -> str:
+    return f"{ADMIN_BASE_URL}/{str(path or '').lstrip('/')}"
 
 
 def _text(value: Any, default: str = "") -> str:
@@ -79,7 +91,7 @@ def _button(url: Any, label: str, padding: str = "14px 28px") -> str:
 def application_approved(application: dict) -> str:
     raw = _text(application.get("application_type")).lower(); role = "Real Estate" if raw in {"realestate", "real_estate"} else raw.title() if raw else "Professional"; first = _first_name(application); applicant_name = _text(application.get("applicant_name")) or _text(application.get("full_name")) or first; application_id = application.get("application_id") or application.get("id")
     body = _status_panel("Application Approved", f"Congratulations! Your {role.lower()} application has been approved.", "#e8f5e9", "#c8e6c9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#c8e6c9", icon_color="#1b5e20")
-    content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#444444;">We are pleased to let you know that your <strong>{escape(role.lower())}</strong> application on Saka Krib has been successfully reviewed and approved.</p>{_details([('Applicant', applicant_name), ('Application Type', role), ('Status', 'Approved'), ('Application ID', application_id)])}<div style="margin:25px 0;padding:20px;border:1px solid #d9e8dc;border-radius:12px;background:#f8fbf9;"><h3 style="margin:0 0 12px;font-size:16px;color:#222222;">What happens next?</h3><p style="margin:0;color:#555555;font-size:14px;line-height:1.7;">Your account now has access to the {escape(role.lower())} features available on Saka Krib. You can sign in and continue using your account.</p></div>{_button(application.get('dashboard_url') or f'{SITE_URL}/#dashboard', 'Open Saka Krib')}<p style="margin:25px 0 0;color:#555555;font-size:14px;line-height:1.7;">Thank you for choosing Saka Krib. We look forward to serving you.</p>'''
+    content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#444444;">We are pleased to let you know that your <strong>{escape(role.lower())}</strong> application on Saka Krib has been successfully reviewed and approved.</p>{_details([('Applicant', applicant_name), ('Application Type', role), ('Status', 'Approved'), ('Application ID', application_id)])}<div style="margin:25px 0;padding:20px;border:1px solid #d9e8dc;border-radius:12px;background:#f8fbf9;"><h3 style="margin:0 0 12px;font-size:16px;color:#222222;">What happens next?</h3><p style="margin:0;color:#555555;font-size:14px;line-height:1.7;">Your account now has access to the {escape(role.lower())} features available on Saka Krib. You can sign in and continue using your account.</p></div>{_button(_app_link('dashboard'), 'Open Saka Krib')}<p style="margin:25px 0 0;color:#555555;font-size:14px;line-height:1.7;">Thank you for choosing Saka Krib. We look forward to serving you.</p>'''
     return _layout("Application Approved", body + _body(content))
 
 
@@ -99,7 +111,7 @@ def application_review(application: dict) -> str:
 
 
 def listing_approved(notification: dict) -> str:
-    first = _first_name(notification); title = _text(notification.get("listing_title"), "Your property listing"); listing_id = notification.get("listing_id") or notification.get("id"); city = _text(notification.get("city")); county = _text(notification.get("county")); location = ", ".join(part for part in (city, county) if part); listing_url = notification.get("listing_url") or (f"{SITE_URL}/#listing-detail/{listing_id}" if listing_id else f"{SITE_URL}/#listings")
+    first = _first_name(notification); title = _text(notification.get("listing_title"), "Your property listing"); listing_id = notification.get("listing_id") or notification.get("id"); city = _text(notification.get("city")); county = _text(notification.get("county")); location = ", ".join(part for part in (city, county) if part); listing_url = _app_link(f'listing-detail/{listing_id}') if listing_id else _app_link('dashboard')
     body = _status_panel("Listing Approved", "Your property listing has been approved and is now live.", "#e8f5e9", "#c8e6c9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#c8e6c9", icon_color="#1b5e20")
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#444444;">Your listing <strong>{escape(title)}</strong> has been reviewed and approved by the Saka Krib administration team.</p>{_details([('Listing', title), ('Location', location), ('Listing ID', listing_id), ('Status', 'Approved and Published')])}{_button(listing_url, 'View Listing')}'''
     return _layout("Listing Approved", body + _body(content))
@@ -122,14 +134,14 @@ def mover_application_submitted(application: dict) -> str:
 def landlord_admin_notification(application: dict) -> str:
     applicant_name = _text(application.get("applicant_name")) or _text(application.get("full_name"), "Unknown applicant"); applicant_email = _text(application.get("applicant_email")) or _text(application.get("email"), "Not provided"); phone = _text(application.get("phone"), "Not provided"); national_id = _text(application.get("national_id"), "Not provided"); document_type = _text(application.get("document_type"), "Not provided"); application_id = application.get("application_id") or application.get("id") or "Pending assignment"; submitted_at = _text(application.get("submitted_at"), "Just now")
     body = _admin_alert("New Landlord Application", "A new landlord application has been submitted and requires administrator review.", "🏢")
-    content = f'''<h3 style="margin:0 0 18px;font-size:18px;color:#222222;">Application Summary</h3>{_details([('Applicant', applicant_name), ('Email', applicant_email), ('Phone', phone), ('National ID', national_id), ('Document Type', document_type)], bordered=True, row_padding=13)}<div style="margin-top:22px;padding:18px;background:#f5f7f6;border-radius:10px;"><div style="font-size:12px;color:#777777;">Application Status</div><div style="margin-top:5px;font-size:16px;font-weight:bold;color:#b26a00;">Pending Review</div></div><div style="margin-top:18px;font-size:12px;color:#777777;line-height:1.7;"><strong>Application ID:</strong> {escape(_text(application_id))}<br><strong>Submitted:</strong> {escape(submitted_at)}</div>{_button(f'{SITE_URL}/#dashboard', 'Review Application')}<div style="margin-top:25px;padding:18px;background:#f8faf9;border-left:4px solid #255d3a;border-radius:6px;color:#526158;font-size:13px;line-height:1.6;"><strong>Administrator action required</strong><br><br>Please review the applicant's identity information and uploaded document before approving or declining the landlord application.</div>'''
+    content = f'''<h3 style="margin:0 0 18px;font-size:18px;color:#222222;">Application Summary</h3>{_details([('Applicant', applicant_name), ('Email', applicant_email), ('Phone', phone), ('National ID', national_id), ('Document Type', document_type)], bordered=True, row_padding=13)}<div style="margin-top:22px;padding:18px;background:#f5f7f6;border-radius:10px;"><div style="font-size:12px;color:#777777;">Application Status</div><div style="margin-top:5px;font-size:16px;font-weight:bold;color:#b26a00;">Pending Review</div></div><div style="margin-top:18px;font-size:12px;color:#777777;line-height:1.7;"><strong>Application ID:</strong> {escape(_text(application_id))}<br><strong>Submitted:</strong> {escape(submitted_at)}</div>{_button(_admin_link('admin/'), 'Review Application')}<div style="margin-top:25px;padding:18px;background:#f8faf9;border-left:4px solid #255d3a;border-radius:6px;color:#526158;font-size:13px;line-height:1.6;"><strong>Administrator action required</strong><br><br>Please review the applicant's identity information and uploaded document before approving or declining the landlord application.</div>'''
     return _layout("New Landlord Application", body + '<div style="padding:30px 25px;">' + content + '</div>', "Administration Notification")
 
 
 def mover_admin_notification(application: dict) -> str:
     applicant_name = _text(application.get("applicant_name")) or _text(application.get("driver_full_name")) or _text(application.get("full_name"), "Unknown applicant"); applicant_email = _text(application.get("applicant_email")) or _text(application.get("email"), "Not provided"); phone = _text(application.get("phone"), "Not provided"); vehicle_type = _text(application.get("vehicle_type"), "Not provided"); vehicle_number = _text(application.get("number_plate")) or _text(application.get("vehicle_number"), "Not provided"); operating_city = _text(application.get("operating_city"), "Not provided"); operating_county = _text(application.get("operating_county"), "Not provided"); application_id = application.get("application_id") or application.get("id") or "Pending assignment"; submitted_at = _text(application.get("submitted_at"), "Just now")
     body = _admin_alert("New Mover Application", "A new mover application has been submitted and requires administrator review.", "🚚")
-    content = f'''<h3 style="margin:0 0 18px;font-size:18px;color:#222222;">Application Summary</h3>{_details([('Applicant', applicant_name), ('Email', applicant_email), ('Phone', phone), ('Vehicle Type', vehicle_type), ('Number Plate', vehicle_number), ('Operating City', operating_city), ('County', operating_county)], bordered=True, row_padding=13)}<div style="margin-top:22px;padding:18px;background:#f5f7f6;border-radius:10px;"><div style="font-size:12px;color:#777777;">Application Status</div><div style="margin-top:5px;font-size:16px;font-weight:bold;color:#b26a00;">Pending Review</div></div><div style="margin-top:18px;font-size:12px;color:#777777;line-height:1.7;"><strong>Application ID:</strong> {escape(_text(application_id))}<br><strong>Submitted:</strong> {escape(submitted_at)}</div>{_button(f'{SITE_URL}/admin', 'Review Application')}<div style="margin-top:25px;padding:18px;background:#f8faf9;border-left:4px solid #255d3a;border-radius:6px;color:#526158;font-size:13px;line-height:1.6;"><strong>Administrator action required</strong><br><br>Please review the applicant's identity, driving licence, vehicle information, insurance details, inspection status and references before approving or declining the application.</div>'''
+    content = f'''<h3 style="margin:0 0 18px;font-size:18px;color:#222222;">Application Summary</h3>{_details([('Applicant', applicant_name), ('Email', applicant_email), ('Phone', phone), ('Vehicle Type', vehicle_type), ('Number Plate', vehicle_number), ('Operating City', operating_city), ('County', operating_county)], bordered=True, row_padding=13)}<div style="margin-top:22px;padding:18px;background:#f5f7f6;border-radius:10px;"><div style="font-size:12px;color:#777777;">Application Status</div><div style="margin-top:5px;font-size:16px;font-weight:bold;color:#b26a00;">Pending Review</div></div><div style="margin-top:18px;font-size:12px;color:#777777;line-height:1.7;"><strong>Application ID:</strong> {escape(_text(application_id))}<br><strong>Submitted:</strong> {escape(submitted_at)}</div>{_button(_admin_link('admin/'), 'Review Application')}<div style="margin-top:25px;padding:18px;background:#f8faf9;border-left:4px solid #255d3a;border-radius:6px;color:#526158;font-size:13px;line-height:1.6;"><strong>Administrator action required</strong><br><br>Please review the applicant's identity, driving licence, vehicle information, insurance details, inspection status and references before approving or declining the application.</div>'''
     return _layout("New Mover Application", body + '<div style="padding:30px 25px;">' + content + '</div>', "Administration Notification")
 
 
@@ -141,21 +153,21 @@ def otp_verification(application: dict) -> str:
 
 
 def sign_in_notification(user: dict) -> str:
-    email = _text(user.get("email")); sign_in_time = _text(user.get("sign_in_time")); device = _text(user.get("device")); location = _text(user.get("location")); security_url = user.get("security_url") or f"{SITE_URL}/#account-security"
+    email = _text(user.get("email")); sign_in_time = _text(user.get("sign_in_time")); device = _text(user.get("device")); location = _text(user.get("location")); security_url = _app_link('account-security')
     body = _status_panel("Successful Sign In", "Your Saka Krib account was successfully accessed.", "#eef6ff", "#eef6ff", heading_color="#1e4f7a", message_color="#4b6073", icon="🔐", icon_background="#dbeafe", icon_color="#1e4f7a", icon_size=28)
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(_first_name(user))},</p><p style="margin:0 0 20px;color:#444444;font-size:15px;line-height:1.7;">We detected a successful sign in to your Saka Krib account.</p>{_details([('Account', email), ('Date & Time', sign_in_time), ('Device', device), ('Location', location)], heading="SIGN-IN DETAILS")}<div style="margin:25px 0;padding:18px;background:#fff8e6;border:1px solid #f1e3bd;border-radius:10px;color:#735f35;font-size:13px;line-height:1.6;"><strong>Wasn't you?</strong><br><br>If you did not sign in to your account, please review your account security and contact Saka Krib support if you notice anything suspicious.</div>{_button(security_url, 'Review Account Security', '14px 30px')}<p style="margin:0;color:#777777;font-size:13px;line-height:1.6;">If you recognize this sign-in, no action is required. This notification was sent to help keep your Saka Krib account secure.</p>'''
     return _layout("New Sign In to Your Saka Krib Account", body + _body(content), "Account Security Notification")
 
 
 def sign_up_welcome(user: dict) -> str:
-    full_name = _text(user.get("full_name")); email = _text(user.get("email")); dashboard_url = user.get("dashboard_url") or f"{SITE_URL}/#dashboard"
+    full_name = _text(user.get("full_name")); email = _text(user.get("email")); dashboard_url = _app_link('dashboard')
     body = _status_panel("Welcome to Saka Krib", "Your account has been successfully created.", "#e8f5e9", "#d7ead9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#255d3a", icon_color="#ffffff", icon_size=28)
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#333333;">Hello {escape(_first_name(user))},</p><p style="margin:0 0 18px;color:#444444;font-size:15px;line-height:1.7;">Welcome to Saka Krib. Your account has been successfully created and you can now start using the platform.</p>{_details([('Name', full_name), ('Email', email)], heading="ACCOUNT DETAILS")}<div style="margin:25px 0;padding:20px;border:1px solid #e5e7eb;border-radius:12px;"><h3 style="margin:0 0 12px;color:#222222;font-size:16px;">You're ready to get started</h3><p style="margin:0;color:#555555;font-size:14px;line-height:1.7;">Sign in to your Saka Krib account to manage your profile and access the services available to you.</p></div>{_button(dashboard_url, 'Open Saka Krib', '14px 30px')}<p style="margin:0;color:#777777;font-size:13px;line-height:1.6;">If you did not create this account, please contact Saka Krib support immediately.</p>'''
     return _layout("Welcome to Saka Krib", body + _body(content))
 
 
 def moving_started(data: dict) -> str:
-    first_name = _first_name(data); tracking_number = _text(data.get("tracking_number"), "N/A"); booking_id = _text(data.get("booking_id"), "N/A"); started_at = _text(data.get("started_at"), "N/A"); tracking_url = data.get("tracking_url") or (f"{SITE_URL}/#mover-tracking/{booking_id}" if booking_id != 'N/A' else f"{SITE_URL}/#dashboard")
+    first_name = _first_name(data); tracking_number = _text(data.get("tracking_number"), "N/A"); booking_id = _text(data.get("booking_id"), "N/A"); started_at = _text(data.get("started_at"), "N/A"); tracking_url = _app_link(f'mover-tracking/{booking_id}') if booking_id != 'N/A' else _app_link('dashboard')
     body = _status_panel("Your move has started", "Your assigned mover has started the journey. You can now follow the move using your tracking number.", "#e8f5e9", "#c8e6c9", heading_color="#1b5e20", message_color="#4b6350", icon="✓", icon_background="#c8e6c9", icon_color="#1b5e20")
     content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first_name)},</p><p style="margin:0 0 18px;color:#444444;font-size:15px;line-height:1.7;">Your mover has started the journey. Saka Krib is now recording the active moving journey so you can follow its progress.</p>{_details([('Booking', booking_id), ('Tracking number', tracking_number), ('Journey started', started_at)], heading="JOURNEY DETAILS")}{_button(tracking_url, 'Open Saka Krib', '14px 30px')}<p style="margin:0;color:#777777;font-size:13px;line-height:1.6;">Keep your tracking number for reference. If you have questions about this move, use your Saka Krib conversation with the mover or contact support.</p>'''
     return _layout("Your move has started", body + _body(content))
@@ -175,7 +187,7 @@ def renter_unit_request(data: dict) -> str:
     expires_at = _text(data.get("expires_at"), "7 days after submission")
     renter_email = _text(data.get("renter_email"), "Not provided")
     renter_phone = _text(data.get("renter_phone"), "Not provided")
-    request_url = data.get("request_url") or f"{APP_LINK_BASE_URL}/app/pms-dashboard"
+    request_url = _app_link('pms-dashboard')
 
     status = _status_panel(
         "New rental request",
