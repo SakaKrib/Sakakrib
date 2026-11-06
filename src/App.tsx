@@ -81,9 +81,8 @@ function AppContent() {
 
       try {
         const incoming = new URL(url);
-        const configuredAppOrigin = new URL(
-          import.meta.env.VITE_APP_LINK_BASE_URL || getDjangoApiBaseUrl(),
-        ).origin;
+        // App Links must use the same canonical host as the configured Django API.
+        const configuredAppOrigin = new URL(getDjangoApiBaseUrl()).origin;
         if (incoming.protocol !== 'https:' || incoming.origin !== configuredAppOrigin) {
           return;
         }
