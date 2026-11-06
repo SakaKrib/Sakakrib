@@ -703,6 +703,35 @@ jobs:
         run: |
           mkdir -p android/app/src/main/java/com/sakakrib/app
           cp native/android/MainActivity.java android/app/src/main/java/com/sakakrib/app/MainActivity.java
+      - name: Install native Android location enable prompt
+        run: |
+          mkdir -p android/app/src/main/java/com/sakakrib/app
+          cp native/android/LocationSettingsPlugin.java android/app/src/main/java/com/sakakrib/app/LocationSettingsPlugin.java
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          gradle = Path("android/app/build.gradle")
+          content = gradle.read_text(encoding="utf-8")
+          dependency = "implementation 'com.google.android.gms:play-services-location:21.3.0'"
+          if dependency not in content:
+              match = re.search(r"dependencies\\s*\\{", content)
+              if not match:
+                  raise SystemExit("Could not find Android app dependencies block")
+              depth = 1
+              index = match.end()
+              while index < len(content) and depth:
+                  if content[index] == "{":
+                      depth += 1
+                  elif content[index] == "}":
+                      depth -= 1
+                  index += 1
+              if depth:
+                  raise SystemExit("Android app dependencies block is not balanced")
+              content = content[:index - 1] + "\\n    " + dependency + "\\n" + content[index - 1:]
+              gradle.write_text(content, encoding="utf-8")
+          print("Installed Google Play Services Location for the native GPS enable dialog.")
+          PY
       - name: Sync Capacitor Android
         run: npx cap sync android
       - name: Verify generated release Android permissions
