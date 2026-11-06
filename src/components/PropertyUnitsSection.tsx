@@ -27,8 +27,8 @@ function UnitCard({ unit, bookingEnabled, onSelectUnit, onBookUnit }: { unit: Pu
   const selectUnit = () => { if (occupied) return; setExpanded(true); onSelectUnit?.(unit); };
   const requestUnit = async () => {
     if (occupied || !bookingEnabled || requesting || requested) return;
-    setError(null); onBookUnit?.(unit); setRequesting(true);
-    try { await protectedPost('/api/core/property-rental/request/', { unit_id: unit.id }); setRequested(true); }
+    setError(null); setRequesting(true);
+    try { await protectedPost('/api/core/property-rental/request/', { unit_id: unit.id }); setRequested(true); onBookUnit?.(unit); }
     catch (err: any) { setError(err?.message || 'Unable to submit the rental request. Please try again.'); }
     finally { setRequesting(false); }
   };
