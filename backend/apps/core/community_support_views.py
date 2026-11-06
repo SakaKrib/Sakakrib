@@ -67,12 +67,18 @@ def _serialize_community_post(request, post):
                 unit_rows = list(
                     PropertyUnit.objects.filter(listing_id=listing.id)
                     .order_by('position', 'created_at')
-                    .values('id', 'availability')
+                    .values(
+                        'id', 'unit_number', 'unit_type', 'listing_type', 'rent',
+                        'sale_price', 'installment_total_price', 'installment_deposit',
+                        'installment_amount', 'installment_frequency', 'installment_periods',
+                        'deposit_amount', 'size', 'beds', 'baths', 'availability',
+                        'description',
+                    )
                 )
                 active_unit_ids = set(
                     RenterUnitAssociation.objects.filter(
                         unit_id__in=[unit['id'] for unit in unit_rows],
-                        status='ACTIVE',
+                        status__iexact='ACTIVE',
                     ).values_list('unit_id', flat=True)
                 )
                 for unit in unit_rows:
@@ -80,10 +86,11 @@ def _serialize_community_post(request, post):
                     occupied = unit['id'] in active_unit_ids or availability in {
                         'occupied', 'unavailable', 'rented', 'leased'
                     }
-                    row['listing']['units'].append({
-                        'id': str(unit['id']),
-                        'status': 'occupied' if occupied else 'available',
-                    })
+                    unit['id'] = str(unit['id'])
+                    unit['listing_type'] = str(unit.get('listing_type') or 'rent').lower()
+                    unit['status'] = 'occupied' if occupied else 'available'
+                    unit.pop('availability', None)
+                    row['listing']['units'].append(unit)
             media_rows = ListingMedia.objects.filter(
                 listing_id=listing.id,
                 media_type='photo',
