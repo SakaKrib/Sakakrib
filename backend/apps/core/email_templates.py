@@ -218,7 +218,7 @@ def notification_generic(payload: dict) -> str:
     """Branded fallback used for any in-app notification that has no dedicated template."""
     first = _first_name(payload); title = _text(payload.get("title"), "Saka Krib notification"); message = _text(payload.get("message"), "You have a new update on Saka Krib.")
     body = _status_panel(title, "You have a new update on your Saka Krib account.", "#f5f7f6", "#e5e7eb", icon="🔔", icon_background="#c8e6c9", icon_color="#1b5e20", icon_size=26)
-    content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#444444;">{escape(message)}</p>{_button(payload.get("cta_url") or SITE_URL, _text(payload.get("cta_label"), "Open Saka Krib"))}'''
+    content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first)},</p><p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#444444;">{escape(message)}</p>{_button(payload.get("cta_url") or _app_link('dashboard'), _text(payload.get("cta_label"), "Open Saka Krib"))}'''
     return _layout(title, body + _body(content))
 
 
