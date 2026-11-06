@@ -749,6 +749,21 @@ jobs:
           info_path.write_bytes(plistlib.dumps(info))
           print("Google Sign-In iOS URL scheme configured.")
 
+          app_delegate_path = Path("ios/App/App/AppDelegate.swift")
+          app_delegate = app_delegate_path.read_text()
+          if "import GoogleSignIn" not in app_delegate:
+              if "import Capacitor" not in app_delegate:
+                  raise SystemExit("Could not locate Capacitor import in iOS AppDelegate.swift")
+              app_delegate = app_delegate.replace("import Capacitor", "import Capacitor\\nimport GoogleSignIn", 1)
+          proxy_call = "return ApplicationDelegateProxy.shared.application(app, open: url, options: options)"
+          google_handler = "if GIDSignIn.sharedInstance.handle(url) { return true }\\n            " + proxy_call
+          if "GIDSignIn.sharedInstance.handle(url)" not in app_delegate:
+              if proxy_call not in app_delegate:
+                  raise SystemExit("Could not locate the Capacitor URL handler in AppDelegate.swift")
+              app_delegate = app_delegate.replace(proxy_call, google_handler, 1)
+          app_delegate_path.write_text(app_delegate)
+          print("Google Sign-In URL callback handler configured in AppDelegate.swift.")
+
           team = os.environ.get("IOS_APP_TEAM_ID", "").strip()
           if team:
               host = urlsplit(os.environ["SAKAKRIB_APP_LINK_BASE_URL"]).hostname
