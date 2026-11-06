@@ -8,7 +8,7 @@ When a renter successfully requests an available PMS unit:
 2. Django creates the owner's `RENTER_UNIT_REQUESTED` in-app notification.
 3. After the database transaction commits, the existing Firebase Admin sender attempts delivery to every active native device token registered to that owner.
 4. Django queues the dedicated `renter_unit_request` HTML email for the existing Celery email worker.
-5. The email button opens `/app/pms-dashboard`. A verified Android App Link or iOS Universal Link opens the installed Saka Krib app; if no app is installed, the browser fallback changes the URL to the existing hash-based PMS route.
+5. The email button opens `/app/pms-dashboard`. Customer-facing email buttons now use the same central `SAKAKRIB_APP_LINK_BASE_URL` origin and `/app/<route>` format. Android verified App Links open the installed APK when available; otherwise the website fallback translates the link into the existing frontend route. Account-security, listing, mover-booking, mover-tracking, dashboard, PMS, and subscription emails follow this convention. Password-reset email links use `/app/reset-password` and preserve the one-time `uid` and `token` query parameters through both native and browser routing. Administrator application-review links remain on the Django Admin origin (`SAKAKRIB_PUBLIC_BASE_URL`) rather than being sent to a customer app screen.
 
 Push delivery is best-effort. The database notification remains authoritative if Firebase is unavailable.
 
@@ -57,6 +57,20 @@ The request email is queued in `notification_emails` with status `pending`. Cele
 - `EMAIL_FROM` (or `DEFAULT_FROM_EMAIL`).
 
 The worker changes the email status to `sent` when the SMTP server accepts it, or `failed` when sending raises an error. SMTP acceptance is not a guarantee that the recipient's mail provider placed it in the inbox; verify with a real test request and inspect the queue status and delivery logs.
+
+## Customer email route map
+
+| Email action | App-link path |
+| --- | --- |
+| Review Account Security | `/app/account-security` |
+| Reset Password | `/app/reset-password?uid=...&token=...` |
+| View Listing | `/app/listing-detail/<listing_id>` |
+| Review Moving Request | `/app/mover-booking-detail/<booking_id>` |
+| Track Moving Journey | `/app/mover-tracking/<booking_id>` |
+| Open Dashboard | `/app/dashboard` |
+| Open PMS / rental request | `/app/pms-dashboard` |
+| Review or Renew Subscription | `/app/subscription-plans` |
+| Admin application review | Django Admin `/admin/` on the configured backend origin |
 
 ## Verification checklist
 
