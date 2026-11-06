@@ -32,100 +32,31 @@ def _paypal_return_url(base_url, invoice_id):
 
 
 def _paypal_frontend_urls(frontend_origin, invoice_id, client_platform='web'):
-    """Keep web and native PayPal return destinations independently configurable.
+    """Build every PayPal return link from the one canonical public origin."""
+    public_base = str(getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
+    if not public_base:
+        raise ValueError('SAKAKRIB_PUBLIC_BASE_URL is missing; configure the canonical public origin.')
 
-    Native app links are optional until Android App Links / iOS Universal Links
-    are verified for the public domain. If they are not configured, preserve
-    the existing public website return flow rather than sending users to an
-    invalid or unverified app URL.
-    """
-    platform = str(client_platform or 'web').strip().lower()
-    if platform not in ('web', 'android', 'ios'):
-        platform = 'web'
+    base_parts = urlsplit(public_base)
+    if (
+        base_parts.scheme.lower() != 'https'
+        or not base_parts.netloc
+        or base_parts.username
+        or base_parts.password
+        or base_parts.path not in ('', '/')
+        or base_parts.query
+        or base_parts.fragment
+    ):
+        raise ValueError('SAKAKRIB_PUBLIC_BASE_URL must be an HTTPS origin without a path, query string, or credentials.')
 
-    if platform in ('android', 'ios'):
-        prefix = 'SAKAKRIB_ANDROID_PAYPAL' if platform == 'android' else 'SAKAKRIB_IOS_PAYPAL'
-        app_return = str(getattr(settings, f'{prefix}_RETURN_URL', '') or '').strip()
-        app_cancel = str(getattr(settings, f'{prefix}_CANCEL_URL', '') or '').strip()
-
-        # Native checkout must never silently fall back to website URLs: that
-        # sends app users out of the app after PayPal approval. Explicit
-        # platform URLs take priority; otherwise derive App Links from the
-        # canonical public HTTPS origin used by the native manifest filters.
-        if not (app_return and app_cancel):
-            public_base = str(getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '') or '').strip().rstrip('/')
-            if not public_base:
-                raise ValueError(
-                    f'{prefix} return URLs are not configured and SAKAKRIB_PUBLIC_BASE_URL is missing.'
-                )
-            base_parts = urlsplit(public_base)
-            if (
-                base_parts.scheme.lower() != 'https'
-                or not base_parts.netloc
-                or base_parts.username
-                or base_parts.password
-                or base_parts.path not in ('', '/')
-                or base_parts.query
-                or base_parts.fragment
-            ):
-                raise ValueError('SAKAKRIB_PUBLIC_BASE_URL must be an HTTPS origin for native PayPal return links.')
-            app_return = f'{public_base}/paypal/subscription/return'
-            app_cancel = f'{public_base}/paypal/subscription/cancel'
-
-        urls = []
-        for value in (app_return, app_cancel):
-            parts = urlsplit(value)
-            if (
-                parts.scheme.lower() != 'https'
-                or not parts.netloc
-                or parts.username
-                or parts.password
-            ):
-                raise ValueError(f'{prefix} return and cancel URLs must be valid HTTPS app-link URLs.')
-            urls.append(_paypal_return_url(value, invoice_id))
-        return tuple(urls)
-
-    # Existing web checkout behavior is intentionally unchanged.
-    public_frontend = str(
-        getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '') or ''
-    ).strip().rstrip('/')
-    if public_frontend:
-        parts = urlsplit(public_frontend)
-        if (
-            parts.scheme.lower() != 'https'
-            or not parts.netloc
-            or parts.username
-            or parts.password
-            or parts.path not in ('', '/')
-            or parts.query
-            or parts.fragment
-        ):
-            raise ValueError(
-                'SAKAKRIB_PUBLIC_FRONTEND_URL must be an HTTPS origin '
-                'without a path, query string, or credentials.'
-            )
-        origin = f'{parts.scheme}://{parts.netloc}'
-        return (
-            _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id),
-            _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id),
-        )
-
-    origin = str(frontend_origin or '').strip().rstrip('/')
-    allowed_origins = {
-        str(value).strip().rstrip('/')
-        for value in getattr(settings, 'CORS_ALLOWED_ORIGINS', [])
-        if str(value).strip()
-    }
-    if origin and origin in allowed_origins:
-        return (
-            _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id),
-            _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id),
-        )
+    # The platform parameter remains accepted for API compatibility, but it
+    # never selects a different host. Verified App Links open the APK; otherwise
+    # the same URL is handled by the web app on this canonical origin.
+    origin = f'{base_parts.scheme}://{base_parts.netloc}'
     return (
-        _paypal_return_url(settings.PAYPAL_SUBSCRIPTION_RETURN_URL, invoice_id),
-        _paypal_return_url(settings.PAYPAL_SUBSCRIPTION_CANCEL_URL, invoice_id),
+        _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id),
+        _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id),
     )
-
 def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None, frontend_origin=None, client_platform='web'):
     billing_cycle = str(billing_cycle or 'MONTHLY').upper()
     provider = str(provider or '').lower()
