@@ -225,6 +225,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    const supportedPlatform = !Capacitor.isNativePlatform() || Capacitor.getPlatform() === 'ios';
+    if (!supportedPlatform) {
+      setAppleSignInAvailable(false);
+      return () => {
+        mounted = false;
+      };
+    }
     void gatewayAppleConfig()
       .then((config) => {
         if (mounted) setAppleSignInAvailable(Boolean(config.enabled));
