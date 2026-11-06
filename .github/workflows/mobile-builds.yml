@@ -404,10 +404,11 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+          FIREBASE_ANDROID_CONFIG_BASE64: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
-          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD FIREBASE_ANDROID_CONFIG_BASE64; do
             if [ -z "${!name}" ]; then
-              echo "::error::Required stable signing secret $name is missing. Refusing to build a release with a debug key."
+              echo "::error::Required Android release secret $name is missing. Refusing to publish a release APK without stable signing and Firebase client configuration."
               exit 1
             fi
           done
