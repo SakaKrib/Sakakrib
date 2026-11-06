@@ -179,7 +179,7 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
                 ('sign_up_welcome', {'email': 'person@example.com'}, 'https://links.example/app/dashboard'),
                 ('application_approved', {'application_type': 'landlord'}, 'https://links.example/app/dashboard'),
                 ('listing_approved', {'listing_id': 'listing-42'}, 'https://links.example/app/listing-detail/listing-42'),
-                ('moving_journey_started', {'booking_id': 'booking-42'}, 'https://links.example/app/mover-tracking/booking-42'),
+                ('moving_started', {'booking_id': 'booking-42'}, 'https://links.example/app/mover-tracking/booking-42'),
                 ('renter_unit_request', {}, 'https://links.example/app/pms-dashboard'),
             ]
             for template_name, payload, expected_url in cases:
