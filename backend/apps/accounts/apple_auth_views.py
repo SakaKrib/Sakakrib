@@ -20,6 +20,7 @@ from .apple_auth import (
     apple_configuration_is_ready,
     authenticate_apple_credential,
     exchange_apple_authorization_code,
+    verify_apple_identity_token,
 )
 from .jwt_service import issue_token_pair, set_auth_cookies
 from .serializers import ProfileSerializer
@@ -113,15 +114,33 @@ class AppleLoginCallbackView(APIView):
 
     def post(self, request):
         state = str(request.data.get("state") or "")
-        expected_state = request.COOKIES.get(APPLE_STATE_COOKIE, "")
-        nonce = request.COOKIES.get(APPLE_NONCE_COOKIE, "")
-        if not state or not expected_state or not secrets.compare_digest(state, expected_state) or not nonce:
-            return Response(
-                {"error": "Apple sign-in state validation failed. Please try again."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        android_state_prefix = "sakakrib_android:"
+        is_android_callback = state.startswith(android_state_prefix)
+
+        if is_android_callback:
+            # The app supplies a cryptographically random nonce in state. Apple
+            # echoes state to this HTTPS callback, and its signed ID token must
+            # contain the same nonce before any token is returned to the app.
+            nonce = state[len(android_state_prefix):]
+            if len(nonce) != 64 or any(char not in "0123456789abcdef" for char in nonce.lower()):
+                return Response(
+                    {"error": "Apple sign-in state validation failed. Please try again."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            expected_state = request.COOKIES.get(APPLE_STATE_COOKIE, "")
+            nonce = request.COOKIES.get(APPLE_NONCE_COOKIE, "")
+            if not state or not expected_state or not secrets.compare_digest(state, expected_state) or not nonce:
+                return Response(
+                    {"error": "Apple sign-in state validation failed. Please try again."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         if request.data.get("error"):
+            if is_android_callback:
+                return HttpResponseRedirect(
+                    f"{settings.APPLE_BUNDLE_ID}://apple-login?success=false"
+                )
             return Response(
                 {"error": "Apple sign-in was cancelled or could not be completed."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -129,12 +148,30 @@ class AppleLoginCallbackView(APIView):
 
         code = request.data.get("code")
         if not isinstance(code, str) or not code.strip():
+            if is_android_callback:
+                return HttpResponseRedirect(
+                    f"{settings.APPLE_BUNDLE_ID}://apple-login?success=false"
+                )
             return Response(
                 {"error": "Apple did not return an authorization code."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        identity_token = exchange_apple_authorization_code(code.strip())
+        token_response = exchange_apple_authorization_code(code.strip())
+        identity_token = token_response["id_token"]
+
+        if is_android_callback:
+            verify_apple_identity_token(identity_token, expected_nonce=nonce)
+            app_callback = f"{settings.APPLE_BUNDLE_ID}://apple-login"
+            callback_query = urllib.parse.urlencode({
+                "success": "true",
+                "access_token": token_response["access_token"],
+                "id_token": identity_token,
+            })
+            response = HttpResponseRedirect(f"{app_callback}?{callback_query}")
+            response["Cache-Control"] = "no-store"
+            response["Referrer-Policy"] = "no-referrer"
+            return response
         user_payload = request.data.get("user") or {}
         if isinstance(user_payload, str):
             try:
