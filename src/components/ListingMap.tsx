@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { describeLocationError, watchPosition } from '@/lib/location';
+import { describeLocationError, prepareLiveMapLocation, watchPosition } from '@/lib/location';
 import {
   FullscreenControl,
   LngLatBounds,
@@ -77,9 +77,11 @@ export interface ListingMapProps {
   longitude: number;
   title?: string | null;
   className?: string;
+  /** Incremented only after the user taps Show Live Map and location is enabled. */
+  locationRequestKey: number;
 }
 
-export default function ListingMap({ latitude, longitude, title, className }: ListingMapProps) {
+export default function ListingMap({ latitude, longitude, title, className, locationRequestKey }: ListingMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const listingMarkerRef = useRef<Marker | null>(null);
@@ -202,7 +204,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
   useEffect(() => {
     // The map itself is the user's request to use live location. On Android,
     // request native location permission before starting the GPS watch.
-    if (!mapReady) return;
+    if (!mapReady || locationRequestKey === 0) return;
 
     let cancelled = false;
     let stopWatching: (() => void) | null = null;
@@ -254,7 +256,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
       cancelled = true;
       stopWatching?.();
     };
-  }, [mapReady, requestRoute, followListing, locationRetry]);
+  }, [mapReady, requestRoute, followListing, locationRetry, locationRequestKey]);
 
   useEffect(() => {
     if (!followListing || !deviceGps) return;
@@ -270,6 +272,16 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
     setFollowListing((value) => !value);
     const origin: Coordinate = [deviceGps.longitude, deviceGps.latitude];
     void requestRoute(origin);
+  };
+
+  const handleEnableLocation = async () => {
+    setLocationError(null);
+    try {
+      await prepareLiveMapLocation();
+      setLocationRetry((value) => value + 1);
+    } catch (error) {
+      setLocationError(describeLocationError(error));
+    }
   };
 
   const handleRecenter = () => {
@@ -315,7 +327,7 @@ export default function ListingMap({ latitude, longitude, title, className }: Li
             {locationError && (
               <button
                 type="button"
-                onClick={() => { setLocationError(null); setLocationRetry((value) => value + 1); }}
+                onClick={() => { void handleEnableLocation(); }}
                 className="shrink-0 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
               >
                 Enable location
