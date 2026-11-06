@@ -12,6 +12,7 @@ from apps.subscriptions.services import get_pms_access
 from .domain_property import PropertyUnit, RenterUnitAssociation
 from .domain_platform import NotificationEmail
 from .notification_services import dispatch_user_notification
+from .email_templates import SITE_URL
 
 
 def _hash_token(token):
@@ -114,8 +115,27 @@ def create_renter_unit_request(*, renter_user_id, unit_id):
         notification_type="RENTER_UNIT_REQUESTED",
         title="New rental request",
         message=f"{row.renter_name} requested Unit {unit.unit_number} at {listing.title}.",
-        data={"association_id": str(row.id), "unit_id": str(unit.id), "listing_id": str(listing.id)},
+        data={
+            "association_id": str(row.id),
+            "unit_id": str(unit.id),
+            "listing_id": str(listing.id),
+            "deep_link": "pms-dashboard",
+        },
+        email_payload={
+            "renter_name": row.renter_name,
+            "renter_email": row.renter_email,
+            "renter_phone": row.renter_phone,
+            "property_title": listing.title,
+            "property_city": listing.city,
+            "unit_number": unit.unit_number,
+            "unit_type": unit.unit_type,
+            "rent_amount": f"KES {row.rent_amount:,.2f}",
+            "requested_at": timezone.localtime(row.created_at).strftime("%d %b %Y, %I:%M %p"),
+            "expires_at": timezone.localtime(row.invite_expires_at).strftime("%d %b %Y, %I:%M %p"),
+            "request_url": f"{SITE_URL}/app/pms-dashboard",
+        },
         event_key=f"renter-unit-requested:{row.id}",
+        email_template="renter_unit_request",
     )
     return {
         "id": str(row.id),
