@@ -88,6 +88,14 @@ function AppContent() {
         if (incoming.protocol === 'com.sakakrib.app:' && incoming.hostname === 'paypal-return') {
           const target = incoming.searchParams.get('target');
           const listingId = incoming.searchParams.get('listing_id');
+          const planName = incoming.searchParams.get('plan_name');
+          const billingCycle = incoming.searchParams.get('billing_cycle');
+          if (target === 'subscription-plans' && planName && billingCycle) {
+            sessionStorage.setItem('sakakrib.paypal.subscription.return.context', JSON.stringify({
+              plan_name: planName,
+              billing_cycle: billingCycle,
+            }));
+          }
           let route: string | null = null;
           if (target === 'pms-dashboard' || target === 'subscription-plans') {
             route = target;
@@ -98,6 +106,7 @@ function AppContent() {
           didRoute = true;
           await Browser.close().catch(() => {});
           window.location.hash = route;
+          window.dispatchEvent(new Event('sakakrib:paypal-return-context'));
           return;
         }
 
