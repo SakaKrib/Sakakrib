@@ -15,9 +15,13 @@ SAKAKRIB_PUBLIC_FRONTEND_URL = (
     SAKAKRIB_PUBLIC_BASE_URL
     or os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
 )
+# All public-facing links use the single canonical origin. The dedicated app-link
+# variable is retained only as a legacy fallback when the canonical origin is unset.
 SAKAKRIB_APP_LINK_BASE_URL = (
-    os.getenv('SAKAKRIB_APP_LINK_BASE_URL', '').strip().rstrip('/')
-    or 'https://sakakrib.com'
+    SAKAKRIB_PUBLIC_BASE_URL
+    or SAKAKRIB_PUBLIC_FRONTEND_URL
+    or os.getenv('SAKAKRIB_APP_LINK_BASE_URL', '').strip().rstrip('/')
+    or 'http://localhost:5175'
 )
 
 def _sakakrib_public_url(path):
