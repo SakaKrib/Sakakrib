@@ -67,7 +67,18 @@ def _unit_price_text(unit, listing_type):
         sale_price = _money(unit.sale_price)
         installment_total = _money(unit.installment_total_price)
         installment_amount = _money(unit.installment_amount)
-        frequency = str(unit.installment_frequency or "monthly").lower()
+        frequency_value = str(unit.installment_frequency or "monthly").strip().lower()
+        frequency = {
+            "daily": "day",
+            "weekly": "week",
+            "biweekly": "two weeks",
+            "fortnightly": "two weeks",
+            "monthly": "month",
+            "quarterly": "quarter",
+            "yearly": "year",
+            "annually": "year",
+            "annual": "year",
+        }.get(frequency_value, frequency_value.rstrip("ly"))
         periods = unit.installment_periods
         pieces = []
         if sale_price:
