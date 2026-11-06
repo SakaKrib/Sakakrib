@@ -9,20 +9,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
-# One canonical public development/production origin. The legacy frontend variable remains a fallback for compatibility.
+# Single source of truth for every public Saka Krib URL.
 SAKAKRIB_PUBLIC_BASE_URL = os.getenv('SAKAKRIB_PUBLIC_BASE_URL', '').strip().rstrip('/')
-SAKAKRIB_PUBLIC_FRONTEND_URL = (
-    SAKAKRIB_PUBLIC_BASE_URL
-    or os.getenv('SAKAKRIB_PUBLIC_FRONTEND_URL', '').strip().rstrip('/')
-)
-# All public-facing links use the single canonical origin. The dedicated app-link
-# variable is retained only as a legacy fallback when the canonical origin is unset.
-SAKAKRIB_APP_LINK_BASE_URL = (
-    SAKAKRIB_PUBLIC_BASE_URL
-    or SAKAKRIB_PUBLIC_FRONTEND_URL
-    or os.getenv('SAKAKRIB_APP_LINK_BASE_URL', '').strip().rstrip('/')
-    or 'http://localhost:5175'
-)
+# Compatibility aliases for older modules. They never read independent environment variables.
+SAKAKRIB_PUBLIC_FRONTEND_URL = SAKAKRIB_PUBLIC_BASE_URL
+SAKAKRIB_APP_LINK_BASE_URL = SAKAKRIB_PUBLIC_BASE_URL or 'http://localhost:5175'
 
 def _sakakrib_public_url(path):
     return f'{SAKAKRIB_PUBLIC_BASE_URL}{path}' if SAKAKRIB_PUBLIC_BASE_URL else ''
@@ -41,7 +32,7 @@ ANDROID_APP_SHA256_CERT_FINGERPRINTS = [
 _configured_hosts = [host.strip() for host in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
 _public_host = urlsplit(SAKAKRIB_PUBLIC_BASE_URL).hostname if SAKAKRIB_PUBLIC_BASE_URL else None
 _app_link_host = urlsplit(SAKAKRIB_APP_LINK_BASE_URL).hostname if SAKAKRIB_APP_LINK_BASE_URL else None
-ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, *([_public_host] if _public_host else []), *([_app_link_host] if _app_link_host else []), 'localhost', '127.0.0.1', 'backend', '100.109.224.0', 'opondo-thinkpad-t14-gen-1.tail34bca9.ts.net']))
+ALLOWED_HOSTS = list(dict.fromkeys([*_configured_hosts, *([_public_host] if _public_host else []), *([_app_link_host] if _app_link_host else []), 'localhost', '127.0.0.1', 'backend', '100.109.224.0']))
 
 INSTALLED_APPS = ['daphne','django.contrib.admin','django.contrib.contenttypes','django.contrib.auth','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','django.contrib.postgres','corsheaders','rest_framework','channels','apps.core','apps.accounts','apps.listings','apps.subscriptions','apps.payments']
 MIDDLEWARE = ['apps.accounts.middleware.CapacitorCookiePolicyMiddleware','corsheaders.middleware.CorsMiddleware','django.middleware.security.SecurityMiddleware','django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware']
@@ -87,7 +78,7 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', BASE_DIR / 'media'))
 MEDIA_URL = '/media/'
-CHAT_ATTACHMENT_BASE_URL = SAKAKRIB_PUBLIC_BASE_URL or os.getenv('CHAT_ATTACHMENT_BASE_URL', '').strip().rstrip('/')
+CHAT_ATTACHMENT_BASE_URL = SAKAKRIB_PUBLIC_BASE_URL
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
 JWT_ALGORITHM = 'HS256'
@@ -147,44 +138,31 @@ MPESA_CONSUMER_KEY = os.getenv('MPESA_CONSUMER_KEY','')
 MPESA_CONSUMER_SECRET = os.getenv('MPESA_CONSUMER_SECRET','')
 MPESA_SHORTCODE = os.getenv('MPESA_SHORTCODE','')
 MPESA_PASSKEY = os.getenv('MPESA_PASSKEY','')
-MPESA_CALLBACK_URL = _sakakrib_public_url('/api/core/payments/moving/mpesa/callback/') or os.getenv('MPESA_CALLBACK_URL', '').strip()
-MPESA_LISTING_CALLBACK_URL = _sakakrib_public_url('/api/payments/listing/mpesa/callback/') or os.getenv('MPESA_LISTING_CALLBACK_URL', '').strip()
-MPESA_SUBSCRIPTION_CALLBACK_URL = _sakakrib_public_url('/api/subscriptions/callbacks/mpesa/') or os.getenv('MPESA_SUBSCRIPTION_CALLBACK_URL', '').strip()
+MPESA_CALLBACK_URL = _sakakrib_public_url('/api/core/payments/moving/mpesa/callback/')
+MPESA_LISTING_CALLBACK_URL = _sakakrib_public_url('/api/payments/listing/mpesa/callback/')
+MPESA_SUBSCRIPTION_CALLBACK_URL = _sakakrib_public_url('/api/subscriptions/callbacks/mpesa/')
 MPESA_BASE_URL = os.getenv('MPESA_BASE_URL','https://sandbox.safaricom.co.ke')
 MPESA_STK_URL = os.getenv('MPESA_STK_URL', 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest')
 MPESA_PAYOUT_CALLBACK_SECRET = os.getenv('MPESA_PAYOUT_CALLBACK_SECRET','')
 MPESA_PAYOUT_INITIATOR_NAME = os.getenv('MPESA_PAYOUT_INITIATOR_NAME','')
 MPESA_PAYOUT_SECURITY_CREDENTIAL = os.getenv('MPESA_PAYOUT_SECURITY_CREDENTIAL','')
 MPESA_PAYOUT_COMMAND_ID = os.getenv('MPESA_PAYOUT_COMMAND_ID','BusinessPayment')
-MPESA_PAYOUT_RESULT_URL = _sakakrib_public_url('/api/core/payments/mover-payout/callback/') or os.getenv('MPESA_PAYOUT_RESULT_URL', '').strip()
+MPESA_PAYOUT_RESULT_URL = _sakakrib_public_url('/api/core/payments/mover-payout/callback/')
 PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID','')
 PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET','')
 PAYPAL_BASE_URL = os.getenv('PAYPAL_BASE_URL','https://api-m.sandbox.paypal.com')
 PAYPAL_WEBHOOK_ID = os.getenv('PAYPAL_WEBHOOK_ID','')
 PAYPAL_LISTING_WEBHOOK_ID = os.getenv('PAYPAL_LISTING_WEBHOOK_ID','')
-PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL', 'http://localhost:5175/paypal/subscription/return')
-PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL', 'http://localhost:5175/paypal/subscription/cancel')
-PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK', 'http://100.109.224.0:5175/paypal/subscription/return')
-PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK', 'http://100.109.224.0:5175/paypal/subscription/cancel')
-PAYPAL_SUBSCRIPTION_RETURN_URL_MODE = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL_MODE', 'LOCAL').strip().upper()
-if PAYPAL_SUBSCRIPTION_RETURN_URL_MODE == 'PUBLIC':
-    PAYPAL_SUBSCRIPTION_RETURN_URL = os.getenv('PAYPAL_SUBSCRIPTION_RETURN_URL', '').strip()
-    PAYPAL_SUBSCRIPTION_CANCEL_URL = os.getenv('PAYPAL_SUBSCRIPTION_CANCEL_URL', '').strip()
-    if not PAYPAL_SUBSCRIPTION_RETURN_URL or not PAYPAL_SUBSCRIPTION_CANCEL_URL:
-        raise ImproperlyConfigured(
-            'PAYPAL_SUBSCRIPTION_RETURN_URL and PAYPAL_SUBSCRIPTION_CANCEL_URL '
-            'are required when PAYPAL_SUBSCRIPTION_RETURN_URL_MODE=PUBLIC.'
-        )
-elif PAYPAL_SUBSCRIPTION_RETURN_URL_MODE == 'NETWORK':
-    PAYPAL_SUBSCRIPTION_RETURN_URL = PAYPAL_SUBSCRIPTION_RETURN_URL_NETWORK
-    PAYPAL_SUBSCRIPTION_CANCEL_URL = PAYPAL_SUBSCRIPTION_CANCEL_URL_NETWORK
-elif PAYPAL_SUBSCRIPTION_RETURN_URL_MODE == 'LOCAL':
-    PAYPAL_SUBSCRIPTION_RETURN_URL = PAYPAL_SUBSCRIPTION_RETURN_URL_LOCAL
-    PAYPAL_SUBSCRIPTION_CANCEL_URL = PAYPAL_SUBSCRIPTION_CANCEL_URL_LOCAL
-else:
-    raise ImproperlyConfigured(
-        'PAYPAL_SUBSCRIPTION_RETURN_URL_MODE must be LOCAL, NETWORK, or PUBLIC.'
-    )
+# Browser return URLs derive from the same canonical origin as every other public link.
+# Localhost is used only when no public base URL is configured for local-only development.
+PAYPAL_SUBSCRIPTION_RETURN_URL = (
+    _sakakrib_public_url('/paypal/subscription/return')
+    or 'http://localhost:5175/paypal/subscription/return'
+)
+PAYPAL_SUBSCRIPTION_CANCEL_URL = (
+    _sakakrib_public_url('/paypal/subscription/cancel')
+    or 'http://localhost:5175/paypal/subscription/cancel'
+)
 MOVING_PAYPAL_WEBHOOK_ID = os.getenv('MOVING_PAYPAL_WEBHOOK_ID','')
 EXCHANGE_RATE_API_KEY = os.getenv('EXCHANGE_RATE_API_KEY', os.getenv('EXCHANGERATE_API_KEY',''))
 EXCHANGE_RATE_API_BASE_URL = os.getenv('EXCHANGE_RATE_API_BASE_URL', os.getenv('EXCHANGERATE_API_BASE_URL','https://v6.exchangerate-api.com/v6'))
