@@ -23,13 +23,16 @@ def _paypal_return_url(base_url, invoice_id, client_platform='web', plan_name=No
     query['invoice_id'] = str(invoice_id)
     # A short-lived signed token lets the return page read only this invoice's
     # final status even when PayPal opens the HTTPS fallback outside the app.
+    return_state = {
+        'invoice_id': str(invoice_id),
+        'client_platform': client_platform,
+    }
+    if plan_name:
+        return_state['plan_name'] = str(plan_name)
+    if billing_cycle:
+        return_state['billing_cycle'] = str(billing_cycle).upper()
     query['state'] = signing.dumps(
-        {
-            'invoice_id': str(invoice_id),
-            'client_platform': client_platform,
-            'plan_name': plan_name,
-            'billing_cycle': billing_cycle,
-        },
+        return_state,
         salt='sakakrib.paypal-subscription-return',
         compress=True,
     )
