@@ -12,7 +12,7 @@ from apps.subscriptions.services import get_pms_access
 from .domain_property import PropertyUnit, RenterUnitAssociation
 from .domain_platform import NotificationEmail
 from .notification_services import dispatch_user_notification
-from .email_templates import SITE_URL
+from .email_templates import APP_LINK_BASE_URL
 
 
 def _hash_token(token):
@@ -132,7 +132,7 @@ def create_renter_unit_request(*, renter_user_id, unit_id):
             "rent_amount": f"KES {row.rent_amount:,.2f}",
             "requested_at": timezone.localtime(row.created_at).strftime("%d %b %Y, %I:%M %p"),
             "expires_at": timezone.localtime(row.invite_expires_at).strftime("%d %b %Y, %I:%M %p"),
-            "request_url": f"{SITE_URL}/app/pms-dashboard",
+            "request_url": f"{APP_LINK_BASE_URL}/app/pms-dashboard",
         },
         event_key=f"renter-unit-requested:{row.id}",
         email_template="renter_unit_request",
