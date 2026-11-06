@@ -78,8 +78,29 @@ export interface Listing extends Record<string, any> {
   created_at?: string;
   updated_at?: string;
   media?: ListingMedia[];
-  units?: Array<{ id: string; status?: string | null }>;
+  units?: PropertyUnitCommunitySummary[];
+
   landlord?: Profile | null;
+}
+
+export interface PropertyUnitCommunitySummary extends Record<string, any> {
+  id: string;
+  unit_number?: string | null;
+  unit_type?: string | null;
+  listing_type?: 'rent' | 'sale' | string | null;
+  rent?: number | string | null;
+  sale_price?: number | string | null;
+  installment_total_price?: number | string | null;
+  installment_deposit?: number | string | null;
+  installment_amount?: number | string | null;
+  installment_frequency?: string | null;
+  installment_periods?: number | null;
+  deposit_amount?: number | string | null;
+  size?: string | null;
+  beds?: number | null;
+  baths?: number | null;
+  description?: string | null;
+  status?: string | null;
 }
 
 export interface ListingMedia extends Record<string, any> {
