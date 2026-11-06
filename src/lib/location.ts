@@ -65,8 +65,8 @@ function locationMessage(code: LocationErrorCode): string {
   switch (code) {
     case 'permission_denied':
       return Capacitor.isNativePlatform()
-        ? 'Location permission is off for Saka Krib. Open your phone Settings > Apps > Saka Krib > Permissions > Location, choose "Allow", then try again.'
-        : 'Location permission is blocked for this site. Allow location in your browser\'s site settings, then try again.';
+        ? 'Saka Krib needs precise location to show your live position. Tap Enable location to request access. If Android no longer displays the permission prompt, you may need to re-enable location access in app permissions.'
+        : 'Location permission was not granted. Allow location for this site in your browser, then tap Try again.';
     case 'services_off':
       return Capacitor.isNativePlatform()\n        ? 'Location is still off. Tap Enable location to open the Android prompt and turn it on.'\n        : 'Location is turned off on this device. Turn on Location, then tap Try again.';
     case 'no_fix':
@@ -168,7 +168,18 @@ export async function requestLocationPermission(): Promise<true> {
 export async function prepareLiveMapLocation(): Promise<DevicePosition> {
   try {
     if (Capacitor.isNativePlatform()) {
-      await requestLocationPermission();
+      let status = await Geolocation.checkPermissions();
+      if (status.location !== 'granted') {
+        status = await Geolocation.requestPermissions();
+      }
+      if (status.location !== 'granted') {
+        throw new LocationError(
+          'permission_denied',
+          status.coarseLocation === 'granted'
+            ? 'Please choose Precise location for Saka Krib so the live map can show your position accurately.'
+            : undefined,
+        );
+      }
       await NativeLocationSettings.ensureEnabled();
     }
     return await getCurrentPosition({
