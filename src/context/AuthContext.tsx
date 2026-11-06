@@ -726,6 +726,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const platform = Capacitor.getPlatform();
     const androidState = `sakakrib_android:${nonce}`;
+    const expectedState = platform === 'android' ? androidState : state;
 
     if (!nativeAppleInitialization) {
       nativeAppleInitialization = SocialLogin.initialize({
@@ -749,7 +750,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         scopes: ['email', 'name'],
         nonce,
-        state: platform === 'android' ? androidState : state,
+        state: expectedState,
         ...(platform === 'android' ? { useBroadcastChannel: true } : {}),
       },
     }) as { result?: Record<string, any> };
@@ -760,7 +761,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!identityToken) {
       throw new Error('Apple did not return a valid identity token.');
     }
-    if (result.state && result.state !== state) {
+    if (result.state && result.state !== expectedState) {
       throw new Error('Apple sign-in state validation failed. Please try again.');
     }
 
