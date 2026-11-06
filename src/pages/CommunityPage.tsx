@@ -48,7 +48,7 @@ function moneyLabel(value: number | string | null | undefined) {
   return Number.isFinite(amount) && amount > 0 ? formatKES(amount) : null;
 }
 
-function unitPriceLabel(unit: NonNullable<Post['listing']>['units'][number]) {
+function unitPriceLabel(unit: NonNullable<NonNullable<Post['listing']>['units']>[number]) {
   const sale = String(unit.listing_type || 'rent').toLowerCase() === 'sale';
   if (!sale) {
     const rent = moneyLabel(unit.rent);
