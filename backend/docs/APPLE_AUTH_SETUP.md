@@ -30,7 +30,7 @@ APPLE_REDIRECT_URI=https://sakakrib.com/api/accounts/apple/callback/
 
 Keep the `.p8` file in a server-only ignored directory such as `backend/Perm/`. Never commit it, put it in a Vite variable, or expose it to the browser. The Team ID, Key ID, and private key are only used on the Django server to create Apple's short-lived client-secret JWT.
 
-The Apple button is enabled only when all required backend values are present and the private-key file exists. The public config endpoint returns only the Services ID, redirect URL, bundle ID, and enabled flag.
+The Apple button is displayed on the website and supported iOS builds even while setup is pending. Authentication remains disabled until all required backend values are present and the private-key file exists. The public config endpoint returns only the Services ID, redirect URL, bundle ID, and enabled flag.
 
 ## Apple Developer configuration (when enrolled)
 
