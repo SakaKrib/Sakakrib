@@ -1,7 +1,6 @@
 from html import escape
 from urllib.parse import quote
 
-from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
