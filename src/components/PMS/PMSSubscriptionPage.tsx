@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, CalendarDays, CheckCircle2, Clock3, Crown, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import { djangoPmsGateway } from "@/lib/djangoPmsGateway";
 import { protectedGet } from "@/lib/djangoLegacyApi";
@@ -142,6 +142,7 @@ export default function PMSSubscriptionPage() {
   const [role, setRole] = useState<PMSRole | null>(null);
   const [subscription, setSubscription] = useState<PMSSubscription | null>(null);
   const [returnPlanContext, setReturnPlanContext] = useState<PayPalReturnPlanContext | null>(() => consumePayPalReturnPlanContext());
+  const appliedReturnPlanContextRef = useRef(false);
   const [selectedPlan, setSelectedPlan] = useState<PMSPlanName | null>(() => returnPlanContext?.planName ?? null);
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<PMSBillingCycle>(() => returnPlanContext?.billingCycle ?? "MONTHLY");
   const [loading, setLoading] = useState(true);
@@ -154,6 +155,7 @@ export default function PMSSubscriptionPage() {
     const applyPayPalReturnContext = () => {
       const context = consumePayPalReturnPlanContext();
       if (!context) return;
+      appliedReturnPlanContextRef.current = false;
       setReturnPlanContext(context);
       setSelectedPlan(context.planName);
       setSelectedBillingCycle(context.billingCycle);
@@ -187,8 +189,14 @@ export default function PMSSubscriptionPage() {
       const raw = firstRow(result.data);
       const normalized = raw ? normalizeSubscription(raw) : null;
       setSubscription(normalized);
-      setSelectedBillingCycle(returnPlanContext?.billingCycle ?? normalized?.billing_cycle ?? "MONTHLY");
-      setSelectedPlan(returnPlanContext?.planName ?? normalizePlanName(normalized?.plan_name));
+      if (returnPlanContext && !appliedReturnPlanContextRef.current) {
+        appliedReturnPlanContextRef.current = true;
+        setSelectedBillingCycle(returnPlanContext.billingCycle);
+        setSelectedPlan(returnPlanContext.planName);
+      } else if (!appliedReturnPlanContextRef.current) {
+        setSelectedBillingCycle(normalized?.billing_cycle ?? "MONTHLY");
+        setSelectedPlan(normalizePlanName(normalized?.plan_name));
+      }
     } catch (err) {
       setSubscription(null);
       setSelectedPlan(null);
