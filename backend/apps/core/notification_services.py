@@ -117,7 +117,7 @@ def _json_safe_payload(payload):
 
 @transaction.atomic
 def dispatch_user_notification(*, user_id, notification_type, title, message, data=None,
-                               event_key=None, send_email=True, email_template="generic"):
+                               email_payload=None, event_key=None, send_email=True, email_template="generic"):
     if not user_id:
         raise ValidationError("Recipient is required")
     if not str(notification_type or "").strip():
@@ -162,10 +162,29 @@ def dispatch_user_notification(*, user_id, notification_type, title, message, da
             "email_id": None,
         }
 
+    # Deliver push only after the transaction commits, so the notification
+    # record is available before the device receives its alert.
+    def _send_push_after_commit():
+        try:
+            from .push_notifications import send_user_notification_push
+            send_user_notification_push(
+                user_id=user_id,
+                notification_id=notification.id,
+                notification_type=str(notification_type),
+                title=str(title),
+                body=str(message),
+                data=_json_safe_payload(data if isinstance(data, dict) else {}),
+            )
+        except Exception:
+            logger.exception("Unable to deliver push notification %s", notification.id)
+
+    transaction.on_commit(_send_push_after_commit)
+
     email = None
     if send_email and str(profile.email or "").strip():
         template_type = str(email_template or "generic").strip()
         payload = dict(data or {})
+        payload.update(email_payload if isinstance(email_payload, dict) else {})
         payload.setdefault("email", profile.email)
         payload.setdefault("full_name", getattr(profile, "full_name", ""))
         if template_type in SUBSCRIPTION_EMAIL_TEMPLATES:
