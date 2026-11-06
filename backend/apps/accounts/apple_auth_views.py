@@ -30,6 +30,12 @@ APPLE_NONCE_COOKIE = "sakakrib_apple_nonce"
 APPLE_CALLBACK_PATH = "/api/accounts/apple/callback/"
 
 
+class AppleAppRedirectResponse(HttpResponseRedirect):
+    # Django blocks custom URI schemes by default. This response is used only
+    # for the fixed, app-owned callback scheme registered in AndroidManifest.
+    allowed_schemes = [*HttpResponseRedirect.allowed_schemes, "com.sakakrib.app"]
+
+
 def _record_apple_sign_in(request, user):
     update_last_login(None, user)
     try:
@@ -137,7 +143,7 @@ class AppleLoginCallbackView(APIView):
 
         if request.data.get("error"):
             if is_android_callback:
-                return HttpResponseRedirect(
+                return AppleAppRedirectResponse(
                     f"{settings.APPLE_BUNDLE_ID}://apple-login?success=false"
                 )
             return Response(
@@ -189,7 +195,7 @@ class AppleLoginCallbackView(APIView):
                 "access_token": token_response["access_token"],
                 "id_token": identity_token,
             })
-            response = HttpResponseRedirect(f"{app_callback}?{callback_query}")
+            response = AppleAppRedirectResponse(f"{app_callback}?{callback_query}")
             response["Cache-Control"] = "no-store"
             response["Referrer-Policy"] = "no-referrer"
             return response
