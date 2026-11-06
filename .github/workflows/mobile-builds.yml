@@ -47,7 +47,7 @@ jobs:
       - name: Build React app
         env:
           VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
-          VITE_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
           VITE_DJANGO_API_FALLBACK_URL: ''
           VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
           VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
@@ -125,7 +125,7 @@ jobs:
 
       - name: Configure verified Android App Links
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
         run: |
           python3 - <<'PY'
           import os
@@ -134,7 +134,7 @@ jobs:
           from urllib.parse import urlsplit
           from pathlib import Path
 
-          base_url = os.environ["SAKAKRIB_PUBLIC_BASE_URL"].strip()
+          base_url = os.environ["SAKAKRIB_APP_LINK_BASE_URL"].strip()
           parsed = urlsplit(base_url)
           if parsed.scheme != "https" or not parsed.hostname:
               raise SystemExit("SAKAKRIB_PUBLIC_BASE_URL must be a valid HTTPS URL")
@@ -275,7 +275,7 @@ jobs:
 
       - name: Verify generated Android App Link manifest
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
         run: |
           python3 - <<'PY'
           import os, xml.etree.ElementTree as ET
@@ -283,7 +283,7 @@ jobs:
           from pathlib import Path
           root=ET.parse(Path("android/app/src/main/AndroidManifest.xml")).getroot()
           ns="{http://schemas.android.com/apk/res/android}"
-          host=urlsplit(os.environ["SAKAKRIB_PUBLIC_BASE_URL"]).hostname
+          host=urlsplit(os.environ["SAKAKRIB_APP_LINK_BASE_URL"]).hostname
           expected={"/paypal/subscription/return","/paypal/subscription/cancel","/listing/payment/return"}
           found=set()
           for act in root.iter("activity"):
@@ -399,7 +399,7 @@ jobs:
       - name: Build React app for Android release
         env:
           VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
-          VITE_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
           VITE_DJANGO_API_FALLBACK_URL: ''
           VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
           VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
@@ -439,13 +439,13 @@ jobs:
           PY
       - name: Configure release manifest App Links
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
         run: |
           python3 - <<'PY'
           import os, xml.etree.ElementTree as ET
           from urllib.parse import urlsplit
           from pathlib import Path
-          parsed=urlsplit(os.environ['SAKAKRIB_PUBLIC_BASE_URL'].strip())
+          parsed=urlsplit(os.environ['SAKAKRIB_APP_LINK_BASE_URL'].strip())
           if parsed.scheme!='https' or not parsed.hostname: raise SystemExit('Public base URL must be HTTPS')
           p=Path('android/app/src/main/AndroidManifest.xml'); root=ET.parse(p).getroot()
           ns='http://schemas.android.com/apk/res/android'; a='{'+ns+'}'; ET.register_namespace('android',ns)
@@ -525,7 +525,7 @@ jobs:
           grep -q 'android.permission.ACCESS_FINE_LOCATION' android/app/src/main/AndroidManifest.xml
       - name: Verify generated release Android App Link manifest
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
         run: |
           python3 - <<'PY'
           import os, xml.etree.ElementTree as ET
@@ -533,7 +533,7 @@ jobs:
           from pathlib import Path
           root=ET.parse(Path('android/app/src/main/AndroidManifest.xml')).getroot()
           a='{http://schemas.android.com/apk/res/android}'
-          host=urlsplit(os.environ['SAKAKRIB_PUBLIC_BASE_URL']).hostname
+          host=urlsplit(os.environ['SAKAKRIB_APP_LINK_BASE_URL']).hostname
           expected={'/paypal/subscription/return','/paypal/subscription/cancel','/listing/payment/return'}; found=set()
           for activity in root.iter('activity'):
             for intent in activity.findall('intent-filter'):
@@ -629,7 +629,7 @@ jobs:
       - name: Build React app
         env:
           VITE_DJANGO_API_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
-          VITE_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          VITE_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
           VITE_DJANGO_API_FALLBACK_URL: ''
           VITE_PAYPAL_CLIENT_ID: ${{ vars.VITE_PAYPAL_CLIENT_ID || secrets.VITE_PAYPAL_CLIENT_ID || '' }}
           VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
@@ -658,7 +658,7 @@ jobs:
         env:
           FIREBASE_IOS_CONFIG_BASE64: ${{ secrets.FIREBASE_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
           IOS_APP_TEAM_ID: ${{ vars.IOS_APP_TEAM_ID || secrets.IOS_APP_TEAM_ID || '' }}
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
+          SAKAKRIB_APP_LINK_BASE_URL: ${{ vars.SAKAKRIB_APP_LINK_BASE_URL || 'https://sakakrib.com' }}
         run: |
           python3 - <<'PY'
           import base64, os, re, subprocess, uuid
@@ -698,7 +698,7 @@ jobs:
 
           team = os.environ.get("IOS_APP_TEAM_ID", "").strip()
           if team:
-              host = urlsplit(os.environ["SAKAKRIB_PUBLIC_BASE_URL"]).hostname
+              host = urlsplit(os.environ["SAKAKRIB_APP_LINK_BASE_URL"]).hostname
               if not host: raise SystemExit("SAKAKRIB_PUBLIC_BASE_URL must include a host")
               entitlements = Path("ios/App/App/App.entitlements")
               entitlements.write_text(
