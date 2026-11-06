@@ -1072,24 +1072,28 @@ jobs:
           abort 'Capacitor App target was not found' unless target
 
           removed = []
+          source_app_dir = File.expand_path('ios/App/App')
 
-          # Capacitor's generated project can accidentally add its App source
-          # directory as a folder file reference in a Copy Files/Resources phase.
-          # Remove only folder-like PBXFileReference entries named App; keep the
-          # PBXGroup that organizes the actual Swift sources.
+          # Match the resolved filesystem path rather than the PBXFileReference's
+          # literal path. Xcodeproj can represent this folder with a relative
+          # path such as "." under its parent group, so basename(path) misses it.
+          # Only remove a build-phase file reference that resolves to the App
+          # source directory itself; retain the PBXGroup and all Swift source files.
           target.build_phases.each do |phase|
             phase.files.dup.each do |build_file|
               reference = build_file.file_ref
               next unless reference && reference.isa == 'PBXFileReference'
 
-              path = reference.path.to_s
-              next unless File.basename(path) == 'App'
+              resolved_path = File.expand_path(reference.real_path.to_s)
+              next unless resolved_path == source_app_dir
+              next unless File.directory?(resolved_path)
 
-              file_type = reference.respond_to?(:last_known_file_type) ? reference.last_known_file_type : nil
-              explicit_type = reference.respond_to?(:explicit_file_type) ? reference.explicit_file_type : nil
-              next unless file_type == 'folder' || explicit_type == 'folder' || file_type.nil?
-
-              removed << { phase: phase.isa, path: path, type: file_type || explicit_type }
+              removed << {
+                phase: phase.isa,
+                reference_path: reference.path.to_s,
+                resolved_path: resolved_path,
+                type: reference.respond_to?(:last_known_file_type) ? reference.last_known_file_type : nil
+              }
               build_file.remove_from_project
             end
           end
@@ -1100,12 +1104,12 @@ jobs:
             phase.files.filter_map(&:file_ref)
           end.select do |reference|
             reference.isa == 'PBXFileReference' &&
-              File.basename(reference.path.to_s) == 'App'
+              File.expand_path(reference.real_path.to_s) == source_app_dir
           end
-          abort "Duplicate App folder reference remains in a build phase: #{remaining.map(&:path).join(', ')}" unless remaining.empty?
+          abort "Duplicate App source-folder reference remains in a build phase: #{remaining.map(&:path).join(', ')}" unless remaining.empty?
 
           puts "Removed duplicate iOS App folder build entries: #{removed.inspect}"
-          puts 'Verified the App executable will not be shadowed by a copied App folder.'
+          puts 'Verified no build phase copies the App source directory over the app executable.'
           RUBY
 
       - name: Build iOS Simulator app
