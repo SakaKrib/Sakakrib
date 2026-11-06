@@ -17,7 +17,6 @@ SAKAKRIB_PUBLIC_FRONTEND_URL = (
 )
 SAKAKRIB_APP_LINK_BASE_URL = (
     os.getenv('SAKAKRIB_APP_LINK_BASE_URL', '').strip().rstrip('/')
-    or SAKAKRIB_PUBLIC_FRONTEND_URL
     or 'https://sakakrib.com'
 )
 
