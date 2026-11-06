@@ -4,6 +4,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+import time
 from pathlib import Path
 
 import jwt
@@ -36,7 +37,7 @@ def _create_apple_client_secret() -> str:
 
     try:
         private_key = Path(settings.APPLE_PRIVATE_KEY_PATH).read_text(encoding="utf-8")
-        now = __import__("time").time()
+        now = time.time()
         return jwt.encode(
             {
                 "iss": settings.APPLE_TEAM_ID,
