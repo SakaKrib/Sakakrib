@@ -91,10 +91,14 @@ function AppContent() {
           const planName = incoming.searchParams.get('plan_name');
           const billingCycle = incoming.searchParams.get('billing_cycle');
           if (target === 'subscription-plans' && planName && billingCycle) {
-            sessionStorage.setItem('sakakrib.paypal.subscription.return.context', JSON.stringify({
-              plan_name: planName,
-              billing_cycle: billingCycle,
-            }));
+            try {
+              sessionStorage.setItem('sakakrib.paypal.subscription.return.context', JSON.stringify({
+                plan_name: planName,
+                billing_cycle: billingCycle,
+              }));
+            } catch {
+              // Deep-link navigation must still work if WebView storage is unavailable.
+            }
           }
           let route: string | null = null;
           if (target === 'pms-dashboard' || target === 'subscription-plans') {
