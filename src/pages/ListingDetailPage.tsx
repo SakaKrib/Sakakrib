@@ -117,8 +117,13 @@ export default function ListingDetailPage() {
   const handleToggleLiveMap = () => {
     if (showMap) {
       setShowMap(false);
+      setMapLocationRequestKey(0);
       return;
     }
+    // Reset the request gate so reopening the map cannot start GPS before this tap's
+    // permission/location-services checks have completed.
+    setMapLocationRequestKey(0);
+    setMapLocationError(null);
     setShowMap(true);
     // This call starts directly from the user's tap, so Android can show its
     // native permission and "Turn on Location" prompts before GPS tracking begins.
