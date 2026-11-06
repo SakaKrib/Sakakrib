@@ -1,5 +1,11 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Geolocation, type Position } from '@capacitor/geolocation';
+
+interface LocationSettingsPlugin {
+  ensureEnabled(): Promise<{ enabled: boolean }>;
+}
+
+const NativeLocationSettings = registerPlugin<LocationSettingsPlugin>('LocationSettings');
 
 /**
  * One place for every GPS read in the app.
@@ -62,7 +68,7 @@ function locationMessage(code: LocationErrorCode): string {
         ? 'Location permission is off for Saka Krib. Open your phone Settings > Apps > Saka Krib > Permissions > Location, choose "Allow", then try again.'
         : 'Location permission is blocked for this site. Allow location in your browser\'s site settings, then try again.';
     case 'services_off':
-      return 'Location is turned off on this phone. Switch it on (pull down the quick settings and tap Location), then tap Try again.';
+      return Capacitor.isNativePlatform()\n        ? 'Location is still off. Tap Enable location to open the Android prompt and turn it on.'\n        : 'Location is turned off on this device. Turn on Location, then tap Try again.';
     case 'no_fix':
       return 'Still looking for your location. Step outside or near a window and give it a few seconds, or tap Try again.';
     case 'timeout':
@@ -96,7 +102,7 @@ function normalizeError(error: unknown): LocationError {
   // fix yet (indoors, cold start) and must not be reported as GPS being off.
   const text = String((error as { message?: unknown } | null)?.message ?? error ?? '').toLowerCase();
   if (/(permission|not granted|denied)/.test(text)) return new LocationError('permission_denied');
-  if (/(location services? (is |are )?(not enabled|disabled|off)|location (is )?(disabled|turned off|switched off)|gps (is )?(off|disabled|not enabled))/.test(text)) {
+  if (/(location services?.*(not enabled|disabled|off)|location (is )?(disabled|turned off|switched off)|gps (is )?(off|disabled|not enabled))/.test(text)) {
     return new LocationError('services_off');
   }
   if (/(timeout|timed out)/.test(text)) return new LocationError('timeout');
@@ -152,6 +158,27 @@ export async function requestLocationPermission(): Promise<true> {
   }
   await getCurrentPosition({ maximumAge: 60000, timeout: 30000 });
   return true;
+}
+
+/**
+ * Prepares the device for the listing's live map from the user's tap:
+ * request Android runtime permission first, then show Android's native
+ * "Turn on device location" dialog if Location/GPS is switched off.
+ */
+export async function prepareLiveMapLocation(): Promise<DevicePosition> {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await requestLocationPermission();
+      await NativeLocationSettings.ensureEnabled();
+    }
+    return await getCurrentPosition({
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 30000,
+    });
+  } catch (error) {
+    throw normalizeError(error);
+  }
 }
 
 function fromNative(position: Position): DevicePosition {
