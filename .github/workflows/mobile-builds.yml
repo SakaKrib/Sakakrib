@@ -171,7 +171,7 @@ jobs:
 
       - name: Configure verified Android App Links
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
         run: |
           python3 - <<'PY'
           import os
@@ -404,7 +404,7 @@ jobs:
 
       - name: Verify generated Android App Link manifest
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
         run: |
           python3 - <<'PY'
           import os, xml.etree.ElementTree as ET
@@ -571,7 +571,7 @@ jobs:
           PY
       - name: Configure release manifest App Links
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
         run: |
           python3 - <<'PY'
           import os, xml.etree.ElementTree as ET
@@ -739,7 +739,7 @@ jobs:
           grep -q 'android.permission.ACCESS_FINE_LOCATION' android/app/src/main/AndroidManifest.xml
       - name: Verify generated release Android App Link manifest
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
         run: |
           python3 - <<'PY'
           import os, xml.etree.ElementTree as ET
@@ -830,7 +830,7 @@ jobs:
           echo "Verified release APK stable signing fingerprint: $APK_FP"
       - name: Check published Android App Links association
         env:
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
         run: |
           python3 - <<'PY'
           import json
@@ -932,7 +932,7 @@ jobs:
         env:
           FIREBASE_IOS_CONFIG_BASE64: ${{ secrets.FIREBASE_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
           IOS_APP_TEAM_ID: ${{ vars.IOS_APP_TEAM_ID || secrets.IOS_APP_TEAM_ID || '' }}
-          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL }}
+          SAKAKRIB_PUBLIC_BASE_URL: ${{ vars.SAKAKRIB_PUBLIC_BASE_URL || secrets.SAKAKRIB_PUBLIC_BASE_URL || 'https://opondo-thinkpad-t14-gen-1.tail34bca9.ts.net' }}
           GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID || vars.GOOGLE_IOS_CLIENT_IOS || secrets.GOOGLE_IOS_CLIENT_ID || secrets.GOOGLE_IOS_CLIENT_IOS || '' }}
         run: |
           python3 - <<'PY'
