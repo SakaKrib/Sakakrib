@@ -878,7 +878,7 @@ export default function AuthModal() {
                     void handleAppleSignIn();
                   }}
                   disabled={loading}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-900 bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50 dark:border-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-transparent px-5 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 dark:border-brand-700 dark:text-white dark:hover:bg-brand-800/60"
                 >
                   <Apple className="h-5 w-5" aria-hidden="true" />
                   {loading ? 'Connecting to Apple…' : 'Continue with Apple'}
