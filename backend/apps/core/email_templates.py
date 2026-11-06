@@ -160,6 +160,52 @@ def moving_started(data: dict) -> str:
     return _layout("Your move has started", body + _body(content))
 
 
-EMAIL_TEMPLATES = {"application_approved": application_approved, "application_declined": application_declined, "application_review": application_review, "listing_approved": listing_approved, "landlord_application_submitted": landlord_application_submitted, "mover_application_submitted": mover_application_submitted, "landlord_admin_notification": landlord_admin_notification, "mover_admin_notification": mover_admin_notification, "otp_verification": otp_verification, "sign_in_notification": sign_in_notification, "sign_up_welcome": sign_up_welcome, "moving_started": moving_started}
+def renter_unit_request(data: dict) -> str:
+    """Professionally styled notice sent to a property owner for a new unit request."""
+    owner_name = _text(data.get("full_name")) or "there"
+    first_name = owner_name.split()[0]
+    renter_name = _text(data.get("renter_name"), "A Saka Krib renter")
+    property_title = _text(data.get("property_title"), "Your property")
+    unit_number = _text(data.get("unit_number"), "N/A")
+    unit_type = _text(data.get("unit_type"), "N/A")
+    rent_amount = _text(data.get("rent_amount"), "N/A")
+    city = _text(data.get("property_city"))
+    requested_at = _text(data.get("requested_at"), "Just now")
+    expires_at = _text(data.get("expires_at"), "7 days after submission")
+    renter_email = _text(data.get("renter_email"), "Not provided")
+    renter_phone = _text(data.get("renter_phone"), "Not provided")
+    request_url = data.get("request_url") or f"{SITE_URL}/app/pms-dashboard"
 
-EMAIL_SUBJECTS = {"application_approved": "Your Saka Krib application has been approved", "application_declined": "Update regarding your Saka Krib application", "application_review": "Your Saka Krib application is under review", "listing_approved": "Your Saka Krib listing has been approved", "landlord_application_submitted": "Landlord application submitted - Saka Krib", "mover_application_submitted": "Mover application submitted - Saka Krib", "landlord_admin_notification": "New landlord application requires review - Saka Krib", "mover_admin_notification": "New mover application requires review - Saka Krib", "otp_verification": "Your Saka Krib verification code", "sign_in_notification": "New sign-in to your Saka Krib account", "sign_up_welcome": "Welcome to Saka Krib", "moving_started": "Your Saka Krib move has started"}
+    status = _status_panel(
+        "New rental request",
+        "A renter has requested one of the available units in your property.",
+        "#e8f5e9", "#c8e6c9",
+        heading_color="#1b5e20", message_color="#4b6350",
+        icon="⌂", icon_background="#c8e6c9", icon_color="#1b5e20",
+    )
+    content = f'''<p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello {escape(first_name)},</p>
+<p style="margin:0 0 18px;color:#444444;font-size:15px;line-height:1.7;">You have received a new rental request through Saka Krib. Review the details below and accept or decline the request from your property management dashboard.</p>
+{_details([
+    ("Property", property_title),
+    ("Location", city),
+    ("Unit", unit_number),
+    ("Unit type", unit_type),
+    ("Monthly rent", rent_amount),
+    ("Requested by", renter_name),
+    ("Renter email", renter_email),
+    ("Renter phone", renter_phone),
+    ("Request received", requested_at),
+    ("Response deadline", expires_at),
+], heading="RENTAL REQUEST DETAILS", bordered=True, row_padding=10)}
+<div style="margin:24px 0;padding:18px 20px;background:#f8fbf9;border:1px solid #d9e8dc;border-radius:10px;">
+<p style="margin:0;color:#365844;font-size:13px;line-height:1.7;"><strong>What happens next?</strong><br>Open your Saka Krib PMS dashboard to review the renter's request. The unit remains subject to availability until you make a decision.</p>
+</div>
+{_button(request_url, "Review rental request", "15px 30px")}
+<p style="margin:18px 0 0;color:#777777;font-size:12px;line-height:1.6;text-align:center;">If the button does not open, copy this link into your browser:<br><a href="{_safe_url(request_url)}" style="color:#255d3a;word-break:break-all;">{escape(str(request_url))}</a></p>
+<p style="margin:24px 0 0;color:#777777;font-size:13px;line-height:1.6;">This is an automated account notification. Please do not reply directly to this email. For assistance, contact <a href="mailto:{SUPPORT_EMAIL}" style="color:#255d3a;">{SUPPORT_EMAIL}</a>.</p>'''
+    return _layout("New rental request", status + _body(content), tagline="Your property, managed with clarity.")
+
+
+EMAIL_TEMPLATES = {"application_approved": application_approved, "application_declined": application_declined, "application_review": application_review, "listing_approved": listing_approved, "landlord_application_submitted": landlord_application_submitted, "mover_application_submitted": mover_application_submitted, "landlord_admin_notification": landlord_admin_notification, "mover_admin_notification": mover_admin_notification, "otp_verification": otp_verification, "sign_in_notification": sign_in_notification, "sign_up_welcome": sign_up_welcome, "moving_started": moving_started, "renter_unit_request": renter_unit_request}
+
+EMAIL_SUBJECTS = {"application_approved": "Your Saka Krib application has been approved", "application_declined": "Update regarding your Saka Krib application", "application_review": "Your Saka Krib application is under review", "listing_approved": "Your Saka Krib listing has been approved", "landlord_application_submitted": "Landlord application submitted - Saka Krib", "mover_application_submitted": "Mover application submitted - Saka Krib", "landlord_admin_notification": "New landlord application requires review - Saka Krib", "mover_admin_notification": "New mover application requires review - Saka Krib", "otp_verification": "Your Saka Krib verification code", "sign_in_notification": "New sign-in to your Saka Krib account", "sign_up_welcome": "Welcome to Saka Krib", "moving_started": "Your Saka Krib move has started", "renter_unit_request": "New rental request for your property - Saka Krib"}
