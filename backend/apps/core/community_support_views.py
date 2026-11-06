@@ -11,7 +11,7 @@ from apps.accounts.models import Profile
 from apps.listings.models import Listing
 
 from .domain_platform import SupportTicket, TermsAcceptance
-from .domain_property import CommunityPost, ListingMedia, Review
+from .domain_property import CommunityPost, ListingMedia, PropertyUnit, RenterUnitAssociation, Review
 
 
 def _serialize(instance):
@@ -62,6 +62,28 @@ def _serialize_community_post(request, post):
             # Listing.user is a ForeignKey to Profile. Convert it back to the
             # UUID expected by the JSON API instead of returning the Profile object.
             row['listing']['user'] = str(listing.user_id)
+            row['listing']['units'] = []
+            if listing.is_property_management:
+                unit_rows = list(
+                    PropertyUnit.objects.filter(listing_id=listing.id)
+                    .order_by('position', 'created_at')
+                    .values('id', 'availability')
+                )
+                active_unit_ids = set(
+                    RenterUnitAssociation.objects.filter(
+                        unit_id__in=[unit['id'] for unit in unit_rows],
+                        status='ACTIVE',
+                    ).values_list('unit_id', flat=True)
+                )
+                for unit in unit_rows:
+                    availability = str(unit.get('availability') or '').strip().lower()
+                    occupied = unit['id'] in active_unit_ids or availability in {
+                        'occupied', 'unavailable', 'rented', 'leased'
+                    }
+                    row['listing']['units'].append({
+                        'id': str(unit['id']),
+                        'status': 'occupied' if occupied else 'available',
+                    })
             media_rows = ListingMedia.objects.filter(
                 listing_id=listing.id,
                 media_type='photo',

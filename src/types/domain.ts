@@ -78,6 +78,7 @@ export interface Listing extends Record<string, any> {
   created_at?: string;
   updated_at?: string;
   media?: ListingMedia[];
+  units?: Array<{ id: string; status?: string | null }>;
   landlord?: Profile | null;
 }
 

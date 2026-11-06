@@ -16,6 +16,7 @@ import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPost, protectedUpload, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useLiveEvents } from '@/lib/useLiveEvents';
 import { formatKES } from '@/lib/utils';
+import { getPropertyUnitSummary } from '@/lib/listingDisplay';
 import type { CommunityPost, CommunityPostMedia } from '@/types/domain';
 
 type Post = CommunityPost & { community_media?: CommunityPostMedia[] };
@@ -288,7 +289,7 @@ export default function CommunityPage() {
                         <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-black/35 px-2 py-1">{media.map((item, index) => <span key={item.id || index} className={`h-1.5 w-1.5 rounded-full ${index === currentSlide ? 'bg-white' : 'bg-white/50'}`} />)}</div>
                       </div>}
                     </div>}
-                    <div className="space-y-1 p-3"><b className="block text-base text-brand-900 dark:text-white">{post.listing.title}</b><p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3 w-3 text-brand-500" />{post.listing.city}, {post.listing.county}</p><b className="text-brand-600 dark:text-brand-300">{formatKES(post.listing.price_kes)}</b></div>
+                    <div className="space-y-1 p-3"><b className="block text-base text-brand-900 dark:text-white">{post.listing.title}</b><p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"><MapPin className="h-3 w-3 text-brand-500" />{post.listing.city}, {post.listing.county}</p>{(() => { const unitSummary = getPropertyUnitSummary(post.listing!); return unitSummary ? <span className="inline-flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold text-brand-700 dark:text-brand-300"><span className="rounded-full bg-brand-100 px-2.5 py-1 dark:bg-brand-900/60">Multi-unit property</span><span>{unitSummary.total} {unitSummary.total === 1 ? 'unit' : 'units'} · {unitSummary.available} available</span></span> : <b className="text-brand-600 dark:text-brand-300">{formatKES(post.listing!.price_kes)}</b>; })()}</div>
                   </button>
                 </div>}
 
