@@ -17,6 +17,7 @@ import {
 } from '@/lib/RealEstateTs/RealEstatePMSLeaseService';
 
 import Select from '@/components/ui/Select';
+import CountInput from '@/components/ui/CountInput';
 interface Props {
   listings: Array<{ id: string; title: string }>;
   maxUnitsPerListing: number | null | undefined;
@@ -34,6 +35,10 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
   const [listingId, setListingId] = useState(listings[0]?.id ?? '');
   const [unitNumber, setUnitNumber] = useState('');
   const [rent, setRent] = useState('');
+  const [unitBeds, setUnitBeds] = useState(1);
+  const [unitBaths, setUnitBaths] = useState(1);
+  const [unitDeposit, setUnitDeposit] = useState('');
+  const [unitType, setUnitType] = useState('');
   const [leaseUnitId, setLeaseUnitId] = useState('');
   const [leaseStart, setLeaseStart] = useState(today);
   const [leaseEnd, setLeaseEnd] = useState('');
@@ -73,10 +78,14 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
     setSaving(true);
     setError(null);
     try {
-      const result = await createRealEstatePMSUnit({ listing_id: listingId, unit_number: unitNumber.trim(), rent: Number(rent) });
+      const result = await createRealEstatePMSUnit({ listing_id: listingId, unit_number: unitNumber.trim(), rent: Number(rent), beds: unitBeds, baths: unitBaths, deposit_amount: Number(unitDeposit || 0), unit_type: unitType.trim() || 'unit' });
       if (result.data) setUnits((current) => [...current, result.data as RealEstatePMSUnit]);
       setUnitNumber('');
       setRent('');
+      setUnitDeposit('');
+      setUnitType('');
+      setUnitBeds(1);
+      setUnitBaths(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to add unit.');
     } finally {
@@ -178,11 +187,16 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
         <div className="flex items-center gap-2"><Plus className="h-5 w-5 text-brand-600" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">Add unit</h2></div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1.4fr_1fr_1fr_auto]">
-          <Select value={listingId} onChange={(event) => setListingId(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select listing</option>{listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}</Select>
-          <input value={unitNumber} onChange={(event) => setUnitNumber(event.target.value)} placeholder="Unit number" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
-          <input value={rent} onChange={(event) => setRent(event.target.value)} type="number" min="1" placeholder="Monthly rent" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
-          <button type="button" onClick={() => void addUnit()} disabled={saving || !listingId || !unitNumber.trim() || !rent} className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Add</button>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="sm:col-span-2 lg:col-span-1"><Select value={listingId} onChange={(event) => setListingId(event.target.value)} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select listing</option>{listings.map((listing) => <option key={listing.id} value={listing.id}>{listing.title}</option>)}</Select></div>
+          <input value={unitNumber} onChange={(event) => setUnitNumber(event.target.value)} placeholder="Unit number (e.g. A01)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          <input value={unitType} onChange={(event) => setUnitType(event.target.value)} placeholder="Type (e.g. Apartment)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          <input value={rent} onChange={(event) => setRent(event.target.value)} type="number" inputMode="numeric" min="1" placeholder="Monthly rent (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          <input value={unitDeposit} onChange={(event) => setUnitDeposit(event.target.value)} type="number" inputMode="numeric" min="0" placeholder="Deposit (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          <div />
+          <div><p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">Bedrooms</p><CountInput value={unitBeds} onChange={setUnitBeds} min={0} max={20} presets={[0, 1, 2, 3, 4, 5]} labels={{ 0: 'Studio' }} unit="bedrooms" aria-label="Bedrooms" /></div>
+          <div><p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">Bathrooms</p><CountInput value={unitBaths} onChange={setUnitBaths} min={0} max={20} presets={[1, 2, 3, 4, 5]} unit="bathrooms" aria-label="Bathrooms" /></div>
+          <button type="button" onClick={() => void addUnit()} disabled={saving || !listingId || !unitNumber.trim() || !rent} className="sm:col-span-2 lg:col-span-1 self-end inline-flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Add</button>
         </div>
         {maxUnitsPerListing != null && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Plan capacity: {maxUnitsPerListing} units per listing.</p>}
       </section>
@@ -195,7 +209,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
           <input value={leaseEnd} onChange={(event) => setLeaseEnd(event.target.value)} type="date" placeholder="End date (optional)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={leaseRent} onChange={(event) => setLeaseRent(event.target.value)} type="number" min="1" placeholder="Monthly rent (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
           <input value={leaseDeposit} onChange={(event) => setLeaseDeposit(event.target.value)} type="number" min="0" placeholder="Deposit (KES)" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
-          <input value={leaseDueDay} onChange={(event) => setLeaseDueDay(event.target.value)} type="number" min="1" max="31" placeholder="Rent due day" className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950" />
+          <div><p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">Rent due day of month</p><CountInput value={Number(leaseDueDay) || 1} onChange={(n) => setLeaseDueDay(String(n))} min={1} max={31} presets={[1, 5, 10, 15, 28]} unit="day" aria-label="Rent due day" /></div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createLease()} disabled={saving || !leaseUnit?.renter_assoc_id || !leaseStart || !leaseRent} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Create lease</button>{leaseUnit && !leaseUnit.renter_assoc_id && <span className="text-xs text-orange-600">Select a unit with an active renter association first.</span>}</div>
 
