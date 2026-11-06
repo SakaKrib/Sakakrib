@@ -73,11 +73,11 @@ function AppContent() {
     if (!Capacitor.isNativePlatform()) return;
 
     let disposed = false;
-    let didRoute = false;
+    const handledUrls = new Set<string>();
     let removeListener: (() => void) | undefined;
 
     const handleIncomingUrl = async (url: string) => {
-      if (didRoute) return;
+      if (handledUrls.has(url)) return;
 
       try {
         const incoming = new URL(url);
@@ -107,7 +107,7 @@ function AppContent() {
             route = `post-listing/${encodeURIComponent(listingId)}`;
           }
           if (!route) return;
-          didRoute = true;
+          handledUrls.add(url);
           await Browser.close().catch(() => {});
           window.location.hash = route;
           window.dispatchEvent(new Event('sakakrib:paypal-return-context'));
@@ -131,7 +131,7 @@ function AppContent() {
             'account-security', 'reset-password',
           ]);
           if (!allowedAppLinkViews.has(view)) return;
-          didRoute = true;
+          handledUrls.add(url);
           if (view === 'reset-password') {
             // Keep uid/token in the query string because ResetPasswordPage reads
             // window.location.search; never put reset credentials in the hash.
@@ -152,7 +152,7 @@ function AppContent() {
         ]);
         if (!allowedPaths.has(incoming.pathname)) return;
 
-        didRoute = true;
+        handledUrls.add(url);
         // Close the PayPal Custom Tab after Android has delivered the verified
         // App Link, then resume the existing in-app payment return route.
         void Browser.close().catch(() => {});
