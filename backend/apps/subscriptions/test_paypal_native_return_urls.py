@@ -33,9 +33,9 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
         )
 
         self.assertEqual(urlsplit(return_url).netloc, 'app.example.test')
-        self.assert_signed_return_url(return_url, '/paypal/subscription/return', 'web')
+        self.assert_signed_return_url(return_url, '/paypal/subscription/return', 'android')
         self.assertEqual(urlsplit(cancel_url).netloc, 'app.example.test')
-        self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel', 'web')
+        self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel', 'android')
 
     @override_settings(
         SAKAKRIB_PUBLIC_BASE_URL='',
@@ -59,6 +59,6 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
         )
 
         self.assertEqual(urlsplit(return_url).netloc, 'app.example.test')
-        self.assert_signed_return_url(return_url, '/paypal/subscription/return')
+        self.assert_signed_return_url(return_url, '/paypal/subscription/return', 'web')
         self.assertEqual(urlsplit(cancel_url).netloc, 'app.example.test')
-        self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel')
+        self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel', 'web')
