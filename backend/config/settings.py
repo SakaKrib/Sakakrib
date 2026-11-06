@@ -109,10 +109,10 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()] + ([SAKAKRIB_PUBLIC_FRONTEND_URL] if SAKAKRIB_PUBLIC_FRONTEND_URL else []) + ([SAKAKRIB_APP_LINK_BASE_URL] if SAKAKRIB_APP_LINK_BASE_URL else []) + ['http://localhost:5175', 'http://127.0.0.1:5175', 'http://100.109.224.0:5175', 'https://localhost', 'capacitor://localhost']))
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = os.getenv('CSRF_COOKIE_SAMESITE','Lax')
-CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE','false').lower() == 'true'
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'true').lower() == 'true'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = os.getenv('SESSION_COOKIE_SAMESITE','Lax')
-SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE','false').lower() == 'true'
+SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'true').lower() == 'true'
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO','https')
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', '')
