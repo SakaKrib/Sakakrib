@@ -682,7 +682,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithApple = async (): Promise<void> => {
     const config = await gatewayAppleConfig();
     if (!config.enabled || !config.clientId || !config.redirectUrl) {
-      setAppleSignInAvailable(false);
+      // Keep the option visible while setup is pending; only authentication
+      // is blocked until the backend has valid Apple Developer credentials.
       throw new Error(
         'Apple sign-in is not configured yet. Please use Google or email and password.',
       );
