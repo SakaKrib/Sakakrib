@@ -56,12 +56,13 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings
           DJANGO_SECRET_KEY: ci-only-test-key
           DJANGO_DEBUG: 'true'
+          SAKAKRIB_PUBLIC_BASE_URL: https://ci.sakakrib.example
           DB_NAME: sakakrib_test
           DB_USER: sakakrib
           DB_PASSWORD: sakakrib_ci
           DB_HOST: 127.0.0.1
           DB_PORT: '5432'
-        run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests apps.accounts.test_apple_auth --noinput --verbosity 2
+        run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests apps.accounts.test_apple_auth apps.subscriptions.test_paypal_native_return_urls --noinput --verbosity 2
 
   android:
     name: Android APK
