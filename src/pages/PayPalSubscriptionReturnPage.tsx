@@ -3,8 +3,9 @@ import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { protectedGet, protectedPost } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
 import { usePaymentStatusSocket, type PaymentSocketStatus } from '@/lib/usePaymentStatusSocket';
+import { Capacitor } from '@capacitor/core';
 
-interface InvoiceStatusResponse { id?: string; invoice_id?: string; status: string; result_description?: string | null; listing_id?: string | null; upgrade?: boolean; }
+interface InvoiceStatusResponse { id?: string; invoice_id?: string; status: string; result_description?: string | null; listing_id?: string | null; upgrade?: boolean; client_platform?: string; }
 
 export default function PayPalSubscriptionReturnPage() {
   const { navigate } = useNav();
@@ -15,6 +16,7 @@ export default function PayPalSubscriptionReturnPage() {
   const [state, setState] = useState<'waiting' | 'success' | 'failed'>('waiting');
   const [message, setMessage] = useState('We are securely confirming your PayPal payment. Please keep this page open.');
   const [listingId, setListingId] = useState<string | null>(null);
+  const [clientPlatform, setClientPlatform] = useState('web');
   // Signed PayPal return URLs are deliberately polled over HTTP. Do not open
   // an authenticated WebSocket from the external-browser handoff: that browser
   // may not share the app's HttpOnly API cookies and would be rejected at once.
@@ -64,6 +66,7 @@ export default function PayPalSubscriptionReturnPage() {
           : await protectedGet<InvoiceStatusResponse>(`/api/subscriptions/invoices/${encodeURIComponent(invoiceId)}/`);
         if (cancelled) return;
         setListingId(invoice.listing_id || null);
+        setClientPlatform(String(invoice.client_platform || 'web').toLowerCase());
         if (invoice.upgrade && returnStateToken && invoice.status.toUpperCase() === 'PENDING') {
           try {
             const upgrade = await protectedPost<{
@@ -106,12 +109,21 @@ export default function PayPalSubscriptionReturnPage() {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [invoiceId, returnStateToken]);
 
-  // Keep navigation inside the current runtime: browser checkouts remain in
-  // their browser tab, while verified native app links return to the installed
-  // app and use the same in-app hash router. No forced redirect to Chrome.
-  const continueToPms = () => navigate('pms-dashboard');
+  // Web checkouts stay on the website. If Android did not auto-open the
+  // verified HTTPS App Link, explicitly launch the installed app; its native
+  // listener closes this Custom Tab and routes to the selected destination.
+  const continueTo = (target: 'pms-dashboard' | 'post-listing' | 'subscription-plans', id?: string | null) => {
+    if (clientPlatform === 'android' && !Capacitor.isNativePlatform()) {
+      const handoff = new URLSearchParams({ target });
+      if (id) handoff.set('listing_id', id);
+      window.location.assign(`com.sakakrib.app://paypal-return?${handoff.toString()}`);
+      return;
+    }
+    navigate(target, id || undefined);
+  };
+  const continueToPms = () => continueTo('pms-dashboard');
   const continueToListing = () => {
-    if (listingId) navigate('post-listing', listingId);
+    if (listingId) continueTo('post-listing', listingId);
   };
 
   return (
@@ -130,7 +142,7 @@ export default function PayPalSubscriptionReturnPage() {
           </div>
         )}
         {state === 'failed' && (
-          <button type="button" onClick={() => navigate('subscription-plans')} className="btn-primary mt-7 inline-flex items-center gap-2">
+          <button type="button" onClick={() => continueTo('subscription-plans')} className="btn-primary mt-7 inline-flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />Back to Plans
           </button>
         )}
