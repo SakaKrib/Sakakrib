@@ -130,7 +130,7 @@ def _styled_mover_request_email(email: NotificationEmail) -> str | None:
         "requested_at": booking.requested_at,
         "response_expires_at": booking.request_expires_at,
         "booking_id": booking.id,
-        "booking_url": f"{SITE_URL}/#mover-messages/{booking.renter_id}",
+        "booking_url": f"{SITE_URL}/#mover-booking-detail/{booking.id}",
     }
     return mover_booking_request(payload)
 
