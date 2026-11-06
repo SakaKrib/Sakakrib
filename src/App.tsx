@@ -38,6 +38,8 @@ import DashboardPage from '@/Dashboards/DashboardPage';
 import AdminUserDetailsRoute from '@/pages/AdminUserDetailsRoute';
 import AdminCreateListingPage from '@/pages/AdminCreateListingPage';
 import ProfilePage from '@/pages/ProfilePage';
+import AccountSecurityPage from '@/pages/AccountSecurityPage';
+import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import ListingManagePage from './pages/ListingManagePage';
 import PMSSubscriptionPage from './components/PMS/PMSSubscriptionPageWithHistory';
 import RegisterMoverPage from './pages/RegisterMoverPage';
@@ -181,6 +183,8 @@ function AppContent() {
   // Payment return paths are entry points only. Once a return-page action
   // navigates to another app view, let the normal hash-based router take over.
   const isPaymentReturnEntry = view === 'home' && !window.location.hash;
+  const isResetPasswordEntry = isPaymentReturnEntry && window.location.pathname === '/reset-password';
+  if (isResetPasswordEntry) return <ResetPasswordPage />;
   if (isPaymentReturnEntry && window.location.pathname === '/paypal/subscription/return') return <PayPalSubscriptionReturnPage />;
   if (isPaymentReturnEntry && window.location.pathname === '/paypal/subscription/cancel') return <PayPalSubscriptionCancelPage />;
   if (isPaymentReturnEntry && window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
@@ -225,6 +229,7 @@ function AppContent() {
       case 'dashboard': return <RoleDashboardRouter />;
       case 'pms-dashboard': return <RoleDashboardRouter />;
       case 'profile': return <ProfilePage />;
+      case 'account-security': return <AccountSecurityPage />;
       case 'my-bookings': return <DashboardPage />;
       case 'my-listings': return <DashboardPage />;
       case 'subscription-plans': return <PMSSubscriptionPage />;
