@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { protectedGet } from '@/lib/djangoApi';
 import { useNav } from '@/context/NavContext';
+import { Capacitor } from '@capacitor/core';
 
 interface SubscriptionInvoiceResponse {
   id?: string;
@@ -9,6 +10,7 @@ interface SubscriptionInvoiceResponse {
   status: string;
   result_description?: string | null;
   listing_id?: string | null;
+  client_platform?: string;
 }
 
 type PaymentState = 'checking' | 'success' | 'failed' | 'unconfirmed';
@@ -21,6 +23,7 @@ export default function PayPalSubscriptionCancelPage() {
   const [state, setState] = useState<PaymentState>('checking');
   const [message, setMessage] = useState('We are checking PayPal’s final payment status. Please keep SakaKrib open.');
   const [listingId, setListingId] = useState<string | null>(null);
+  const [clientPlatform, setClientPlatform] = useState('web');
 
   useEffect(() => {
     if (!invoiceId) {
@@ -44,6 +47,7 @@ export default function PayPalSubscriptionCancelPage() {
             );
         if (disposed) return;
         setListingId(invoice.listing_id || null);
+        setClientPlatform(String(invoice.client_platform || 'web').toLowerCase());
 
         const status = String(invoice.status || '').toUpperCase();
 
@@ -89,10 +93,18 @@ export default function PayPalSubscriptionCancelPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId]);
 
-  // Keep the current browser tab or native app context; never force a web URL.
-  const continueToPms = () => navigate('pms-dashboard');
+  const continueTo = (target: 'pms-dashboard' | 'post-listing' | 'subscription-plans', id?: string | null) => {
+    if (clientPlatform === 'android' && !Capacitor.isNativePlatform()) {
+      const handoff = new URLSearchParams({ target });
+      if (id) handoff.set('listing_id', id);
+      window.location.assign(`com.sakakrib.app://paypal-return?${handoff.toString()}`);
+      return;
+    }
+    navigate(target, id || undefined);
+  };
+  const continueToPms = () => continueTo('pms-dashboard');
   const continueToListing = () => {
-    if (listingId) navigate('post-listing', listingId);
+    if (listingId) continueTo('post-listing', listingId);
   };
 
   return (
@@ -119,7 +131,7 @@ export default function PayPalSubscriptionCancelPage() {
         )}
         {(state === 'failed' || state === 'unconfirmed') && (
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-            <button type="button" onClick={() => navigate('subscription-plans')} className="btn-secondary">Back to Plans</button>
+            <button type="button" onClick={() => continueTo('subscription-plans') className="btn-secondary">Back to Plans</button>
             {state === 'unconfirmed' && (
               <button type="button" onClick={() => window.location.reload()} className="btn-secondary inline-flex items-center justify-center gap-2">
                 <RefreshCw className="h-4 w-4" />Check Payment Again
