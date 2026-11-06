@@ -11,17 +11,26 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'unsafe-dev-key-change-me')
 DEBUG = os.getenv('DJANGO_DEBUG', 'true').lower() == 'true'
 # Single source of truth for every public Saka Krib URL.
 SAKAKRIB_PUBLIC_BASE_URL = os.getenv('SAKAKRIB_PUBLIC_BASE_URL', '').strip().rstrip('/')
+if SAKAKRIB_PUBLIC_BASE_URL:
+    public_url_parts = urlsplit(SAKAKRIB_PUBLIC_BASE_URL)
+    if (
+        public_url_parts.scheme.lower() != 'https'
+        or not public_url_parts.netloc
+        or public_url_parts.username
+        or public_url_parts.password
+        or public_url_parts.path not in ('', '/')
+        or public_url_parts.query
+        or public_url_parts.fragment
+    ):
+        raise ImproperlyConfigured(
+            'SAKAKRIB_PUBLIC_BASE_URL must be an HTTPS origin without a path, query string, or credentials.'
+        )
 # Compatibility aliases for older modules. They never read independent environment variables.
 SAKAKRIB_PUBLIC_FRONTEND_URL = SAKAKRIB_PUBLIC_BASE_URL
 SAKAKRIB_APP_LINK_BASE_URL = SAKAKRIB_PUBLIC_BASE_URL or 'http://localhost:5175'
 
 def _sakakrib_public_url(path):
     return f'{SAKAKRIB_PUBLIC_BASE_URL}{path}' if SAKAKRIB_PUBLIC_BASE_URL else ''
-SAKAKRIB_ANDROID_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_RETURN_URL', '').strip()
-SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL', '').strip()
-SAKAKRIB_IOS_PAYPAL_RETURN_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_RETURN_URL', '').strip()
-SAKAKRIB_IOS_PAYPAL_CANCEL_URL = os.getenv('SAKAKRIB_IOS_PAYPAL_CANCEL_URL', '').strip()
-
 # Comma-separated SHA-256 signing-certificate fingerprints for Android App Links.
 ANDROID_APP_SHA256_CERT_FINGERPRINTS = [
     value.strip().upper()
