@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 
 import type { Profile, UserRole } from '@/types/domain';
 
@@ -174,6 +176,8 @@ const loadGoogleIdentityScript = async (): Promise<void> => {
 
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+let nativeGoogleInitialization: Promise<void> | null = null;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -506,24 +510,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async (): Promise<void> => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as
-      | string
-      | undefined;
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim();
+    const iosClientId = import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID?.trim();
 
     if (!clientId) {
       throw new Error(
-        'Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID.',
+        'Google sign-in is not configured. Add the Google Web Client ID to VITE_GOOGLE_CLIENT_ID.',
       );
     }
 
+    const exchangeCredential = async (credential: string) => {
+      const result = await gatewayGoogleLogin(credential);
+
+      if (!result.authenticated || !result.user || !result.profile) {
+        throw new Error(
+          toClientAuthError(
+            result.error,
+            'We couldn’t sign you in with Google. Please try again.',
+          ),
+        );
+      }
+
+      if (!applyGatewayAuth(result)) {
+        throw new Error(
+          'Google sign-in completed, but your Saka Krib account could not be initialized. Please try again.',
+        );
+      }
+    };
+
+    if (Capacitor.isNativePlatform()) {
+      const platform = Capacitor.getPlatform();
+
+      if (platform === 'ios' && !iosClientId) {
+        throw new Error(
+          'Google sign-in on iOS is not configured. Add the iOS OAuth Client ID to VITE_GOOGLE_IOS_CLIENT_ID.',
+        );
+      }
+
+      if (!nativeGoogleInitialization) {
+        nativeGoogleInitialization = SocialLogin.initialize({
+          google: {
+            webClientId: clientId,
+            ...(platform === 'ios'
+              ? {
+                  iOSClientId: iosClientId,
+                  iOSServerClientId: clientId,
+                }
+              : {}),
+            mode: 'online',
+          },
+        }).catch((error: unknown) => {
+          nativeGoogleInitialization = null;
+          throw error;
+        });
+      }
+
+      await nativeGoogleInitialization;
+
+      const nativeResponse = await SocialLogin.login({
+        provider: 'google',
+        options: {
+          scopes: ['email', 'profile'],
+          filterByAuthorizedAccounts: false,
+        },
+      }) as { result?: { idToken?: string } };
+
+      const credential = nativeResponse.result?.idToken;
+      if (!credential) {
+        throw new Error('Google did not return a valid identity token.');
+      }
+
+      await exchangeCredential(credential);
+      return;
+    }
+
+    // Browser flow: Google Identity Services returns an ID token.
     await loadGoogleIdentityScript();
 
     const google = (window as any).google;
-
     if (!google?.accounts?.id) {
-      throw new Error(
-        'Google sign-in is unavailable. Please try again.',
-      );
+      throw new Error('Google sign-in is unavailable. Please try again.');
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -531,60 +597,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const finish = (error?: Error) => {
         if (settled) return;
-
         settled = true;
-
         error ? reject(error) : resolve();
       };
 
       google.accounts.id.initialize({
         client_id: clientId,
         ux_mode: 'popup',
-
         callback: async (response: { credential?: string }) => {
           try {
             if (!response.credential) {
-              return finish(
-                new Error(
-                  'Google did not return an ID token.',
-                ),
-              );
+              finish(new Error('Google did not return an identity token.'));
+              return;
             }
 
-            const result = await gatewayGoogleLogin(
-              response.credential,
-            );
-
-            if (
-              !result.authenticated ||
-              !result.user ||
-              !result.profile
-            ) {
-              return finish(
-                new Error(
-                  toClientAuthError(
-                    result.error,
-                    'We couldn’t sign you in with Google. Please try again.',
-                  ),
-                ),
-              );
-            }
-
-            if (!applyGatewayAuth(result)) {
-              return finish(
-                new Error(
-                  'Google sign-in was successful, but we couldn’t finish setting up your account. Please try again.',
-                ),
-              );
-            }
-
+            await exchangeCredential(response.credential);
             finish();
           } catch (error) {
-            console.error(
-              'Django Google sign-in error:',
-              error,
-            );
-
+            console.error('Django Google sign-in error:', error);
             finish(
               new Error(
                 toClientAuthError(
@@ -608,9 +638,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ),
           );
         } else if (notification.isDismissedMoment?.()) {
-          finish(
-            new Error('Google sign-in was cancelled.'),
-          );
+          finish(new Error('Google sign-in was cancelled.'));
         }
       });
     });
