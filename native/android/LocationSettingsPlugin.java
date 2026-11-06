@@ -21,7 +21,7 @@ import com.google.android.gms.tasks.Task;
  * Shows Android's native "Turn on device location" resolution dialog when GPS/location
  * services are disabled. The app must request runtime location permission separately.
  */
-@CapacitorPlugin(name = "LocationSettings", requestCodes = { REQUEST_ENABLE_LOCATION })
+@CapacitorPlugin(name = "LocationSettings", requestCodes = { 7142 })
 public class LocationSettingsPlugin extends Plugin {
     private static final int REQUEST_ENABLE_LOCATION = 7142;
     private PluginCall pendingCall;
