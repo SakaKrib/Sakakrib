@@ -81,20 +81,34 @@ function AppContent() {
 
       try {
         const incoming = new URL(url);
-        const configuredApiOrigin = new URL(getDjangoApiBaseUrl()).origin;
+        const configuredAppOrigin = new URL(
+          import.meta.env.VITE_APP_LINK_BASE_URL || getDjangoApiBaseUrl(),
+        ).origin;
+        if (incoming.protocol !== 'https:' || incoming.origin !== configuredAppOrigin) {
+          return;
+        }
+
+        // Verified HTTPS App Links / Universal Links use /app/<view> so the
+        // operating system can open the installed app before falling back to web.
+        if (incoming.pathname.startsWith('/app/')) {
+          const route = incoming.pathname.slice('/app/'.length).replace(/^\\/+|\\/+$/g, '');
+          const view = route.split('/')[0];
+          const allowedAppLinkViews = new Set([
+            'pms-dashboard', 'dashboard', 'listing-detail',
+            'subscription-plans', 'mover-tracking', 'mover-booking-detail',
+          ]);
+          if (!allowedAppLinkViews.has(view)) return;
+          didRoute = true;
+          window.location.hash = route;
+          return;
+        }
+
         const allowedPaths = new Set([
           '/paypal/subscription/return',
           '/paypal/subscription/cancel',
           '/listing/payment/return',
         ]);
-
-        if (
-          incoming.protocol !== 'https:' ||
-          incoming.origin !== configuredApiOrigin ||
-          !allowedPaths.has(incoming.pathname)
-        ) {
-          return;
-        }
+        if (!allowedPaths.has(incoming.pathname)) return;
 
         didRoute = true;
         // Close the PayPal Custom Tab after Android has delivered the verified
@@ -179,6 +193,20 @@ function AppContent() {
       setAuthModalOpen(true);
     }
   }, [view, authLoading, profile, authModalOpen, setAuthMode, setAuthModalOpen]);
+
+  // If the app is not installed, the same verified-link URL opens the website.
+  // Convert its path into the existing hash route so browser and native landings match.
+  useEffect(() => {
+    if (Capacitor.isNativePlatform() || window.location.hash) return;
+    if (!window.location.pathname.startsWith('/app/')) return;
+    const route = window.location.pathname.slice('/app/'.length).replace(/^\\/+|\\/+$/g, '');
+    const viewName = route.split('/')[0];
+    if (viewName === 'pms-dashboard' || viewName === 'dashboard' ||
+        viewName === 'listing-detail' || viewName === 'subscription-plans' ||
+        viewName === 'mover-tracking' || viewName === 'mover-booking-detail') {
+      window.location.replace(`${window.location.origin}#${route}`);
+    }
+  }, []);
 
   // Payment return paths are entry points only. Once a return-page action
   // navigates to another app view, let the normal hash-based router take over.
