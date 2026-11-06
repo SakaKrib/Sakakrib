@@ -196,12 +196,12 @@ class EmailTemplateStyleParityTests(SimpleTestCase):
                     self.assertIn('https://links.example/app/', html)
                     self.assertNotIn('https://sakakrib.com/#', html)
 
-    def test_admin_application_buttons_use_backend_admin_origin(self):
-        with patch('apps.core.email_templates.ADMIN_BASE_URL', 'https://api.example'):
+    def test_admin_application_buttons_use_the_dashboard_app_link(self):
+        with patch('apps.core.email_templates.APP_LINK_BASE_URL', 'https://links.example'):
             for template_name in ('landlord_admin_notification', 'mover_admin_notification'):
                 with self.subTest(template=template_name):
                     html = self.render(template_name, {'applicant_name': 'Applicant'})
-                    self.assertIn('https://api.example/admin/', html)
+                    self.assertIn('https://links.example/app/dashboard', html)
 
     def test_dynamic_values_are_html_escaped(self):
         html = self.render(
