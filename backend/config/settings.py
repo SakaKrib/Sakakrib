@@ -101,7 +101,7 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 # Sign in with Apple: the Services ID is the web/authorization-code audience;
 # the bundle ID is the native iOS audience. Private-key material stays backend-only.
 APPLE_CLIENT_ID = os.getenv('APPLE_CLIENT_ID', '').strip()
-APPLE_BUNDLE_ID = os.getenv('APPLE_BUNDLE_ID', IOS_APP_BUNDLE_ID).strip() or IOS_APP_BUNDLE_ID
+APPLE_BUNDLE_ID = os.getenv('APPLE_BUNDLE_ID', os.getenv('IOS_APP_BUNDLE_ID', 'com.sakakrib.app')).strip() or 'com.sakakrib.app'
 APPLE_TEAM_ID = os.getenv('APPLE_TEAM_ID', '').strip()
 APPLE_KEY_ID = os.getenv('APPLE_KEY_ID', '').strip()
 APPLE_PRIVATE_KEY_PATH = os.getenv('APPLE_PRIVATE_KEY_PATH', '').strip()
