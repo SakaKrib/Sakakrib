@@ -86,14 +86,6 @@ jobs:
         run: |
           test -n "$VITE_DJANGO_API_URL"
           test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "::error::GOOGLE_CLIENT_ID is required for Google sign-in. Add it as a GitHub Actions variable or secret."; exit 1; }
-          if [ -z "$VITE_GOOGLE_CLIENT_ID" ]; then
-            echo "::error::GOOGLE_CLIENT_ID is required for Google sign-in. Add it as a GitHub Actions variable or secret."
-            exit 1
-          fi
-          if [ -z "$VITE_GOOGLE_IOS_CLIENT_ID" ]; then
-            echo "::error::GOOGLE_IOS_CLIENT_ID is required for native Google sign-in on iOS."
-            exit 1
-          fi
           if [ -z "$VITE_PAYPAL_CLIENT_ID" ]; then
             echo "::error::VITE_PAYPAL_CLIENT_ID is missing. Add it as a GitHub Actions variable or secret before building mobile apps."
             exit 1
@@ -451,7 +443,6 @@ jobs:
           test -n "$VITE_DJANGO_API_URL"
           test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "::error::GOOGLE_CLIENT_ID is required for Google sign-in. Add it as a GitHub Actions variable or secret."; exit 1; }
           test -n "$VITE_PAYPAL_CLIENT_ID" || { echo "::error::VITE_PAYPAL_CLIENT_ID is required"; exit 1; }
-          test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "::error::GOOGLE_CLIENT_ID is required for Google sign-in"; exit 1; }
           npm run build
       - name: Ensure Android project exists
         run: |
@@ -698,6 +689,8 @@ jobs:
           VITE_PAYPAL_ENVIRONMENT: ${{ vars.VITE_PAYPAL_ENVIRONMENT || 'sandbox' }}
           VITE_FIREBASE_PUSH_ENABLED: ${{ secrets.FIREBASE_IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 != '' && 'true' || 'false' }}
         run: |
+          test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "::error::GOOGLE_CLIENT_ID is required for Google sign-in."; exit 1; }
+          test -n "$VITE_GOOGLE_IOS_CLIENT_ID" || { echo "::error::GOOGLE_IOS_CLIENT_ID is required for native Google sign-in on iOS."; exit 1; }
           if [ -z "$VITE_PAYPAL_CLIENT_ID" ]; then
             echo "::error::VITE_PAYPAL_CLIENT_ID is missing. Add it as a GitHub Actions variable or secret before building mobile apps."
             exit 1
