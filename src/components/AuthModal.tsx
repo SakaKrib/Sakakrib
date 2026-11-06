@@ -13,6 +13,7 @@ import {
   EyeOff,
   Check,
   AlertCircle,
+  Apple,
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
@@ -58,6 +59,8 @@ export default function AuthModal() {
     signIn,
     signUp,
     signInWithGoogle,
+    signInWithApple,
+    appleSignInAvailable,
     verifyEmailOtp,
     resendSignupOtp,
     isAuthenticated,
@@ -663,6 +666,29 @@ export default function AuthModal() {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    if (loading) return;
+
+    setError(null);
+    setInfo(null);
+    setLoading(true);
+
+    try {
+      await signInWithApple();
+      clearAuthFields();
+      setAuthModalOpen(false);
+    } catch (err) {
+      console.error('Apple sign-in failed:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'We couldn’t sign you in with Apple. Please try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /*
    * ==========================================================
    * SWITCH AUTH MODE
@@ -844,6 +870,20 @@ export default function AuthModal() {
 
                 {loading ? 'Connecting to Google…' : 'Continue with Google'}
               </button>
+
+              {appleSignInAvailable && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleAppleSignIn();
+                  }}
+                  disabled={loading}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-900 bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50 dark:border-white dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
+                >
+                  <Apple className="h-5 w-5" aria-hidden="true" />
+                  {loading ? 'Connecting to Apple…' : 'Continue with Apple'}
+                </button>
+              )}
 
               <div className="my-4 flex items-center gap-3">
                 <div className="h-px flex-1 bg-gray-200 dark:bg-brand-800" />
