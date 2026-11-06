@@ -11,6 +11,8 @@ interface SubscriptionInvoiceResponse {
   result_description?: string | null;
   listing_id?: string | null;
   client_platform?: string;
+  plan_name?: string | null;
+  billing_cycle?: string | null;
 }
 
 type PaymentState = 'checking' | 'success' | 'failed' | 'unconfirmed';
@@ -24,6 +26,8 @@ export default function PayPalSubscriptionCancelPage() {
   const [message, setMessage] = useState('We are checking PayPal’s final payment status. Please keep SakaKrib open.');
   const [listingId, setListingId] = useState<string | null>(null);
   const [clientPlatform, setClientPlatform] = useState('web');
+  const [planName, setPlanName] = useState<string | null>(null);
+  const [billingCycle, setBillingCycle] = useState<string | null>(null);
 
   useEffect(() => {
     if (!invoiceId) {
@@ -48,6 +52,8 @@ export default function PayPalSubscriptionCancelPage() {
         if (disposed) return;
         setListingId(invoice.listing_id || null);
         setClientPlatform(String(invoice.client_platform || 'web').toLowerCase());
+        setPlanName(invoice.plan_name || null);
+        setBillingCycle(invoice.billing_cycle || null);
 
         const status = String(invoice.status || '').toUpperCase();
 
@@ -94,9 +100,21 @@ export default function PayPalSubscriptionCancelPage() {
   }, [invoiceId]);
 
   const continueTo = (target: 'pms-dashboard' | 'post-listing' | 'subscription-plans', id?: string | null) => {
+    if (target === 'subscription-plans' && planName && billingCycle) {
+      try {
+        sessionStorage.setItem('sakakrib.paypal.subscription.return.context', JSON.stringify({
+          plan_name: planName,
+          billing_cycle: billingCycle,
+        }));
+      } catch {
+        // Navigation still works if browser storage is unavailable.
+      }
+    }
     if (clientPlatform === 'android' && !Capacitor.isNativePlatform()) {
       const handoff = new URLSearchParams({ target });
       if (id) handoff.set('listing_id', id);
+      if (planName) handoff.set('plan_name', planName);
+      if (billingCycle) handoff.set('billing_cycle', billingCycle);
       window.location.assign(`com.sakakrib.app://paypal-return?${handoff.toString()}`);
       return;
     }
