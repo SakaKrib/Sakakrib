@@ -17,14 +17,14 @@ def _period_end(start, billing_cycle):
     return start + (timedelta(days=365) if billing_cycle == 'ANNUAL' else timedelta(days=30))
 
 
-def _paypal_return_url(base_url, invoice_id):
+def _paypal_return_url(base_url, invoice_id, client_platform='web'):
     parts = urlsplit(base_url)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query['invoice_id'] = str(invoice_id)
     # A short-lived signed token lets the return page read only this invoice's
     # final status even when PayPal opens the HTTPS fallback outside the app.
     query['state'] = signing.dumps(
-        {'invoice_id': str(invoice_id)},
+        {'invoice_id': str(invoice_id), 'client_platform': client_platform},
         salt='sakakrib.paypal-subscription-return',
         compress=True,
     )
@@ -49,13 +49,16 @@ def _paypal_frontend_urls(frontend_origin, invoice_id, client_platform='web'):
     ):
         raise ValueError('SAKAKRIB_PUBLIC_BASE_URL must be an HTTPS origin without a path, query string, or credentials.')
 
-    # The platform parameter remains accepted for API compatibility, but it
-    # never selects a different host. Verified App Links open the APK; otherwise
-    # the same URL is handled by the web app on this canonical origin.
+    # Preserve the checkout origin in the signed state. PayPal opens the same
+    # canonical HTTPS return page for every client; Android can then offer a
+    # native deep-link handoff if the OS did not auto-open the verified App Link.
+    platform = str(client_platform or 'web').strip().lower()
+    if platform not in ('android', 'ios', 'web'):
+        platform = 'web'
     origin = f'{base_parts.scheme}://{base_parts.netloc}'
     return (
-        _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id),
-        _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id),
+        _paypal_return_url(f'{origin}/paypal/subscription/return', invoice_id, platform),
+        _paypal_return_url(f'{origin}/paypal/subscription/cancel', invoice_id, platform),
     )
 def create_subscription_checkout(profile, plan_id, billing_cycle, provider, phone_number=None, listing_id=None, frontend_origin=None, client_platform='web'):
     billing_cycle = str(billing_cycle or 'MONTHLY').upper()
