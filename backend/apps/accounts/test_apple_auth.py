@@ -110,6 +110,57 @@ class AppleAuthenticationTests(TestCase):
         self.assertIn("state validation failed", response.data["error"].lower())
 
     @patch("apps.accounts.apple_auth.Path.is_file", return_value=True)
+    @patch("apps.accounts.apple_auth_views.authenticate_apple_credential")
+    @patch(
+        "apps.accounts.apple_auth_views.exchange_apple_authorization_code",
+        return_value={
+            "id_token": "mock-apple-id-token",
+            "access_token": "mock-apple-access-token",
+        },
+    )
+    def test_android_callback_validates_nonce_and_redirects_only_short_lived_tokens(
+        self, _exchange, mock_authenticate, _key_exists
+    ):
+        nonce = "a" * 64
+        response = self.client.post(
+            "/api/accounts/apple/callback/",
+            {
+                "state": f"sakakrib_android:{nonce}",
+                "code": "one-time-authorization-code",
+                "user": '{"name":{"firstName":"Apple","lastName":"User"}}',
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        callback = urlsplit(response["Location"])
+        self.assertEqual(callback.scheme, "com.sakakrib.app")
+        self.assertEqual(callback.netloc, "apple-login")
+        query = parse_qs(callback.query)
+        self.assertEqual(query["success"], ["true"])
+        self.assertEqual(query["access_token"], ["mock-apple-access-token"])
+        self.assertEqual(query["id_token"], ["mock-apple-id-token"])
+        self.assertNotIn("refresh_token", query)
+        mock_authenticate.assert_called_once_with(
+            "mock-apple-id-token",
+            expected_nonce=nonce,
+            supplied_name="Apple User",
+        )
+
+    def test_android_callback_rejects_malformed_nonce_state(self):
+        response = self.client.post(
+            "/api/accounts/apple/callback/",
+            {
+                "state": "sakakrib_android:not-a-valid-nonce",
+                "code": "one-time-authorization-code",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("state validation failed", response.data["error"].lower())
+
+    @patch("apps.accounts.apple_auth.Path.is_file", return_value=True)
     def test_apple_config_exposes_only_public_settings(self, _key_exists):
         response = self.client.get("/api/accounts/apple/config/")
         self.assertEqual(response.status_code, 200)
