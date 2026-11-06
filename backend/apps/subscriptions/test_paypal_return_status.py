@@ -35,7 +35,7 @@ class PayPalReturnStatusTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['status'], 'PAID')
         self.assertEqual(response.data['invoice_id'], str(self.invoice.id))
-        self.assertNotIn('listing_id', response.data)
+        self.assertIsNone(response.data['listing_id'])
         self.assertEqual(response.data['client_platform'], 'android')
         self.assertEqual(response.data['plan_name'], 'GROWTH')
         self.assertEqual(response.data['billing_cycle'], 'ANNUAL')
