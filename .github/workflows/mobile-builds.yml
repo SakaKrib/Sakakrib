@@ -187,6 +187,34 @@ jobs:
                   f"{{{android_ns}}}path": path,
               })
 
+          app_link_exists = any(
+              intent.get(f"{{{android_ns}}}autoVerify") == "true"
+              and any(
+                  data.get(f"{{{android_ns}}}host") == parsed.hostname
+                  and data.get(f"{{{android_ns}}}pathPrefix") == "/app/"
+                  for data in intent.findall("data")
+              )
+              for intent in activity.findall("intent-filter")
+          )
+          if not app_link_exists:
+              intent = ET.SubElement(activity, "intent-filter", {
+                  f"{{{android_ns}}}autoVerify": "true"
+              })
+              ET.SubElement(intent, "action", {
+                  f"{{{android_ns}}}name": "android.intent.action.VIEW"
+              })
+              ET.SubElement(intent, "category", {
+                  f"{{{android_ns}}}name": "android.intent.category.DEFAULT"
+              })
+              ET.SubElement(intent, "category", {
+                  f"{{{android_ns}}}name": "android.intent.category.BROWSABLE"
+              })
+              ET.SubElement(intent, "data", {
+                  f"{{{android_ns}}}scheme": "https",
+                  f"{{{android_ns}}}host": parsed.hostname,
+                  f"{{{android_ns}}}pathPrefix": "/app/",
+              })
+
           ET.indent(root, space="    ")
           manifest.write_text(
               '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -270,7 +298,15 @@ jobs:
                     found.add(data.get(ns+"path"))
           missing=expected-found
           if missing: raise SystemExit(f"Generated manifest missing App Link filters: {sorted(missing)}")
-          print(f"Verified App Link manifest for {host}: {sorted(found)}")
+          app_prefix_found = any(
+            intent.get(ns+"autoVerify")=="true" and any(
+              data.get(ns+"host")==host and data.get(ns+"pathPrefix")=="/app/"
+              for data in intent.findall("data")
+            )
+            for activity in root.iter("activity") for intent in activity.findall("intent-filter")
+          )
+          if not app_prefix_found: raise SystemExit("Generated manifest missing /app/ App Link prefix")
+          print(f"Verified App Link manifest for {host}: {sorted(found)} plus /app/")
           PY
 
       - name: Verify Android location permissions before packaging
@@ -427,6 +463,17 @@ jobs:
             ET.SubElement(filt,'category',{a+'name':'android.intent.category.DEFAULT'})
             ET.SubElement(filt,'category',{a+'name':'android.intent.category.BROWSABLE'})
             ET.SubElement(filt,'data',{a+'scheme':'https',a+'host':parsed.hostname,a+'path':path})
+          app_prefix_found=any(
+            intent.get(a+'autoVerify')=='true' and
+            any(d.get(a+'scheme')=='https' and d.get(a+'host')==parsed.hostname and d.get(a+'pathPrefix')=='/app/' for d in intent.findall('data'))
+            for intent in act.findall('intent-filter')
+          )
+          if not app_prefix_found:
+            filt=ET.SubElement(act,'intent-filter',{a+'autoVerify':'true'})
+            ET.SubElement(filt,'action',{a+'name':'android.intent.action.VIEW'})
+            ET.SubElement(filt,'category',{a+'name':'android.intent.category.DEFAULT'})
+            ET.SubElement(filt,'category',{a+'name':'android.intent.category.BROWSABLE'})
+            ET.SubElement(filt,'data',{a+'scheme':'https',a+'host':parsed.hostname,a+'pathPrefix':'/app/'})
           ET.indent(root,space='    '); p.write_text('<?xml version="1.0" encoding="utf-8"?>\n'+ET.tostring(root,encoding='unicode')+'\n')
           PY
       - name: Declare Android location permissions for release
@@ -497,7 +544,12 @@ jobs:
               for data in intent.findall('data'):
                 if data.get(a+'scheme')=='https' and data.get(a+'host')==host and data.get(a+'path') in expected: found.add(data.get(a+'path'))
           if expected-found: raise SystemExit(f'Missing release App Link filters: {sorted(expected-found)}')
-          print(f'Validated release manifest App Links: {sorted(found)}')
+          app_prefix_found=any(
+            intent.get(a+'autoVerify')=='true' and any(d.get(a+'host')==host and d.get(a+'pathPrefix')=='/app/' for d in intent.findall('data'))
+            for activity in root.iter('activity') for intent in activity.findall('intent-filter')
+          )
+          if not app_prefix_found: raise SystemExit('Missing /app/ App Link prefix')
+          print(f'Validated release manifest App Links: {sorted(found)} plus /app/')
           PY
 
       - name: Install stable keystore and configure release signing
