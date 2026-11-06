@@ -52,3 +52,23 @@ class CommunityPostReaction(models.Model):
 class Review(models.Model):
     id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); reviewer_id=models.UUIDField(); reviewee_id=models.UUIDField(null=True,blank=True); listing_id=models.UUIDField(null=True,blank=True); mover_id=models.UUIDField(null=True,blank=True); rating=models.IntegerField(default=5); comment=models.TextField(default=''); review_type=models.TextField(); created_at=models.DateTimeField(null=True,blank=True); booking_id=models.UUIDField(null=True,blank=True)
     class Meta: db_table='reviews'
+
+class SalePaymentRecord(models.Model):
+    """A payment received for a unit that is for sale (recorded manually by the owner/agent)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner_id = models.UUIDField()
+    listing_id = models.UUIDField()
+    unit_id = models.UUIDField()
+    buyer_name = models.TextField()
+    buyer_phone = models.TextField(blank=True, default='')
+    amount_kes = models.DecimalField(max_digits=14, decimal_places=2)
+    payment_method = models.TextField(blank=True, default='')
+    transaction_reference = models.TextField(blank=True, default='')
+    payment_date = models.DateField()
+    note = models.TextField(blank=True, default='')
+    recorded_by = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'sale_payment_records'
+        ordering = ['-payment_date', '-created_at']
