@@ -131,7 +131,7 @@ export default function PayPalSubscriptionCancelPage() {
         )}
         {(state === 'failed' || state === 'unconfirmed') && (
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-            <button type="button" onClick={() => continueTo('subscription-plans') className="btn-secondary">Back to Plans</button>
+            <button type="button" onClick={() => continueTo('subscription-plans')} className="btn-secondary">Back to Plans</button>
             {state === 'unconfirmed' && (
               <button type="button" onClick={() => window.location.reload()} className="btn-secondary inline-flex items-center justify-center gap-2">
                 <RefreshCw className="h-4 w-4" />Check Payment Again
