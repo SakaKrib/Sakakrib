@@ -749,19 +749,52 @@ jobs:
           info_path.write_bytes(plistlib.dumps(info))
           print("Google Sign-In iOS URL scheme configured.")
 
+          import re
           app_delegate_path = Path("ios/App/App/AppDelegate.swift")
-          app_delegate = app_delegate_path.read_text()
+          app_delegate = app_delegate_path.read_text(encoding="utf-8")
           if "import GoogleSignIn" not in app_delegate:
-              if "import Capacitor" not in app_delegate:
-                  raise SystemExit("Could not locate Capacitor import in iOS AppDelegate.swift")
-              app_delegate = app_delegate.replace("import Capacitor", "import Capacitor\\nimport GoogleSignIn", 1)
-          proxy_call = "return ApplicationDelegateProxy.shared.application(app, open: url, options: options)"
-          google_handler = "if GIDSignIn.sharedInstance.handle(url) { return true }\\n            " + proxy_call
+              capacitor_import = re.search(r"^import\\s+Capacitor\\s*$", app_delegate, re.MULTILINE)
+              if not capacitor_import:
+                  raise SystemExit("Could not locate Capacitor import in generated iOS AppDelegate.swift")
+              app_delegate = (
+                  app_delegate[:capacitor_import.end()]
+                  + "\\nimport GoogleSignIn"
+                  + app_delegate[capacitor_import.end():]
+              )
+
           if "GIDSignIn.sharedInstance.handle(url)" not in app_delegate:
-              if proxy_call not in app_delegate:
-                  raise SystemExit("Could not locate the Capacitor URL handler in AppDelegate.swift")
-              app_delegate = app_delegate.replace(proxy_call, google_handler, 1)
-          app_delegate_path.write_text(app_delegate)
+              open_url_method = re.search(
+                  r"(func\\s+application\\s*\\([^)]*open\\s+url\\s*:\\s*URL[^)]*\\)\\s*->\\s*Bool\\s*\\{)",
+                  app_delegate,
+                  re.DOTALL,
+              )
+              google_callback = (
+                  "\\n        if GIDSignIn.sharedInstance.handle(url) { return true }"
+              )
+              if open_url_method:
+                  insert_at = open_url_method.end()
+                  app_delegate = (
+                      app_delegate[:insert_at]
+                      + google_callback
+                      + app_delegate[insert_at:]
+                  )
+              else:
+                  class_match = re.search(r"class\\s+AppDelegate\\b", app_delegate)
+                  closing_brace = app_delegate.rfind("}")
+                  if not class_match or closing_brace < class_match.end():
+                      raise SystemExit("Could not locate AppDelegate class body for Google URL callback")
+                  method = (
+                      "\\n\\n    func application(_ app: UIApplication, open url: URL, "
+                      "options: [UIApplication.OpenURLOptionsKey: Any]) -> Bool {"
+                      "\\n        if GIDSignIn.sharedInstance.handle(url) { return true }"
+                      "\\n        return ApplicationDelegateProxy.shared.application(app, open: url, options: options)"
+                      "\\n    }\\n"
+                  )
+                  app_delegate = app_delegate[:closing_brace] + method + app_delegate[closing_brace:]
+
+          app_delegate_path.write_text(app_delegate, encoding="utf-8")
+          if "import GoogleSignIn" not in app_delegate or "GIDSignIn.sharedInstance.handle(url)" not in app_delegate:
+              raise SystemExit("Google Sign-In URL callback patch did not apply")
           print("Google Sign-In URL callback handler configured in AppDelegate.swift.")
 
           team = os.environ.get("IOS_APP_TEAM_ID", "").strip()
