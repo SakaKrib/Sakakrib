@@ -23,7 +23,7 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
 
     @override_settings(
         SAKAKRIB_PUBLIC_BASE_URL='https://app.example.test',
-        SAKAKRIB_PUBLIC_FRONTEND_URL='https://website.example.test',
+        SAKAKRIB_PUBLIC_FRONTEND_URL='https://app.example.test',
         SAKAKRIB_ANDROID_PAYPAL_RETURN_URL='',
         SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL='',
     )
@@ -53,12 +53,12 @@ class PayPalNativeReturnUrlTests(SimpleTestCase):
         SAKAKRIB_ANDROID_PAYPAL_RETURN_URL='',
         SAKAKRIB_ANDROID_PAYPAL_CANCEL_URL='',
     )
-    def test_web_checkout_keeps_website_return_urls_and_signed_status(self):
+    def test_web_checkout_uses_canonical_origin_and_signed_status(self):
         return_url, cancel_url = _paypal_frontend_urls(
             'https://website.example.test', 'invoice-123', 'web'
         )
 
-        self.assertEqual(urlsplit(return_url).netloc, 'website.example.test')
+        self.assertEqual(urlsplit(return_url).netloc, 'app.example.test')
         self.assert_signed_return_url(return_url, '/paypal/subscription/return')
-        self.assertEqual(urlsplit(cancel_url).netloc, 'website.example.test')
+        self.assertEqual(urlsplit(cancel_url).netloc, 'app.example.test')
         self.assert_signed_return_url(cancel_url, '/paypal/subscription/cancel')
