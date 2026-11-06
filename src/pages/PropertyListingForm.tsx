@@ -2319,6 +2319,8 @@ export default function PropertyListingForm({
 
                     </div>
 
+                    {!isPropertyManagementListing && (
+                      <>
                     {/* Size */}
 
                     <div>
