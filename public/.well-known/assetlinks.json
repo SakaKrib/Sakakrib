@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sakakrib.app",
+      "sha256_cert_fingerprints": [
+        "119597D31F53ED770837790A270258EE2BCB3EDD79BC43C2F045CB8ADFD4D7C6"
+      ]
+    }
+  }
+]
