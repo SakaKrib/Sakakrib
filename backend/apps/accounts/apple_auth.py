@@ -68,7 +68,7 @@ def _create_apple_client_secret() -> str:
         raise exceptions.AuthenticationFailed("Apple sign-in credentials could not be loaded.") from exc
 
 
-def exchange_apple_authorization_code(code: str) -> str:
+def exchange_apple_authorization_code(code: str) -> dict:
     if not apple_configuration_is_ready():
         raise exceptions.AuthenticationFailed("Apple sign-in is not fully configured on the server.")
     if not code or len(code) > 4096:
@@ -94,9 +94,12 @@ def exchange_apple_authorization_code(code: str) -> str:
         raise exceptions.AuthenticationFailed("Apple could not validate the sign-in request. Please try again.") from exc
 
     identity_token = token_response.get("id_token")
+    access_token = token_response.get("access_token")
     if not isinstance(identity_token, str) or not identity_token:
         raise exceptions.AuthenticationFailed("Apple did not return a valid identity token.")
-    return identity_token
+    if not isinstance(access_token, str) or not access_token:
+        raise exceptions.AuthenticationFailed("Apple did not return a valid access token.")
+    return token_response
 
 
 def verify_apple_identity_token(identity_token: str, expected_nonce: str | None = None) -> dict:
