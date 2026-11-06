@@ -765,17 +765,21 @@ jobs:
           print("Google Sign-In URL callback handler configured in AppDelegate.swift.")
 
           team = os.environ.get("IOS_APP_TEAM_ID", "").strip()
+          # The entitlement is included in the app build now; Apple Developer
+          # capability/provisioning is enabled later when the owner enrolls.
+          entitlements = {
+              "com.apple.developer.applesignin": ["Default"]
+          }
           if team:
               host = urlsplit(os.environ["SAKAKRIB_APP_LINK_BASE_URL"]).hostname
               if not host:
                   raise SystemExit("SAKAKRIB_APP_LINK_BASE_URL must include a public HTTPS host")
-              entitlements = {
-                  "com.apple.developer.associated-domains": [f"applinks:{host}"]
-              }
-              Path("ios/App/App/App.entitlements").write_bytes(plistlib.dumps(entitlements))
+              entitlements["com.apple.developer.associated-domains"] = [f"applinks:{host}"]
               print(f"iOS Universal Links entitlement prepared for {host}.")
           else:
               print("::warning::IOS_APP_TEAM_ID is not set; iOS Universal Links cannot be verified until the Apple Team ID is configured.")
+          Path("ios/App/App/App.entitlements").write_bytes(plistlib.dumps(entitlements))
+          print("Sign in with Apple entitlement prepared for the iOS target.")
           PY
           gem install xcodeproj --no-document
           ruby - <<'RUBY'
