@@ -378,7 +378,7 @@ jobs:
           content = gradle.read_text(encoding="utf-8")
           dependency = "implementation 'com.google.android.gms:play-services-location:21.3.0'"
           if dependency not in content:
-              match = re.search(r"dependencies\\s*\\{", content)
+              match = re.search(r"dependencies\s*\{", content)
               if not match:
                   raise SystemExit("Could not find Android app dependencies block")
               depth = 1
