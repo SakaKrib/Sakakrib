@@ -1,7 +1,7 @@
 from html import escape
 from typing import Any
 
-from .email_templates import SITE_URL, _button, _details, _first_name, _layout, _text
+from .email_templates import _app_link, _button, _details, _first_name, _layout, _text
 
 
 def mover_booking_request(notification: dict[str, Any]) -> str:
@@ -22,7 +22,7 @@ def mover_booking_request(notification: dict[str, Any]) -> str:
     requested_at = _text(notification.get("requested_at"), "Just now")
     expires_at = _text(notification.get("response_expires_at"), "30 minutes after the request")
     booking_id = _text(notification.get("booking_id"))
-    booking_url = notification.get('booking_url') or (f'{SITE_URL}/#mover-booking-detail/{booking_id}' if booking_id else f'{SITE_URL}/#mover-booking-requests')
+    booking_url = _app_link(f'mover-booking-detail/{booking_id}') if booking_id else _app_link('dashboard')
 
     body = f"""
       <div style="padding:32px 25px;text-align:center;background:#eef7f1;border-top:1px solid #d7eadc;border-bottom:1px solid #d7eadc;">
@@ -57,9 +57,6 @@ def mover_booking_request(notification: dict[str, Any]) -> str:
         </div>
 
         {_button(booking_url, "Review & Respond to Request", "14px 30px")}
-        <div style="text-align:center;margin:14px 0 10px;">
-          <a href="https://sakakrib.com" style="display:inline-block;padding:12px 24px;background:#ffffff;color:#255d3a;text-decoration:none;border:1px solid #255d3a;border-radius:8px;font-size:14px;font-weight:bold;">Open Saka Krib</a>
-        </div>
 
         <div style="margin-top:25px;padding:15px 18px;background:#f5f7f6;border-radius:8px;color:#777777;font-size:12px;line-height:1.6;">
           <strong style="color:#555555;">Booking ID:</strong> <span style="word-break:break-all;">{escape(booking_id or "Not available")}</span><br>
