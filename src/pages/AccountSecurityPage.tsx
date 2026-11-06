@@ -80,7 +80,7 @@ export default function AccountSecurityPage() {
           </span>
         </div>
         <div className="border-t border-gray-100 pt-4 dark:border-brand-800">
-          <p className="text-sm text-gray-600 dark:text-gray-300">Sign-in notifications are sent to this email address when your account is accessed.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300">Password sign-ins generate a security notification at this email address. If you do not recognize a sign-in, request a password reset below.</p>
         </div>
       </section>
 
@@ -89,7 +89,7 @@ export default function AccountSecurityPage() {
           <KeyRound className="mt-1 h-5 w-5 text-brand-600" />
           <div className="min-w-0 flex-1">
             <h2 className="font-semibold text-gray-900 dark:text-white">Password</h2>
-            <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Request a secure password-reset email. The link is sent only to the email address registered to this account and expires when its reset token is no longer valid.</p>
+            <p className="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Request a secure password-reset email. The link is sent to your registered email address. Resetting your password revokes existing refresh sessions so your devices must sign in again.</p>
             <button type="button" onClick={requestPasswordReset} disabled={requestingReset} className="btn-primary mt-4 disabled:cursor-not-allowed disabled:opacity-60">
               {requestingReset ? 'Sending request…' : 'Send password reset link'}
             </button>
