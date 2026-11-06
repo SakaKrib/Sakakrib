@@ -20,7 +20,6 @@ from .apple_auth import (
     apple_configuration_is_ready,
     authenticate_apple_credential,
     exchange_apple_authorization_code,
-    verify_apple_identity_token,
 )
 from .jwt_service import issue_token_pair, set_auth_cookies
 from .serializers import ProfileSerializer
@@ -160,18 +159,6 @@ class AppleLoginCallbackView(APIView):
         token_response = exchange_apple_authorization_code(code.strip())
         identity_token = token_response["id_token"]
 
-        if is_android_callback:
-            verify_apple_identity_token(identity_token, expected_nonce=nonce)
-            app_callback = f"{settings.APPLE_BUNDLE_ID}://apple-login"
-            callback_query = urllib.parse.urlencode({
-                "success": "true",
-                "access_token": token_response["access_token"],
-                "id_token": identity_token,
-            })
-            response = HttpResponseRedirect(f"{app_callback}?{callback_query}")
-            response["Cache-Control"] = "no-store"
-            response["Referrer-Policy"] = "no-referrer"
-            return response
         user_payload = request.data.get("user") or {}
         if isinstance(user_payload, str):
             try:
@@ -188,6 +175,24 @@ class AppleLoginCallbackView(APIView):
             for part in (name.get("firstName", ""), name.get("lastName", ""))
             if isinstance(part, str) and part.strip()
         )
+
+        if is_android_callback:
+            # Persist the first-login name before Apple stops returning it.
+            authenticate_apple_credential(
+                identity_token,
+                expected_nonce=nonce,
+                supplied_name=full_name,
+            )
+            app_callback = f"{settings.APPLE_BUNDLE_ID}://apple-login"
+            callback_query = urllib.parse.urlencode({
+                "success": "true",
+                "access_token": token_response["access_token"],
+                "id_token": identity_token,
+            })
+            response = HttpResponseRedirect(f"{app_callback}?{callback_query}")
+            response["Cache-Control"] = "no-store"
+            response["Referrer-Policy"] = "no-referrer"
+            return response
 
         user = authenticate_apple_credential(
             identity_token,
