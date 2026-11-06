@@ -7,9 +7,9 @@ from django.conf import settings
 
 
 SITE_URL = str(
-    getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '')
-    or getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '')
-    or 'https://sakakrib.com'
+    getattr(settings, 'SAKAKRIB_PUBLIC_BASE_URL', '')
+    or getattr(settings, 'SAKAKRIB_PUBLIC_FRONTEND_URL', '')
+    or 'http://localhost:5175'
 ).strip().rstrip('/')
 SUPPORT_EMAIL = "support@sakakrib.com"
 APP_LINK_BASE_URL = str(getattr(settings, 'SAKAKRIB_APP_LINK_BASE_URL', '') or SITE_URL).strip().rstrip('/')
