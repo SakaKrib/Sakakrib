@@ -76,12 +76,32 @@ function AppContent() {
     let didRoute = false;
     let removeListener: (() => void) | undefined;
 
-    const handleIncomingUrl = (url: string) => {
+    const handleIncomingUrl = async (url: string) => {
       if (didRoute) return;
 
       try {
         const incoming = new URL(url);
-        // App Links must use the same canonical host as the configured Django API.
+
+        // PayPal's external Custom Tab can hand control back through this
+        // app-specific scheme even when Android App Links are not verified
+        // (for example, a debug APK). Close the tab before routing in-app.
+        if (incoming.protocol === 'com.sakakrib.app:' && incoming.hostname === 'paypal-return') {
+          const target = incoming.searchParams.get('target');
+          const listingId = incoming.searchParams.get('listing_id');
+          let route: string | null = null;
+          if (target === 'pms-dashboard' || target === 'subscription-plans') {
+            route = target;
+          } else if (target === 'post-listing' && listingId) {
+            route = `post-listing/${encodeURIComponent(listingId)}`;
+          }
+          if (!route) return;
+          didRoute = true;
+          await Browser.close().catch(() => {});
+          window.location.hash = route;
+          return;
+        }
+
+        // HTTPS App Links must use the same canonical host as the configured Django API.
         const configuredAppOrigin = new URL(getDjangoApiBaseUrl()).origin;
         if (incoming.protocol !== 'https:' || incoming.origin !== configuredAppOrigin) {
           return;
