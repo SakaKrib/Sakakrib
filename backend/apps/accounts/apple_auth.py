@@ -6,6 +6,8 @@ import urllib.parse
 import urllib.request
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
+import ipaddress
 
 import jwt
 from django.conf import settings
@@ -28,7 +30,19 @@ def apple_configuration_is_ready() -> bool:
         getattr(settings, "APPLE_REDIRECT_URI", ""),
         key_path,
     )
-    return all(str(value).strip() for value in required) and Path(key_path).is_file()
+    if not all(str(value).strip() for value in required):
+        return False
+    redirect = urlsplit(str(settings.APPLE_REDIRECT_URI).strip())
+    if redirect.scheme != "https" or not redirect.hostname or redirect.fragment:
+        return False
+    if redirect.hostname.lower() == "localhost":
+        return False
+    try:
+        ipaddress.ip_address(redirect.hostname)
+        return False
+    except ValueError:
+        pass
+    return Path(key_path).is_file()
 
 
 def _create_apple_client_secret() -> str:
