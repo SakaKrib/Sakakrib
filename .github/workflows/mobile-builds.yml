@@ -47,7 +47,7 @@ jobs:
           DB_PASSWORD: ''
           DB_HOST: 127.0.0.1
           DB_PORT: '5432'
-        run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests --noinput --verbosity 2
+        run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests apps.accounts.test_apple_auth --noinput --verbosity 2
 
   android:
     name: Android APK
