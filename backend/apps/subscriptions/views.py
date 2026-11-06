@@ -284,6 +284,7 @@ class PayPalSubscriptionReturnStatusView(APIView):
             'result_description': invoice.result_description,
             'upgrade': bool(invoice.upgrade_plan_id),
             'listing_id': str(invoice.listing_id) if invoice.listing_id else None,
+            'client_platform': str(payload.get('client_platform') or 'web').lower(),
         })
 
 
