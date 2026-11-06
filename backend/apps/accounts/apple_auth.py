@@ -87,6 +87,8 @@ def exchange_apple_authorization_code(code: str) -> str:
 def verify_apple_identity_token(identity_token: str, expected_nonce: str | None = None) -> dict:
     if not identity_token or len(identity_token) > 16384:
         raise exceptions.AuthenticationFailed("Apple identity token is missing or invalid.")
+    if not expected_nonce:
+        raise exceptions.AuthenticationFailed("Apple sign-in nonce is required.")
 
     audiences = [
         value for value in (
