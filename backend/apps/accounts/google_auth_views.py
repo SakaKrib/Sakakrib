@@ -1,6 +1,7 @@
 import logging
 
 from django.utils import timezone
+from django.contrib.auth.models import update_last_login
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
@@ -40,6 +41,7 @@ class GoogleLoginView(APIView):
             status=status.HTTP_200_OK,
         )
         set_auth_cookies(response, access, refresh)
+        update_last_login(None, user)
 
         # Keep security notifications on the Django authentication boundary so
         # every successful login method uses the same server-side email queue.
