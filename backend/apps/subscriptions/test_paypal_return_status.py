@@ -20,7 +20,7 @@ class PayPalReturnStatusTests(TestCase):
             amount_usd='11.25',
         )
         self.token = signing.dumps(
-            {'invoice_id': str(self.invoice.id)},
+            {'invoice_id': str(self.invoice.id), 'client_platform': 'android'},
             salt='sakakrib.paypal-subscription-return',
             compress=True,
         )
@@ -36,6 +36,7 @@ class PayPalReturnStatusTests(TestCase):
         self.assertEqual(response.data['status'], 'PAID')
         self.assertEqual(response.data['invoice_id'], str(self.invoice.id))
         self.assertNotIn('listing_id', response.data)
+        self.assertEqual(response.data['client_platform'], 'android')
 
     def test_invalid_return_token_is_rejected(self):
         response = self.client.get(
