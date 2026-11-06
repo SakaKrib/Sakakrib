@@ -673,7 +673,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ),
           );
         } else if (notification.isDismissedMoment?.()) {
-          finish(new Error('Google sign-in was cancelled.'));
+          // Google reports "credential_returned" as a dismissed prompt
+          // moment even when authentication succeeded. Do not reject the
+          // sign-in promise in that case; the credential callback owns the
+          // successful completion after Django accepts the ID token.
+          const dismissedReason =
+            notification.getDismissedReason?.();
+
+          if (dismissedReason !== 'credential_returned') {
+            finish(new Error('Google sign-in was cancelled.'));
+          }
         }
       });
     });
