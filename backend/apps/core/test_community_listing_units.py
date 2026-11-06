@@ -53,7 +53,7 @@ class CommunityListingUnitSerializationTests(TestCase):
         response = CommunityPostV2View.as_view()(request)
 
         self.assertEqual(response.status_code, 200)
-        post = next(item for item in response.data["items"] if item["listing_id"] == str(listing.id))
+        post = next(item for item in response.data["items"] if str(item["listing_id"]) == str(listing.id))
         unit = post["listing"]["units"][0]
         self.assertEqual(unit["listing_type"], "rent")
         self.assertEqual(str(unit["rent"]), "32000.00")
