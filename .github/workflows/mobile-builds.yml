@@ -62,7 +62,7 @@ jobs:
           DB_PASSWORD: sakakrib_ci
           DB_HOST: 127.0.0.1
           DB_PORT: '5432'
-        run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests apps.accounts.test_apple_auth apps.subscriptions.test_paypal_native_return_urls --noinput --verbosity 2
+        run: python manage.py test apps.core.tests.EmailTemplateStyleParityTests apps.accounts.test_apple_auth apps.subscriptions.test_paypal_native_return_urls apps.subscriptions.test_paypal_return_status --noinput --verbosity 2
 
   android:
     name: Android APK
@@ -104,6 +104,7 @@ jobs:
             echo "::error::VITE_PAYPAL_CLIENT_ID is missing. Add it as a GitHub Actions variable or secret before building mobile apps."
             exit 1
           fi
+          npm run typecheck
           npm run build
           if ! grep -R -F -- "$VITE_PAYPAL_CLIENT_ID" dist/assets/ >/dev/null; then
             echo "::error::The PayPal client ID was not embedded in the Vite build."
