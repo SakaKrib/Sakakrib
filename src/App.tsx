@@ -128,7 +128,7 @@ function AppContent() {
           const allowedAppLinkViews = new Set([
             'pms-dashboard', 'dashboard', 'listing-detail',
             'subscription-plans', 'mover-tracking', 'mover-booking-detail',
-            'account-security', 'reset-password',
+            'account-security', 'reset-password', 'claim-rental',
           ]);
           if (!allowedAppLinkViews.has(view)) return;
           handledUrls.add(url);
@@ -252,7 +252,7 @@ function AppContent() {
     if (viewName === 'pms-dashboard' || viewName === 'dashboard' ||
         viewName === 'listing-detail' || viewName === 'subscription-plans' ||
         viewName === 'mover-tracking' || viewName === 'mover-booking-detail' ||
-        viewName === 'account-security') {
+        viewName === 'account-security' || viewName === 'claim-rental') {
       window.location.replace(`${window.location.origin}#${route}`);
     }
   }, []);

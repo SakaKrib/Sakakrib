@@ -15,6 +15,15 @@ from .notification_services import dispatch_user_notification
 from .email_templates import APP_LINK_BASE_URL
 
 
+def _public_app_origin(requested_origin=None):
+    """Public HTTPS origin for emailed app links; never the in-app capacitor/localhost origin."""
+    from .email_templates import APP_LINK_BASE_URL
+    configured = str(APP_LINK_BASE_URL or "").strip().rstrip("/")
+    if configured.startswith("https://"):
+        return configured
+    return str(requested_origin or "").strip().rstrip("/")
+
+
 def _hash_token(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -167,8 +176,8 @@ def create_renter_invitation(*, landlord_id, unit_id, renter_name, renter_phone,
         renter_phone=(renter_phone or "").strip() or None, renter_email=email, rent_amount=unit.rent,
         status="PENDING", invite_token_hash=_hash_token(token), invited_at=timezone.now(),
         invite_expires_at=timezone.now() + timedelta(days=14))
-    if app_base_url:
-        link = f"{app_base_url.rstrip('/')}/#claim-rental/{token}"
+    if app_base_url or _public_app_origin(app_base_url):
+        link = f"{_public_app_origin(app_base_url)}/app/claim-rental/{token}"
         NotificationEmail.objects.create(recipient=email, subject="You've been invited to SakaCrib",
             html_body=f"<p>You have been invited to connect your rental to SakaCrib.</p><p>Open this link to review the details and claim your rental:</p><p><a href=\"{link}\">{link}</a></p><p>This link expires in 14 days.</p>",
             template_type="renter_invitation", status="pending")
@@ -228,7 +237,7 @@ def resend_renter_invitation(*, landlord_id, association_id, app_base_url=None):
     row.invite_token_hash = _hash_token(token); row.invited_at = now; row.invite_expires_at = now + timedelta(days=14); row.updated_at = now
     row.save(update_fields=["invite_token_hash", "invited_at", "invite_expires_at", "updated_at"])
     if app_base_url and row.renter_email:
-        link = f"{app_base_url.rstrip('/')}/#claim-rental/{token}"
+        link = f"{_public_app_origin(app_base_url)}/app/claim-rental/{token}"
         NotificationEmail.objects.create(recipient=row.renter_email, subject="Reminder: you've been invited to SakaCrib",
             html_body=f"<p>Reminder: open this link to claim your rental:</p><p><a href=\"{link}\">{link}</a></p><p>This link expires in 14 days.</p>",
             template_type="renter_invitation", status="pending")
