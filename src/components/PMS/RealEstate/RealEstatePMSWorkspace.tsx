@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { loadRealEstateDashboardData, type RealEstateDashboardData } from '@/lib/RealEstateTs/Realestateservice';
 import RealEstateListings from './RealEstateListings';
+import PMSMaintenanceInbox from '@/components/PMS/PMSMaintenanceInbox';
 import RealEstatePMSTeam from './RealEstatePMSTeam';
 import { useLiveEvents } from '@/lib/useLiveEvents';
 import RealEstatePMSAnalytics from './RealEstatePMSAnalytics';
@@ -75,7 +76,7 @@ export default function RealEstatePMSWorkspace() {
       </div>;
     })()}
     {tab === 'team' && ownerIsAdmin && <div className="space-y-4"><div><h2 className="text-xl font-bold text-gray-900 dark:text-white">Agent Team</h2><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage team access while keeping all listing and unit capacity under the subscribing PMS account.</p></div><RealEstatePMSTeam /></div>}
-    {tab === 'operations' && <div className="space-y-6"><LandlordPMSRentalRequests /><RealEstatePMSCalendar listings={stats.listings} subscription={data.subscription} /><RealEstatePMSOperations listings={stats.listings.map((listing) => ({ id: String(listing.id), title: listing.title }))} maxUnitsPerListing={data.subscription?.max_units_per_listing} isAdmin={ownerIsAdmin} /></div>}
+    {tab === 'operations' && <div className="space-y-6"><LandlordPMSRentalRequests /><PMSMaintenanceInbox canManage={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} /><RealEstatePMSCalendar listings={stats.listings} subscription={data.subscription} /><RealEstatePMSOperations listings={stats.listings.map((listing) => ({ id: String(listing.id), title: listing.title }))} maxUnitsPerListing={data.subscription?.max_units_per_listing} isAdmin={ownerIsAdmin} /></div>}
     {tab === 'finance' && <div className="space-y-6"><PMSExportMenu /><RealEstatePMSFinance canCreateInvoices={ownerIsAdmin || String(data.team_context?.pms_role ?? '') === 'TEAM_MANAGER'} /><RealEstatePMSFinancialReport /></div>}
     {tab === 'reports' && <div className="space-y-6"><RealEstatePMSAnalytics /><RealEstatePMSFinancialReport /></div>}
     {tab === 'subscription' && <div className="space-y-6"><RealEstatePMSSubscriptionManagement data={data} isAdmin={ownerIsAdmin} /></div>}

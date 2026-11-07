@@ -1,6 +1,6 @@
-import { ArrowRight, CalendarDays, CreditCard, History, MapPin, Receipt, Truck } from 'lucide-react';
+import { ArrowRight, CalendarDays, CreditCard, History, MapPin, Receipt, Truck, Wrench } from 'lucide-react';
 
-export type RenterQuickAction = 'invoices' | 'payment' | 'find-mover' | 'track-move' | 'calendar' | 'moving-history';
+export type RenterQuickAction = 'invoices' | 'payment' | 'find-mover' | 'track-move' | 'calendar' | 'moving-history' | 'maintenance';
 
 interface RenterQuickActionsProps { hasActiveMove?: boolean; hasRentalHome?: boolean; onAction: (action: RenterQuickAction) => void; }
 
@@ -9,6 +9,7 @@ export default function RenterQuickActions({ hasActiveMove = false, hasRentalHom
     ...(hasRentalHome ? [
       { id: 'invoices' as const, icon: Receipt, iconClass: 'text-brand-600 dark:text-brand-400', title: 'Rent & Invoices', description: 'View your rent invoices' },
       { id: 'payment' as const, icon: CreditCard, iconClass: 'text-success-600 dark:text-success-400', title: 'Payment History', description: 'Review confirmed rent payments' },
+      { id: 'maintenance' as const, icon: Wrench, iconClass: 'text-warning-600 dark:text-warning-400', title: 'Maintenance', description: 'Report a problem at home' },
     ] : []),
     { id: 'find-mover' as const, icon: Truck, iconClass: 'text-accent-600 dark:text-accent-400', title: 'Find a Mover', description: 'Find moving services' },
     { id: 'track-move' as const, icon: MapPin, iconClass: 'text-purple-600 dark:text-purple-400', title: hasActiveMove ? 'Track Mover' : 'Track a Move', description: hasActiveMove ? 'View current move' : 'No active move' },

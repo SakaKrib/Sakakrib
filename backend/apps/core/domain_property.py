@@ -72,3 +72,27 @@ class SalePaymentRecord(models.Model):
     class Meta:
         db_table = 'sale_payment_records'
         ordering = ['-payment_date', '-created_at']
+
+
+class MaintenanceRequest(models.Model):
+    """A repair/maintenance request raised by a renter for the unit they occupy."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner_id = models.UUIDField()
+    listing_id = models.UUIDField()
+    unit_id = models.UUIDField()
+    renter_user_id = models.UUIDField()
+    title = models.TextField()
+    description = models.TextField(blank=True, default='')
+    category = models.TextField(default='other')
+    priority = models.TextField(default='normal')
+    status = models.TextField(default='OPEN')
+    response_note = models.TextField(blank=True, default='')
+    assigned_name = models.TextField(blank=True, default='')
+    assigned_phone = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'maintenance_requests'
+        ordering = ['-created_at']

@@ -57,6 +57,7 @@ import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
 import { RenterInvoicesPage, RenterMovingHistoryPage } from '@/pages/RenterPages';
+import RenterMaintenancePage from '@/pages/Renters/RenterMaintenancePage';
 import RenterCalendarPage from '@/components/RentersComponentPage/RenterCalendarPage';
 import RenterPaymentPage from '@/components/RentersComponentPage/RenterPaymentPage';
 import RenterActivitiesPage from '@/pages/Renters/RenterActivitiesPage';
@@ -288,6 +289,7 @@ function AppContent() {
       case 'moving-financial-records': return <MovingFinancialRecordsPage />;
       case 'moving-transaction-timeline': return <MovingTransactionTimelinePage />;
       case 'renter-invoices': return <RenterInvoicesPage />;
+      case 'renter-maintenance': return <RenterMaintenancePage />;
       case 'renter-payment': return <RenterPaymentPage />;
       case 'renter-moving-history': return <RenterMovingHistoryPage />;
       case 'renter-calendar': return <RenterCalendarPage />;

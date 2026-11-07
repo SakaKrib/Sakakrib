@@ -132,6 +132,25 @@ def _require_real_estate_admin(profile):
     return context
 
 
+def _notify_team_change(target_id, context, actor, role, added):
+    """Tell a team member (in-app + push) that their PMS access was granted or removed."""
+    try:
+        from apps.core.notification_services import dispatch_user_notification
+        label = 'Team Manager' if role == 'TEAM_MANAGER' else 'Agent'
+        owner_name = getattr(actor, 'full_name', None) or 'your agency'
+        dispatch_user_notification(
+            user_id=target_id,
+            notification_type='REAL_ESTATE_PMS_TEAM_ADDED' if added else 'REAL_ESTATE_PMS_TEAM_REMOVED',
+            title='You were added to a PMS team' if added else 'Your PMS team access was removed',
+            message=(f'{owner_name} added you as {label} on their Saka Krib Property Management System.' if added
+                     else f'{owner_name} removed your access to their Property Management System.'),
+            data={'real_estate_id': str(context['owner_id']), 'role': role},
+            event_key=f"re-pms-team:{'add' if added else 'remove'}:{context['owner_id']}:{target_id}:{timezone.now().timestamp():.0f}",
+        )
+    except Exception:  # notification delivery must never block team management
+        pass
+
+
 def add_real_estate_team_member(profile, user_id=None, role='AGENT', email=None):
     context = _require_real_estate_admin(profile)
     role = str(role or 'AGENT').upper()
@@ -148,6 +167,17 @@ def add_real_estate_team_member(profile, user_id=None, role='AGENT', email=None)
         raise ValueError('Agent account not found.')
     if target.id == profile.id:
         raise ValueError('The PMS administrator is already the administrator of this PMS.')
+    # Staff accounts must be real, verified, non-administrator users so a team seat never grants
+    # access to someone who could not otherwise be held accountable for the data they see.
+    target_role = str(getattr(target, 'role', '') or '').lower()
+    if target_role == 'admin' or getattr(target, 'is_staff', False) or getattr(target, 'is_superuser', False):
+        raise ValueError('Platform administrator accounts cannot be added to a PMS team.')
+    if target_role == 'real_estate':
+        raise ValueError('This account manages its own real estate PMS and cannot join another team.')
+    if not getattr(target, 'email_verified', False):
+        raise ValueError('The agent must verify their email address before they can be added to the team.')
+    if RealEstatePMSMember.objects.filter(user_id=target.id, status=RealEstatePMSMember.STATUS_ACTIVE).exclude(real_estate_id=context['owner_id']).exists():
+        raise ValueError('This person is already an active member of another real estate PMS team.')
     now = timezone.now()
     existing = RealEstatePMSMember.objects.filter(real_estate_id=context['owner_id'], user_id=target.id).first()
     if existing:
@@ -160,6 +190,7 @@ def add_real_estate_team_member(profile, user_id=None, role='AGENT', email=None)
     else:
         member = RealEstatePMSMember.objects.create(real_estate_id=context['owner_id'], user_id=target.id, role=role, status=RealEstatePMSMember.STATUS_ACTIVE, created_at=now, updated_at=now)
         created = True
+    _notify_team_change(target.id, context, profile, member.role, added=True)
     return {'id': str(member.id), 'user_id': str(member.user_id), 'email': target.email, 'full_name': target.full_name, 'role': member.role, 'status': member.status, 'created_at': member.created_at, 'updated_at': member.updated_at, 'created': created}
 
 
@@ -171,6 +202,7 @@ def remove_real_estate_team_member(profile, user_id):
     member.status = RealEstatePMSMember.STATUS_SUSPENDED
     member.updated_at = timezone.now()
     member.save(update_fields=['status', 'updated_at'])
+    _notify_team_change(user_id, context, profile, member.role, added=False)
     RealEstatePMSListingAssignment.objects.filter(real_estate_id=context['owner_id'], agent_id=user_id, is_active=True).update(is_active=False, updated_at=timezone.now())
     return {'success': True, 'user_id': str(user_id), 'status': member.status}
 

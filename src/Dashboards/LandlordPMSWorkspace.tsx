@@ -14,6 +14,7 @@ import LandlordPMSCollectionTrend from './LandlordPMSCollectionTrend';
 import LandlordPMSInsightsPanel from './LandlordPMSInsightsPanel';
 import LandlordPMSPropertyWorkflow from './LandlordPMSPropertyWorkflow';
 import LandlordPMSRentalRequests from './LandlordPMSRentalRequests';
+import PMSMaintenanceInbox from '@/components/PMS/PMSMaintenanceInbox';
 import LandlordPMSQuickActions from './LandlordPMSQuickActions';
 import LandlordPMSNotifications from './LandlordPMSNotifications';
 import LandlordPMSSettings from './LandlordPMSSettings';
@@ -119,7 +120,7 @@ export default function LandlordPMSWorkspace() {
       </div>
       {error && <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-800 dark:bg-error-950/50 dark:text-error-200">Your PMS workspace could not be loaded: {error}</div>}
       {tab === 'overview' && <><LandlordPMSOverview onNavigate={(nextTab) => setTab(nextTab)} /><LandlordPMSQuickActions onNavigate={(nextTab) => setTab(nextTab)} /></>}
-      {tab === 'management' && <><LandlordPMSRentalRequests /><LandlordPMSPropertyWorkflow /></>}
+      {tab === 'management' && <><LandlordPMSRentalRequests /><PMSMaintenanceInbox /><LandlordPMSPropertyWorkflow /></>}
       {tab === 'rent' && <><LandlordPMSCalendar /><LandlordPMSCalendarStats /><LandlordPMSRentControls /></>}
       {tab === 'finance' && <><LandlordPMSFinance /><SalePaymentsPanel /><LandlordPMSCollectionTrend /><PMSExportMenu /></>}
       {tab === 'insights' && <LandlordPMSInsightsPanel />}
