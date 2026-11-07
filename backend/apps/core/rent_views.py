@@ -34,7 +34,7 @@ def _require_active_landlord(request):
     return _pms_actor(request)[1]
 
 
-def _pms_actor(request):
+def _pms_actor(request, allow_read_only=False):
     """Resolve who may act on rent records and on whose behalf.
 
     Returns (owner_id, error_response). Landlords act for themselves. A real-estate owner, or a
@@ -49,14 +49,14 @@ def _pms_actor(request):
         access = pms_access(user)
         if not access.get("allowed"):
             return None, Response({"detail": "Landlord PMS access is required.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
-        if access.get("read_only"):
+        if access.get("read_only") and not allow_read_only:
             return None, Response({"detail": "PMS is read-only during the subscription grace period.", "pms_access": access}, status=status.HTTP_403_FORBIDDEN)
         return user.id, None
     from apps.subscriptions.services import get_real_estate_pms_context
     context = get_real_estate_pms_context(user)
     if not context:
         return None, Response({"detail": "PMS access is required."}, status=status.HTTP_403_FORBIDDEN)
-    if getattr(context.get("subscription"), "status", "") == "GRACE_PERIOD":
+    if getattr(context.get("subscription"), "status", "") == "GRACE_PERIOD" and not allow_read_only:
         return None, Response({"detail": "PMS is read-only during the subscription grace period."}, status=status.HTTP_403_FORBIDDEN)
     if context.get("pms_role") not in ("ADMIN", "TEAM_MANAGER"):
         return None, Response({"detail": "Your PMS role cannot manage invoices or confirm payments."}, status=status.HTTP_403_FORBIDDEN)

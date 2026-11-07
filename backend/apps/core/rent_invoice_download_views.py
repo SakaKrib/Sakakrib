@@ -104,7 +104,8 @@ class RentInvoiceDownloadView(APIView):
             pdf.drawString(50, y, "How to pay")
             y -= 18
             labels = {"provider": "Method", "mpesa_method": "M-Pesa type", "display_name": "Account name", "paybill_number": "Paybill",
-                      "paybill_account": "Account no.", "till_number": "Till", "paypal_email": "PayPal"}
+                      "paybill_account": "Account no.", "till_number": "Till", "paypal_email": "PayPal",
+                      "bank_name": "Bank", "bank_account_name": "Account holder", "bank_account_number": "Bank account no.", "bank_branch": "Branch"}
             for key, label in labels.items():
                 value = destination.get(key)
                 if value:

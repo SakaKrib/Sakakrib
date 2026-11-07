@@ -237,7 +237,7 @@ class PMSDashboardView(APIView):
             'paymentMethods': [{
                 'id': str(x.id), 'provider': x.provider, 'mpesa_method': x.mpesa_method,
                 'display_name': x.display_name, 'paybill_number': x.paybill_number, 'paybill_account': x.paybill_account,
-                'till_number': x.till_number, 'paypal_email': x.paypal_email, 'is_default': x.is_default,
+                'till_number': x.till_number, 'paypal_email': x.paypal_email, 'bank_name': x.bank_name, 'bank_account_name': x.bank_account_name, 'bank_account_number': x.bank_account_number, 'bank_branch': x.bank_branch, 'is_default': x.is_default,
                 'is_active': x.is_active, 'created_at': x.created_at, 'updated_at': x.updated_at,
             } for x in methods],
             'listingPayments': [{

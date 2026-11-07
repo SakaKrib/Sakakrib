@@ -50,6 +50,9 @@ class ListingPaymentMethodPublicSerializer(serializers.Serializer):
     paybill_account = serializers.CharField(allow_null=True)
     till_number = serializers.CharField(allow_null=True)
     paypal_email = serializers.EmailField(allow_null=True)
+    bank_name = serializers.CharField(allow_null=True, required=False)
+    bank_account_name = serializers.CharField(allow_null=True, required=False)
+    bank_account_number = serializers.CharField(allow_null=True, required=False)
     is_default = serializers.BooleanField()
 
 
@@ -182,6 +185,9 @@ class ListingSerializer(serializers.ModelSerializer):
                 'paybill_account': row.paybill_account,
                 'till_number': row.till_number,
                 'paypal_email': row.paypal_email,
+                'bank_name': row.bank_name,
+                'bank_account_name': row.bank_account_name,
+                'bank_account_number': row.bank_account_number,
                 'is_default': row.is_default,
             })
         return ListingPaymentMethodPublicSerializer(payload, many=True).data

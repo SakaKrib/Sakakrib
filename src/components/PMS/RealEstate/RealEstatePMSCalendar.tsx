@@ -131,10 +131,10 @@ export default function RealEstatePMSCalendar({
   const monthLabel = new Intl.DateTimeFormat('en-KE', { month: 'long', year: 'numeric' }).format(month);
 
   const toneClass = (tone: CalendarEvent['tone']) => {
-    if (tone === 'success') return 'bg-success-50 text-success-700 dark:bg-success-900/30 dark:text-success-300';
-    if (tone === 'warning') return 'bg-warning-50 text-warning-700 dark:bg-warning-900/30 dark:text-warning-300';
-    if (tone === 'danger') return 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300';
-    return 'bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-200';
+    if (tone === 'success') return 'bg-success-100 text-success-900 dark:bg-success-800 dark:text-success-50';
+    if (tone === 'warning') return 'bg-warning-100 text-warning-900 dark:bg-warning-800 dark:text-warning-50';
+    if (tone === 'danger') return 'bg-red-100 text-red-900 dark:bg-red-800 dark:text-red-50';
+    return 'bg-brand-100 text-brand-900 dark:bg-brand-700 dark:text-brand-50';
   };
 
   const leaseEvents = monthEvents.filter((event) => ['LEASE_START', 'LEASE_END', 'LEASE_RENEWAL'].includes(event.type || '')).length;
@@ -171,7 +171,7 @@ export default function RealEstatePMSCalendar({
           return (
             <div key={cell ? cell.toISOString() : `empty-${index}`} className={`min-h-20 rounded-lg border p-1.5 ${cell ? 'border-gray-100 dark:border-brand-800' : 'border-transparent'} ${isToday ? 'ring-2 ring-brand-500 ring-inset' : ''}`}>
               {cell && <>
-                <p className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400">{cell.getDate()}</p>
+                <p className="text-right text-xs font-semibold text-gray-600 dark:text-gray-300">{cell.getDate()}</p>
                 <div className="mt-1 space-y-1">
                   {dayEvents.slice(0, 3).map((event, eventIndex) => <div key={`${event.type || event.label}-${eventIndex}`} className={`truncate rounded-md px-1.5 py-1 text-[10px] font-semibold ${toneClass(event.tone)}`} title={`${event.label}: ${event.detail}`}>{event.label}</div>)}
                   {dayEvents.length > 3 && <p className="text-[10px] text-gray-400">+{dayEvents.length - 3} more</p>}
@@ -183,10 +183,10 @@ export default function RealEstatePMSCalendar({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-4">
-        <div className="rounded-xl bg-brand-50 p-3 dark:bg-brand-800/60"><div className="flex items-center gap-2"><Home className="h-4 w-4 text-brand-600" /><p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Listing events</p></div><p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{monthEvents.filter((event) => event.type === 'LISTING_CREATED').length}</p></div>
-        <div className="rounded-xl bg-success-50 p-3 dark:bg-success-900/20"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-success-600" /><p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Lease events</p></div><p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{leaseEvents}</p></div>
-        <div className="rounded-xl bg-warning-50 p-3 dark:bg-warning-900/20"><div className="flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-warning-600" /><p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Rent & payments</p></div><p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{rentEvents}</p></div>
-        <div className="rounded-xl bg-red-50 p-3 dark:bg-red-900/20"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-600" /><p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Today</p></div><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{selectedDayEvents.length ? `${selectedDayEvents.length} event${selectedDayEvents.length === 1 ? '' : 's'}` : `${subscriptionEvents} subscription event${subscriptionEvents === 1 ? '' : 's'} this month`}</p></div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-700 dark:bg-brand-900"><div className="flex items-center gap-2"><Home className="h-4 w-4 text-brand-600" /><p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Listing events</p></div><p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{monthEvents.filter((event) => event.type === 'LISTING_CREATED').length}</p></div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-700 dark:bg-brand-900"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-success-600" /><p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Lease events</p></div><p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{leaseEvents}</p></div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-700 dark:bg-brand-900"><div className="flex items-center gap-2"><CircleDollarSign className="h-4 w-4 text-warning-600" /><p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Rent & payments</p></div><p className="mt-1 text-lg font-bold text-gray-900 dark:text-white">{rentEvents}</p></div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-brand-700 dark:bg-brand-900"><div className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-red-600" /><p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Today</p></div><p className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{selectedDayEvents.length ? `${selectedDayEvents.length} event${selectedDayEvents.length === 1 ? '' : 's'}` : `${subscriptionEvents} subscription event${subscriptionEvents === 1 ? '' : 's'} this month`}</p></div>
       </div>
 
       <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">Overdue events are highlighted separately so rent follow-up is visible from the calendar.</div>

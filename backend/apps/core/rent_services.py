@@ -83,7 +83,8 @@ def _get_payment_destination(payment_method_id, unit, actor_id):
         raise ValidationError("Add an active payment account before sending a rent invoice.")
     return {"payment_method_id": str(method.id), "provider": method.provider, "mpesa_method": method.mpesa_method,
             "display_name": method.display_name, "paybill_number": method.paybill_number,
-            "paybill_account": method.paybill_account, "till_number": method.till_number, "paypal_email": method.paypal_email}
+            "paybill_account": method.paybill_account, "till_number": method.till_number, "paypal_email": method.paypal_email,
+            "bank_name": method.bank_name, "bank_account_name": method.bank_account_name, "bank_account_number": method.bank_account_number, "bank_branch": method.bank_branch}
 
 
 def _periods_from_payload(periods):

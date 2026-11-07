@@ -12,12 +12,20 @@ type PaymentMethod = {
   paybill_account?: string | null;
   till_number?: string | null;
   paypal_email?: string | null;
+  bank_name?: string | null;
+  bank_account_name?: string | null;
+  bank_account_number?: string | null;
+  bank_branch?: string | null;
   is_default?: boolean;
   is_active?: boolean;
 };
 
 type FormState = {
-  provider: 'MPESA' | 'PAYPAL';
+  provider: 'MPESA' | 'PAYPAL' | 'BANK';
+  bank_name: string;
+  bank_account_name: string;
+  bank_account_number: string;
+  bank_branch: string;
   mpesa_method: 'PAYBILL' | 'TILL';
   display_name: string;
   paybill_number: string;
@@ -29,6 +37,10 @@ type FormState = {
 
 const emptyForm: FormState = {
   provider: 'MPESA',
+  bank_name: '',
+  bank_account_name: '',
+  bank_account_number: '',
+  bank_branch: '',
   mpesa_method: 'PAYBILL',
   display_name: '',
   paybill_number: '',
@@ -44,11 +56,16 @@ const labelClassName = 'text-sm font-semibold text-gray-700 dark:text-gray-200';
 function label(method: PaymentMethod) {
   if (method.display_name) return method.display_name;
   if (method.provider === 'PAYPAL') return 'PayPal';
+  if (method.provider === 'BANK') return method.bank_name || 'Bank account';
   return method.mpesa_method === 'TILL' ? 'M-Pesa Till' : 'M-Pesa PayBill';
 }
 
 function destination(method: PaymentMethod) {
   if (method.provider === 'PAYPAL') return method.paypal_email || 'PayPal email not set';
+  if (method.provider === 'BANK') {
+    const number = method.bank_account_number || '';
+    return `${method.bank_name || 'Bank'} · Account ${number.length > 4 ? `••••${number.slice(-4)}` : number || '—'}${method.bank_account_name ? ` · ${method.bank_account_name}` : ''}`;
+  }
   if (method.mpesa_method === 'TILL') return `Till ${method.till_number || '—'}`;
   return `PayBill ${method.paybill_number || '—'} · Account ${method.paybill_account || '—'}`;
 }
@@ -135,7 +152,11 @@ export default function LandlordPMSSettings() {
   const startEdit = (method: PaymentMethod) => {
     setEditingId(method.id);
     setForm({
-      provider: method.provider === 'PAYPAL' ? 'PAYPAL' : 'MPESA',
+      provider: method.provider === 'PAYPAL' ? 'PAYPAL' : method.provider === 'BANK' ? 'BANK' : 'MPESA',
+      bank_name: method.bank_name || '',
+      bank_account_name: method.bank_account_name || '',
+      bank_account_number: method.bank_account_number || '',
+      bank_branch: method.bank_branch || '',
       mpesa_method: method.mpesa_method === 'TILL' ? 'TILL' : 'PAYBILL',
       display_name: method.display_name || '',
       paybill_number: method.paybill_number || '',
@@ -241,6 +262,7 @@ export default function LandlordPMSSettings() {
               <Select value={form.provider} disabled={Boolean(editingId)} onChange={(e) => setForm((current) => ({ ...current, provider: e.target.value as FormState['provider'] }))} className={inputClassName}>
                 <option value="MPESA">M-Pesa</option>
                 <option value="PAYPAL">PayPal</option>
+                <option value="BANK">Bank account</option>
               </Select>
             </label>
 
@@ -277,6 +299,28 @@ export default function LandlordPMSSettings() {
                   <input value={form.till_number} onChange={(e) => setForm((current) => ({ ...current, till_number: e.target.value }))} placeholder="Enter Till number" inputMode="numeric" className={inputClassName} required />
                 </label>
               )}
+            </div>
+          )}
+
+          {form.provider === 'BANK' && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className={labelClassName}>Bank name</span>
+                <input value={form.bank_name} onChange={(e) => setForm((current) => ({ ...current, bank_name: e.target.value }))} placeholder="e.g. Equity Bank" className={inputClassName} required />
+              </label>
+              <label className="block">
+                <span className={labelClassName}>Account holder name</span>
+                <input value={form.bank_account_name} onChange={(e) => setForm((current) => ({ ...current, bank_account_name: e.target.value }))} placeholder="Name on the account" className={inputClassName} required />
+              </label>
+              <label className="block">
+                <span className={labelClassName}>Bank account number</span>
+                <input value={form.bank_account_number} onChange={(e) => setForm((current) => ({ ...current, bank_account_number: e.target.value }))} placeholder="Account number" inputMode="numeric" className={inputClassName} required />
+              </label>
+              <label className="block">
+                <span className={labelClassName}>Branch (optional)</span>
+                <input value={form.bank_branch} onChange={(e) => setForm((current) => ({ ...current, bank_branch: e.target.value }))} placeholder="e.g. Westlands" className={inputClassName} />
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 sm:col-span-2">Only the details a renter needs to pay you are stored. Never enter PINs, card numbers or online banking passwords.</p>
             </div>
           )}
 

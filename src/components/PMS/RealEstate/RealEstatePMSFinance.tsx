@@ -5,6 +5,7 @@ import Select from '@/components/ui/Select';
 import SalePaymentsPanel from '@/components/PMS/SalePaymentsPanel';
 import { protectedPost } from '@/lib/djangoApi';
 import { getRealEstatePMSFinance, type RealEstatePMSFinanceData, createRealEstatePMSInvoice } from '@/lib/RealEstateTs/RealEstatePMSFinanceService';
+import { unwrap } from '@/lib/unwrap';
 import { getRealEstatePMSUnits, type RealEstatePMSUnit } from '@/lib/RealEstateTs/RealEstatePMSOperationsService';
 
 interface Props {
@@ -46,8 +47,8 @@ export default function RealEstatePMSFinance({ canCreateInvoices }: Props) {
     setError(null);
     try {
       const [financeResult, unitsResult] = await Promise.all([getRealEstatePMSFinance(), getRealEstatePMSUnits()]);
-      setData(financeResult.data ?? null);
-      const nextUnits = unitsResult.data ?? [];
+      setData(unwrap<RealEstatePMSFinanceData>(financeResult) ?? null);
+      const nextUnits = unwrap<RealEstatePMSUnit[]>(unitsResult) ?? [];
       setUnits(nextUnits);
       const firstRentUnit = nextUnits.find((unit) => (unit as RealEstatePMSUnit & { listing_type?: string }).listing_type !== 'sale' && unit.renter_assoc_id);
       setSelectedUnit((current) => current || firstRentUnit?.unit_id || '');

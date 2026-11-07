@@ -12,6 +12,7 @@ import {
 
 function methodLabel(method: RealEstatePaymentMethod) {
   if (method.provider === 'PAYPAL') return `PayPal — ${method.paypal_email}`;
+  if (method.provider === 'BANK') { const n = method.bank_account_number || ''; return `${method.bank_name || 'Bank'} — ••••${n.slice(-4)}${method.bank_account_name ? ` (${method.bank_account_name})` : ''}`; }
   if (method.mpesa_method === 'PAYBILL') return `M-Pesa PayBill — ${method.paybill_number} (${method.paybill_account})`;
   return `M-Pesa Till — ${method.till_number}`;
 }
@@ -24,6 +25,10 @@ function AddForm({ onAdded, onCancel, editing }: { onAdded: () => Promise<void>;
   const [paybillAccount, setPaybillAccount] = useState(editing?.paybill_account ?? '');
   const [tillNumber, setTillNumber] = useState(editing?.till_number ?? '');
   const [paypalEmail, setPaypalEmail] = useState(editing?.paypal_email ?? '');
+  const [bankName, setBankName] = useState(editing?.bank_name ?? '');
+  const [bankHolder, setBankHolder] = useState(editing?.bank_account_name ?? '');
+  const [bankNumber, setBankNumber] = useState(editing?.bank_account_number ?? '');
+  const [bankBranch, setBankBranch] = useState(editing?.bank_branch ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +37,10 @@ function AddForm({ onAdded, onCancel, editing }: { onAdded: () => Promise<void>;
     setSaving(true);
     setError(null);
     try {
-      if (provider === 'PAYPAL') {
+      if (provider === 'BANK') {
+        if (!bankName.trim() || !bankHolder.trim() || !bankNumber.trim()) throw new Error('Bank name, account name and account number are required.');
+        await write({ provider: 'BANK', display_name: displayName.trim() || null, bank_name: bankName.trim(), bank_account_name: bankHolder.trim(), bank_account_number: bankNumber.trim(), bank_branch: bankBranch.trim() || null });
+      } else if (provider === 'PAYPAL') {
         if (!paypalEmail.trim()) throw new Error('PayPal email is required.');
         await write({ provider: 'PAYPAL', display_name: displayName.trim() || null, paypal_email: paypalEmail.trim() });
       } else if (mpesaMethod === 'PAYBILL') {
@@ -55,14 +63,22 @@ function AddForm({ onAdded, onCancel, editing }: { onAdded: () => Promise<void>;
       <h3 className="font-semibold text-gray-900 dark:text-white">Add payment destination</h3>
       <div className="mt-4 space-y-4">
         <div className="flex gap-2">
-          {(['MPESA', 'PAYPAL'] as const).map((item) => (
+          {(['MPESA', 'PAYPAL', 'BANK'] as const).map((item) => (
             <button key={item} type="button" onClick={() => setProvider(item)} className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold ${provider === item ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200' : 'border-gray-200 text-gray-500 dark:border-brand-700'}`}>
-              {item === 'MPESA' ? 'M-Pesa' : 'PayPal'}
+              {item === 'MPESA' ? 'M-Pesa' : item === 'PAYPAL' ? 'PayPal' : 'Bank'}
             </button>
           ))}
         </div>
         <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Label (optional), e.g. Main account" className="input-field" />
-        {provider === 'MPESA' ? (
+        {provider === 'BANK' ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <input value={bankName} onChange={(event) => setBankName(event.target.value)} placeholder="Bank name" className="input-field" />
+            <input value={bankHolder} onChange={(event) => setBankHolder(event.target.value)} placeholder="Account holder name" className="input-field" />
+            <input value={bankNumber} onChange={(event) => setBankNumber(event.target.value)} placeholder="Bank account number" inputMode="numeric" className="input-field" />
+            <input value={bankBranch} onChange={(event) => setBankBranch(event.target.value)} placeholder="Branch (optional)" className="input-field" />
+            <p className="text-xs text-gray-500 dark:text-gray-400 sm:col-span-2">Only enter what a renter needs to pay you. Never enter PINs, card numbers or online banking passwords.</p>
+          </div>
+        ) : provider === 'MPESA' ? (
           <>
             <div className="flex gap-2">
               {(['PAYBILL', 'TILL'] as const).map((item) => (

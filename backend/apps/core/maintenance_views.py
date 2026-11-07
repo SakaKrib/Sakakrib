@@ -72,7 +72,7 @@ class PMSMaintenanceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        owner_id, denied = _pms_actor(request)
+        owner_id, denied = _pms_actor(request, allow_read_only=True)
         if denied:
             return denied
         rows = list(MaintenanceRequest.objects.filter(owner_id=owner_id)[:200])

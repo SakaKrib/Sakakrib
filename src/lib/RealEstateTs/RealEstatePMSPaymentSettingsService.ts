@@ -1,6 +1,6 @@
 import { djangoRequest, protectedGet, protectedPatch, protectedPost } from '@/lib/djangoApi';
 
-export type RealEstatePaymentProvider = 'MPESA' | 'PAYPAL';
+export type RealEstatePaymentProvider = 'MPESA' | 'PAYPAL' | 'BANK';
 export type RealEstateMpesaMethod = 'PAYBILL' | 'TILL';
 
 export interface RealEstatePaymentMethod {
@@ -12,6 +12,10 @@ export interface RealEstatePaymentMethod {
   paybill_account: string | null;
   till_number: string | null;
   paypal_email: string | null;
+  bank_name?: string | null;
+  bank_account_name?: string | null;
+  bank_account_number?: string | null;
+  bank_branch?: string | null;
   is_default: boolean;
   is_active: boolean;
   created_at: string;

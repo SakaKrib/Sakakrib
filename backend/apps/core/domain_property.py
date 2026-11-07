@@ -4,7 +4,7 @@ from django.db import models
 from django.utils import timezone
 
 class LandlordPaymentMethod(models.Model):
-    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); landlord_id=models.UUIDField(); provider=models.TextField(); mpesa_method=models.TextField(null=True,blank=True); display_name=models.TextField(); paybill_number=models.TextField(null=True,blank=True); paybill_account=models.TextField(null=True,blank=True); till_number=models.TextField(null=True,blank=True); paypal_email=models.TextField(null=True,blank=True); is_default=models.BooleanField(default=False); is_active=models.BooleanField(default=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
+    id=models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False); landlord_id=models.UUIDField(); provider=models.TextField(); mpesa_method=models.TextField(null=True,blank=True); display_name=models.TextField(); paybill_number=models.TextField(null=True,blank=True); paybill_account=models.TextField(null=True,blank=True); till_number=models.TextField(null=True,blank=True); paypal_email=models.TextField(null=True,blank=True); bank_name=models.TextField(null=True,blank=True); bank_account_name=models.TextField(null=True,blank=True); bank_account_number=models.TextField(null=True,blank=True); bank_branch=models.TextField(null=True,blank=True); is_default=models.BooleanField(default=False); is_active=models.BooleanField(default=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     class Meta: db_table='landlord_payment_methods'
 
 class PropertyUnit(models.Model):

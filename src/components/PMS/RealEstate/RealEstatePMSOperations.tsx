@@ -17,6 +17,7 @@ import {
   type RealEstatePMSLease,
 } from '@/lib/RealEstateTs/RealEstatePMSLeaseService';
 
+import { unwrap } from '@/lib/unwrap';
 import Select from '@/components/ui/Select';
 import CountInput from '@/components/ui/CountInput';
 interface Props {
@@ -55,9 +56,9 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
     setError(null);
     try {
       const [unitResult, leaseResult] = await Promise.all([getRealEstatePMSUnits(), getRealEstatePMSLeases()]);
-      const nextUnits = unitResult.data ?? [];
+      const nextUnits = unwrap<RealEstatePMSUnit[]>(unitResult) ?? [];
       setUnits(nextUnits);
-      setLeases(leaseResult.data ?? []);
+      setLeases(unwrap<RealEstatePMSLease[]>(leaseResult) ?? []);
       setLeaseUnitId((current) => current || nextUnits.find((unit) => unit.renter_assoc_id)?.unit_id || nextUnits[0]?.unit_id || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load unit and lease records.');
@@ -107,10 +108,10 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
       else Object.assign(payload, { sale_price: unitSale.salePrice ? Number(unitSale.salePrice) : null, installment_deposit: unitSale.installmentDeposit ? Number(unitSale.installmentDeposit) : null, installment_amount: unitSale.installmentAmount ? Number(unitSale.installmentAmount) : null, installment_frequency: unitSale.installmentAmount ? unitSale.installmentFrequency : null, installment_periods: unitSale.installmentPeriods ? Number(unitSale.installmentPeriods) : null });
       if (editingUnitId) {
         const result = await updateRealEstatePMSUnit(editingUnitId, payload);
-        if (result.data) setUnits((current) => current.map((item) => item.unit_id === editingUnitId ? result.data as RealEstatePMSUnit : item));
+        const saved = unwrap<any>(result); if (saved) setUnits((current) => current.map((item) => item.unit_id === editingUnitId ? saved as RealEstatePMSUnit : item));
       } else {
         const result = await createRealEstatePMSUnit(payload);
-        if (result.data) setUnits((current) => [...current, result.data as RealEstatePMSUnit]);
+        const saved = unwrap<any>(result); if (saved) setUnits((current) => [...current, saved as RealEstatePMSUnit]);
       }
       resetUnitForm();
     } catch (err) {
@@ -134,7 +135,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
         deposit_amount_kes: Number(leaseDeposit || 0),
         rent_due_day: Number(leaseDueDay || 1),
       });
-      if (result.data) setLeases((current) => [result.data as RealEstatePMSLease, ...current]);
+      const saved = unwrap<any>(result); if (saved) setLeases((current) => [saved as RealEstatePMSLease, ...current]);
       setLeaseEnd('');
       setLeaseRent('');
       setLeaseDeposit('');
@@ -165,7 +166,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
     setError(null);
     try {
       const result = await cancelRealEstatePMSLease(lease.id);
-      if (result.data) setLeases((current) => current.map((item) => item.id === lease.id ? result.data as RealEstatePMSLease : item));
+      const saved = unwrap<any>(result); if (saved) setLeases((current) => current.map((item) => item.id === lease.id ? saved as RealEstatePMSLease : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to end lease.');
     } finally {
@@ -179,7 +180,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
     try {
       const next = unit.availability === 'available' ? 'occupied' : 'available';
       const result = await updateRealEstatePMSUnit(unit.unit_id, { availability: next });
-      if (result.data) setUnits((current) => current.map((item) => item.unit_id === unit.unit_id ? result.data as RealEstatePMSUnit : item));
+      const saved = unwrap<any>(result); if (saved) setUnits((current) => current.map((item) => item.unit_id === unit.unit_id ? saved as RealEstatePMSUnit : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to update unit.');
     } finally {

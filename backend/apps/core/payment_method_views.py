@@ -12,7 +12,7 @@ def _payload(method):
         'id': str(method.id), 'provider': method.provider, 'mpesa_method': method.mpesa_method,
         'display_name': method.display_name, 'paybill_number': method.paybill_number,
         'paybill_account': method.paybill_account, 'till_number': method.till_number,
-        'paypal_email': method.paypal_email, 'is_default': method.is_default,
+        'paypal_email': method.paypal_email, 'bank_name': method.bank_name, 'bank_account_name': method.bank_account_name, 'bank_account_number': method.bank_account_number, 'bank_branch': method.bank_branch, 'is_default': method.is_default,
         'is_active': method.is_active, 'created_at': method.created_at, 'updated_at': method.updated_at,
     }
 
@@ -69,8 +69,18 @@ class LandlordPaymentMethodView(APIView):
                     method = LandlordPaymentMethod.objects.create(landlord_id=request.user.id, provider='MPESA', mpesa_method='TILL', display_name=display_name, till_number=till)
                 else:
                     raise ValueError('M-Pesa method must be PAYBILL or TILL.')
+            elif provider == 'BANK':
+                bank_name = str(request.data.get('bank_name') or '').strip()[:120]
+                holder = str(request.data.get('bank_account_name') or '').strip()[:160]
+                number = ''.join(str(request.data.get('bank_account_number') or '').split())
+                branch = str(request.data.get('bank_branch') or '').strip()[:120] or None
+                if not bank_name or not holder:
+                    raise ValueError('Bank name and account name are required.')
+                if not number.isdigit() or not 6 <= len(number) <= 20:
+                    raise ValueError('Enter a valid bank account number (digits only, 6-20 characters).')
+                method = LandlordPaymentMethod.objects.create(landlord_id=request.user.id, provider='BANK', display_name=display_name or bank_name, bank_name=bank_name, bank_account_name=holder, bank_account_number=number, bank_branch=branch)
             else:
-                raise ValueError('Payment provider must be MPESA or PAYPAL.')
+                raise ValueError('Payment provider must be MPESA, PAYPAL or BANK.')
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         if request.data.get('is_default'):
@@ -98,6 +108,18 @@ class LandlordPaymentMethodView(APIView):
             if 'paybill_number' in request.data: method.paybill_number = str(request.data.get('paybill_number') or '').strip() or None
             if 'paybill_account' in request.data: method.paybill_account = str(request.data.get('paybill_account') or '').strip() or None
             if 'till_number' in request.data: method.till_number = str(request.data.get('till_number') or '').strip() or None
+        if method.provider == 'BANK':
+            if 'bank_name' in request.data:
+                method.bank_name = str(request.data.get('bank_name') or '').strip()[:120] or method.bank_name
+            if 'bank_account_name' in request.data:
+                method.bank_account_name = str(request.data.get('bank_account_name') or '').strip()[:160] or method.bank_account_name
+            if 'bank_branch' in request.data:
+                method.bank_branch = str(request.data.get('bank_branch') or '').strip()[:120] or None
+            if 'bank_account_number' in request.data:
+                number = ''.join(str(request.data.get('bank_account_number') or '').split())
+                if not number.isdigit() or not 6 <= len(number) <= 20:
+                    return Response({'detail': 'Enter a valid bank account number (digits only, 6-20 characters).'}, status=400)
+                method.bank_account_number = number
         if request.data.get('is_default'):
             with transaction.atomic():
                 LandlordPaymentMethod.objects.filter(landlord_id=request.user.id).update(is_default=False)
