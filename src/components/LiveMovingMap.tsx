@@ -319,6 +319,9 @@ export default function LiveMovingMap() {
         const element = markerElement('Your current location', '#0d9488', '●');
         renterMarkerRef.current = new Marker({ element }).setLngLat(position).setPopup(new Popup({ offset: 22 }).setHTML('<strong>Your current location</strong>')).addTo(map);
       } else renterMarkerRef.current.setLngLat(position);
+    } else if (!isMover && renterMarkerRef.current) {
+      renterMarkerRef.current.remove();
+      renterMarkerRef.current = null;
     }
     if (currentPosition) {
       const position: Coordinate = currentPosition;
