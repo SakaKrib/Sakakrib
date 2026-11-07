@@ -1,11 +1,5 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { Geolocation, type Position } from '@capacitor/geolocation';
-
-interface LocationSettingsPlugin {
-  ensureEnabled(): Promise<{ enabled: boolean }>;
-}
-
-const NativeLocationSettings = registerPlugin<LocationSettingsPlugin>('LocationSettings');
 
 /**
  * One place for every GPS read in the app.
@@ -65,11 +59,11 @@ function locationMessage(code: LocationErrorCode): string {
   switch (code) {
     case 'permission_denied':
       return Capacitor.isNativePlatform()
-        ? 'Saka Krib needs precise location to show your live position. Tap Enable location to request access. If Android no longer displays the permission prompt, you may need to re-enable location access in app permissions.'
+        ? 'Allow Saka Krib to access your location while you are using the app to show your live position. Tap Try again if the permission prompt did not appear.'
         : 'Location permission was not granted. Allow location for this site in your browser, then tap Try again.';
     case 'services_off':
       return Capacitor.isNativePlatform()
-        ? 'Location is still off. Tap Enable location to open the Android prompt and turn it on.'
+        ? 'Device Location is turned off. Turn on Location from your phone quick settings, then tap Try again.'
         : 'Location is turned off on this device. Turn on Location, then tap Try again.';
     case 'no_fix':
       return 'Still looking for your location. Step outside or near a window and give it a few seconds, or tap Try again.';
@@ -160,38 +154,6 @@ export async function requestLocationPermission(): Promise<true> {
   }
   await getCurrentPosition({ maximumAge: 60000, timeout: 30000 });
   return true;
-}
-
-/**
- * Prepares the device for the listing's live map from the user's tap:
- * request Android runtime permission first, then show Android's native
- * "Turn on device location" dialog if Location/GPS is switched off.
- */
-export async function prepareLiveMapLocation(): Promise<DevicePosition> {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      let status = await Geolocation.checkPermissions();
-      if (status.location !== 'granted') {
-        status = await Geolocation.requestPermissions();
-      }
-      if (status.location !== 'granted') {
-        throw new LocationError(
-          'permission_denied',
-          status.coarseLocation === 'granted'
-            ? 'Please choose Precise location for Saka Krib so the live map can show your position accurately.'
-            : undefined,
-        );
-      }
-      await NativeLocationSettings.ensureEnabled();
-    }
-    return await getCurrentPosition({
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 30000,
-    });
-  } catch (error) {
-    throw normalizeError(error);
-  }
 }
 
 function fromNative(position: Position): DevicePosition {
