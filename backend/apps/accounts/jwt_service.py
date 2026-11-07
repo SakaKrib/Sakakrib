@@ -12,6 +12,7 @@ from .models import Profile, RefreshToken
 
 
 LEGACY_REFRESH_COOKIE = 'refreshToken'
+REFRESH_REUSE_GRACE_SECONDS = 120
 
 
 def _now():
@@ -47,8 +48,22 @@ def rotate_refresh_token(raw_refresh: str):
     except RefreshToken.DoesNotExist as exc:
         raise ValueError('Refresh token is no longer valid.') from exc
     user = record.user
-    if user.pk != user_id or not user.is_active or record.revoked_at is not None or record.expires_at <= timezone.now():
+    if user.pk != user_id or not user.is_active or record.expires_at <= timezone.now():
         raise ValueError('Refresh token is no longer valid.')
+    if record.revoked_at is not None:
+        # Rotation race: two requests (page reload + an API call, two tabs, or the
+        # app waking up) can present the same refresh cookie at once. The second one
+        # arrives just after the first rotated it. Within a short grace window, hand
+        # back the already-issued replacement instead of treating it as token theft
+        # and logging the person out.
+        replacement = RefreshToken.objects.filter(pk=record.replaced_by).first() if record.replaced_by else None
+        within_grace = record.revoked_at >= timezone.now() - timedelta(seconds=REFRESH_REUSE_GRACE_SECONDS)
+        if replacement is None or not within_grace or replacement.revoked_at is not None or replacement.expires_at <= timezone.now():
+            raise ValueError('Refresh token is no longer valid.')
+        return (
+            _encode(user, 'access', settings.JWT_ACCESS_LIFETIME_SECONDS),
+            _encode(user, 'refresh', settings.JWT_REFRESH_LIFETIME_SECONDS, replacement.jti),
+        )
     new_jti = uuid.uuid4()
     RefreshToken.objects.create(jti=new_jti, user=user, expires_at=_now() + timedelta(seconds=settings.JWT_REFRESH_LIFETIME_SECONDS))
     record.revoked_at = timezone.now()

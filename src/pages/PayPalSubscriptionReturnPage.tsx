@@ -158,9 +158,12 @@ export default function PayPalSubscriptionReturnPage() {
           </div>
         )}
         {state === 'failed' && (
-          <button type="button" onClick={() => continueTo('subscription-plans')} className="btn-primary mt-7 inline-flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" />Back to Plans
-          </button>
+          <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+            <button type="button" onClick={() => continueTo('subscription-plans')} className="btn-primary inline-flex items-center justify-center gap-2">
+              <RefreshCw className="h-4 w-4" />Try again
+            </button>
+            {listingId && <button type="button" onClick={continueToListing} className="btn-secondary inline-flex items-center justify-center gap-2">Back to my listing</button>}
+          </div>
         )}
       </div>
     </div>

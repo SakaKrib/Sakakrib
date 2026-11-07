@@ -1,8 +1,19 @@
 import { ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
 
+const DISMISS_KEY = 'sakakrib.securityNotice.dismissed';
+
+const readDismissed = (): boolean => {
+  try { return window.localStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; }
+};
+
 export default function SecurityBanner() {
-  const [dismissed, setDismissed] = useState(false);
+  // Once closed, the notice stays closed on this device (reloads and app restarts included).
+  const [dismissed, setDismissed] = useState<boolean>(readDismissed);
+  const dismiss = () => {
+    setDismissed(true);
+    try { window.localStorage.setItem(DISMISS_KEY, '1'); } catch { /* storage unavailable: hidden for this session only */ }
+  };
   if (dismissed) return null;
 
   return (
@@ -17,7 +28,7 @@ export default function SecurityBanner() {
             will NOT be tracked and are entirely out of Saka Krib's hands or liability.
           </p>
           <button
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             className="ml-auto shrink-0 rounded p-1 transition-colors hover:bg-white/20"
             aria-label="Dismiss"
           >
