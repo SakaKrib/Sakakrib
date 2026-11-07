@@ -10,7 +10,7 @@ import { renterApi } from '@/lib/Renter/renterApi';
 import { cn } from '@/lib/utils';
 import { getDjangoWebSocketUrl } from '@/lib/djangoApi';
 import { Capacitor } from '@capacitor/core';
-import { LocationError, checkLocationPermission, describeLocationError, isLocationSupported, requestLocationPermission } from '@/lib/location';
+import { LocationError, checkLocationPermission, describeLocationError, getCurrentPosition, isLocationSupported, requestLocationPermission } from '@/lib/location';
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -60,12 +60,16 @@ export default function LiveMovingMap() {
   const [routeDurationMinutes, setRouteDurationMinutes] = useState<number | null>(null);
   const [followMover, setFollowMover] = useState(false);
   const [deviceGps, setDeviceGps] = useState<DeviceGpsPosition | null>(null);
+  const [renterLocation, setRenterLocation] = useState<DeviceGpsPosition | null>(null);
+  const [renterLocationError, setRenterLocationError] = useState<string | null>(null);
+  const [requestingRenterLocation, setRequestingRenterLocation] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [locationPermission, setLocationPermission] = useState<LocationPermissionState>('checking');
   const [locationError, setLocationError] = useState<string | null>(null);
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const moverMarkerRef = useRef<Marker | null>(null);
+  const renterMarkerRef = useRef<Marker | null>(null);
   const pickupMarkerRef = useRef<Marker | null>(null);
   const dropoffMarkerRef = useRef<Marker | null>(null);
   const popupRef = useRef<Popup | null>(null);
@@ -178,7 +182,7 @@ export default function LiveMovingMap() {
       map.on('error', event => { if (event.error) { setMapError(event.error.message || 'Unable to load the map.'); setMapLoading(false); } });
       mapRef.current = map;
     } catch (err) { setMapLoading(false); setMapError(err instanceof Error ? err.message : 'Unable to initialize MapLibre.'); }
-    return () => { popupRef.current?.remove(); moverMarkerRef.current?.remove(); pickupMarkerRef.current?.remove(); dropoffMarkerRef.current?.remove(); mapRef.current?.remove(); popupRef.current = null; moverMarkerRef.current = null; pickupMarkerRef.current = null; dropoffMarkerRef.current = null; mapRef.current = null; };
+    return () => { popupRef.current?.remove(); moverMarkerRef.current?.remove(); renterMarkerRef.current?.remove(); pickupMarkerRef.current?.remove(); dropoffMarkerRef.current?.remove(); mapRef.current?.remove(); popupRef.current = null; moverMarkerRef.current = null; renterMarkerRef.current = null; pickupMarkerRef.current = null; dropoffMarkerRef.current = null; mapRef.current = null; };
   }, []);
 
   useEffect(() => {
@@ -262,6 +266,22 @@ export default function LiveMovingMap() {
   const showPickupConfirmation = Boolean(isMover && journeyPhase === 'HEADING_TO_PICKUP' && latestGpsIsFresh && pickupDistanceMeters !== null && pickupDistanceMeters <= PICKUP_CONFIRMATION_RADIUS_METERS);
   const phaseTitle = isMover ? journeyPhase === 'IN_TRANSIT' ? 'Pickup confirmed — head to destination' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Head to pickup point' : 'Live journey map' : journeyPhase === 'IN_TRANSIT' ? 'Items collected — heading to destination' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Mover heading to pickup' : 'Live mover location';
   const phaseDescription = isMover ? journeyPhase === 'IN_TRANSIT' ? 'Pickup is confirmed. Proceed to the destination shown on the map.' : journeyPhase === 'HEADING_TO_PICKUP' ? 'Proceed to pickup point A and collect the items. Your current position and the pickup route are shown live.' : 'Waiting for the journey phase and live GPS position.' : journeyPhase === 'IN_TRANSIT' ? 'Pickup is confirmed. The mover is now travelling with the items to the destination.' : journeyPhase === 'HEADING_TO_PICKUP' ? 'The mover is travelling to the pickup location. Pickup has not been confirmed yet.' : 'Waiting for the journey phase and live GPS position.';
+  const requestRenterLocation = async () => {
+    if (isMover || requestingRenterLocation) return;
+    setRequestingRenterLocation(true);
+    setRenterLocationError(null);
+    try {
+      const position = await getCurrentPosition({ enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+      const location = { latitude: position.latitude, longitude: position.longitude, accuracy_meters: position.accuracy, speed_kph: position.speed == null ? null : position.speed * 3.6, heading_degrees: position.heading, timestamp: position.timestamp };
+      setRenterLocation(location);
+      mapRef.current?.easeTo({ center: [location.longitude, location.latitude], zoom: 15, duration: 600 });
+    } catch (locationError) {
+      setRenterLocationError(describeLocationError(locationError));
+    } finally {
+      setRequestingRenterLocation(false);
+    }
+  };
+
   const confirmPickup = async () => {
     if (!isMover || !bookingId || confirmingPickup || journeyPhase !== 'HEADING_TO_PICKUP') return;
     setConfirmingPickup(true); setPickupConfirmationError(null);
@@ -293,6 +313,13 @@ export default function LiveMovingMap() {
     if (roadRoute.length >= 2) setLine('active-road-route-line', 'active-road-route', roadRoute, { 'line-color': '#2563eb', 'line-width': 7, 'line-opacity': 0.9 });
     if (map.getLayer('mover-travelled-path-line')) map.removeLayer('mover-travelled-path-line');
     if (map.getSource('mover-travelled-path')) map.removeSource('mover-travelled-path');
+    if (!isMover && renterLocation) {
+      const position: Coordinate = [renterLocation.longitude, renterLocation.latitude];
+      if (!renterMarkerRef.current) {
+        const element = markerElement('Your current location', '#0d9488', '●');
+        renterMarkerRef.current = new Marker({ element }).setLngLat(position).setPopup(new Popup({ offset: 22 }).setHTML('<strong>Your current location</strong>')).addTo(map);
+      } else renterMarkerRef.current.setLngLat(position);
+    }
     if (currentPosition) {
       const position: Coordinate = currentPosition;
       if (!moverMarkerRef.current) {
@@ -302,9 +329,9 @@ export default function LiveMovingMap() {
       } else moverMarkerRef.current.setLngLat(position);
       if (!firstMapFitRef.current) { const bounds = new LngLatBounds(position, position); if (pickup) bounds.extend(pickup); if (dropoff) bounds.extend(dropoff); if (roadRoute.length >= 2) roadRoute.forEach(coordinate => bounds.extend(coordinate)); map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 }); firstMapFitRef.current = true; } else if (followMover) map.easeTo({ center: position, duration: 500 });
     } else if (!firstMapFitRef.current && roadRoute.length >= 2) { const bounds = new LngLatBounds(roadRoute[0], roadRoute[0]); roadRoute.forEach(coordinate => bounds.extend(coordinate)); map.fitBounds(bounds, { padding: 100, maxZoom: 15, duration: 600 }); firstMapFitRef.current = true; }
-  }, [booking, currentPosition, deviceGps, dropoff, followMover, isMover, journeyPhase, latest, mapReady, pickup, roadRoute]);
+  }, [booking, currentPosition, deviceGps, dropoff, followMover, isMover, journeyPhase, latest, mapReady, pickup, renterLocation, roadRoute]);
 
-  useEffect(() => { firstMapFitRef.current = false; pickupMarkerPhaseRef.current = null; setJourneyPhase(null); setPickupConfirmationError(null); setConfirmingPickup(false); setRoadRoute([]); setRouteError(null); setRouteDistanceKm(null); setRouteDurationMinutes(null); setDeviceGps(null); }, [bookingId]);
+  useEffect(() => { firstMapFitRef.current = false; pickupMarkerPhaseRef.current = null; setJourneyPhase(null); setPickupConfirmationError(null); setConfirmingPickup(false); setRoadRoute([]); setRouteError(null); setRouteDistanceKm(null); setRouteDurationMinutes(null); setDeviceGps(null); setRenterLocation(null); setRenterLocationError(null); }, [bookingId]);
 
   if (!bookingId) return null;
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -330,9 +357,10 @@ export default function LiveMovingMap() {
           <div className="flex items-start gap-3"><MapPinned className="mt-0.5 h-5 w-5 shrink-0 text-blue-400" /><div className="min-w-0 flex-1"><p className="text-xs font-bold">Enable live location</p><p className="mt-1 text-[11px] leading-4 text-gray-300">SakaKrib needs your phone location to navigate you to pickup and destination.</p>{locationError && <p className="mt-1 text-[11px] leading-4 text-amber-300">{locationError}</p>}<button type="button" onClick={requestLocation} className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">{locationPermission === 'denied' ? 'Try location again' : 'Use my location'}</button></div></div>
         </div>
       )}
+      {!isMover && renterLocationError && <div className="pointer-events-auto rounded-xl border border-amber-400/30 bg-gray-950/95 px-3 py-2 text-xs text-amber-200 shadow-xl" role="alert">{renterLocationError}</div>}
       <div className="pointer-events-auto flex items-center justify-between gap-2 rounded-2xl bg-gray-950/90 p-2 shadow-xl backdrop-blur-md sm:justify-end w-fit">
         <button type="button" onClick={() => setMobilePanelOpen(value => !value)} aria-expanded={mobilePanelOpen} aria-label={mobilePanelOpen ? 'Collapse journey details' : 'Expand journey details'} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-white/10 px-3 text-xs font-semibold hover:bg-white/15 sm:hidden">{mobilePanelOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}<span>{mobilePanelOpen ? 'Close details' : 'Journey details'}</span></button>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:flex-none sm:gap-2"><button type="button" onClick={() => { setFollowMover(true); if (currentPosition) mapRef.current?.easeTo({ center: currentPosition, duration: 500 }); }} className="inline-flex min-w-0 items-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold hover:bg-white/10 sm:gap-2 sm:px-3 sm:text-xs"><Crosshair className="h-4 w-4 shrink-0" /><span className="truncate">{isMover ? 'My location' : 'Follow mover'}</span></button><button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex min-w-0 items-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold sm:gap-2 sm:px-3 sm:text-xs', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4 shrink-0" /><span className="truncate">{isMover ? (followMover ? 'Follow route' : 'Explore map') : (followMover ? 'Following' : 'Explore map')}</span></button></div>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:flex-none sm:gap-2"><button type="button" onClick={() => { if (isMover) { setFollowMover(true); if (currentPosition) mapRef.current?.easeTo({ center: currentPosition, duration: 500 }); } else { void requestRenterLocation(); } }} disabled={!isMover && requestingRenterLocation} className="inline-flex min-w-0 items-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold hover:bg-white/10 disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Crosshair className="h-4 w-4 shrink-0" /><span className="truncate">{isMover ? 'My location' : requestingRenterLocation ? 'Locating…' : 'My location'}</span></button><button type="button" onClick={() => setFollowMover(value => !value)} className={cn('inline-flex min-w-0 items-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold sm:gap-2 sm:px-3 sm:text-xs', followMover ? 'bg-white/15' : 'hover:bg-white/10')}><Route className="h-4 w-4 shrink-0" /><span className="truncate">{isMover ? (followMover ? 'Follow route' : 'Explore map') : (followMover ? 'Following' : 'Explore map')}</span></button></div>
       </div>
     </div></div>
   </div>;
