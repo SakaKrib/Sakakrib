@@ -222,6 +222,18 @@ class SetRoleView(APIView):
         if request.user.is_staff or request.user.is_superuser or request.user.is_admin:
             return Response({'error': 'Administrator role cannot be self-selected.'}, status=status.HTTP_403_FORBIDDEN)
         selected_role = serializer.validated_data['role']
+        # Role rules: a new account picks its first role once. A renter may later become a
+        # landlord, real-estate professional or mover. Landlords, real-estate users and movers
+        # keep their role: they cannot switch to or hold a second account type.
+        current_role = str(request.user.role or '').strip().lower()
+        if current_role == selected_role:
+            return Response({'success': True, 'profile': ProfileSerializer(request.user).data})
+        if current_role and current_role != 'renter':
+            labels = {'landlord': 'a landlord', 'real_estate': 'a real-estate professional', 'mover': 'a mover'}
+            return Response(
+                {'error': f"You are registered as {labels.get(current_role, current_role)} and cannot switch to another role.", 'code': 'ROLE_CHANGE_NOT_ALLOWED'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         request.user.role = selected_role
         if selected_role == 'real_estate':
             request.user.is_agency = True

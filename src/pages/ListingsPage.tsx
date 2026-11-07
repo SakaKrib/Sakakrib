@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Search, MapPin, Home, SlidersHorizontal, X, Loader2 } from 'lucide-react';
 import { useNav } from '@/context/NavContext';
+import { useAuth } from '@/context/AuthContext';
+import SignInPrompt from '@/components/SignInPrompt';
 import { protectedGet, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useMarketplaceEvents } from '@/lib/useMarketplaceEvents';
 import { KENYAN_CITIES, formatKES, cn } from '@/lib/utils';
@@ -16,7 +18,9 @@ interface ListingListResponse {
 }
 
 export default function ListingsPage() {
-  const { navigate, listingSearchFilters } = useNav();
+  const { navigate, listingSearchFilters, setAuthModalOpen, setAuthMode } = useNav();
+  const { profile, loading: authLoading } = useAuth();
+  const isGuest = !authLoading && !profile;
   const [listings, setListings] = useState<(Listing & { media?: ListingMedia[] })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -117,6 +121,8 @@ export default function ListingsPage() {
         </button>
       </div>
 
+      {isGuest && <SignInPrompt message="Sign in or create a free account to open a listing and see its full details, photos and contact options." />}
+
       {showFilters && (
         <div className="mb-6 card animate-slide-down p-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -176,7 +182,7 @@ export default function ListingsPage() {
               return (
                 <button
                   key={listing.id}
-                  onClick={() => navigate('listing-detail', listing.id)}
+                  onClick={() => { if (!profile) { setAuthMode('signin'); setAuthModalOpen(true); return; } navigate('listing-detail', listing.id); }}
                   className="card group overflow-hidden text-left transition-all hover:shadow-lg"
                 >
                   <div className="relative h-44 overflow-hidden bg-gray-200 dark:bg-brand-800">

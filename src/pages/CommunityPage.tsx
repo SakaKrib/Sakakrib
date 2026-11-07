@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useNav } from '@/context/NavContext';
 import { protectedGet, protectedPost, protectedUpload, resolveDjangoMediaUrl } from '@/lib/djangoApi';
 import { useLiveEvents } from '@/lib/useLiveEvents';
+import SignInPrompt from '@/components/SignInPrompt';
 import { formatKES } from '@/lib/utils';
 import { getPropertyUnitSummary } from '@/lib/listingDisplay';
 import type { CommunityPost, CommunityPostMedia } from '@/types/domain';
@@ -123,7 +124,7 @@ function Caption({ text }: { text: string }) {
 }
 
 export default function CommunityPage() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { event: liveEvent } = useLiveEvents(Boolean(profile?.id));
   const { navigate } = useNav();
   const [posts, setPosts] = useState<Post[]>([]);
@@ -145,6 +146,7 @@ export default function CommunityPage() {
   }, [text]);
 
   const load = useCallback(async (silent = false) => {
+    if (!profile?.id) { setLoading(false); return; }
     if (!silent) setLoading(true);
     try {
       const response = await protectedGet<{ items: Post[] }>('/api/core/community-posts/');
@@ -154,7 +156,7 @@ export default function CommunityPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
     void load();
@@ -242,6 +244,21 @@ export default function CommunityPage() {
       return { ...current, [postId]: (index + direction + total) % total };
     });
   };
+
+  if (!authLoading && !profile) {
+    return (
+      <div className="mx-auto max-w-2xl px-3 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6">
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-brand-900 dark:text-white">
+            <Users className="h-6 w-6 text-brand-600" />
+            Community Feed
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Renters, landlords, movers, and real-estate professionals can post and react.</p>
+        </div>
+        <SignInPrompt message="Sign in or create a free account to read and join the Saka Krib community." />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-3 py-6 sm:px-6 sm:py-8">

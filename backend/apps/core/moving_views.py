@@ -1,7 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db.models import Avg, Count, Q
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -134,13 +134,35 @@ class BookingEventView(ScopedListDetailView):
     fields = BOOKING_EVENT_FIELDS
 
 
+# Private mover data that the public/renter list must never expose. (The list only needs what a
+# renter sees on a card; contact details are released after a booking.)
+MOVER_LIST_PRIVATE_FIELDS = (
+    "payment_channel", "reference_contacts", "liability_accepted", "terms_accepted",
+    "insurance_policy_details", "vehicle_inspection_expiry", "approval_status",
+    "current_latitude", "current_longitude", "location_updated_at", "location",
+)
+MOVER_LIST_GUEST_PRIVATE_FIELDS = ("phone", "number_plate", "user_id")
+
+
 class MoverView(ScopedListDetailView):
     model = Mover
     scope = staticmethod(movers_for_user)
     fields = MOVER_FIELDS
 
+    def get_permissions(self):
+        # Visitors may browse the approved mover list; details and everything else need an account.
+        if self.request.method == "GET" and not self.kwargs.get("object_id"):
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        if not getattr(self.request.user, "is_authenticated", False):
+            return Mover.objects.filter(approval_status="approved")
+        return super().get_queryset()
+
     def get(self, request, object_id=None):
         queryset = self.get_queryset()
+        is_guest = not getattr(request.user, "is_authenticated", False)
         if object_id is not None:
             obj = queryset.filter(pk=object_id).first()
             if obj is None:
@@ -155,7 +177,7 @@ class MoverView(ScopedListDetailView):
 
         # The renter-facing list only shows approved movers. A mover still reaches their own
         # profile through the detail endpoint; admins see everyone.
-        if not is_admin(request.user):
+        if is_guest or not is_admin(request.user):
             queryset = queryset.filter(approval_status="approved")
 
         if city:
@@ -198,6 +220,13 @@ class MoverView(ScopedListDetailView):
         rows = []
         for mover in movers:
             data = self.serialize(mover)
+            own_profile = (not is_guest) and str(mover.user_id) == str(request.user.pk)
+            if is_guest or not (own_profile or is_admin(request.user)):
+                for key in MOVER_LIST_PRIVATE_FIELDS:
+                    data.pop(key, None)
+            if is_guest:
+                for key in MOVER_LIST_GUEST_PRIVATE_FIELDS:
+                    data.pop(key, None)
             rating = ratings.get(mover.id)
             data["rating_avg"] = round(float(rating["avg"]), 2) if rating and rating["avg"] is not None else None
             data["rating_count"] = int(rating["count"]) if rating else 0

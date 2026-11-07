@@ -190,10 +190,26 @@ class ListingPaymentIntentView(APIView):
         return Response({'id': str(intent.id), 'status': intent.status, 'listing_id': str(intent.listing_id) if intent.listing_id else None, 'amount_kes': float(intent.amount_kes), 'provider': intent.provider, 'provider_reference': intent.provider_reference, 'provider_amount': float(intent.provider_amount) if intent.provider_amount is not None else None, 'provider_currency': intent.provider_currency, 'created_at': intent.created_at, 'paid_at': intent.paid_at, 'expires_at': intent.expires_at})
 
 
+PUBLIC_LISTING_FIELDS = (
+    'id', 'title', 'city', 'county', 'property_type', 'price_kes', 'listing_type', 'size', 'beds', 'baths',
+    'is_property_management', 'created_at', 'media', 'units',
+)
+
+
 class ListingListView(APIView):
-    permission_classes = [IsAuthenticated]
+    def get_permissions(self):
+        # Anyone may browse the public feed; posting a listing still needs an account.
+        return [AllowAny()] if self.request.method == 'GET' else [IsAuthenticated()]
     def get(self, request):
         user = request.user
+        if not getattr(user, 'is_authenticated', False):
+            # Guests get a trimmed, read-only card view of approved listings: no owner, contact or payment data.
+            queryset = Listing.objects.filter(approval_status='approved', is_published=True, is_draft=False)
+            queryset = self._apply_filters(queryset, request.query_params); total = queryset.count()
+            try: limit = min(max(int(request.query_params.get('limit', 50)), 1), 100); offset = max(int(request.query_params.get('offset', 0)), 0)
+            except (TypeError, ValueError): return Response({'error': 'limit and offset must be integers.'}, status=400)
+            rows = ListingSerializer(queryset.order_by('-created_at')[offset:offset + limit], many=True, context={'request': request}).data
+            return Response({'count': total, 'limit': limit, 'offset': offset, 'public': True, 'results': [{k: row.get(k) for k in PUBLIC_LISTING_FIELDS} for row in rows]})
         if not getattr(user, 'email_verified', False): return Response({'error': 'Email verification is required.'}, status=status.HTTP_403_FORBIDDEN)
         queryset = Listing.objects.all()
         requested_user_id = request.query_params.get('user_id')

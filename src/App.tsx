@@ -53,6 +53,7 @@ import MoverNotifications from './pages/Movers/MoverNotifications';
 import MoverMessages from './pages/Movers/MoverMessages';
 import MovingFinancialRecordsPage from './pages/MovingFinancialRecordsPage';
 import MovingTransactionTimelinePage from './pages/MovingTransactionTimelinePage';
+import SignInPrompt from './components/SignInPrompt';
 import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
@@ -269,6 +270,15 @@ function AppContent() {
   if (isPaymentReturnEntry && window.location.pathname === '/listing/payment/return') return <ListingPaymentReturnPage />;
 
   const renderView = () => {
+    // Visitors can browse cards, but opening full details needs an account.
+    const guestGateMessages: Partial<Record<string, string>> = {
+      'listing-detail': 'Sign in or create a free account to view this listing in full.',
+      'mover-detail': "Sign in or create a free account to view this mover's full profile and book.",
+      chat: 'Sign in or create a free account to send and read messages.',
+    };
+    if (!authLoading && !profile && guestGateMessages[view]) {
+      return <div className="mx-auto max-w-2xl px-3 py-10 sm:px-6"><SignInPrompt message={guestGateMessages[view] as string} /></div>;
+    }
     switch (view) {
       case 'home': return <HomePage />;
       case 'listings': return <ListingsPage />;

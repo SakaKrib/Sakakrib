@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 
 import { useNav } from '@/context/NavContext';
+import { useAuth } from '@/context/AuthContext';
+import SignInPrompt from '@/components/SignInPrompt';
 
 import {
   KENYAN_CITIES,
@@ -68,7 +70,9 @@ const vehicleLabel = (type?: string | null): string => {
 };
 
 export default function MoversPage() {
-  const { navigate } = useNav();
+  const { navigate, setAuthModalOpen, setAuthMode } = useNav();
+  const { profile, loading: authLoading } = useAuth();
+  const isGuest = !authLoading && !profile;
   const { event: marketplaceEvent } = useMarketplaceEvents();
   const [liveRefreshKey, setLiveRefreshKey] = useState(0);
   const [movers, setMovers] = useState<MoverRow[]>([]);
@@ -221,6 +225,8 @@ export default function MoversPage() {
         </button>
       </div>
 
+      {isGuest && <SignInPrompt message="Sign in or create a free account to view a mover's full profile, get a quote and book." />}
+
       {showFilters && (
         <div id="mover-filters" className="card animate-slide-down mb-6 p-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -371,7 +377,7 @@ export default function MoversPage() {
               <button
                 key={mover.id}
                 type="button"
-                onClick={() => navigate('mover-detail', mover.id)}
+                onClick={() => { if (!profile) { setAuthMode('signin'); setAuthModalOpen(true); return; } navigate('mover-detail', mover.id); }}
                 className="card group flex flex-col overflow-hidden text-left transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-brand-950"
               >
                 {/* Photo area: same proportions as the listing cards */}
