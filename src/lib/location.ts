@@ -156,6 +156,22 @@ export async function requestLocationPermission(): Promise<true> {
   return true;
 }
 
+/**
+ * Returns one location fix using the normal OS/browser permission flow.
+ * It deliberately does not open device Settings or show a separate GPS-enable dialog.
+ */
+export async function prepareLiveMapLocation(): Promise<DevicePosition> {
+  try {
+    return await getCurrentPosition({
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 30000,
+    });
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
+
 function fromNative(position: Position): DevicePosition {
   const { coords } = position;
   return {
