@@ -8,7 +8,6 @@ import android.webkit.CookieManager;
 
 import com.getcapacitor.BridgeActivity;
 
-import com.sakakrib.app.LocationSettingsPlugin;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginHandle;
 
@@ -29,7 +28,6 @@ import ee.forgr.capacitor.social.login.SocialLoginPlugin;
 public class MainActivity extends BridgeActivity implements ModifiedMainActivityForSocialLoginPlugin {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(LocationSettingsPlugin.class);
         super.onCreate(savedInstanceState);
 
         CookieManager cookieManager = CookieManager.getInstance();
