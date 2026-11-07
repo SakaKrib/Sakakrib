@@ -55,7 +55,6 @@ class GoogleLoginView(APIView):
                     'sign_in_time': timezone.localtime().strftime('%d %b %Y, %H:%M %Z'),
                     'device': request.META.get('HTTP_USER_AGENT', 'Unknown device')[:255],
                     'location': request.META.get('REMOTE_ADDR', 'Unknown location'),
-                    'security_url': 'https://sakakrib.com',
                 },
             )
         except Exception:

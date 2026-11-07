@@ -57,6 +57,7 @@ import PayPalSubscriptionReturnPage from './pages/PayPalSubscriptionReturnPage';
 import PayPalSubscriptionCancelPage from './pages/PayPalSubscriptionCancelPage';
 import ListingPaymentReturnPage from './pages/ListingPaymentReturnPage';
 import { RenterInvoicesPage, RenterMovingHistoryPage } from '@/pages/RenterPages';
+import OpenInAppPrompt from '@/components/OpenInAppPrompt';
 import RenterMaintenancePage from '@/pages/Renters/RenterMaintenancePage';
 import RenterCalendarPage from '@/components/RentersComponentPage/RenterCalendarPage';
 import RenterPaymentPage from '@/components/RentersComponentPage/RenterPaymentPage';
@@ -337,5 +338,5 @@ function AppContent() {
 }
 
 export default function App() {
-  return <ThemeProvider><SplashScreen /><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
+  return <ThemeProvider><SplashScreen /><OpenInAppPrompt /><AuthProvider><NavProvider><AppContent /></NavProvider></AuthProvider></ThemeProvider>;
 }
