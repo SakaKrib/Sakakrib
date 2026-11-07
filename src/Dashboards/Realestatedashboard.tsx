@@ -386,7 +386,7 @@ export default function RealEstateDashboard() {
       <div className="card mb-6 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="font-bold text-gray-900 dark:text-white">Post New Listing</h2>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">Post New Listing</h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Add another property to your normal Real Estate listings.
             </p>
@@ -425,7 +425,7 @@ export default function RealEstateDashboard() {
       <div className="card mb-6 overflow-hidden">
         <div className="flex flex-col gap-2 border-b border-gray-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-brand-800">
           <div>
-            <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+            <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
               <Home className="h-5 w-5 text-brand-600" />
               Manage Listings
             </h2>
@@ -498,7 +498,7 @@ export default function RealEstateDashboard() {
         <div className="card p-5">
           <div className="flex items-center gap-2">
             <Activity className="h-5 w-5 text-brand-600" />
-            <h2 className="font-bold text-gray-900 dark:text-white">Recent Activity</h2>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">Recent Activity</h2>
           </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Recent activity from your normal listings.
@@ -542,7 +542,7 @@ export default function RealEstateDashboard() {
         <div className="card p-5">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-brand-600" />
-            <h2 className="font-bold text-gray-900 dark:text-white">Property Management (PMS)</h2>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">Property Management (PMS)</h2>
           </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             PMS is a separate workspace and is not used to load these normal listings.
@@ -563,7 +563,7 @@ export default function RealEstateDashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card p-5">
-          <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+          <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
             <Building2 className="h-5 w-5 text-brand-600" />
             Listing Access
           </h2>
@@ -602,7 +602,7 @@ export default function RealEstateDashboard() {
         </div>
 
         <div className="card p-5">
-          <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+          <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
             <CreditCard className="h-5 w-5 text-brand-600" />
             Subscription
           </h2>
@@ -648,7 +648,7 @@ export default function RealEstateDashboard() {
         </div>
 
         <div className="card p-5">
-          <h2 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+          <h2 className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
             <User className="h-5 w-5 text-brand-600" />
             Business Account
           </h2>

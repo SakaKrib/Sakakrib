@@ -63,8 +63,8 @@ export default function SalePaymentsPanel() {
   const totalFor = (unitId: string) => payments.filter((p) => p.unit_id === unitId).reduce((sum, p) => sum + Number(p.amount_kes), 0);
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
-      <div className="flex items-center gap-2"><Banknote className="h-5 w-5 text-brand-600" /><div><h2 className="font-bold text-gray-900 dark:text-white">Property sale payments</h2><p className="text-xs text-gray-500 dark:text-gray-400">Record payments received from buyers for units that are for sale.</p></div></div>
+    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+      <div className="flex items-center gap-2"><Banknote className="h-5 w-5 text-brand-600" /><div><h2 className="text-base font-bold text-gray-900 dark:text-white">Property sale payments</h2><p className="text-xs text-gray-500 dark:text-gray-400">Record payments received from buyers for units that are for sale.</p></div></div>
       {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{error}</p>}
       {units.length > 0 && (
         <form onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

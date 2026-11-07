@@ -142,7 +142,7 @@ export default function RealEstatePMSCalendar({
   const subscriptionEvents = monthEvents.filter((event) => event.type === 'SUBSCRIPTION').length;
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
+    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">

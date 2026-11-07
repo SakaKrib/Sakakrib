@@ -113,14 +113,14 @@ export default function RealEstatePMSFinance({ canCreateInvoices }: Props) {
     <div className="space-y-5">
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{error}</div>}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Invoiced</p><p className="mt-1 text-xl font-bold">{kes(data?.summary.total_invoiced_kes ?? 0)}</p></div>
-        <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Paid</p><p className="mt-1 text-xl font-bold">{kes(data?.summary.total_paid_kes ?? 0)}</p></div>
-        <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Outstanding</p><p className="mt-1 text-xl font-bold">{kes(data?.summary.total_due_kes ?? 0)}</p></div>
-        <div className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900"><p className="text-xs text-gray-500">Pending submissions</p><p className="mt-1 text-xl font-bold">{data?.summary.pending_submissions ?? 0}</p></div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoiced</p><p className="mt-1 text-xl font-bold">{kes(data?.summary.total_invoiced_kes ?? 0)}</p></div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Paid</p><p className="mt-1 text-xl font-bold">{kes(data?.summary.total_paid_kes ?? 0)}</p></div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Outstanding</p><p className="mt-1 text-xl font-bold">{kes(data?.summary.total_due_kes ?? 0)}</p></div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pending submissions</p><p className="mt-1 text-xl font-bold">{data?.summary.pending_submissions ?? 0}</p></div>
       </div>
 
-      <section className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900">
-        <div className="border-b p-5 dark:border-brand-800"><h2 className="font-bold">Payments awaiting confirmation</h2><p className="text-xs text-gray-500 dark:text-gray-400">Renters who paid outside the app submit the transaction ID here. Confirm it once you have received the money, or reject it with a reason.</p></div>
+      <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
+        <div className="border-b border-gray-100 p-5 dark:border-brand-800"><h2 className="text-base font-bold text-gray-900 dark:text-white">Payments awaiting confirmation</h2><p className="text-xs text-gray-500 dark:text-gray-400">Renters who paid outside the app submit the transaction ID here. Confirm it once you have received the money, or reject it with a reason.</p></div>
         <div className="divide-y dark:divide-brand-800">
           {pending.length === 0 ? <p className="p-6 text-sm text-gray-500">No payments are waiting for review.</p> : pending.map((submission) => (
             <div key={submission.id} className="p-5">
@@ -138,8 +138,8 @@ export default function RealEstatePMSFinance({ canCreateInvoices }: Props) {
       </section>
 
       {canCreateInvoices && rentUnits.length > 0 && (
-        <section className="rounded-xl border bg-white p-5 dark:border-brand-700 dark:bg-brand-900">
-          <div className="flex items-center gap-2"><WalletCards className="h-5 w-5 text-brand-600" /><h2 className="font-bold">Create rent invoice</h2></div>
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
+          <div className="flex items-center gap-2"><WalletCards className="h-5 w-5 text-brand-600" /><h2 className="text-base font-bold text-gray-900 dark:text-white">Create rent invoice</h2></div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">For units that are for rent. Tick "already paid" to record a payment the renter made directly to you.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Select value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)} className={inputClass}><option value="">Select a rented unit</option>{rentUnits.filter((unit) => unit.renter_assoc_id).map((unit) => <option key={unit.unit_id} value={unit.unit_id}>{unitLabel(unit.unit_id)} · {unit.renter_name ?? 'Renter'} · {kes(unit.rent)}</option>)}</Select>
@@ -156,8 +156,8 @@ export default function RealEstatePMSFinance({ canCreateInvoices }: Props) {
 
       <SalePaymentsPanel />
 
-      <section className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900">
-        <div className="flex items-center justify-between border-b p-5 dark:border-brand-800"><div><h2 className="font-bold">Invoice history</h2><p className="text-xs text-gray-500 dark:text-gray-400">Recorded rent invoices for the PMS portfolio.</p></div><button type="button" onClick={() => void load()} className="rounded-lg border p-2 dark:border-brand-700" aria-label="Refresh finance"><RefreshCw className="h-4 w-4" /></button></div>
+      <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
+        <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-brand-800"><div><h2 className="text-base font-bold text-gray-900 dark:text-white">Invoice history</h2><p className="text-xs text-gray-500 dark:text-gray-400">Recorded rent invoices for the PMS portfolio.</p></div><button type="button" onClick={() => void load()} className="rounded-lg border p-2 dark:border-brand-700" aria-label="Refresh finance"><RefreshCw className="h-4 w-4" /></button></div>
         <div className="divide-y dark:divide-brand-800">
           {(data?.invoices ?? []).length === 0 ? <p className="p-6 text-sm text-gray-500">No rent invoices recorded yet.</p> : (data?.invoices ?? []).map((invoice) => (
             <div key={invoice.id} className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between">

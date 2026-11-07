@@ -122,7 +122,7 @@ export default function RealEstatePMSNotifications() {
       )}
 
       {notifications.length > 0 && (
-        <div className="overflow-hidden rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900">
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
           {notifications.map((notification) => (
             <button
               key={notification.id}

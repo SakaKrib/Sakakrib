@@ -78,7 +78,7 @@ export default function RealEstatePMSListingAssignments() {
   const listingName = (listingId: string) => listings.find((item) => item.id === listingId)?.title || listingId;
 
   return (
-    <section className="rounded-xl border bg-white dark:border-brand-700 dark:bg-brand-900">
+    <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
       <div className="border-b px-6 py-4 dark:border-brand-700">
         <div className="flex items-center gap-2">
           <Link2 className="h-5 w-5 text-brand-600 dark:text-brand-300" />

@@ -54,9 +54,9 @@ export default function PMSMaintenanceInbox({ canManage = true }: { canManage?: 
   const openCount = items.filter((item) => item.status === 'OPEN').length;
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-700 dark:bg-brand-900">
+    <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-brand-800 dark:bg-brand-950">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-5 dark:border-brand-800">
-        <div className="flex items-center gap-2"><Wrench className="h-5 w-5 text-brand-600" /><div><h2 className="font-bold text-gray-900 dark:text-white">Maintenance requests{openCount > 0 && <span className="ml-2 rounded-full bg-error-600 px-2 py-0.5 text-[11px] font-bold text-white">{openCount} new</span>}</h2><p className="text-xs text-gray-500 dark:text-gray-400">Problems reported by your renters. Assign someone, update the status and reply.</p></div></div>
+        <div className="flex items-center gap-2"><Wrench className="h-5 w-5 text-brand-600" /><div><h2 className="text-base font-bold text-gray-900 dark:text-white">Maintenance requests{openCount > 0 && <span className="ml-2 rounded-full bg-error-600 px-2 py-0.5 text-[11px] font-bold text-white">{openCount} new</span>}</h2><p className="text-xs text-gray-500 dark:text-gray-400">Problems reported by your renters. Assign someone, update the status and reply.</p></div></div>
         <div className="flex gap-2">{(['active', 'all'] as const).map((key) => <button key={key} type="button" onClick={() => setFilter(key)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${filter === key ? 'bg-brand-600 text-white' : 'border border-gray-200 text-gray-600 dark:border-brand-700 dark:text-gray-300'}`}>{key === 'active' ? 'Active' : 'All'}</button>)}</div>
       </div>
       {error && <p className="m-5 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{error}</p>}

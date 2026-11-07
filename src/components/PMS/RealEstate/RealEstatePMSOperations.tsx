@@ -203,7 +203,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div><div className="flex items-center gap-2"><Home className="h-5 w-5 text-brand-600" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">Units</h2></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Units remain owned by the subscribing real-estate account and share the plan's per-listing capacity.</p></div>
           <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold dark:border-brand-700"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
@@ -212,7 +212,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
         <div className="mt-5 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500 dark:text-gray-400">Total units</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{units.length}</p></div><div className="rounded-xl bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500 dark:text-gray-400">Occupied</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{units.filter((unit) => unit.availability !== 'available').length}</p></div><div className="rounded-xl bg-gray-50 p-4 dark:bg-brand-800/60"><p className="text-xs text-gray-500 dark:text-gray-400">Listed monthly rent</p><p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">KES {totalRent.toLocaleString('en-KE')}</p></div></div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="flex items-center gap-2"><Plus className="h-5 w-5 text-brand-600" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">{editingUnitId ? 'Edit unit' : 'Add unit'}</h2>{editingUnitId && <button type="button" onClick={resetUnitForm} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500"><X className="h-3.5 w-3.5" />Cancel edit</button>}</div>
         <div className="mt-4"><ListingTypeToggle value={unitListingType} onChange={setUnitListingType} /></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -233,7 +233,7 @@ export default function RealEstatePMSOperations({ listings, maxUnitsPerListing, 
         {maxUnitsPerListing != null && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Plan capacity: {maxUnitsPerListing} units per listing.</p>}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
         <div className="flex items-center gap-2"><FileText className="h-5 w-5 text-brand-600" /><div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Leases & rent</h2><p className="text-sm text-gray-500 dark:text-gray-400">A lease is the source of tenancy terms; monthly rent invoices are generated from the active lease.</p></div></div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <Select value={leaseUnitId} onChange={(event) => { const next = units.find((unit) => unit.unit_id === event.target.value); setLeaseUnitId(event.target.value); setLeaseRent(next?.rent ? String(next.rent) : ''); setLeaseDeposit(next?.deposit_amount ? String(next.deposit_amount) : ''); setLeaseDueDay(next?.rent_due_day ? String(next.rent_due_day) : '1'); }} className="rounded-lg border px-3 py-2 text-sm dark:border-brand-700 dark:bg-brand-950"><option value="">Select occupied unit</option>{units.filter((unit) => unit.renter_assoc_id).map((unit) => <option key={unit.unit_id} value={unit.unit_id}>{unit.listing_title} · Unit {unit.unit_number} · {unit.renter_name ?? 'Renter'}</option>)}</Select>

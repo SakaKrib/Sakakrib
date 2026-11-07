@@ -33,14 +33,14 @@ export default function RealEstatePMSAnalytics() {
 
   useEffect(() => { void load(); }, []);
 
-  if (loading) return <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900"><p className="text-sm text-gray-500 dark:text-gray-400">Loading portfolio analytics...</p></section>;
+  if (loading) return <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950"><p className="text-sm text-gray-500 dark:text-gray-400">Loading portfolio analytics...</p></section>;
   if (error || !data) return <section className="rounded-2xl border border-red-200 bg-red-50 p-5 dark:border-red-900 dark:bg-red-900/20"><div className="flex items-center justify-between gap-4"><p className="text-sm text-red-700 dark:text-red-300">{error ?? 'No analytics data returned.'}</p><button type="button" onClick={() => void load()} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-800 dark:text-red-300"><RefreshCw className="mr-1 inline h-3.5 w-3.5" />Retry</button></div></section>;
 
   const { summary, trend } = data;
   const maxTrend = Math.max(1, ...trend.map((item) => Math.max(item.invoiced, item.collected)));
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-700 dark:bg-brand-900">
+    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-brand-800 dark:bg-brand-950">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div><div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-brand-600 dark:text-brand-300" /><h2 className="text-lg font-bold text-gray-900 dark:text-white">Portfolio analytics</h2></div><p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Occupancy, lease health, rent performance and collection trends from the PMS data.</p></div>
         <button type="button" onClick={() => void load()} className="inline-flex items-center gap-2 self-start rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold dark:border-brand-700"><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
