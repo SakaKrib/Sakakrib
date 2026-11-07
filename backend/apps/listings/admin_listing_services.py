@@ -6,6 +6,7 @@ from apps.accounts.authorization import require_admin
 from apps.accounts.models import Profile
 from apps.core.domain_property import PropertyUnit
 from apps.core.notification_services import dispatch_user_notification
+from apps.core.unit_pricing import normalize_unit_pricing, sync_listing_price
 from apps.listings.services import get_listing_entitlement
 from apps.subscriptions.models import SubscriptionListing
 
@@ -87,17 +88,24 @@ def create_listing_on_behalf(admin_user, owner_id, data, units=None):
     )
 
     if is_pms:
+        max_units = (entitlement or {}).get('max_units_per_listing')
+        if max_units is not None and len(units or []) > max_units:
+            raise ValidationError(f"The owner's plan allows up to {max_units} units per property.")
         for position, unit_data in enumerate(units or []):
             unit_number = str(unit_data.get('unit_number') or '').strip()
             unit_type = str(unit_data.get('unit_type') or '').strip()
             if not unit_number or not unit_type:
                 raise ValidationError('Each PMS unit requires a unit number/name and unit type.')
+            try:
+                pricing = normalize_unit_pricing(unit_data)
+            except ValueError as exc:
+                raise ValidationError(f'Unit {unit_number}: {exc}')
             PropertyUnit.objects.create(
                 listing_id=listing.id,
                 user_id=owner.id,
                 unit_number=unit_number,
                 unit_type=unit_type,
-                rent=unit_data.get('rent') or 0,
+                **pricing,
                 deposit_amount=unit_data.get('deposit_amount') or 0,
                 size=unit_data.get('size') or None,
                 beds=unit_data.get('beds') or 0,
@@ -106,6 +114,9 @@ def create_listing_on_behalf(admin_user, owner_id, data, units=None):
                 description=unit_data.get('description') or '',
                 position=position,
             )
+
+    if is_pms:
+        sync_listing_price(listing.id)
 
     if is_pms and entitlement and entitlement.get('subscription_id'):
         key = 'subscription_id' if role == 'landlord' else 'real_estate_subscription_id'
